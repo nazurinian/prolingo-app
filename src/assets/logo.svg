@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background: Rounded Square (Indigo-600) -->
+  <rect width="512" height="512" rx="120" fill="#4f46e5" />
+  
+  <!-- Subtle Gradient Overlay (Optional for depth) -->
+  <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" style="stop-color:rgb(255,255,255);stop-opacity:0.1" />
+    <stop offset="100%" style="stop-color:rgb(0,0,0);stop-opacity:0.1" />
+  </linearGradient>
+  <rect width="512" height="512" rx="120" fill="url(#grad)" />
+
+  <!-- Icon: Speech Bubble with Audio Wave -->
+  <g transform="translate(106, 106) scale(0.6)" fill="none" stroke="white" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Speech Bubble Shape -->
+    <path d="M428 224c0-100-100-180-214-180S0 124 0 224c0 45 24 90 64 125l-25 90 100-50c25 10 50 15 75 15 114 0 214-80 214-180z" fill="white" fill-opacity="0.15" stroke="white" stroke-width="30"/>
+    
+    <!-- Sound Wave Inside -->
+    <path d="M150 224h.01" stroke-width="50"/> 
+    <path d="M214 170v108" stroke-width="35"/>
+    <path d="M278 140v168" stroke-width="35"/>
+    <path d="M342 190v68" stroke-width="35"/>
+  </g>
+</svg>
