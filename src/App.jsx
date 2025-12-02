@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, RotateCcw, Volume2, Settings, Trash2, List, Mic, Globe, 
@@ -131,7 +132,7 @@ const App = () => {
   const [selectedIndonesianVoice, setSelectedIndonesianVoice] = useState(null); // Selected ID
   
   const [rate, setRate] = useState(1);
-  const [pitch, setPitch] = useState(1);
+  const [pitch] = useState(1);
   
   // Parts to Play
   const [playWord, setPlayWord] = useState(true);
@@ -248,6 +249,7 @@ const App = () => {
     addLog("System", "Ready. ProLingo v4.24 Initialized.");
 
     return () => forceStopAll();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -289,6 +291,7 @@ const App = () => {
     
     loadVoices();
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = loadVoices;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addLog = (type, message) => {
@@ -461,7 +464,7 @@ const App = () => {
   };
 
   const playSource = (text, item, part) => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       if (stopSignalRef.current) { resolve(); return; }
 
       if (part === 'meaning') {
@@ -480,12 +483,12 @@ const App = () => {
         audio.rate = rate; 
         
         audio.onended = () => { currentAudioObjRef.current = null; resolve(); };
-        audio.onerror = (e) => {
+        audio.onerror = () => {
           addLog("Warn", `Audio fail #${item.displayId}. Fallback TTS.`);
           playTTS(text).then(resolve);
         };
         
-        audio.play().catch(e => resolve()); 
+        audio.play().catch(() => resolve()); 
         return;
       }
       playTTS(text).then(resolve);
@@ -605,7 +608,9 @@ const App = () => {
 
         if (liveMode === 'once') break;
         else if (liveMode === 'random') index = Math.floor(Math.random() * playlist.length);
-        else if (liveMode === 'loop_one') { }
+        else if (liveMode === 'loop_one') { 
+          // Do nothing, keep same index
+        }
         else { index++; }
       }
       setIsPlaying(false);
