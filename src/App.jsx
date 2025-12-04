@@ -1313,7 +1313,8 @@ const App = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col h-screen overflow-hidden">
+    // FIX: Changed from "min-h-screen h-screen" to "fixed inset-0" to respect mobile browser viewport
+    <div className="fixed inset-0 bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden">
       
       {/* 1. HEADER */}
       {/* FIX Z-INDEX & OVERFLOW (Issue #2: Body covering popups) */}
@@ -1324,7 +1325,7 @@ const App = () => {
           </button>
           <div className="flex items-center gap-2 whitespace-nowrap">
             <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-            <div><h1 className="font-bold text-slate-800 leading-tight">ProLingo v4.24</h1></div>
+            <div><h1 className="font-bold text-slate-800 leading-tight">ProLingo v4.25</h1></div>
           </div>
         </div>
         
@@ -1440,7 +1441,7 @@ const App = () => {
       </div>
 
       {/* 2. MOBILE TAB BAR - SYNC: Only visible below MD (768px) */}
-      <div className="md:hidden bg-white border-b border-slate-200 flex text-xs font-bold text-slate-500 z-10 relative">
+      <div className="md:hidden bg-white border-b border-slate-200 flex text-xs font-bold text-slate-500 z-10 relative flex-shrink-0">
           <button onClick={() => setMobileTab('terminal')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'terminal' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}>
               <Terminal className="w-4 h-4"/> Logs
           </button>
@@ -1660,7 +1661,7 @@ const App = () => {
         </div>
 
         {/* MAIN BODY AREA */}
-        <div className="flex-1 bg-slate-50 overflow-y-auto transition-all relative">
+        <div className="flex-1 bg-slate-50 overflow-hidden relative flex flex-col">
             
             {/* MOBILE LOGS VIEW - Sync MD Hidden */}
             <div className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}>
@@ -1679,7 +1680,7 @@ const App = () => {
             </div>
 
             {/* PLAYER VIEW - Always show on MD+, or if tab selected on Mobile */}
-            <div className={`h-full overflow-y-auto p-4 ${mobileTab === 'player' ? 'block' : 'hidden'} md:block`}>
+            <div className={`flex-1 overflow-y-auto p-4 ${mobileTab === 'player' ? 'block' : 'hidden'} md:block`}>
                  <div className="max-w-4xl mx-auto">
                     {renderPlaylist()}
                  </div>
@@ -1689,7 +1690,7 @@ const App = () => {
       </div>
 
       {/* BOTTOM BAR - FIXED LAYOUT (Issue #1) */}
-      <div className="bg-white border-t border-slate-200 p-2 md:p-4 shadow-2xl z-50">
+      <div className="bg-white border-t border-slate-200 p-2 md:p-4 shadow-2xl z-50 flex-shrink-0">
         <div className="max-w-4xl mx-auto">
            {/* MOBILE GRID LAYOUT - Hidden on MD+ */}
            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 md:hidden">
