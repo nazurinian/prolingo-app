@@ -1,5 +1,5 @@
 /* eslint-disable no-control-regex */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useMemo} from 'react';
 import { 
   Play, Pause, RotateCcw, Volume2, Settings, Trash2, List, Mic, Globe, 
   CheckCircle, Save, Upload, Table, SkipBack, SkipForward, X, 
@@ -7,13 +7,21 @@ import {
   ToggleLeft, ToggleRight, AlertCircle, PanelLeftClose, PanelLeftOpen, Lock, Unlock,
   Hash, Music, Bot, AlertTriangle, Terminal, XCircle, ChevronDown, Layers, Smartphone,
   Monitor, Cpu, CheckSquare, Square, ChevronRight, MoreHorizontal, ArrowRightToLine,
-  Languages, Eye, EyeOff, Brain, BookOpen
+  Languages, Eye, EyeOff, Brain, BookOpen, Plus, Send, ListPlus, MinusCircle, Eraser,
+  ChevronsUp, MoreVertical
 } from 'lucide-react';
 
 // --- SYSTEM ENVIRONMENT VAR ---
 // Di Cloud (Vercel), ini akan diisi oleh Environment Variable. 
 // Di Local/Browser Editor, ini kosong, jadi akan fallback ke Input User.
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ""; 
+
+// --- VIRTUALIZATION CONSTANTS ---
+// UPDATE: Konstanta ini sekarang menjadi nilai default, nilai aktual dikontrol via State agar Responsif
+const DEFAULT_ROW_HEIGHT_PC = 160; 
+// PERBAIKAN POIN 2: Tinggi baris mobile dikurangi jadi 205
+const DEFAULT_ROW_HEIGHT_MOBILE = 205; 
+const OVERSCAN = 3;           
 
 // --- UTILITIES ---
 const writeString = (view, offset, string) => {
@@ -106,20 +114,308 @@ const HighlightedText = ({ text, highlight, className = "" }) => {
   );
 };
 
+// --- OPTIMIZED ROW COMPONENT ---
+const MemoizedRow = memo(({ 
+    item, 
+    isActive, 
+    isSystemBusy, 
+    toggleStudyItem, 
+    isInQueue, 
+    handleIndependentPlay, 
+    handleRowClick, 
+    independentPlayingId, 
+    speakingPart, 
+    isMemoryMode, 
+    memorySettings, 
+    revealedCells, 
+    toggleCellReveal, 
+    localWordUrl,     
+    localSentUrl,     
+    preferLocalAudio, 
+    generateAIAudio, 
+    aiLoadingId,
+    rowId,
+    idx,
+    style,
+    activeMenuId,      
+    onMenuToggle       
+}) => {
+    
+    const isMenuOpen = activeMenuId === rowId;
+
+    const isWordUsingLocal = localWordUrl && preferLocalAudio;
+    const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
+    const sentFilename = `${item.displayId}_${sanitizeFilename(item.word)}_sentence.wav`;
+
+    const isWordActive = isActive && speakingPart === 'word';
+    const isSentActive = isActive && speakingPart === 'sentence';
+    const isMeaningActive = isActive && speakingPart === 'meaning';
+
+    const blurClass = "filter blur-sm bg-slate-100 select-none cursor-pointer transition-all duration-300";
+    const revealedClass = "filter-none bg-yellow-50 cursor-pointer transition-all duration-300";
+
+    const isWordHidden = isMemoryMode && memorySettings.word;
+    const isSentHidden = isMemoryMode && memorySettings.sentence;
+    const isMeaningHidden = isMemoryMode && memorySettings.meaning;
+    
+    const wordRevealed = revealedCells[`${rowId}-word`];
+    const sentRevealed = revealedCells[`${rowId}-sent`];
+    const meaningRevealed = revealedCells[`${rowId}-meaning`];
+
+    return (
+        <div style={style} className="absolute left-0 right-0 px-2 py-2 w-full z-0">
+            <div 
+                id={rowId} 
+                onClick={(e) => { 
+                    e.stopPropagation(); 
+                    handleRowClick(item, idx); 
+                }} 
+                className={`h-full rounded-xl border p-3 flex flex-col justify-between transition-all hover:shadow-md cursor-pointer relative ${isActive ? 'bg-blue-600 border-blue-700 shadow-md ring-1 ring-blue-500' : 'bg-white border-slate-200'}`}
+            >
+                {/* --- MOBILE OVERFLOW MENU TRIGGER (Top Right) --- */}
+                <div className="md:hidden absolute top-2 right-2 z-20">
+                    <button 
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            onMenuToggle(rowId); 
+                        }}
+                        className={`p-1.5 rounded-full transition-colors ${isActive ? 'text-white hover:bg-blue-500' : 'text-slate-400 hover:bg-slate-100'}`}
+                    >
+                        <MoreVertical className="w-5 h-5" />
+                    </button>
+
+                    {/* --- MOBILE MENU DROPDOWN --- */}
+                    {isMenuOpen && (
+                        <div className="absolute top-8 right-0 bg-white border border-slate-200 shadow-xl rounded-lg p-2 flex flex-col gap-2 w-32 z-30 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
+                             {/* Add Button */}
+                             <button
+                                onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); onMenuToggle(null); }}
+                                className={`w-full px-2 py-2 flex items-center gap-2 rounded text-xs font-bold border transition-all ${isInQueue
+                                        ? 'bg-green-50 text-green-700 border-green-200'
+                                        : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'
+                                    }`}
+                            >
+                                {isInQueue ? <CheckCircle className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                                {isInQueue ? "Added" : "Add Queue"}
+                            </button>
+
+                            <div className="h-[1px] bg-slate-100 w-full my-0.5"></div>
+
+                            {/* Word Audio */}
+                             {localWordUrl ? (
+                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word Audio</span></a>
+                                ) : (
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border bg-slate-50 text-indigo-600 hover:bg-indigo-50 border-indigo-100 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
+                                    </button>
+                                )}
+
+                            {/* Sentence Audio */}
+                             {localSentUrl ? (
+                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent Audio</span></a>
+                                ) : (
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border bg-slate-50 text-purple-600 hover:bg-purple-50 border-purple-100 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
+                                    </button>
+                                )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col md:flex-row justify-between items-start gap-2 h-full">
+                    {/* --- MAIN CONTENT AREA --- */}
+                    <div className="flex-1 w-full min-w-0 overflow-hidden flex flex-col gap-1 h-full">
+                        
+                        {/* Header: ID, Play, Word, POS */}
+                        <div className="flex items-start md:items-center gap-3 flex-shrink-0 mb-1 pr-8 md:pr-0">
+                            <div className="w-8 flex flex-col items-center mt-1 md:mt-0"><span className={`text-xs font-mono font-bold ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>#{item.displayId}</span></div>
+
+                            <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word', `${rowId}-word`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 md:mt-0 ${independentPlayingId === `${rowId}-word` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 text-slate-500 hover:text-indigo-600')}`}>
+                                {independentPlayingId === `${rowId}-word` ? <X className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+                            </button>
+
+                            <div
+                                className={`flex-1 flex flex-col md:flex-row md:items-center gap-1 md:gap-2 min-w-0 ${isWordHidden ? (wordRevealed ? revealedClass : blurClass) : ''}`}
+                                onClick={(e) => isWordHidden && toggleCellReveal(e, `${rowId}-word`)}
+                            >
+                                {/* Word Title */}
+                                <h3 className={`text-lg leading-snug line-clamp-2 md:line-clamp-1 ${isWordActive ? 'font-bold text-white' : (isActive ? 'text-blue-100 font-normal' : 'text-slate-800 font-normal')}`}>
+                                    {item.word}
+                                </h3>
+                                
+                                {/* PERBAIKAN POIN 3: Badge POS dan Meaning Word (jika ada) */}
+                                {/* UPDATE: Menggunakan layout flex tanpa wrap dengan overflow-auto untuk Meaning Word yang panjang */}
+                                <div className="flex items-center gap-1 min-w-0 overflow-hidden max-w-full">
+                                    {item.partOfSpeech && (
+                                        <span className={`text-[10px] italic border px-1 rounded flex-shrink-0 ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 border-slate-200'}`}>
+                                            {item.partOfSpeech}
+                                        </span>
+                                    )}
+                                    {item.meaningWord && (
+                                        <div className={`text-[10px] border px-1 rounded overflow-x-auto whitespace-nowrap no-scrollbar min-w-0 ${isActive ? 'text-blue-200 border-blue-400 bg-blue-500' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>
+                                            {item.meaningWord}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            {isWordUsingLocal ? <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 flex-shrink-0 hidden md:flex"><Hash className="w-3 h-3" /> OK</span> : <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 hidden md:flex ${isActive ? 'bg-blue-700 text-blue-200' : 'bg-slate-100 text-slate-400'}`}>TTS</span>}
+                        </div>
+
+                        {/* Body: Sentence & Meaning (Scrollable Area) */}
+                        <div className="flex flex-col gap-2 pl-0 md:pl-11 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                            
+                            {/* Baris 1: Sentence */}
+                            <div className="flex gap-2 items-start">
+                                <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'sentence', `${rowId}-sent`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 ${independentPlayingId === `${rowId}-sent` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 text-slate-500 hover:text-indigo-600')}`}>
+                                    {independentPlayingId === `${rowId}-sent` ? <X className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+                                </button>
+                                
+                                <div className="flex-1">
+                                    <div
+                                        className={`${isSentHidden ? (sentRevealed ? revealedClass : blurClass) : ''}`}
+                                        onClick={(e) => isSentHidden && toggleCellReveal(e, `${rowId}-sent`)}
+                                    >
+                                        <p className={`text-sm leading-relaxed line-clamp-4 md:line-clamp-2 ${isSentActive ? 'font-bold text-white' : (isActive ? 'text-blue-50 font-medium' : 'text-slate-600')}`}>
+                                            "<HighlightedText text={item.sentence} highlight={item.word} />"
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Baris 2: Meaning (Responsive Layout) */}
+                            {/* PERBAIKAN POIN 1: Di Mobile (default) layout Row dengan tombol kiri. Di Desktop (md:) layout lebih indented (agak kanan) */}
+                            {item.meaning && (
+                                <div className={`flex gap-2 items-start transition-all ${isActive ? '' : ''} md:ml-6`}>
+                                    <div className="w-6 flex justify-center flex-shrink-0 mt-0.5"> 
+                                        <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'meaning', `${rowId}-meaning`); }} className={`w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${independentPlayingId === `${rowId}-meaning` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500/50 text-white hover:bg-blue-400' : 'bg-slate-100 text-slate-400 hover:text-indigo-600')}`}>
+                                            {independentPlayingId === `${rowId}-meaning` ? <X className="w-2 h-2 fill-current" /> : <Play className="w-2 h-2 fill-current" />}
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex-1">
+                                         <div
+                                            className={`${isMeaningHidden ? (meaningRevealed ? revealedClass : blurClass) : ''}`}
+                                            onClick={(e) => isMeaningHidden && toggleCellReveal(e, `${rowId}-meaning`)}
+                                        >
+                                            <p className={`text-xs italic transition-colors line-clamp-3 md:line-clamp-2 ${isMeaningActive ? 'font-bold text-white bg-blue-500/20 px-1 rounded' : (isActive ? 'text-blue-200' : 'text-slate-400')}`}>
+                                                <HighlightedText text={item.meaning} highlight={item.meaningWord || item.word} />
+                                                <Globe className={`w-3 h-3 inline-block ml-1 opacity-50 ${isActive ? 'text-blue-200' : 'text-slate-400'}`} />
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+                    </div>
+
+                    {/* --- ACTIONS AREA (Desktop Only - Hidden on Mobile) --- */}
+                    <div className={`
+                        hidden md:flex md:flex-col md:ml-2 
+                        justify-start items-end
+                        w-auto gap-2 flex-shrink-0
+                        md:border-l md:pl-2
+                        ${isActive ? 'border-blue-500' : 'border-slate-100'}
+                    `}>
+                        {/* 1. ADD Button */}
+                        <div className="flex-none md:mb-1">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); }}
+                                className={`md:w-[70px] md:h-[26px] flex items-center justify-center gap-1 rounded border text-[10px] font-bold transition-all ${isInQueue
+                                        ? 'bg-green-100 text-green-700 border-green-300 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                                        : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
+                                    }`}
+                            >
+                                {isInQueue ? <CheckCircle className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                <span>{isInQueue ? "Added" : "Add"}</span>
+                            </button>
+                        </div>
+
+                        {/* 2. AUDIO Buttons */}
+                        <div className="flex flex-col gap-2 items-end justify-end">
+                            <div className="flex-none">
+                                {localWordUrl ? (
+                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></a>
+                                ) : (
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border bg-slate-50 text-indigo-600 hover:bg-indigo-50 border-indigo-100 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} <span className="text-[9px] font-bold">Word</span>
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex-none">
+                                {localSentUrl ? (
+                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></a>
+                                ) : (
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border bg-slate-50 text-purple-600 hover:bg-purple-50 border-purple-100 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} <span className="text-[9px] font-bold">Sent</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}, (prev, next) => {
+    return (
+        prev.item === next.item &&
+        prev.isActive === next.isActive &&
+        prev.isSystemBusy === next.isSystemBusy &&
+        prev.isInQueue === next.isInQueue &&
+        prev.independentPlayingId === next.independentPlayingId &&
+        prev.speakingPart === next.speakingPart &&
+        prev.isMemoryMode === next.isMemoryMode &&
+        prev.memorySettings === next.memorySettings &&
+        prev.revealedCells[`${prev.rowId}-word`] === next.revealedCells[`${next.rowId}-word`] &&
+        prev.revealedCells[`${prev.rowId}-sent`] === next.revealedCells[`${next.rowId}-sent`] &&
+        prev.revealedCells[`${prev.rowId}-meaning`] === next.revealedCells[`${next.rowId}-meaning`] &&
+        prev.preferLocalAudio === next.preferLocalAudio &&
+        prev.localWordUrl === next.localWordUrl && 
+        prev.localSentUrl === next.localSentUrl && 
+        prev.aiLoadingId === next.aiLoadingId &&
+        prev.style.top === next.style.top &&
+        prev.activeMenuId === next.activeMenuId 
+    );
+});
+
+
 // --- MAIN COMPONENT ---
 const App = () => {
   // --- STATE ---
   const [mode, setMode] = useState('table'); 
-  
+  const [tableViewMode, setTableViewMode] = useState('master'); 
+  const [studyQueue, setStudyQueue] = useState([]); 
+  const [rangeInput, setRangeInput] = useState("");
+
   // Data
   const [tableContent, setTableContent] = useState("");
   const [textContent, setTextContent] = useState("");
-  const [playlist, setPlaylist] = useState([]);
+  const [playlist, setPlaylist] = useState([]); 
+  const [newTextItem, setNewTextItem] = useState("");
   
-  // Saved Indices for State Persistence
+  // -- PLAYBACK & FOCUS STATE --
+  // currentIndex = Visual Focus (Cursor) in the CURRENT view
+  const [currentIndex, setCurrentIndex] = useState(-1);
   const [savedIndices, setSavedIndices] = useState({ table: -1, text: -1 });
+  
+  // Independent Indices for switching (Restored when tab active)
+  const [masterIndex, setMasterIndex] = useState(-1);
+  const [studyIndex, setStudyIndex] = useState(-1);
+  
+  // NEW: Audio Engine State (Decoupled from Visual Cursor)
+  const [playingIndex, setPlayingIndex] = useState(-1); // ID of item being played
+  const [playingContext, setPlayingContext] = useState(null); // 'master', 'study', 'text'
 
-  // Decks
+  // --- REF FOR REAL-TIME TAB TRACKING IN LOOPS ---
+  const tableViewModeRef = useRef(tableViewMode);
+  
+  // --- REF TO TRACK TAB SWITCHING ACTION ---
+  const justSwitchedTab = useRef(false);
+  
+  // --- REF TO TRACK PREVIOUS INDEX (FIX 9) ---
+  const prevCurrentIndex = useRef(currentIndex);
+
   const [savedDecks, setSavedDecks] = useState({});
   const [selectedDeckId, setSelectedDeckId] = useState(""); 
   const [currentDeckName, setCurrentDeckName] = useState("Untitled Sheet");
@@ -127,14 +423,15 @@ const App = () => {
   // Playback Settings
   const [voices, setVoices] = useState([]); // English Voices
   const [indonesianVoices, setIndonesianVoices] = useState([]); // ID Voices
+  const [selectedVoice, setSelectedVoice] = useState(null); // Selected English 
+  const [selectedIndonesianVoice, setSelectedIndonesianVoice] = useState(null); // Selected ID 
   
-  const [selectedVoice, setSelectedVoice] = useState(null); // Selected English
-  const [selectedIndonesianVoice, setSelectedIndonesianVoice] = useState(null); // Selected ID
-  
+  const selectedVoiceRef = useRef(null);
+  const selectedIndonesianVoiceRef = useRef(null);
+
   const [rate, setRate] = useState(1);
   const [pitch] = useState(1);
   
-  // Parts to Play
   const [playWord, setPlayWord] = useState(true);
   const [playSentence, setPlaySentence] = useState(true);
   const [playMeaning, setPlayMeaning] = useState(false); // Default OFF
@@ -143,7 +440,6 @@ const App = () => {
   
   // Player State
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(-1);
   const [speakingPart, setSpeakingPart] = useState(null); 
   const [playbackMode, setPlaybackMode] = useState('once'); 
   const [independentPlayingId, setIndependentPlayingId] = useState(null); 
@@ -151,7 +447,7 @@ const App = () => {
   // UI State
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [lockedStates, setLockedStates] = useState({ table: false, text: false });
+  const [lockedStates, setLockedStates] = useState({ table: false, text: true });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
   const [showLogs, setShowLogs] = useState(false); 
   
@@ -165,8 +461,10 @@ const App = () => {
 
   // V4.19 Memory Mode State
   const [isMemoryMode, setIsMemoryMode] = useState(false);
-  const [revealedCells, setRevealedCells] = useState({}); // { 'rowId-type': timeoutId }
+  const [revealedCells, setRevealedCells] = useState({}); 
   const [memorySettings, setMemorySettings] = useState({ word: true, sentence: true, meaning: true }); 
+  
+  const [activeMenuId, setActiveMenuId] = useState(null);
 
   const isLocked = lockedStates[mode];
 
@@ -182,7 +480,16 @@ const App = () => {
   const [audioStatusTable, setAudioStatusTable] = useState('idle');
   const [audioStatusText, setAudioStatusText] = useState('idle');
 
-  // SYSTEM BUSY LOCK (New v4.13)
+  const listContainerRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(600); 
+
+  // --- NEW: STATE UNTUK TINGGI BARIS RESPOSNIVE ---
+  const [rowHeights, setRowHeights] = useState({ 
+      table: DEFAULT_ROW_HEIGHT_PC, 
+      text: 70 
+  });
+
   const isSystemBusy = isBatchDownloading || aiLoadingId !== null;
 
   // Refs
@@ -199,6 +506,28 @@ const App = () => {
   const batchPanelRef = useRef(null);
   const batchButtonRef = useRef(null);
   const textareaRef = useRef(null); 
+  const newItemTextareaRef = useRef(null); 
+
+  const studyQueueSet = useMemo(() => new Set(studyQueue), [studyQueue]);
+
+  // DERIVED LISTS
+  const currentPlayerList = useMemo(() => {
+      if (mode === 'text') return playlist;
+      if (mode === 'table') {
+         if (tableViewMode === 'study') {
+             return playlist.filter(item => studyQueueSet.has(item.id));
+         }
+         return playlist; 
+      }
+      return playlist; 
+  }, [playlist, mode, tableViewMode, studyQueueSet]);
+
+  const activePlaybackList = useMemo(() => {
+      if (!playingContext) return [];
+      if (playingContext === 'text') return playlist;
+      if (playingContext === 'study') return playlist.filter(item => studyQueueSet.has(item.id));
+      return playlist; // master
+  }, [playingContext, playlist, studyQueueSet]);
 
   const aiVoices = [
     { id: "Kore", label: "Kore (F)", gender: "Female" },
@@ -214,20 +543,58 @@ const App = () => {
   useEffect(() => {
       const handleResize = () => {
           const width = window.innerWidth;
-          if (width >= 768) {
-              setIsSidebarOpen(true);
+          setIsSidebarOpen(width >= 768);
+          if (listContainerRef.current) {
+              setContainerHeight(listContainerRef.current.clientHeight);
+          }
+          
+          // --- LOGIKA TINGGI RESPONSIVE ---
+          if (width < 768) {
+              // Mode Mobile: Tinggi disesuaikan (205px) - PERBAIKAN POIN 2
+              setRowHeights({ table: DEFAULT_ROW_HEIGHT_MOBILE, text: 100 });
           } else {
-              setIsSidebarOpen(false);
+              // Mode PC: Tinggi standar (160px)
+              setRowHeights({ table: DEFAULT_ROW_HEIGHT_PC, text: 70 });
           }
       };
+      
+      // Init Check
       handleResize();
+
       window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-  }, []);
+      
+      setTimeout(() => {
+          if (listContainerRef.current) {
+              setContainerHeight(listContainerRef.current.clientHeight);
+          }
+      }, 500);
+
+      // Global click listener untuk menutup menu
+      const handleGlobalClick = () => setActiveMenuId(null);
+      window.addEventListener('click', handleGlobalClick);
+
+      return () => {
+          window.removeEventListener('resize', handleResize);
+          window.removeEventListener('click', handleGlobalClick);
+      };
+  }, [mobileTab]); 
+  
+  // --- KEEP REF SYNCED ---
+  useEffect(() => {
+    tableViewModeRef.current = tableViewMode;
+  }, [tableViewMode]);
 
   useEffect(() => {
     playbackModeRef.current = playbackMode;
   }, [playbackMode]);
+  
+  useEffect(() => {
+      selectedVoiceRef.current = selectedVoice;
+  }, [selectedVoice]);
+  
+  useEffect(() => {
+      selectedIndonesianVoiceRef.current = selectedIndonesianVoice;
+  }, [selectedIndonesianVoice]);
 
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
@@ -246,27 +613,13 @@ const App = () => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v4.24 Initialized.");
+    addLog("System", "Ready. ProLingo v4.47 (Final Stable).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-      if (currentIndex >= 0) {
-          setTimeout(() => {
-              const el = document.getElementById(`row-${currentIndex}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 100);
-      }
-  }, [currentIndex, mode]);
-
-  useEffect(() => {
-    if (logContainerRef.current) {
-        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [systemLogs, showLogs, mobileTab]);
-
+  // --- VOICE PERSISTENCE ---
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = synth.getVoices();
@@ -281,12 +634,16 @@ const App = () => {
       });
       setVoices(engVoices);
       const defaultEng = engVoices.find(v => v.lang.includes('GB') && (v.name.includes('Female') || v.name.includes('Google'))) || engVoices[0];
-      if (defaultEng) setSelectedVoice(defaultEng);
+      
+      // ONLY set default if nothing is selected
+      if (!selectedVoiceRef.current && defaultEng) setSelectedVoice(defaultEng);
 
       let idVoices = allVoices.filter(v => v.lang.includes('ID') || v.lang.includes('id') || v.lang.toLowerCase().includes('indones'));
       setIndonesianVoices(idVoices);
       const defaultId = idVoices.find(v => v.name.includes('Google') || v.name.includes('Indonesia')) || idVoices[0];
-      if (defaultId) setSelectedIndonesianVoice(defaultId);
+      
+      // ONLY set default if nothing is selected
+      if (!selectedIndonesianVoiceRef.current && defaultId) setSelectedIndonesianVoice(defaultId);
     };
     
     loadVoices();
@@ -294,9 +651,58 @@ const App = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- SCROLL SYNC (Fixed for Ghosting) ---
+  useEffect(() => {
+      // Logic: Scroll to currentIndex (Visual Focus)
+      // FIX 9: Added logic to prevent scroll if only 'isPlaying' changes but index is same.
+      if (currentIndex >= 0 && listContainerRef.current) {
+          const scrollAction = () => {
+              const activeItem = currentPlayerList.find(p => p.id === currentIndex);
+              
+              const isBackgroundPlayback = (isPlaying || independentPlayingId) && (playingContext && playingContext !== (mode === 'table' ? tableViewMode : 'text'));
+              
+              // Only scroll if:
+              // 1. We just switched tabs (Priority)
+              // 2. OR the index ACTUALLY changed AND we are not in background mode
+              const indexChanged = prevCurrentIndex.current !== currentIndex;
+              const shouldScroll = justSwitchedTab.current || (indexChanged && !isBackgroundPlayback);
+
+              if (activeItem && shouldScroll) {
+                  const idx = currentPlayerList.indexOf(activeItem);
+                  const rowH = rowHeights[mode];
+                  const targetTop = idx * rowH;
+                  
+                  listContainerRef.current.scrollTo({
+                      top: targetTop,
+                      behavior: 'smooth'
+                  });
+                  // Reset flags
+                  justSwitchedTab.current = false;
+                  prevCurrentIndex.current = currentIndex; 
+              } else if (!indexChanged) {
+                  // Ensure prev matches if no scroll happened but re-render
+                  prevCurrentIndex.current = currentIndex;
+              }
+          };
+
+          const timer = setTimeout(scrollAction, 100);
+          return () => clearTimeout(timer);
+      }
+  }, [currentIndex, mode, currentPlayerList, isPlaying, playingContext, tableViewMode, independentPlayingId, rowHeights]); 
+
+  useEffect(() => {
+    if (logContainerRef.current) {
+        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [systemLogs, showLogs, mobileTab]);
+
   const addLog = (type, message) => {
       const timestamp = new Date().toLocaleTimeString();
-      setSystemLogs(prev => [...prev, { time: timestamp, type, message }]);
+      setSystemLogs(prev => {
+          const next = [...prev, { time: timestamp, type, message }];
+          if (next.length > 50) return next.slice(next.length - 50); 
+          return next;
+      });
   };
 
   // --- SMART PARSING LOGIC (PRIORITY 4) ---
@@ -392,6 +798,12 @@ const App = () => {
     setAudioStatusTable('idle');
     setAudioStatusText('idle');
     setCurrentIndex(-1); 
+    setMasterIndex(-1);
+    setStudyIndex(-1);
+    setPlayingIndex(-1);
+    setPlayingContext(null);
+    setStudyQueue([]); 
+    setTableViewMode('master');
     forceStopAll(); 
     addLog("System", "State fully reset.");
   };
@@ -425,8 +837,76 @@ const App = () => {
         textareaRef.current.focus();
     }
   };
+  
+  const handleAddTextItem = () => {
+      if (!newTextItem.trim()) return;
+      const newContent = textContent ? textContent + "\n" + newTextItem : newTextItem;
+      setTextContent(newContent);
+      setNewTextItem("");
+      if (newItemTextareaRef.current) {
+          newItemTextareaRef.current.style.height = 'auto'; 
+      }
+      addLog("Action", "Text added.");
+  };
 
-  // --- MEMORY MODE LOGIC ---
+  const handleDeleteTextItem = (indexToDelete) => {
+      const newLines = playlist
+          .filter((_, idx) => idx !== indexToDelete)
+          .map(item => item.text);
+      
+      setTextContent(newLines.join('\n'));
+      addLog("Action", `Item #${indexToDelete + 1} deleted.`);
+      if (currentIndex === indexToDelete) forceStopAll();
+  };
+
+  const toggleStudyItem = (id) => {
+      setStudyQueue(prev => {
+          if (prev.includes(id)) {
+              return prev.filter(x => x !== id);
+          } else {
+              return [...prev, id];
+          }
+      });
+  };
+
+  const handleRangeAdd = () => {
+      if (!rangeInput) return;
+      const parts = rangeInput.split(/[,+\s]+/);
+      const newIds = new Set();
+
+      parts.forEach(part => {
+          if (part.includes('-')) {
+              const [start, end] = part.split('-').map(Number);
+              if (!isNaN(start) && !isNaN(end)) {
+                  const min = Math.min(start, end);
+                  const max = Math.max(start, end);
+                  for (let i = min; i <= max; i++) {
+                      const item = playlist.find(p => p.displayId === i);
+                      if (item) newIds.add(item.id);
+                  }
+              }
+          } else {
+              const num = parseInt(part);
+              if (!isNaN(num)) {
+                  const item = playlist.find(p => p.displayId === num);
+                  if (item) newIds.add(item.id);
+              }
+          }
+      });
+
+      setStudyQueue(prev => {
+          const combined = new Set([...prev, ...newIds]);
+          return Array.from(combined);
+      });
+      setRangeInput("");
+      addLog("Study", `Added ${newIds.size} items to Queue.`);
+  };
+
+  const clearStudyQueue = () => {
+      setStudyQueue([]);
+      addLog("Study", "Queue cleared.");
+  };
+
   const toggleCellReveal = (e, cellKey) => {
       if (!isMemoryMode) return;
       e.stopPropagation(); 
@@ -451,6 +931,10 @@ const App = () => {
       }
   };
 
+  // Fungsi Helper untuk Menu Toggle
+  const handleMenuToggle = (rowId) => {
+      setActiveMenuId(prev => prev === rowId ? null : rowId);
+  };
 
   // --- AUDIO ENGINE ---
   const getLocalAudioUrl = (item, part) => {
@@ -468,7 +952,7 @@ const App = () => {
       if (stopSignalRef.current) { resolve(); return; }
 
       if (part === 'meaning') {
-         playTTS(text, selectedIndonesianVoice).then(resolve);
+         playTTS(text, selectedIndonesianVoiceRef.current).then(resolve);
          return;
       }
 
@@ -497,7 +981,7 @@ const App = () => {
 
   const playTTS = (text, overrideVoice = null) => {
     return new Promise((resolve) => {
-      const targetVoice = overrideVoice || selectedVoice;
+      const targetVoice = overrideVoice || selectedVoiceRef.current;
       
       if (stopSignalRef.current || !targetVoice) { resolve(); return; }
       
@@ -520,6 +1004,9 @@ const App = () => {
   };
 
   const handleIndependentPlay = (item, part, uiId) => {
+    // Reset Menu saat play
+    setActiveMenuId(null);
+
     if (independentPlayingId === uiId) {
         forceStopAll();
         return;
@@ -527,13 +1014,15 @@ const App = () => {
 
     safePlayTransition(async () => {
       setIndependentPlayingId(uiId);
+      setPlayingContext(mode === 'table' ? tableViewMode : 'text'); // Set Context
+      setPlayingIndex(item.id); // Set Audio Index
+      setCurrentIndex(item.id); // Set Visual Index (karena user klik ini)
       
       let textToPlay = item.text;
       if (part === 'word') textToPlay = item.word;
       else if (part === 'sentence') textToPlay = item.sentence;
       else if (part === 'meaning') textToPlay = item.meaning;
 
-      setCurrentIndex(item.id); 
       setSpeakingPart(part); 
       
       await playSource(textToPlay, item, part);
@@ -543,31 +1032,142 @@ const App = () => {
     });
   };
 
+  // --- DECOUPLED TAB SWITCHING ---
+  const handleTabSwitch = (targetTab) => {
+      if (targetTab === tableViewMode) return;
+      
+      // 1. SAVE Current Visual Index to the Old Tab's storage
+      if (tableViewMode === 'master') setMasterIndex(currentIndex);
+      else setStudyIndex(currentIndex);
+
+      // --- Signal that we are manually switching tabs ---
+      justSwitchedTab.current = true;
+
+      // 2. SWITCH Tab
+      setTableViewMode(targetTab);
+      
+      // 3. RESTORE
+      // Logic: If the NEW tab is the playing one, snap to live (playingIndex).
+      // If not, restore its last saved position.
+      if (playingContext === targetTab && playingIndex !== -1) {
+          setCurrentIndex(playingIndex);
+      } else {
+          const restoredIndex = targetTab === 'master' ? masterIndex : studyIndex;
+          setCurrentIndex(restoredIndex);
+      }
+      
+      addLog("System", `View Switched to ${targetTab}.`);
+  };
+
   const handleGlobalPlay = () => {
+    // Reset menu
+    setActiveMenuId(null);
+
     if (isPlaying) {
       forceStopAll();
     } else {
-      const start = currentIndex >= 0 ? currentIndex : 0;
-      startGlobalPlayback(start);
+      // Logic: If paused (active session exists), resume THAT session.
+      // If idle, start new session from CURRENT view.
+      if (playingIndex !== -1 && playingContext) {
+          // Resume Logic
+          const listToUse = playingContext === 'study' 
+             ? playlist.filter(i => studyQueueSet.has(i.id))
+             : playlist; // text or master
+          
+          const item = listToUse.find(p => p.id === playingIndex);
+          if (item) {
+              const resumeIdx = listToUse.indexOf(item);
+              startGlobalPlayback(resumeIdx); // This re-triggers playback using existing context
+              return;
+          }
+      }
+
+      // Fresh Start Logic
+      const activeItem = currentPlayerList.find(p => p.id === currentIndex);
+      let startIdx = 0;
+      if (activeItem) {
+          startIdx = currentPlayerList.indexOf(activeItem);
+      }
+      startGlobalPlayback(startIdx);
     }
   };
 
-  const startGlobalPlayback = (startIndex) => {
+  // --- EXPLICIT CONTEXT SWITCHING ---
+  // Use this when clicking a specific row to ensure we force switch logic
+  const handleManualRowClick = (item, idx) => {
+      // Reset Menu saat row click
+      setActiveMenuId(null);
+
+      // 1. Force Stop previous playback
+      forceStopAll();
+      setIndependentPlayingId(null); // Clear independent
+      
+      // 2. Determine target context based on CURRENT VIEW
+      const targetContext = mode === 'table' ? tableViewMode : 'text';
+      
+      // 3. Set visual focus immediately
+      setCurrentIndex(item.id);
+      setPlayingIndex(item.id);
+      setPlayingContext(targetContext); // Explicitly update context UI
+
+      // 4. Start Playback with explicit context override after a tiny delay 
+      // to allow stopSignal to clear
+      setTimeout(() => {
+          stopSignalRef.current = false; // Reset explicitly
+          startGlobalPlayback(idx, targetContext);
+      }, 50);
+  };
+
+  const startGlobalPlayback = (startIndex, forcedContext = null) => {
+    // Check if we are "Resuming" or "Starting New". 
+    let sessionMode = forcedContext || playingContext;
+    
+    if (!sessionMode || (playingIndex === -1 && !isPlaying)) {
+        sessionMode = mode === 'table' ? tableViewMode : 'text';
+        setPlayingContext(sessionMode);
+    } else if (forcedContext) {
+        setPlayingContext(forcedContext);
+    }
+
+    // List to play
+    const listToPlay = mode === 'table' 
+        ? (sessionMode === 'study' ? playlist.filter(i => studyQueueSet.has(i.id)) : playlist) 
+        : playlist;
+
+    // Safety check
+    if (startIndex >= listToPlay.length) startIndex = 0;
+
     safePlayTransition(async () => {
       setIsPlaying(true);
       let index = startIndex;
       
-      addLog("Info", `Global Play from #${playlist[index]?.displayId || 0}`);
+      addLog("Info", `Global Play (${sessionMode}) start...`);
 
-      while (index >= 0 && index < playlist.length && !stopSignalRef.current) {
-        setCurrentIndex(index);
-        const item = playlist[index];
+      while (index >= 0 && index < listToPlay.length && !stopSignalRef.current) {
+        
+        const item = listToPlay[index];
+        
+        // --- AUDIO & VISUAL SEPARATION ---
+        setPlayingIndex(item.id); 
+
+        // --- BACKGROUND STATE UPDATE ---
+        if (sessionMode === 'master') setMasterIndex(item.id);
+        else if (sessionMode === 'study') setStudyIndex(item.id);
+        else setSavedIndices(prev => ({...prev, text: item.id}));
+
+        // --- VISUAL CURSOR UPDATE ---
+        // Only update Visual Cursor if the User is looking at the same tab AS THE SESSION
+        if ((mode === 'table' && tableViewModeRef.current === sessionMode) || (mode === 'text' && sessionMode === 'text')) {
+             setCurrentIndex(item.id);
+        }
+        // ----------------------------------------
 
         const currentMode = playbackModeRef.current;
         const loops = (currentMode === 'repeat_2x') ? 2 : 1;
         
         for (let l = 0; l < loops; l++) {
           if (stopSignalRef.current) break;
+
           if (playbackModeRef.current !== currentMode && currentMode === 'repeat_2x' && l > 0) break;
 
           if (item.isStructured) {
@@ -602,27 +1202,35 @@ const App = () => {
         }
         
         if (stopSignalRef.current) break;
+
         await new Promise(r => setTimeout(r, 800));
 
         const liveMode = playbackModeRef.current;
-
         if (liveMode === 'once') break;
-        else if (liveMode === 'random') index = Math.floor(Math.random() * playlist.length);
+        else if (liveMode === 'random') index = Math.floor(Math.random() * listToPlay.length);
         else if (liveMode === 'loop_one') { 
           // Do nothing, keep same index
         }
-        else { index++; }
+        else { 
+            index++; 
+            // Loop back to start if reached end (Continuous Play for Sequence/Repeat 2x)
+            if (index >= listToPlay.length) {
+                index = 0;
+            }
+        }
       }
+      
+      // RESET LOGIC DELETED AS REQUESTED
+
       setIsPlaying(false);
       setSpeakingPart(null);
-      addLog("Info", "Global Playback Finished.");
+      addLog("Info", "Playback Finished/Paused.");
     });
   };
 
   const forceStopAll = () => {
     stopSignalRef.current = true;
     synth.cancel();
-    
     if (currentAudioObjRef.current) {
       currentAudioObjRef.current.pause();
       currentAudioObjRef.current.currentTime = 0;
@@ -631,19 +1239,54 @@ const App = () => {
       audio.onerror = null;
       currentAudioObjRef.current = null;
     }
-
     setIsPlaying(false);
     setSpeakingPart(null);
     setIndependentPlayingId(null);
   };
 
   const handleSmartNav = (direction) => {
+    setActiveMenuId(null); // Reset menu
     safePlayTransition(async () => {
+      // Nav uses the ACTIVE PLAYBACK CONTEXT if available (Poin 2)
+      let listToUse = currentPlayerList; // Default to visual
+      let contextToUse = mode === 'table' ? tableViewMode : 'text';
+
+      // If there is an active/paused session, control THAT session instead of visual
+      if (playingIndex !== -1 && playingContext) {
+         contextToUse = playingContext;
+         listToUse = playingContext === 'study' 
+             ? playlist.filter(i => studyQueueSet.has(i.id))
+             : playlist;
+      }
+
+      // Find current item in the determined list
+      let currentListIndex = -1;
+      // If we are playing, use playingIndex. If not, use currentIndex (visual).
+      const refId = (playingIndex !== -1 && playingContext) ? playingIndex : currentIndex;
+      
+      const activeItem = listToUse.find(p => p.id === refId);
+      if (activeItem) {
+          currentListIndex = listToUse.indexOf(activeItem);
+      }
+      
       let nextIndex = 0;
-      if (direction === 'next') nextIndex = currentIndex + 1 < playlist.length ? currentIndex + 1 : 0;
-      else nextIndex = currentIndex - 1 >= 0 ? currentIndex - 1 : 0;
-      setCurrentIndex(nextIndex);
-      startGlobalPlayback(nextIndex);
+      if (direction === 'next') {
+          nextIndex = currentListIndex + 1 < listToUse.length ? currentListIndex + 1 : 0;
+      } else {
+          nextIndex = currentListIndex - 1 >= 0 ? currentListIndex - 1 : 0;
+      }
+      
+      if (listToUse[nextIndex]) {
+          // If we are controlling a background session, don't update visual cursor immediately
+          // UNLESS the context matches visual
+          if (contextToUse === (mode === 'table' ? tableViewMode : 'text')) {
+             setCurrentIndex(listToUse[nextIndex].id);
+          }
+          
+          // Ensure context is set correctly for the new playback
+          setPlayingContext(contextToUse);
+          startGlobalPlayback(nextIndex);
+      }
     });
   };
 
@@ -659,6 +1302,14 @@ const App = () => {
       if (isSystemBusy) return; 
 
       forceStopAll();
+      
+      // --- CRITICAL FIX: RESET AUDIO SESSION ON MODE SWITCH ---
+      // Ini mencegah resume session 'master' saat di mode 'text' dan sebaliknya
+      // yang menyebabkan bug visual (no blue box) meski audio jalan.
+      setPlayingIndex(-1);
+      setPlayingContext(null);
+      setIndependentPlayingId(null); 
+      // --------------------------------------------------------
 
       const currentIdx = currentIndex;
       setSavedIndices(prev => ({
@@ -671,7 +1322,7 @@ const App = () => {
       const targetIndex = savedIndices[targetMode];
       setCurrentIndex(targetIndex);
       
-      addLog("System", `Switched to ${targetMode}. Restored index: ${targetIndex}`);
+      addLog("System", `Switched to ${targetMode}.`);
   };
 
   // --- DATA MANAGEMENT ---
@@ -696,12 +1347,20 @@ const App = () => {
           setTableContent(savedDecks[deckName]);
           setCurrentDeckName(deckName);
           setSelectedDeckId(deckName);
-          
           setLockedStates(prev => ({ ...prev, table: true }));
-          setMode('table'); 
-          resetFullState(); 
           
-          addLog("Success", `Deck "${deckName}" loaded. State reset.`);
+          // Reset session juga saat load deck baru
+          forceStopAll();
+          setPlayingIndex(-1);
+          setPlayingContext(null);
+
+          setMode('table'); 
+          // Reset indices
+          setCurrentIndex(-1);
+          setMasterIndex(-1);
+          setStudyIndex(-1);
+
+          addLog("Success", `Deck "${deckName}" loaded.`);
       }
   };
 
@@ -716,13 +1375,10 @@ const App = () => {
       delete newDecks[selectedDeckId];
       setSavedDecks(newDecks);
       localStorage.setItem('pronunciation_decks', JSON.stringify(newDecks));
-      
       setSelectedDeckId("");
       setCurrentDeckName("Untitled Sheet");
       setTableContent("");
-      
       resetFullState();
-      
       setIsDeleteDialogOpen(false);
       addLog("Info", "Deck deleted & state reset.");
   };
@@ -936,21 +1592,29 @@ const App = () => {
       setSavedDecks(newDecks);
       localStorage.setItem('pronunciation_decks', JSON.stringify(newDecks));
       setSelectedDeckId(fileName);
-      
       resetFullState(); 
-      
-      addLog("Info", `CSV Imported: ${fileName}. State reset.`);
+      addLog("Info", `CSV Imported: ${fileName}.`);
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
+  // --- FIX: MEMORY LEAK PREVENTION & TYPO FIX ---
   const handleFolderSelect = (e) => {
     const files = e.target.files;
     if (!files) return;
     let count = 0;
+    
     if (mode === 'table') {
-        const newMap = { ...localAudioMapTable };
+        // Revoke old URLs to free memory
+        Object.values(localAudioMapTable).forEach(url => {
+            try { URL.revokeObjectURL(url); } catch (e) {
+                console.warn("Failed to revoke URL:", e);
+            }
+        });
+
+        const newMap = {}; // Start fresh
+        
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const lowerName = file.name.toLowerCase();
@@ -967,9 +1631,17 @@ const App = () => {
         }
         setLocalAudioMapTable(newMap);
         setAudioStatusTable(count > 0 ? 'success' : 'empty');
-        alert(`[Table] Loaded ${count} files.`);
+        alert(`[Table] Loaded ${count} files. Old files cleared.`);
     } else {
-        const newMap = { ...localAudioMapText };
+        // Revoke old URLs to free memory
+        Object.values(localAudioMapText).forEach(url => {
+            try { URL.revokeObjectURL(url); } catch (e) {
+                console.warn("Failed to revoke URL:", e);
+            }
+        });
+
+        const newMap = {}; // Start fresh
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const lowerName = file.name.toLowerCase();
@@ -981,11 +1653,10 @@ const App = () => {
         }
         setLocalAudioMapText(newMap);
         setAudioStatusText(count > 0 ? 'success' : 'empty');
-        alert(`[Text] Loaded ${count} files.`);
+        alert(`[Text] Loaded ${count} files. Old files cleared.`);
     }
   };
 
-  // Status Helpers
   const currentAudioStatus = mode === 'table' ? audioStatusTable : audioStatusText;
   const currentMapCount = mode === 'table' ? Object.keys(localAudioMapTable).length : Object.keys(localAudioMapText).length;
 
@@ -993,6 +1664,10 @@ const App = () => {
       if (currentAudioStatus === 'idle' && currentMapCount === 0) return <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded">Belum Load</span>;
       if (currentMapCount > 0) return <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> {currentMapCount} File Aktif</span>;
       return <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> 0 File</span>;
+  };
+
+  const handleScroll = (e) => {
+     setScrollTop(e.currentTarget.scrollTop);
   };
 
   // --- RENDER HELPERS ---
@@ -1073,192 +1748,198 @@ const App = () => {
   // --- UI COMPONENTS ---
   const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>;
 
-  const renderPlaylist = () => (
-      <div className="space-y-3 pb-32">
-             {playlist.length === 0 && (
-               <div className="text-center text-slate-400 mt-20">
+  const renderPlaylist = () => {
+    // --- UPDATED: Menggunakan tinggi dari State yang Responsive ---
+    const rowHeight = rowHeights[mode];
+    const totalCount = currentPlayerList.length;
+    const totalHeight = totalCount * rowHeight;
+    
+    const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
+    const endIndex = Math.min(
+        totalCount - 1,
+        Math.floor((scrollTop + containerHeight) / rowHeight) + OVERSCAN
+    );
+
+    const virtualItems = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+        virtualItems.push({
+            ...currentPlayerList[i],
+            virtualIdx: i, 
+            offsetTop: i * rowHeight
+        });
+    }
+
+    return (
+      <div 
+         ref={listContainerRef} 
+         onScroll={handleScroll} 
+         className="h-[calc(100vh-280px)] md:h-[calc(100vh-140px)] overflow-y-auto relative w-full pb-20 custom-scrollbar"
+      >
+        {mode === 'text' && (
+             <div className="sticky top-0 z-10 bg-slate-50 pb-2 px-1">
+                 <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm flex gap-2 items-start">
+                     <textarea
+                         ref={newItemTextareaRef}
+                         disabled={isSystemBusy}
+                         className={`flex-1 text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none overflow-y-auto min-h-[42px] max-h-[100px] ${isSystemBusy ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                         placeholder="Ketik atau paste teks baru..."
+                         value={newTextItem}
+                         onChange={(e) => setNewTextItem(e.target.value)}
+                         onKeyDown={(e) => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddTextItem(); }}}
+                         rows={1}
+                     />
+                     <button 
+                         disabled={isSystemBusy || !newTextItem.trim()}
+                         onClick={handleAddTextItem} 
+                         className={`h-10 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all flex-shrink-0 ${!newTextItem.trim() || isSystemBusy ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}
+                     >
+                         <Send className="w-4 h-4"/> Add
+                     </button>
+                 </div>
+             </div>
+        )}
+
+        {mode === 'table' && tableViewMode === 'master' && (
+             <div className="sticky top-0 z-10 bg-slate-50 pb-2 px-1">
+                 <div className="bg-white p-2 rounded-xl border border-indigo-100 shadow-sm flex gap-2 items-center">
+                     <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs bg-indigo-50 px-2 py-1.5 rounded">
+                         <ListPlus className="w-4 h-4"/> Range
+                     </div>
+                     <input 
+                        className="flex-1 text-sm border border-slate-300 rounded px-2 py-1.5 focus:outline-indigo-500"
+                        placeholder="Ex: 1-10, 15, 20-25"
+                        value={rangeInput}
+                        onChange={(e) => setRangeInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRangeAdd()}
+                     />
+                     <button onClick={handleRangeAdd} disabled={!rangeInput.trim()} className={`px-3 py-1.5 rounded text-xs font-bold ${!rangeInput.trim() ? 'bg-slate-100 text-slate-400' : 'bg-indigo-600 text-white'}`}>
+                         Apply
+                     </button>
+                 </div>
+             </div>
+        )}
+
+        {/* Empty States */}
+        {mode === 'table' && tableViewMode === 'study' && studyQueue.length === 0 && (
+             <div className="text-center text-slate-400 mt-20">
+                 <ListPlus className="w-16 h-16 mx-auto mb-4 opacity-20"/>
+                 <p className="font-medium">Study Queue Kosong</p>
+                 <button onClick={() => setTableViewMode('master')} className="mt-4 px-4 py-2 bg-indigo-50 text-indigo-600 rounded text-xs font-bold hover:bg-indigo-100">
+                     Go to Master Data
+                 </button>
+             </div>
+        )}
+        
+        {mode === 'table' && tableViewMode === 'master' && playlist.length === 0 && (
+             <div className="text-center text-slate-400 mt-20">
                  <Table className="w-16 h-16 mx-auto mb-4 opacity-20"/>
-                 <p>Belum ada data di mode {mode}.</p>
-               </div>
-             )}
+                 <p className="font-medium">Belum ada data</p>
+                 <p className="text-xs mt-2 opacity-70">Paste data Excel di kolom input sebelah kiri</p>
+             </div>
+        )}
 
-             {playlist.map((item, idx) => {
+        {mode === 'text' && playlist.length === 0 && (
+             <div className="text-center text-slate-400 mt-20">
+                 <FileText className="w-16 h-16 mx-auto mb-4 opacity-20"/>
+                 <p className="font-medium">Text Editor Kosong</p>
+                 <p className="text-xs mt-2 opacity-70">Ketik teks di atas atau paste di kolom input kiri</p>
+             </div>
+        )}
+        
+        <div style={{ height: totalHeight, position: 'relative' }} className="w-full">
+            {virtualItems.map((item) => {
                if (mode === 'table' && item.isStructured) {
-                   const localWordUrl = localAudioMapTable[`${item.displayId}_word`];
-                   const localSentUrl = localAudioMapTable[`${item.displayId}_sentence`];
-                   const isWordUsingLocal = localWordUrl && preferLocalAudio;
-
-                   const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
-                   const sentFilename = `${item.displayId}_${sanitizeFilename(item.word)}_sentence.wav`;
+                   // --- UNIQUE KEY FOR CLEAN REMOUNT ON TAB SWITCH (Fix Ghosting) ---
+                   const isActive = (item.id === playingIndex) && (isPlaying || independentPlayingId !== null) && (playingContext === tableViewMode);
                    
-                   const isActive = (currentIndex === idx) && (isPlaying || independentPlayingId !== null);
-                   const isWordActive = isActive && speakingPart === 'word';
-                   const isSentActive = isActive && speakingPart === 'sentence';
-                   const isMeaningActive = isActive && speakingPart === 'meaning';
-
-                   // --- MEMORY MODE LOGIC ---
-                   const rowId = `row-${idx}`;
-                   const wordRevealed = revealedCells[`${rowId}-word`];
-                   const sentRevealed = revealedCells[`${rowId}-sent`];
-                   const meaningRevealed = revealedCells[`${rowId}-meaning`];
-
-                   const blurClass = "filter blur-sm bg-slate-100 select-none cursor-pointer transition-all duration-300";
-                   const revealedClass = "filter-none bg-yellow-50 cursor-pointer transition-all duration-300";
-
-                   const isWordHidden = isMemoryMode && memorySettings.word;
-                   const isSentHidden = isMemoryMode && memorySettings.sentence;
-                   const isMeaningHidden = isMemoryMode && memorySettings.meaning;
+                   const rowId = `row-${item.id}`; 
+                   const isInQueue = studyQueueSet.has(item.id);
+                   const localWordUrl = localAudioMapTable[`${item.displayId}_word`] || null;
+                   const localSentUrl = localAudioMapTable[`${item.displayId}_sentence`] || null;
 
                    return (
-                     <div key={idx} id={rowId} onClick={() => startGlobalPlayback(idx)} className={`rounded-xl border p-3 md:p-4 transition-all hover:shadow-md cursor-pointer ${isActive ? 'bg-blue-600 border-blue-700 shadow-md ring-1 ring-blue-500' : 'bg-white border-slate-200'}`}>
-                       <div className="flex flex-col md:flex-row justify-between items-start gap-2 md:gap-4">
-                         <div className="flex-1 w-full">
-                            {/* WORD ROW */}
-                            <div className="flex items-center gap-3 mb-2 h-8"> 
-                              <div className="w-8 flex flex-col items-center"><span className={`text-xs font-mono font-bold ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>#{item.displayId}</span></div>
-                              <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word', `row-${idx}-word`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors ${independentPlayingId === `row-${idx}-word` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 text-slate-500 hover:text-indigo-600')}`}>
-                                 {independentPlayingId === `row-${idx}-word` ? <X className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-                              </button>
-                              
-                              {/* WORD CONTENT */}
-                              <div 
-                                className={`flex-1 flex items-center gap-2 ${isWordHidden ? (wordRevealed ? revealedClass : blurClass) : ''}`}
-                                onClick={(e) => isWordHidden && toggleCellReveal(e, `${rowId}-word`)}
-                              >
-                                  <h3 className={`text-lg leading-none ${isWordActive ? 'font-bold text-white' : (isActive ? 'text-blue-100 font-normal' : 'text-slate-800 font-normal')}`}>
-                                      {item.word}
-                                  </h3>
-                                  
-                                  {/* DISPLAY POS IF AVAILABLE */}
-                                  {item.partOfSpeech && (
-                                      <span className={`text-[10px] italic border px-1 rounded ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 border-slate-200'}`}>
-                                          {item.partOfSpeech}
-                                      </span>
-                                  )}
-
-                                  {/* DISPLAY MEANING WORD IF AVAILABLE */}
-                                  {item.meaningWord && (
-                                      <span className={`text-[10px] border px-1 rounded ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-500 border-slate-200 bg-slate-50'}`}>
-                                          {item.meaningWord}
-                                      </span>
-                                  )}
-                              </div>
-
-                              {isWordUsingLocal ? <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold flex items-center gap-1"><Hash className="w-3 h-3" /> OK</span> : <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isActive ? 'bg-blue-700 text-blue-200' : 'bg-slate-100 text-slate-400'}`}>TTS</span>}
-                            </div>
-                            
-                            {/* SENTENCE ROW */}
-                            <div className="flex gap-3 items-start pl-11">
-                               <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'sentence', `row-${idx}-sent`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 ${independentPlayingId === `row-${idx}-sent` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 text-slate-500 hover:text-indigo-600')}`}>
-                                 {independentPlayingId === `row-${idx}-sent` ? <X className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
-                              </button>
-                              <div className="flex-1">
-                                {/* SENTENCE CONTENT */}
-                                <div 
-                                    className={`${isSentHidden ? (sentRevealed ? revealedClass : blurClass) : ''}`}
-                                    onClick={(e) => isSentHidden && toggleCellReveal(e, `${rowId}-sent`)}
-                                >
-                                    <p className={`text-sm leading-relaxed ${isSentActive ? 'font-bold text-white' : (isActive ? 'text-blue-50 font-medium' : 'text-slate-600')}`}>
-                                        "<HighlightedText text={item.sentence} highlight={item.word} />"
-                                    </p>
-                                </div>
-                                
-                                {/* MEANING ROW */}
-                                {item.meaning && (
-                                    <div className="flex items-center gap-2 mt-1">
-                                         <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'meaning', `row-${idx}-meaning`); }} className={`flex-shrink-0 w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${independentPlayingId === `row-${idx}-meaning` ? 'bg-red-50 text-red-500' : (isActive ? 'bg-blue-500/50 text-white hover:bg-blue-400' : 'bg-slate-100 text-slate-400 hover:text-indigo-600')}`}>
-                                             {independentPlayingId === `row-${idx}-meaning` ? <X className="w-2 h-2 fill-current" /> : <Play className="w-2 h-2 fill-current" />}
-                                         </button>
-                                         <div 
-                                            className={`flex-1 flex items-center gap-1 ${isMeaningHidden ? (meaningRevealed ? revealedClass : blurClass) : ''}`}
-                                            onClick={(e) => isMeaningHidden && toggleCellReveal(e, `${rowId}-meaning`)}
-                                         >
-                                             <Globe className={`w-3 h-3 ${isActive ? 'text-blue-200' : 'text-slate-400'}`}/> 
-                                             <p className={`text-xs italic transition-colors ${isMeaningActive ? 'font-bold text-white bg-blue-500/20 px-1 rounded' : (isActive ? 'text-blue-200' : 'text-slate-400')}`}>
-                                                {/* AUTO BOLD INDONESIAN TRANSLATION (Uses MeaningWord if available) */}
-                                                <HighlightedText 
-                                                    text={item.meaning} 
-                                                    highlight={item.meaningWord || item.word} // Fallback to Eng word (unlikely to match but safe) 
-                                                />
-                                             </p>
-                                         </div>
-                                    </div>
-                                )}
-                              </div>
-                            </div>
-                         </div>
-                         
-                         {/* ACTIONS */}
-                         <div className={`flex md:flex-col gap-2 md:ml-4 w-full md:w-auto justify-end md:justify-start mt-2 md:mt-0 border-t md:border-t-0 pt-2 md:pt-0 ${isActive ? 'border-blue-500' : 'border-slate-100'}`}>
-                            {/* WORD ACTION */}
-                            <div className="flex gap-1 items-center justify-end w-full md:w-auto">
-                                <span className={`text-[10px] font-bold md:hidden mr-2 ${isActive ? 'text-blue-300' : 'text-slate-300'}`}>Word</span>
-                                {localWordUrl ? (
-                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => e.stopPropagation()} className={`w-[80px] h-[30px] bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center justify-center gap-1 ${isSystemBusy ? 'opacity-50 pointer-events-none cursor-not-allowed' : ''}`} title="Download Word"><Download className="w-3 h-3" /> <span className="text-[10px] font-bold">Download</span></a>
-                                ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[80px] h-[30px] flex items-center justify-center gap-1 rounded border bg-slate-50 text-indigo-600 hover:bg-indigo-50 border-indigo-100 shadow-sm ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`} title="Generate Word AI">
-                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} <span className="text-[10px] font-bold">Word</span>
-                                    </button>
-                                )}
-                            </div>
-                            {/* SENTENCE ACTION */}
-                            <div className="flex gap-1 items-center justify-end w-full md:w-auto">
-                                <span className={`text-[10px] font-bold md:hidden mr-2 ${isActive ? 'text-blue-300' : 'text-slate-300'}`}>Sent</span>
-                                {localSentUrl ? (
-                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => e.stopPropagation()} className={`w-[80px] h-[30px] bg-green-50 hover:bg-green-100 text-green-600 rounded border border-green-200 flex items-center justify-center gap-1 ${isSystemBusy ? 'opacity-50 pointer-events-none cursor-not-allowed' : ''}`} title="Download Sentence"><Download className="w-3 h-3" /> <span className="text-[10px] font-bold">Download</span></a>
-                                ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[80px] h-[30px] flex items-center justify-center gap-1 rounded border bg-slate-50 text-purple-600 hover:bg-purple-50 border-purple-100 shadow-sm ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`} title="Generate Sentence AI">
-                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} <span className="text-[10px] font-bold">Sent</span>
-                                    </button>
-                                )}
-                            </div>
-                         </div>
-                       </div>
-                     </div>
+                       <MemoizedRow 
+                           key={`${mode}-${tableViewMode}-${item.id}`} 
+                           item={item}
+                           isActive={isActive}
+                           isSystemBusy={isSystemBusy}
+                           toggleStudyItem={toggleStudyItem}
+                           isInQueue={isInQueue}
+                           handleIndependentPlay={handleIndependentPlay}
+                           handleRowClick={handleManualRowClick} 
+                           independentPlayingId={independentPlayingId}
+                           speakingPart={speakingPart}
+                           isMemoryMode={isMemoryMode}
+                           memorySettings={memorySettings}
+                           revealedCells={revealedCells}
+                           toggleCellReveal={toggleCellReveal}
+                           localWordUrl={localWordUrl} 
+                           localSentUrl={localSentUrl} 
+                           preferLocalAudio={preferLocalAudio}
+                           generateAIAudio={generateAIAudio}
+                           aiLoadingId={aiLoadingId}
+                           rowId={rowId}
+                           idx={item.virtualIdx}
+                           style={{ 
+                               height: rowHeight, 
+                               top: item.offsetTop 
+                           }}
+                           activeMenuId={activeMenuId}
+                           onMenuToggle={handleMenuToggle}
+                       />
                    );
                } 
                else {
                    const localTextUrl = localAudioMapText[`${item.displayId}`];
                    const textFilename = `${item.displayId}_text.wav`;
                    
-                   const isActive = (currentIndex === idx) && (isPlaying || independentPlayingId !== null);
+                   const isActive = (item.id === playingIndex) && (isPlaying || independentPlayingId !== null) && (playingContext === 'text');
                    const isTextActive = isActive && speakingPart === 'full';
 
                    return (
-                      <div key={idx} id={`row-${idx}`} onClick={() => startGlobalPlayback(idx)} className={`rounded p-3 transition-all hover:shadow-sm flex items-start gap-3 cursor-pointer ${isActive ? 'bg-blue-600 border border-blue-700' : 'bg-white border border-slate-200'}`}>
-                        <div className="flex flex-col items-center gap-2 mt-0.5">
-                            <span className={`text-xs font-mono w-6 text-center ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>#{item.displayId}</span>
-                            {localTextUrl && preferLocalAudio ? <Hash className="w-3 h-3 text-green-500"/> : <FileText className={`w-3 h-3 ${isActive ? 'text-blue-300' : 'text-slate-300'}`} />}
-                        </div>
-                        <p className={`text-sm flex-1 leading-relaxed ${isTextActive ? 'font-bold text-white' : (isActive ? 'text-white' : 'text-slate-700')}`}>{item.text}</p>
-                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                             {localTextUrl ? (
-                                 <a href={localTextUrl} download={textFilename} className={`flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold border border-green-200 ${isSystemBusy ? 'opacity-50 pointer-events-none cursor-not-allowed' : ''}`}><Download className="w-3 h-3" /> DL</a>
-                             ) : (
-                                 <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border bg-slate-50 text-indigo-600 hover:bg-indigo-50 text-xs font-bold ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
-                                     {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} AI Gen
-                                 </button>
-                             )}
-                        </div>
+                      <div 
+                        key={item.id} 
+                        style={{ height: rowHeight, top: item.offsetTop }} 
+                        className="absolute left-0 right-0 w-full px-2 py-1"
+                      >
+                          <div 
+                            id={`row-${item.id}`} 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                handleManualRowClick(item, item.virtualIdx); 
+                            }} 
+                            className={`h-full rounded-lg px-3 py-2 transition-all hover:shadow-sm flex items-start gap-3 cursor-pointer overflow-hidden ${isActive ? 'bg-blue-600 border border-blue-700' : 'bg-white border border-slate-200'}`}
+                          >
+                            <div className="flex flex-col items-center gap-1 mt-0.5 flex-shrink-0">
+                                <span className={`text-xs font-mono w-6 text-center ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>#{item.displayId}</span>
+                                {localTextUrl && preferLocalAudio ? <Hash className="w-3 h-3 text-green-500"/> : <FileText className={`w-3 h-3 ${isActive ? 'text-blue-300' : 'text-slate-300'}`} />}
+                            </div>
+                            <p className={`text-sm flex-1 leading-relaxed whitespace-pre-line overflow-hidden text-ellipsis line-clamp-3 md:line-clamp-2 ${isTextActive ? 'font-bold text-white' : (isActive ? 'text-white' : 'text-slate-700')}`}>{item.text}</p>
+                            <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                <button onClick={(e) => { e.stopPropagation(); handleDeleteTextItem(item.virtualIdx); }} className={`p-1.5 rounded-md border transition-colors mr-1 ${isActive ? 'bg-blue-500 text-blue-200 border-blue-400 hover:bg-red-500 hover:text-white' : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-red-50 hover:text-red-500 hover:border-red-200'}`}><Trash2 className="w-3.5 h-3.5"/></button>
+                                {localTextUrl ? (
+                                    <a href={localTextUrl} download={textFilename} className={`flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded text-xs font-bold border border-green-200 ${isSystemBusy ? 'opacity-50 pointer-events-none' : ''}`}><Download className="w-3 h-3" /> DL</a>
+                                ) : (
+                                    <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border bg-slate-50 text-indigo-600 hover:bg-indigo-50 text-xs font-bold ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} Gen
+                                    </button>
+                                )}
+                            </div>
+                         </div>
                      </div>
                    );
                }
              })}
-          </div>
-  );
+        </div>
+      </div>
+    );
+  };
 
   const renderMobileTools = () => (
       <div className="p-4 space-y-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><Settings className="w-4 h-4"/> Tools & API</h3>
-             <input 
-              type="password" 
-              placeholder={apiKey ? "System Key Active" : "Gemini API Key"} 
-              className={`text-xs border border-slate-300 rounded px-3 py-2 w-full mb-3 ${apiKey ? 'bg-green-50 border-green-200 text-green-700' : ''}`}
-              value={apiKey ? "" : userApiKey} 
-              disabled={!!apiKey}
-              onChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}} 
-             />
+             <input type="password" placeholder={apiKey ? "System Key Active" : "Gemini API Key"} className={`text-xs border border-slate-300 rounded px-3 py-2 w-full mb-3 ${apiKey ? 'bg-green-50 border-green-200 text-green-700' : ''}`} value={apiKey ? "" : userApiKey} disabled={!!apiKey} onChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}} />
              <button disabled={isSystemBusy} onClick={() => folderInputRef.current.click()} className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition border ${currentMapCount > 0 ? 'bg-green-600 text-white border-green-700' : 'bg-slate-800 text-white border-slate-900'} ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}>
                <FolderOpen className="w-3.5 h-3.5" /> Load Audio Folder
              </button>
@@ -1268,12 +1949,8 @@ const App = () => {
              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600"/> Batch Download</h3>
              <div className="space-y-3">
                  <div className="flex gap-4">
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>
-                         {batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word
-                     </button>
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>
-                         {batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence
-                     </button>
+                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
+                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
                  </div>
                  <div className="flex items-center gap-2 text-xs">
                      <span>Range:</span>
@@ -1281,11 +1958,7 @@ const App = () => {
                      <span>to</span>
                      <input disabled={isBatchDownloading} type="number" className="w-16 border rounded p-1" value={batchConfig.end} onChange={e=>setBatchConfig(p=>({...p, end:e.target.value}))} />
                  </div>
-                 <button 
-                    onClick={runBatchDownload} 
-                    disabled={isSystemBusy && !isBatchDownloading} // Disable jika manual gen sedang jalan
-                    className={`w-full py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 ${(isSystemBusy && !isBatchDownloading) ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : (isBatchDownloading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 text-white hover:bg-purple-700')}`}
-                 >
+                 <button onClick={runBatchDownload} disabled={isSystemBusy && !isBatchDownloading} className={`w-full py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 ${(isSystemBusy && !isBatchDownloading) ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : (isBatchDownloading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 text-white hover:bg-purple-700')}`}>
                      {isBatchDownloading ? <Loader2 className="w-3 h-3 animate-spin"/> : <DownloadCloudIcon className="w-3 h-3"/>}
                      {isBatchDownloading ? "Downloading..." : "Start Batch Download"}
                  </button>
@@ -1294,12 +1967,7 @@ const App = () => {
           
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><Database className="w-4 h-4"/> Decks</h3>
-             <select 
-                disabled={isSystemBusy}
-                className={`w-full text-xs p-2 border rounded mb-2 bg-slate-50 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onChange={handleLoadDeck} 
-                value={selectedDeckId}
-            >
+             <select disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded mb-2 bg-slate-50 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
                 <option value="" disabled>Load Saved...</option>
                 {Object.keys(savedDecks).map(name => <option key={name} value={name}>{name}</option>)}
             </select>
@@ -1313,11 +1981,9 @@ const App = () => {
   );
 
   return (
-    // FIX: Changed from "min-h-screen h-screen" to "fixed inset-0" to respect mobile browser viewport
     <div className="fixed inset-0 bg-slate-50 text-slate-800 font-sans flex flex-col overflow-hidden">
       
       {/* 1. HEADER */}
-      {/* FIX Z-INDEX & OVERFLOW (Issue #2: Body covering popups) */}
       <div className="bg-white border-b border-slate-200 p-3 shadow-sm z-50 flex gap-4 justify-between items-center h-16 flex-shrink-0 relative">
         <div className="flex items-center gap-3">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-600">
@@ -1325,7 +1991,7 @@ const App = () => {
           </button>
           <div className="flex items-center gap-2 whitespace-nowrap">
             <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-            <div><h1 className="font-bold text-slate-800 leading-tight">ProLingo v4.25</h1></div>
+            <div><h1 className="font-bold text-slate-800 leading-tight">ProLingo v4.47</h1></div>
           </div>
         </div>
         
@@ -1335,22 +2001,14 @@ const App = () => {
              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg border border-slate-200 flex-shrink min-w-0 max-w-full overflow-hidden">
               <Database className="w-4 h-4 text-slate-500 ml-1 flex-shrink-0" />
               <div className="flex items-center flex-shrink min-w-0">
-                <select 
-                    disabled={isSystemBusy}
-                    className={`bg-transparent text-sm font-semibold text-slate-700 outline-none w-16 lg:w-28 cursor-pointer flex-shrink min-w-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}
-                    onChange={handleLoadDeck} 
-                    value={selectedDeckId}
-                >
+                <select disabled={isSystemBusy} className={`bg-transparent text-sm font-semibold text-slate-700 outline-none w-16 lg:w-28 cursor-pointer flex-shrink min-w-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
                     <option value="" disabled>Load Saved...</option>
                     {Object.keys(savedDecks).map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
                 {selectedDeckId && (
-                    <button disabled={isSystemBusy} onClick={handleDeleteDeckInit} className={`p-1 hover:bg-red-100 text-slate-400 hover:text-red-500 rounded transition flex-shrink-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50 pointer-events-none' : ''}`} title="Hapus Deck Ini">
-                        <Trash2 className="w-3.5 h-3.5"/>
-                    </button>
+                    <button disabled={isSystemBusy} onClick={handleDeleteDeckInit} className={`p-1 hover:bg-red-100 text-slate-400 hover:text-red-500 rounded transition flex-shrink-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50 pointer-events-none' : ''}`} title="Hapus Deck Ini"><Trash2 className="w-3.5 h-3.5"/></button>
                 )}
               </div>
-              
               <div className="h-4 w-[1px] bg-slate-300 mx-1 flex-shrink-0"></div>
               <input disabled={isSystemBusy} className="bg-transparent text-sm w-16 lg:w-24 outline-none disabled:opacity-50 flex-shrink min-w-0" placeholder="Sheet Name" value={currentDeckName} onChange={(e) => setCurrentDeckName(e.target.value)} />
               <button disabled={isSystemBusy} onClick={handleSaveDeck} className={`p-1 hover:bg-white text-green-600 rounded flex-shrink-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50 pointer-events-none' : ''}`} title="Simpan Deck"><Save className="w-4 h-4"/></button>
@@ -1361,43 +2019,23 @@ const App = () => {
         <div className="hidden md:flex items-center gap-2 flex-shrink-0 ml-auto">
             {/* FLOATING BATCH BUTTON (PC) */}
             <div className="relative">
-             <button 
-                ref={batchButtonRef}
-                disabled={isSystemBusy && !isBatchDownloading} 
-                onClick={() => setIsBatchOpen(!isBatchOpen)} 
-                className={`p-2 rounded-md border transition-colors flex items-center gap-2 ${isBatchOpen ? 'bg-slate-800 text-purple-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200'} ${(isSystemBusy && !isBatchDownloading) ? 'cursor-not-allowed opacity-50' : ''}`}
-                title="Batch Download"
-             >
+             <button ref={batchButtonRef} disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen(!isBatchOpen)} className={`p-2 rounded-md border transition-colors flex items-center gap-2 ${isBatchOpen ? 'bg-slate-800 text-purple-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200'} ${(isSystemBusy && !isBatchDownloading) ? 'cursor-not-allowed opacity-50' : ''}`} title="Batch Download">
                 <Layers className="w-3.5 h-3.5"/> 
-                {/* Space Saving: Text only visible on Large screens, hidden on Tablet/Compact Desktop */}
-                <span className="text-xs font-bold whitespace-nowrap hidden xl:inline">
-                    {isBatchDownloading && batchStatusText ? `Batching...` : "Batch DL"}
-                </span>
+                <span className="text-xs font-bold whitespace-nowrap hidden xl:inline">{isBatchDownloading && batchStatusText ? `Batching...` : "Batch DL"}</span>
              </button>
              {isBatchOpen && renderBatchPopup()}
            </div>
 
            {/* FLOATING DEBUG LOGS UI (PC) */}
            <div className="relative">
-             <button 
-                ref={debugButtonRef}
-                onClick={() => setShowLogs(!showLogs)} 
-                className={`p-2 rounded-md border transition-colors ${showLogs ? 'bg-slate-800 text-green-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
-                title="Debug Logs"
-             >
+             <button ref={debugButtonRef} onClick={() => setShowLogs(!showLogs)} className={`p-2 rounded-md border transition-colors ${showLogs ? 'bg-slate-800 text-green-400 border-slate-700' : 'bg-slate-100 text-slate-500 border-slate-200'} title="Debug Logs`}>
                 <Terminal className="w-3.5 h-3.5"/>
              </button>
              
              {showLogs && (
-                <div 
-                  ref={debugPanelRef} 
-                  className="absolute top-10 right-0 w-80 bg-slate-900 border border-slate-700 shadow-2xl rounded-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200"
-                  style={{ maxHeight: '300px' }}
-                >
+                <div ref={debugPanelRef} className="absolute top-10 right-0 w-80 bg-slate-900 border border-slate-700 shadow-2xl rounded-xl z-50 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200" style={{ maxHeight: '300px' }}>
                   <div className="flex items-center justify-between p-2 bg-slate-800 border-b border-slate-700">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                       <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> System Logs
-                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div> System Logs</span>
                     <button onClick={() => setShowLogs(false)} className="text-slate-500 hover:text-white"><X className="w-3 h-3"/></button>
                   </div>
                   <div ref={logContainerRef} className="flex-1 overflow-y-auto p-3 space-y-2 font-mono text-[10px]">
@@ -1405,9 +2043,7 @@ const App = () => {
                       {systemLogs.map((log, i) => (
                           <div key={i} className="leading-tight border-b border-slate-800 pb-1 last:border-0">
                               <span className="text-slate-500 mr-2">[{log.time}]</span> 
-                              <span className={`font-bold ${log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}`}>
-                                {log.type}:
-                              </span> 
+                              <span className={`font-bold ${log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}`}>{log.type}:</span> 
                               <span className="text-slate-300 ml-1">{log.message}</span>
                           </div>
                       ))}
@@ -1416,67 +2052,33 @@ const App = () => {
              )}
            </div>
 
-           <input 
-              type="password" 
-              placeholder={apiKey ? "Active" : "API Key"} 
-              className={`text-xs border border-slate-300 rounded px-2 py-1 w-20 hidden xl:block ${apiKey ? 'bg-green-50 border-green-200 text-green-700' : ''}`}
-              value={apiKey ? "" : userApiKey} 
-              disabled={!!apiKey}
-              onChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}} 
-           />
+           <input type="password" placeholder={apiKey ? "Active" : "API Key"} className={`text-xs border border-slate-300 rounded px-2 py-1 w-20 hidden xl:block ${apiKey ? 'bg-green-50 border-green-200 text-green-700' : ''}`} value={apiKey ? "" : userApiKey} disabled={!!apiKey} onChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}} />
            <button disabled={isSystemBusy} onClick={() => folderInputRef.current.click()} className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition border whitespace-nowrap ${isSystemBusy ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''} ${currentMapCount > 0 ? 'bg-green-600 text-white border-green-700' : 'bg-slate-800 text-white border-slate-900'}`}>
-             <FolderOpen className="w-3.5 h-3.5" /> 
-             {/* Space Saving: Text only visible on X-Large screens */}
-             <span className="hidden xl:inline">Load Audio</span>
+             <FolderOpen className="w-3.5 h-3.5" /> <span className="hidden xl:inline">Load Audio</span>
            </button>
            <input type="file" ref={folderInputRef} webkitdirectory="" directory="" multiple className="hidden" onChange={handleFolderSelect} />
         </div>
 
         {/* MOBILE/TABLET HEADER GEAR - Visible only on Mobile (<MD) */}
         <div className="md:hidden ml-auto">
-             <button onClick={() => setMobileTab('tools')} className={`p-2 rounded-lg ${mobileTab === 'tools' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'}`}>
-                 <Settings className="w-5 h-5"/>
-             </button>
+             <button onClick={() => setMobileTab('tools')} className={`p-2 rounded-lg ${mobileTab === 'tools' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'}`}><Settings className="w-5 h-5"/></button>
         </div>
       </div>
 
-      {/* 2. MOBILE TAB BAR - SYNC: Only visible below MD (768px) */}
+      {/* 2. MOBILE TAB BAR */}
       <div className="md:hidden bg-white border-b border-slate-200 flex text-xs font-bold text-slate-500 z-10 relative flex-shrink-0">
-          <button onClick={() => setMobileTab('terminal')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'terminal' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}>
-              <Terminal className="w-4 h-4"/> Logs
-          </button>
-          <button onClick={() => setMobileTab('player')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'player' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}>
-              <Play className="w-4 h-4"/> Player
-          </button>
-          <button onClick={() => setMobileTab('tools')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'tools' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}>
-              <Settings className="w-4 h-4"/> Tools
-          </button>
+          <button onClick={() => setMobileTab('terminal')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'terminal' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Terminal className="w-4 h-4"/> Logs</button>
+          <button onClick={() => setMobileTab('player')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'player' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Play className="w-4 h-4"/> Player</button>
+          <button onClick={() => setMobileTab('tools')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'tools' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Settings className="w-4 h-4"/> Tools</button>
       </div>
 
       <div className="flex-1 flex overflow-hidden relative z-0">
         
-        {/* SIDEBAR (FIXED POSITIONING LOGIC 2.0) */}
-        <div 
-          className={`
-            border-r border-slate-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out bg-white z-40
-            h-full overflow-hidden 
-            
-            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
-            
-            ${/* Mobile Logic: Absolute (Overlay), left-0, width fixed */ ''}
-            absolute md:relative top-0 left-0
-            
-            ${/* Width Logic: Mobile always w-72 (hidden via translate), PC w-72 or w-0 */ ''}
-            w-72 
-            ${!isSidebarOpen ? 'md:w-0 md:border-none' : 'md:w-72'}
-          `}
-        >
-          {/* PERBAIKAN POIN 2: Wrapper utama sekarang scrollable (overflow-y-auto) */}
+        {/* SIDEBAR */}
+        <div className={`border-r border-slate-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out bg-white z-40 h-full overflow-hidden ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} absolute md:relative top-0 left-0 w-72 ${!isSidebarOpen ? 'md:w-0 md:border-none' : 'md:w-72'}`}>
           <div className="flex flex-col h-full overflow-y-auto w-72">
-            {/* Bagian kontrol atas tidak lagi scroll sendiri, melainkan ikut flow utama */}
             <div className="p-4 border-b border-slate-100 space-y-4 flex-shrink-0">
               <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-lg">
-                {/* POINT 4: LOCK ENV SWITCH */}
                 <button disabled={isSystemBusy} onClick={() => handleModeSwitch('table')} className={`text-xs font-bold py-1.5 rounded ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'table' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Table</button>
                 <button disabled={isSystemBusy} onClick={() => handleModeSwitch('text')} className={`text-xs font-bold py-1.5 rounded ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'text' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Text</button>
               </div>
@@ -1487,15 +2089,8 @@ const App = () => {
                   <p className="text-[10px] font-bold text-slate-500 uppercase">Audio Source ({mode})</p>
                   {renderStatusBadge()}
                 </div>
-                {/* POINT 4: LOCK AUDIO TOGGLE */}
-                <button 
-                    onClick={() => currentMapCount > 0 && setPreferLocalAudio(!preferLocalAudio)}
-                    disabled={currentMapCount === 0 || isSystemBusy}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs font-bold transition-all ${currentMapCount === 0 || isSystemBusy ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white hover:shadow-sm'}`}
-                >
-                  <span className={preferLocalAudio ? "text-indigo-700" : "text-slate-500"}>
-                    {preferLocalAudio ? "Source: Local/Generated" : "Source: Browser TTS"}
-                  </span>
+                <button onClick={() => currentMapCount > 0 && setPreferLocalAudio(!preferLocalAudio)} disabled={currentMapCount === 0 || isSystemBusy} className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs font-bold transition-all ${currentMapCount === 0 || isSystemBusy ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white hover:shadow-sm'}`}>
+                  <span className={preferLocalAudio ? "text-indigo-700" : "text-slate-500"}>{preferLocalAudio ? "Source: Local/Generated" : "Source: Browser TTS"}</span>
                   {preferLocalAudio ? <ToggleRight className="w-5 h-5 text-indigo-600"/> : <ToggleLeft className="w-5 h-5 text-slate-400"/>}
                 </button>
               </div>
@@ -1531,15 +2126,7 @@ const App = () => {
 
                 <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-100 mt-2">
                     <span className="text-xs font-bold text-slate-500 w-8 text-center">{rate}x</span>
-                    <input 
-                        type="range" 
-                        min="0.5" 
-                        max="2" 
-                        step="0.1" 
-                        value={rate} 
-                        onChange={e => setRate(e.target.value)} 
-                        className="flex-1 h-1 bg-slate-200 rounded-lg cursor-pointer accent-indigo-600" 
-                    />
+                    <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(e.target.value)} className="flex-1 h-1 bg-slate-200 rounded-lg cursor-pointer accent-indigo-600" />
                 </div>
               </div>
 
@@ -1549,19 +2136,13 @@ const App = () => {
                      <p className="text-[10px] font-bold text-slate-400 uppercase">Global Play Parts</p>
                      <div className="flex flex-col gap-2">
                         <div className="flex gap-4">
-                             <button onClick={() => setPlayWord(!playWord)} className={`flex items-center gap-2 text-xs font-bold ${playWord ? 'text-indigo-600' : 'text-slate-400'}`}>
-                                 {playWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word
-                             </button>
-                             <button onClick={() => setPlaySentence(!playSentence)} className={`flex items-center gap-2 text-xs font-bold ${playSentence ? 'text-indigo-600' : 'text-slate-400'}`}>
-                                 {playSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence
-                             </button>
+                             <button onClick={() => setPlayWord(!playWord)} className={`flex items-center gap-2 text-xs font-bold ${playWord ? 'text-indigo-600' : 'text-slate-400'}`}>{playWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
+                             <button onClick={() => setPlaySentence(!playSentence)} className={`flex items-center gap-2 text-xs font-bold ${playSentence ? 'text-indigo-600' : 'text-slate-400'}`}>{playSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
                         </div>
                         {/* MEANING CHECKBOX */}
-                        <button onClick={() => setPlayMeaning(!playMeaning)} className={`flex items-center gap-2 text-xs font-bold ${playMeaning ? 'text-indigo-600' : 'text-slate-400'}`}>
-                             {playMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Meaning (Indonesian)
-                        </button>
-                        
-                        {/* PRIORITY 2: MEMORY MODE TOGGLE */}
+                        <button onClick={() => setPlayMeaning(!playMeaning)} className={`flex items-center gap-2 text-xs font-bold ${playMeaning ? 'text-indigo-600' : 'text-slate-400'}`}>{playMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Meaning (Indonesian)</button>
+
+                        {/* PRIORITY 2: MEMORY MODE TOGGLE */}                        
                         <div className="mt-2 border-t border-dashed border-slate-200 pt-2">
                             <button onClick={() => setIsMemoryMode(!isMemoryMode)} className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs font-bold transition-all ${isMemoryMode ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-slate-50 text-slate-500 border border-slate-100 hover:bg-white'}`}>
                                  <span className="flex items-center gap-2"><Brain className="w-4 h-4"/> Memory Mode</span>
@@ -1572,38 +2153,18 @@ const App = () => {
                             {isMemoryMode && (
                                 <div className="mt-2 pl-3 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
                                     <div className="flex items-center gap-2">
-                                        <input 
-                                            type="checkbox" 
-                                            id="hide-word"
-                                            checked={memorySettings.word} 
-                                            onChange={(e) => setMemorySettings(prev => ({ ...prev, word: e.target.checked }))}
-                                            className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"
-                                        />
+                                        <input type="checkbox" id="hide-word" checked={memorySettings.word} onChange={(e) => setMemorySettings(prev => ({ ...prev, word: e.target.checked }))} className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"/>
                                         <label htmlFor="hide-word" className="text-[10px] text-slate-600 font-medium cursor-pointer select-none">Hide Word</label>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <input 
-                                            type="checkbox" 
-                                            id="hide-sentence"
-                                            checked={memorySettings.sentence} 
-                                            onChange={(e) => setMemorySettings(prev => ({ ...prev, sentence: e.target.checked }))}
-                                            className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"
-                                        />
+                                        <input type="checkbox" id="hide-sentence" checked={memorySettings.sentence} onChange={(e) => setMemorySettings(prev => ({ ...prev, sentence: e.target.checked }))} className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"/>
                                         <label htmlFor="hide-sentence" className="text-[10px] text-slate-600 font-medium cursor-pointer select-none">Hide Sentence</label>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <input 
-                                            type="checkbox" 
-                                            id="hide-meaning"
-                                            checked={memorySettings.meaning} 
-                                            onChange={(e) => setMemorySettings(prev => ({ ...prev, meaning: e.target.checked }))}
-                                            className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"
-                                        />
+                                        <input type="checkbox" id="hide-meaning" checked={memorySettings.meaning} onChange={(e) => setMemorySettings(prev => ({ ...prev, meaning: e.target.checked }))} className="w-3.5 h-3.5 accent-yellow-600 cursor-pointer"/>
                                         <label htmlFor="hide-meaning" className="text-[10px] text-slate-600 font-medium cursor-pointer select-none">Hide Meaning</label>
                                     </div>
-                                    <p className="text-[9px] text-yellow-600 mt-1 italic leading-tight pt-1 border-t border-yellow-100">
-                                        Klik teks untuk intip (4 detik).
-                                    </p>
+                                    <p className="text-[9px] text-yellow-600 mt-1 italic leading-tight pt-1 border-t border-yellow-100">Klik teks untuk intip (4 detik).</p>
                                 </div>
                             )}
                         </div>
@@ -1618,40 +2179,26 @@ const App = () => {
                     {/* POINT 4: LOCK IMPORT CSV */}
                     <button disabled={isSystemBusy} onClick={() => csvInputRef.current.click()} className={`flex items-center justify-center gap-1 border border-slate-200 p-2 rounded hover:bg-slate-50 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Upload className="w-3 h-3"/> Import CSV</button>
                     <input type="file" ref={csvInputRef} accept=".csv" className="hidden" onChange={handleCSVUpload} />
+                    <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`flex items-center justify-center gap-1 border border-red-100 text-red-500 p-2 rounded hover:bg-red-50 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear View</button>
                   </>
                 ) : (
-                  <div className="text-xs text-slate-400 flex items-center justify-center border border-dashed rounded bg-slate-50">Text Mode</div>
+                   <>
+                       <div className="col-span-2 mb-1">
+                          <p className="text-[10px] text-slate-400 italic text-center border p-1 rounded bg-slate-50">Gunakan kotak input di atas daftar untuk menambah item.</p>
+                       </div>
+                       <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`col-span-2 flex items-center justify-center gap-1 border border-red-100 text-red-500 p-2 rounded hover:bg-red-50 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear View</button>
+                   </>
                 )}
-                {/* POINT 4: LOCK CLEAR VIEW */}
-                <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`flex items-center justify-center gap-1 border border-red-100 text-red-500 p-2 rounded hover:bg-red-50 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear View</button>
               </div>
             </div>
             
             {/* PERBAIKAN POIN 2: Textarea diberikan min-h-[300px] agar selalu terlihat luas */}
             <div className="flex-1 p-2 relative flex flex-col min-h-[300px] bg-white">
-              {/* FIX 2: Correct onChange handler */}
-              <textarea 
-                ref={textareaRef} // Point 1: Ref for focus back
-                disabled={isSystemBusy}
-                readOnly={isLocked}
-                className={`w-full flex-1 text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy ? 'bg-slate-100 text-slate-500' : 'bg-white text-slate-800'}`} 
-                placeholder={mode === 'table' ? "Paste Excel/CSV..." : "Paste text..."}
-                value={mode === 'table' ? tableContent : textContent} 
-                onChange={(e) => handleInputContentChange(e.target.value)} 
-              />
-              
+              <textarea ref={textareaRef} disabled={isSystemBusy} readOnly={isLocked} className={`w-full flex-1 text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy ? 'bg-slate-100 text-slate-500' : 'bg-white text-slate-800'}`} placeholder={mode === 'table' ? "Paste Excel/CSV..." : "Paste text..."} value={mode === 'table' ? tableContent : textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
               <div className="flex justify-end items-center mt-2 px-1 flex-shrink-0 gap-2">
-                 {/* POINT 1: INSERT TAB BUTTON */}
-                 <button 
-                    disabled={isLocked || isSystemBusy}
-                    onClick={handleInsertTab}
-                    className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-400' : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'}`}
-                    title="Insert Tab Character (Separator)"
-                 >
+                 <button disabled={isLocked || isSystemBusy} onClick={handleInsertTab} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 text-slate-400' : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'}`} title="Insert Tab Character (Separator)">
                     <ArrowRightToLine className="w-3 h-3" /> Add Tab
                  </button>
-
-                 {/* POINT 1: Lock Lock Button during Batch */}
                  <button disabled={isSystemBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed text-slate-400' : (isLocked ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:bg-slate-100')}`}>
                   {isLocked ? <><Lock className="w-3 h-3"/> Locked</> : <><Unlock className="w-3 h-3"/> Unlocked</>}
                 </button>
@@ -1663,7 +2210,19 @@ const App = () => {
         {/* MAIN BODY AREA */}
         <div className="flex-1 bg-slate-50 overflow-hidden relative flex flex-col">
             
-            {/* MOBILE LOGS VIEW - Sync MD Hidden */}
+            {mode === 'table' && (
+                <div className="flex border-b border-slate-200 bg-white flex-shrink-0">
+                    <button onClick={() => handleTabSwitch('master')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'master' ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}><Database className="w-4 h-4"/> MASTER DATA</button>
+                    <button onClick={() => handleTabSwitch('study')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'study' ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}>
+                        <ListPlus className="w-4 h-4"/> STUDY QUEUE
+                        {studyQueue.length > 0 && <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{studyQueue.length}</span>}
+                    </button>
+                    {tableViewMode === 'study' && studyQueue.length > 0 && (
+                        <button onClick={clearStudyQueue} className="absolute right-2 top-2 p-1.5 bg-red-50 text-red-500 rounded hover:bg-red-100 transition-colors" title="Clear Queue"><Eraser className="w-4 h-4"/></button>
+                    )}
+                </div>
+            )}
+
             <div className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}>
                 {systemLogs.map((log, i) => (
                     <div key={i} className="leading-tight border-b border-slate-800 pb-1 mb-1 font-mono text-[10px]">
@@ -1679,9 +2238,8 @@ const App = () => {
                 {renderMobileTools()}
             </div>
 
-            {/* PLAYER VIEW - Always show on MD+, or if tab selected on Mobile */}
-            <div className={`flex-1 overflow-y-auto p-4 ${mobileTab === 'player' ? 'block' : 'hidden'} md:block`}>
-                 <div className="max-w-4xl mx-auto">
+            <div className={`flex-1 overflow-hidden p-0 ${mobileTab === 'player' ? 'block' : 'hidden'} md:block`}>
+                 <div className="max-w-4xl mx-auto h-full px-4 pt-4">
                     {renderPlaylist()}
                  </div>
             </div>
@@ -1689,18 +2247,21 @@ const App = () => {
         </div>
       </div>
 
-      {/* BOTTOM BAR - FIXED LAYOUT (Issue #1) */}
+      {/* BOTTOM BAR */}
       <div className="bg-white border-t border-slate-200 p-2 md:p-4 shadow-2xl z-50 flex-shrink-0">
         <div className="max-w-4xl mx-auto">
-           {/* MOBILE GRID LAYOUT - Hidden on MD+ */}
+           {/* MOBILE GRID LAYOUT */}
            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 md:hidden">
-               
-               {/* Left: Truncated Title */}
                <div className="flex flex-col min-w-0 pr-2">
                  <p className="text-[10px] font-bold text-slate-400 tracking-wider">NOW PLAYING</p>
                  <p className="text-sm font-semibold truncate text-slate-800">
-                   {currentIndex >= 0 
-                     ? `${currentIndex + 1}. ${playlist[currentIndex]?.word || 'Unknown'}` 
+                   {playingIndex >= 0 
+                     ? (() => {
+                         const item = activePlaybackList.find(p => p.id === playingIndex);
+                         const seqIdx = activePlaybackList.indexOf(item);
+                         if (!item) return "Ready";
+                         return `${seqIdx + 1}. ${item.word} (${seqIdx + 1}/${activePlaybackList.length})`;
+                       })()
                      : "Ready"}
                  </p>
                </div>
@@ -1708,14 +2269,7 @@ const App = () => {
                {/* Center: Controls */}
                <div className="flex items-center gap-2">
                   <button onClick={() => handleSmartNav('prev')} className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-100 rounded-full active:scale-95"><SkipBack className="w-5 h-5 fill-current"/></button>
-                  <button 
-                    onClick={handleGlobalPlay} 
-                    className={`p-3 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${
-                      isPlaying 
-                      ? 'bg-red-50 text-red-500 border-2 border-red-100' 
-                      : 'bg-indigo-600 text-white'
-                    }`}
-                  >
+                  <button onClick={handleGlobalPlay} className={`p-3 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying ? 'bg-red-50 text-red-500 border-2 border-red-100' : 'bg-indigo-600 text-white'}`}>
                     {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
                   </button>
                   <button onClick={() => handleSmartNav('next')} className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-100 rounded-full active:scale-95"><SkipForward className="w-5 h-5 fill-current"/></button>
@@ -1723,33 +2277,32 @@ const App = () => {
 
                {/* Right: Mode Cycler (Compact) */}
                <div className="flex justify-end">
-                  <button 
-                     onClick={cyclePlaybackMode}
-                     className="flex flex-col items-center justify-center gap-1 min-w-[50px] p-1 rounded hover:bg-slate-50"
-                  >
+                  <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-1 min-w-[50px] p-1 rounded hover:bg-slate-50">
                       {playbackMode === 'once' && <span className="text-xs font-mono border border-slate-500 rounded px-1 text-slate-600">1</span>}
                       {playbackMode === 'sequence' && <List className="w-5 h-5 text-indigo-600"/>}
                       {playbackMode === 'repeat_2x' && <span className="text-xs font-bold text-purple-600">2x</span>}
                       {playbackMode === 'loop_one' && <Repeat1 className="w-5 h-5 text-orange-500"/>}
                       {playbackMode === 'random' && <Shuffle className="w-5 h-5 text-blue-500"/>}
-                      <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-full">
-                          {playbackMode === 'once' ? 'Once' : playbackMode === 'sequence' ? 'Next' : playbackMode === 'repeat_2x' ? '2x' : playbackMode === 'loop_one' ? 'Loop' : 'Rand'}
-                      </span>
+                      <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-full">{playbackMode === 'once' ? 'Once' : playbackMode === 'sequence' ? 'Next' : playbackMode === 'repeat_2x' ? '2x' : playbackMode === 'loop_one' ? 'Loop' : 'Rand'}</span>
                   </button>
                </div>
            </div>
 
-           {/* DESKTOP FLEX LAYOUT - Visible on MD+ */}
+           {/* DESKTOP FLEX LAYOUT */}
            <div className="hidden md:flex items-center justify-between gap-4">
-               {/* Left Info */}
                <div className="w-64 flex flex-col">
                  <div className="flex items-center gap-2 mb-1">
                    <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                   <p className="text-[10px] font-bold text-slate-400 tracking-wider">GLOBAL PLAYER</p>
+                   <p className="text-[10px] font-bold text-slate-400 tracking-wider">GLOBAL PLAYER ({playingContext ? playingContext.toUpperCase() : 'IDLE'})</p>
                  </div>
                  <p className="text-sm font-semibold truncate text-slate-800">
-                   {currentIndex >= 0 
-                     ? `${currentIndex + 1}. ${playlist[currentIndex]?.word || (playlist[currentIndex]?.text ? playlist[currentIndex].text.substring(0, 15)+'...' : 'Item')} (${currentIndex + 1}/${playlist.length})` 
+                   {playingIndex >= 0 
+                     ? (() => {
+                         const item = activePlaybackList.find(p => p.id === playingIndex);
+                         const seqIdx = activePlaybackList.indexOf(item);
+                         if (!item) return "Ready";
+                         return `${seqIdx + 1}. ${item.word || (item.text ? item.text.substring(0, 15)+'...' : 'Item')} (${seqIdx + 1}/${activePlaybackList.length} Items)`;
+                       })()
                      : "Ready"}
                  </p>
                </div>
@@ -1757,14 +2310,7 @@ const App = () => {
                {/* Center Controls */}
                <div className="flex items-center gap-4">
                     <button onClick={() => handleSmartNav('prev')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 rounded-full transition active:scale-95"><SkipBack className="w-6 h-6 fill-current"/></button>
-                    <button 
-                      onClick={handleGlobalPlay} 
-                      className={`p-4 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${
-                        isPlaying 
-                        ? 'bg-red-50 text-red-500 border-2 border-red-100 hover:bg-red-100' 
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                      }`}
-                    >
+                    <button onClick={handleGlobalPlay} className={`p-4 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying ? 'bg-red-50 text-red-500 border-2 border-red-100 hover:bg-red-100' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                       {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
                     </button>
                     <button onClick={() => handleSmartNav('next')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 rounded-full transition active:scale-95"><SkipForward className="w-6 h-6 fill-current"/></button>
@@ -1773,11 +2319,7 @@ const App = () => {
                {/* Right Settings */}
                <div className="w-64 flex flex-col items-end gap-1">
                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
-                    <select 
-                      className="bg-transparent text-xs font-bold text-slate-600 outline-none p-1 cursor-pointer"
-                      value={playbackMode}
-                      onChange={(e) => setPlaybackMode(e.target.value)}
-                    >
+                    <select className="bg-transparent text-xs font-bold text-slate-600 outline-none p-1 cursor-pointer" value={playbackMode} onChange={(e) => setPlaybackMode(e.target.value)}>
                       <option value="once">Putar Sekali</option>
                       <option value="sequence">Lanjut Otomatis</option>
                       <option value="repeat_2x">Ulangi 2x & Lanjut</option>
