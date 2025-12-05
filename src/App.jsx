@@ -429,7 +429,6 @@ const App = () => {
   });
 
   const [isMobile, setIsMobile] = useState(false);
-  // --- NEW: State untuk Auto-Hide AppBar ---
   const [showAppBar, setShowAppBar] = useState(true);
   const lastScrollY = useRef(0);
 
@@ -481,14 +480,12 @@ const App = () => {
   // --- SCROLL AUTO-HIDE LOGIC ---
   useEffect(() => {
       const handleScroll = () => {
-          if (!isMobile) return; // Efek hanya di mobile
+          if (!isMobile) return; 
           const currentScrollY = window.scrollY;
           
           if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-              // Scroll Down -> Hide
               setShowAppBar(false);
           } else {
-              // Scroll Up -> Show
               setShowAppBar(true);
           }
           lastScrollY.current = currentScrollY;
@@ -614,9 +611,6 @@ const App = () => {
                   const targetTop = idx * rowH;
                   
                   if (isMobile) {
-                      // Perhitungan scroll perlu kompensasi header jika fixed, tapi karena auto-hide, 
-                      // targetTop sebenarnya sudah relatif terhadap body. 
-                      // Namun untuk UX yang baik, kita kurangi sedikit offset.
                       const offsetHeader = 160; 
                       window.scrollTo({
                           top: Math.max(0, targetTop - (showAppBar ? offsetHeader : 20)),
@@ -1839,10 +1833,11 @@ const App = () => {
   );
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 text-slate-800 font-sans flex flex-col overflow-x-hidden relative">
+    // FIX PC LAYOUT: Kembali ke 'h-screen overflow-hidden' untuk desktop agar menjadi "Fixed App",
+    // sedangkan mobile tetap 'min-h-[100dvh]' untuk scrolling panjang.
+    <div className={`bg-slate-50 text-slate-800 font-sans flex flex-col relative ${isMobile ? 'min-h-[100dvh] overflow-x-hidden' : 'h-screen overflow-hidden'}`}>
       
-      {/* --- UNIFIED MOBILE HEADER GROUP (Fixed & Auto-Hide) --- */}
-      {/* Wrapper ini menyatukan Header Utama, Navigasi Tab, dan Tab Tabel khusus Mobile agar bergerak bersamaan */}
+      {/* --- UNIFIED MOBILE HEADER GROUP --- */}
       <div className={`z-50 bg-white transition-transform duration-300 shadow-md ${isMobile ? 'fixed top-0 left-0 right-0 w-full' : 'sticky top-0 border-b border-slate-200'} ${isMobile && !showAppBar ? '-translate-y-full' : 'translate-y-0'}`}>
         
         {/* 1. HEADER UTAMA */}
@@ -1857,7 +1852,7 @@ const App = () => {
             </div>
             </div>
             
-            {/* Desktop Header Tools (Hidden on Mobile) */}
+            {/* Desktop Header Tools */}
             <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
                  <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg border border-slate-200 flex-shrink min-w-0 max-w-full overflow-hidden">
                   <Database className="w-4 h-4 text-slate-500 ml-1 flex-shrink-0" />
@@ -1922,15 +1917,14 @@ const App = () => {
             </div>
         </div>
 
-        {/* 2. MOBILE TAB BAR (Logs/Player/Tools) */}
+        {/* 2. MOBILE TAB BAR */}
         <div className="md:hidden bg-white border-b border-slate-200 flex text-xs font-bold text-slate-500">
             <button onClick={() => setMobileTab('terminal')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'terminal' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Terminal className="w-4 h-4"/> Logs</button>
             <button onClick={() => setMobileTab('player')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'player' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Play className="w-4 h-4"/> Player</button>
             <button onClick={() => setMobileTab('tools')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'tools' ? 'border-indigo-500 text-indigo-600' : 'border-transparent'}`}><Settings className="w-4 h-4"/> Tools</button>
         </div>
 
-        {/* 3. TABLE TABS (Mobile Version - Inside Fixed Header) */}
-        {/* Ini dipindahkan ke sini agar ikut tersembunyi saat scroll down */}
+        {/* 3. TABLE TABS (Mobile Version) */}
         {isMobile && mode === 'table' && (
              <div className="flex border-b border-slate-200 bg-white flex-shrink-0">
                 <button onClick={() => handleTabSwitch('master')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'master' ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}><Database className="w-4 h-4"/> MASTER DATA</button>
@@ -1948,10 +1942,8 @@ const App = () => {
       <div className="flex-1 flex overflow-hidden relative z-0">
         
         {/* SIDEBAR - Fixed on Desktop, Hidden on Mobile */}
-        <div className={`border-r border-slate-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out bg-white z-40 h-full overflow-hidden ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative top-0 left-0 w-72 h-full md:h-auto ${!isSidebarOpen ? 'md:w-0 md:border-none' : 'md:w-72'}`}>
-          {/* ... Isi Sidebar sama seperti sebelumnya ... */}
-          <div className="flex flex-col h-full overflow-y-auto w-72 pt-16 md:pt-0"> {/* Add padding top for mobile sidebar */}
-             {/* Note: Karena sidebar fixed z-40 dan header z-50, di mobile sidebar akan ada di bawah header */}
+        <div className={`border-r border-slate-200 flex flex-col shadow-lg transition-all duration-300 ease-in-out bg-white z-40 h-full overflow-hidden ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative top-0 left-0 w-72 h-full ${!isSidebarOpen ? 'md:w-0 md:border-none' : 'md:w-72'}`}>
+          <div className="flex flex-col h-full overflow-y-auto w-72 pt-16 md:pt-0"> 
              <div className="p-4 border-b border-slate-100 space-y-4 flex-shrink-0">
               <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-lg">
                 <button disabled={isSystemBusy} onClick={() => handleModeSwitch('table')} className={`text-xs font-bold py-1.5 rounded ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'table' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>Table</button>
@@ -2075,7 +2067,6 @@ const App = () => {
         <div className={`flex-1 bg-slate-50 ${isMobile ? '' : 'overflow-hidden relative flex flex-col'}`}>
             
             {/* 4. TABLE TABS (Desktop Version Only) */}
-            {/* Di desktop, tab ini tetap di posisi aslinya */}
             {!isMobile && mode === 'table' && (
                 <div className="flex border-b border-slate-200 bg-white flex-shrink-0 sticky top-[43px] md:static z-30">
                     <button onClick={() => handleTabSwitch('master')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'master' ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}><Database className="w-4 h-4"/> MASTER DATA</button>
@@ -2105,7 +2096,6 @@ const App = () => {
 
             <div className={`${mobileTab === 'player' ? 'block' : 'hidden'} md:block ${isMobile ? '' : 'flex-1 overflow-hidden p-0'}`}>
                  {/* 5. SPACER OTOMATIS */}
-                 {/* Menambahkan padding top dinamis agar konten tidak tertutup header yang fixed */}
                  <div className={`max-w-4xl mx-auto px-2 md:px-4 ${isMobile ? 'h-auto' : 'h-full pt-2 md:pt-4'}`}
                       style={{ 
                           paddingTop: isMobile ? (mode === 'table' ? '150px' : '100px') : '0' 
