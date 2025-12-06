@@ -725,7 +725,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
               isAutoScrolling.current = false;
           }, 150);
       }
-  }, [tableViewMode, mode, mobileTab]); // Trigger immediately after mode changes trigger a re-render
+  }, [tableViewMode, mode, mobileTab, isMobile]); // Trigger immediately after mode changes trigger a re-render
 
   useEffect(() => {
       const handleResize = () => {
@@ -761,7 +761,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           window.removeEventListener('resize', handleResize);
           window.removeEventListener('click', handleGlobalClick);
       };
-  }, [mobileTab]);
+  }, [isMobile, mobileTab]);
   
   useEffect(() => {
     tableViewModeRef.current = tableViewMode;
@@ -987,58 +987,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [systemLogs, showLogs, mobileTab]);
-
-  // --- NEW: MEDIA SESSION API INTEGRATION (ANDROID WIDGET) ---
-  useEffect(() => {
-    if ('mediaSession' in navigator) {
-        // 1. Tentukan Item yang sedang aktif
-        const activeItem = currentPlayerList.find(p => p.id === playingIndex);
-        
-        if (activeItem) {
-            // Tentukan Judul & Artis
-            let title = activeItem.word || activeItem.text || "Unknown Item";
-            let artist = "ProLingo Audio";
-            
-            // Jika mode Table, kita bisa lebih detail
-            if (activeItem.isStructured) {
-                artist = activeItem.sentence || "Sentence Practice";
-            }
-            // Jika sedang memutar bagian spesifik (misal Meaning)
-            if (speakingPart === 'meaning') {
-                title = `Artinya: ${activeItem.meaning}`;
-            }
-
-            // 2. Set Metadata ke Android System
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: title,
-                artist: artist,
-                album: currentDeckName || "ProLingo Deck",
-                artwork: [
-                    // Placeholder Icon - Bisa diganti dengan logo aplikasi sendiri
-                    { src: 'https://cdn-icons-png.flaticon.com/512/2995/2995101.png', sizes: '512x512', type: 'image/png' }
-                ]
-            });
-
-            // 3. Set Action Handlers (Tombol di Notifikasi/Lockscreen)
-            navigator.mediaSession.setActionHandler('play', () => {
-                handleGlobalPlay(); // Panggil fungsi play kita
-            });
-            navigator.mediaSession.setActionHandler('pause', () => {
-                handleGlobalPlay(); // Panggil fungsi pause kita
-            });
-            navigator.mediaSession.setActionHandler('previoustrack', () => {
-                handleSmartNav('prev');
-            });
-            navigator.mediaSession.setActionHandler('nexttrack', () => {
-                handleSmartNav('next');
-            });
-            navigator.mediaSession.setActionHandler('stop', () => {
-                forceStopAll();
-            });
-        }
-    }
-  }, [playingIndex, speakingPart, isPlaying, currentPlayerList, currentDeckName]);
-
 
   const addLog = (type, message) => {
       const timestamp = new Date().toLocaleTimeString();
@@ -1392,7 +1340,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // --- HELPER FOR SCROLL PERSISTENCE ---
   const getScrollPos = () => isMobile ? window.scrollY : (listContainerRef.current?.scrollTop || 0);
   
-  const setScrollPos = (val) => {
+  const _setScrollPos = (val) => {
       if (isMobile) window.scrollTo({ top: val, behavior: 'auto' });
       else if (listContainerRef.current) listContainerRef.current.scrollTop = val;
   };
@@ -1423,7 +1371,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       
       if (isSwitchingToPlayingContext && playingIndex !== -1) {
           // Jika playing & switch ke context yang sama, HITUNG POSISI target
-          const activeItem = playlist.find(p => p.id === playingIndex); // Note: playlist used directly might need filtering context logic if complex
+          const _activeItem = playlist.find(p => p.id === playingIndex); // Note: playlist used directly might need filtering context logic if complex
           
           // Filter playlist based on target tab to get correct index
           const targetList = targetTab === 'study' ? playlist.filter(item => studyQueueSet.has(item.id)) : playlist;
@@ -1713,6 +1661,65 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
     });
   };
+  
+    // --- NEW: MEDIA SESSION API INTEGRATION (ANDROID WIDGET) ---// --- MEDIA SESSION API (STABLE, NO WIDGET FLICKER) ---
+    const playRef = useRef(handleGlobalPlay);
+    const navRef = useRef(handleSmartNav);
+    const stopRef = useRef(forceStopAll);
+
+    // Always update ref values to latest functions
+    playRef.current = handleGlobalPlay;
+    navRef.current = handleSmartNav;
+    stopRef.current = forceStopAll;
+
+    useEffect(() => {
+        if (!('mediaSession' in navigator)) return;
+
+        // 1. Tentukan Item yang sedang aktif
+        const activeItem = currentPlayerList.find(p => p.id === playingIndex);
+        if (!activeItem) return;
+
+        // 2. Tentukan Metadata
+        let title = activeItem.word || activeItem.text || "Unknown Item";
+        let artist = "ProLingo Audio";
+
+        // Jika mode Table
+        if (activeItem.isStructured) {
+            artist = activeItem.sentence || "Sentence Practice";
+        }
+
+        // Jika sedang memutar bagian Meaning
+        if (speakingPart === "meaning") {
+            title = `Artinya: ${activeItem.meaning}`;
+        }
+
+        // 3. Set Metadata sekali per perubahan track / part
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title,
+            artist,
+            album: currentDeckName || "ProLingo Deck",
+            artwork: [
+                { 
+                    src: "https://cdn-icons-png.flaticon.com/512/2995/2995101.png",
+                    sizes: "512x512",
+                    type: "image/png"
+                }
+            ]
+        });
+
+        // 4. Set Action Handlers (STABLE with refs)
+        navigator.mediaSession.setActionHandler("play", () => playRef.current());
+        navigator.mediaSession.setActionHandler("pause", () => playRef.current());
+        navigator.mediaSession.setActionHandler("previoustrack", () => navRef.current("prev"));
+        navigator.mediaSession.setActionHandler("nexttrack", () => navRef.current("next"));
+        navigator.mediaSession.setActionHandler("stop", () => stopRef.current());
+
+    }, [
+        playingIndex,
+        speakingPart,
+        currentPlayerList,
+        currentDeckName
+    ]);
 
   const cyclePlaybackMode = () => {
       const modes = ['once', 'sequence', 'repeat_2x', 'loop_one', 'random'];
