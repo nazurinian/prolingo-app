@@ -2,8 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="src/assets/logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/src/assets/logo.svg" />
+    
+    <!-- 1. Update Viewport untuk mematikan zoom tidak sengaja (opsional tapi disarankan utk app) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <!-- 2. Pautkan Manifest yang baru dibuat -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- 3. Warna tema browser agar menyatu dengan app bar -->
+    <!-- <meta name="theme-color" content="#ffffff" /> -->
+
     <title>Prolingo</title>
   </head>
   <body>
