@@ -182,7 +182,7 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
 
                 {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.2</span>
+                    ProLingo <span className="text-indigo-500">v5.3</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
@@ -269,10 +269,9 @@ const MemoizedRow = memo(({
     
     const isMenuOpen = activeMenuId === rowId;
     const isWordUsingLocal = localWordUrl && preferLocalAudio;
-    const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
-    const sentFilename = `${item.displayId}_${sanitizeFilename(item.word)}_sentence.wav`;
-    const meaningFilename = `${item.displayId}_${sanitizeFilename(item.word)}_meaning.wav`;
-
+    // Filenames not really used for rendering but good to have context
+    // const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
+    
     const isWordActive = isActive && speakingPart === 'word';
     const isSentActive = isActive && speakingPart === 'sentence';
     const isMeaningActive = isActive && speakingPart === 'meaning';
@@ -330,28 +329,33 @@ const MemoizedRow = memo(({
                                 {isInQueue ? "Added" : "Add Queue"}
                             </button>
                             <div className="h-[1px] bg-slate-100 dark:bg-slate-700 w-full my-0.5"></div>
+                             
+                             {/* Word Action */}
                              {localWordUrl ? (
-                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word</span></a>
+                                    <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word OK</span></button>
                                 ) : (
                                     <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
                                     </button>
                                 )}
+                             
+                             {/* Sentence Action */}
                              {localSentUrl ? (
-                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent</span></a>
+                                    <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent OK</span></button>
                                 ) : (
                                     <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
                                     </button>
                                 )}
+                             
                              {/* Meaning Option (Edge Only) */}
                              {generatorEngine === 'edge' && (
                                 <>
                                  {localMeaningUrl ? (
-                                        <a href={localMeaningUrl} download={meaningFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Meaning</span></a>
+                                        <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Mean OK</span></button>
                                     ) : (
                                         <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Meaning</span>
+                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Mean</span>
                                         </button>
                                     )}
                                 </>
@@ -436,7 +440,7 @@ const MemoizedRow = memo(({
                         <div className="flex-none md:mb-1">
                             <button
                                 onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); }}
-                                className={`md:w-[70px] md:h-[26px] flex items-center justify-center gap-1 rounded border text-[10px] font-bold transition-all ${isInQueue
+                                className={`md:w-[58px] md:h-[26px] flex items-center justify-center gap-1 rounded border text-[10px] font-bold transition-all ${isInQueue
                                         ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800 hover:bg-red-50 hover:text-red-600'
                                         : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
                                     }`}
@@ -448,29 +452,29 @@ const MemoizedRow = memo(({
                         <div className="flex flex-col gap-2 items-end justify-end">
                             <div className="flex-none">
                                 {localWordUrl ? (
-                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 dark:bg-green-900/30 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></a>
+                                    <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Word</span>
                                     </button>
                                 )}
                             </div>
                             <div className="flex-none">
                                 {localSentUrl ? (
-                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 dark:bg-green-900/30 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></a>
+                                    <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Sent</span>
                                     </button>
                                 )}
                             </div>
-                            {/* NEW: Manual Meaning Download Button (Edge Only) */}
+                            {/* Manual Meaning Download Button (Edge Only) */}
                             {generatorEngine === 'edge' && (
                                 <div className="flex-none">
                                     {localMeaningUrl ? (
-                                        <a href={localMeaningUrl} download={meaningFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-600 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Mean</span></a>
+                                        <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Mean</span></button>
                                     ) : (
-                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
                                             {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Mean</span>
                                         </button>
                                     )}
@@ -516,6 +520,7 @@ const MemoizedTextRow = memo(({
     handleManualRowClick, 
     handleDeleteTextItem, 
     localTextUrl, 
+    // eslint-disable-next-line no-unused-vars
     textFilename, 
     isSystemBusy, 
     generateAIAudio, 
@@ -551,7 +556,7 @@ const MemoizedTextRow = memo(({
                 <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
                     <button onClick={(e) => { e.stopPropagation(); handleDeleteTextItem(item.virtualIdx); }} className={`p-1.5 rounded-md border transition-colors mr-1 ${isActive ? 'bg-blue-500 text-blue-200 border-blue-400 hover:bg-red-500 hover:text-white' : 'bg-slate-50 dark:bg-slate-700 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600 hover:bg-red-50 hover:text-red-500 hover:border-red-200'}`}><Trash2 className="w-3.5 h-3.5"/></button>
                     {localTextUrl ? (
-                        <a href={localTextUrl} download={textFilename} className={`flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded text-xs font-bold border border-green-200 dark:border-green-800 ${isSystemBusy ? 'opacity-50 pointer-events-none' : ''}`}><Download className="w-3 h-3" /> DL</a>
+                         <button disabled className={`flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded text-xs font-bold border border-green-200 dark:border-green-800 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> OK</button>
                     ) : (
                         <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border text-xs font-bold transition-all ${genColorClass} ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
                             {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <GenIcon className="w-3 h-3"/>} Gen
@@ -913,7 +918,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.2 (Edge Hybrid).");
+    addLog("System", "Ready. ProLingo v5.3 (Edge Hybrid).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2356,14 +2361,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
              <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600 dark:text-purple-400"/> Batch Download</h3>
              <div className="space-y-3">
-                 <div className="flex gap-4">
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
-                 </div>
-                 {/* Mobile Batch Meaning */}
-                 <div className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 pt-2">
-                      <button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doMeaning: !p.doMeaning}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doMeaning ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} ${(isBatchDownloading || generatorEngine !== 'edge') ? 'opacity-50' : ''}`}>{batchConfig.doMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Meaning (Indonesian)</button>
-                 </div>
+                 {mode === 'table' ? (
+                     <>
+                        <div className="flex gap-4">
+                            <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
+                            <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
+                        </div>
+                        {/* Mobile Batch Meaning */}
+                        <div className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 pt-2">
+                            <button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doMeaning: !p.doMeaning}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doMeaning ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} ${(isBatchDownloading || generatorEngine !== 'edge') ? 'opacity-50' : ''}`}>
+                                {batchConfig.doMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} 
+                            </button>
+                            <span className={`text-xs ${generatorEngine !== 'edge' ? 'line-through opacity-50 dark:text-slate-500' : 'dark:text-slate-300'}`}>Meaning (Indonesian)</span>
+                        </div>
+                     </>
+                 ) : (
+                     <div className="text-xs text-slate-400 italic">Batch download for full text.</div>
+                 )}
 
                  <div className="flex items-center gap-2 text-xs">
                      <span className="dark:text-slate-400">Range:</span>
@@ -2660,7 +2674,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.2</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.3</h1></div>
             </div>
             </div>
             
@@ -2669,7 +2683,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                  <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg border border-slate-200 dark:border-slate-600 flex-shrink min-w-0 max-w-full overflow-hidden">
                   <Database className="w-4 h-4 text-slate-500 dark:text-slate-400 ml-1 flex-shrink-0" />
                   <div className="flex items-center flex-shrink min-w-0">
-                    <select disabled={isSystemBusy} className={`bg-transparent text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none w-16 lg:w-28 cursor-pointer flex-shrink min-w-0 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
+                    <select disabled={isSystemBusy} className={`bg-transparent text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none w-16 lg:w-28 cursor-pointer flex-shrink min-w-0 dark:bg-slate-700 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
                         <option value="" disabled>Load Saved...</option>
                         {Object.keys(savedDecks).map(name => <option key={name} value={name}>{name}</option>)}
                     </select>
