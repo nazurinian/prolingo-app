@@ -75,33 +75,12 @@ const triggerBrowserDownload = (url, filename) => {
 };
 
 const formatVoiceLabel = (voice) => {
-  let name = voice.name;
+  let name = voice.name || voice.label || "";
   name = name.replace(/^Microsoft /i, '').replace(/^Google /i, '').replace(/^Android /i, '');
+  name = name.replace(/Online \(Natural\) - /i, '');
   name = name.replace(/ - English \(.+\)/i, '').replace(/ English \(.+\)/i, '');
   name = name.replace(/ - Indonesian \(.+\)/i, '').replace(/ Indonesian \(.+\)/i, '');
-  return name; // Simplified label
-};
-
-// Fungsi helper untuk mengelompokkan suara berdasarkan Region/Lang
-const groupVoicesByRegion = (voiceList) => {
-    const groups = {
-        "US (United States)": [],
-        "UK (United Kingdom)": [],
-        "ID (Indonesia)": [],
-        "AU (Australia)": [],
-        "Other": []
-    };
-
-    voiceList.forEach(v => {
-        const lang = v.lang || "";
-        if (lang.includes("US") || lang.includes("en-US")) groups["US (United States)"].push(v);
-        else if (lang.includes("GB") || lang.includes("UK") || lang.includes("en-GB")) groups["UK (United Kingdom)"].push(v);
-        else if (lang.includes("ID") || lang.includes("id-ID") || lang.toLowerCase().includes("indones")) groups["ID (Indonesia)"].push(v);
-        else if (lang.includes("AU") || lang.includes("en-AU")) groups["AU (Australia)"].push(v);
-        else groups["Other"].push(v);
-    });
-
-    return groups;
+  return name; 
 };
 
 // --- HELPER: Highlight Word in Text ---
@@ -124,29 +103,144 @@ const HighlightedText = ({ text, highlight, className = "" }) => {
   );
 };
 
-// --- DATA: EDGE TTS VOICES (EXPANDED) ---
+// --- DATA: EDGE TTS VOICES (COMPREHENSIVE v5.5 LIST) ---
+// Includes all known English variants and ID/JV/SU variants
 const initialEdgeVoices = [
-    { id: "en-US-AriaNeural", label: "Aria (US - Female)", lang: "en-US" },
-    { id: "en-US-GuyNeural", label: "Guy (US - Male)", lang: "en-US" },
-    { id: "en-US-JennyNeural", label: "Jenny (US - Female)", lang: "en-US" },
-    { id: "en-US-ChristopherNeural", label: "Christopher (US - Male)", lang: "en-US" },
-    { id: "en-US-EricNeural", label: "Eric (US - Male)", lang: "en-US" },
-    { id: "en-US-MichelleNeural", label: "Michelle (US - Female)", lang: "en-US" },
-    
-    { id: "en-GB-SoniaNeural", label: "Sonia (UK - Female)", lang: "en-GB" },
-    { id: "en-GB-RyanNeural", label: "Ryan (UK - Male)", lang: "en-GB" },
-    { id: "en-GB-LibbyNeural", label: "Libby (UK - Female)", lang: "en-GB" },
-    
-    { id: "en-AU-NatashaNeural", label: "Natasha (AU - Female)", lang: "en-AU" },
-    { id: "en-AU-WilliamNeural", label: "William (AU - Male)", lang: "en-AU" },
+    // --- UK (GB) ---
+    { id: "en-GB-SoniaNeural", label: "Sonia (UK)", lang: "en-GB" },
+    { id: "en-GB-RyanNeural", label: "Ryan (UK)", lang: "en-GB" },
+    { id: "en-GB-LibbyNeural", label: "Libby (UK)", lang: "en-GB" },
+    { id: "en-GB-MaisieNeural", label: "Maisie (UK - Child)", lang: "en-GB" },
+    { id: "en-GB-ThomasNeural", label: "Thomas (UK)", lang: "en-GB" },
+    { id: "en-GB-AlfiesNeural", label: "Alfie (UK)", lang: "en-GB" }, // Often listed slightly differently in some builds
 
-    { id: "id-ID-GadisNeural", label: "Gadis (ID - Female)", lang: "id-ID" },
-    { id: "id-ID-ArdiNeural", label: "Ardi (ID - Male)", lang: "id-ID" }
+    // --- US ---
+    { id: "en-US-AriaNeural", label: "Aria (US)", lang: "en-US" },
+    { id: "en-US-GuyNeural", label: "Guy (US)", lang: "en-US" },
+    { id: "en-US-JennyNeural", label: "Jenny (US)", lang: "en-US" },
+    { id: "en-US-ChristopherNeural", label: "Christopher (US)", lang: "en-US" },
+    { id: "en-US-EricNeural", label: "Eric (US)", lang: "en-US" },
+    { id: "en-US-MichelleNeural", label: "Michelle (US)", lang: "en-US" },
+    { id: "en-US-AnaNeural", label: "Ana (US - Child)", lang: "en-US" },
+    { id: "en-US-SteffanNeural", label: "Steffan (US)", lang: "en-US" },
+    { id: "en-US-RogerNeural", label: "Roger (US)", lang: "en-US" },
+
+    // --- AU (Australia) ---
+    { id: "en-AU-NatashaNeural", label: "Natasha (AU)", lang: "en-AU" },
+    { id: "en-AU-WilliamNeural", label: "William (AU)", lang: "en-AU" },
+    { id: "en-AU-AnnetteNeural", label: "Annette (AU)", lang: "en-AU" },
+    { id: "en-AU-CarlyNeural", label: "Carly (AU)", lang: "en-AU" },
+    { id: "en-AU-DarrenNeural", label: "Darren (AU)", lang: "en-AU" },
+    { id: "en-AU-DuncanNeural", label: "Duncan (AU)", lang: "en-AU" },
+    { id: "en-AU-ElsieNeural", label: "Elsie (AU)", lang: "en-AU" },
+    { id: "en-AU-FreyaNeural", label: "Freya (AU)", lang: "en-AU" },
+    { id: "en-AU-JoanneNeural", label: "Joanne (AU)", lang: "en-AU" },
+    { id: "en-AU-KenNeural", label: "Ken (AU)", lang: "en-AU" },
+    { id: "en-AU-KimNeural", label: "Kim (AU)", lang: "en-AU" },
+    { id: "en-AU-NeilNeural", label: "Neil (AU)", lang: "en-AU" },
+    { id: "en-AU-TimNeural", label: "Tim (AU)", lang: "en-AU" },
+    { id: "en-AU-TinaNeural", label: "Tina (AU)", lang: "en-AU" },
+
+    // --- SG (Singapore) ---
+    { id: "en-SG-LunaNeural", label: "Luna (SG)", lang: "en-SG" },
+    { id: "en-SG-WayneNeural", label: "Wayne (SG)", lang: "en-SG" },
+
+    // --- OTHER ENGLISH ---
+    { id: "en-CA-ClaraNeural", label: "Clara (Canada)", lang: "en-CA" },
+    { id: "en-CA-LiamNeural", label: "Liam (Canada)", lang: "en-CA" },
+    { id: "en-HK-SamNeural", label: "Sam (Hong Kong)", lang: "en-HK" },
+    { id: "en-HK-YanNeural", label: "Yan (Hong Kong)", lang: "en-HK" },
+    { id: "en-IE-ConnorNeural", label: "Connor (Ireland)", lang: "en-IE" },
+    { id: "en-IE-EmilyNeural", label: "Emily (Ireland)", lang: "en-IE" },
+    { id: "en-IN-NeerjaNeural", label: "Neerja (India)", lang: "en-IN" },
+    { id: "en-IN-PrabhatNeural", label: "Prabhat (India)", lang: "en-IN" },
+    { id: "en-KE-AsiliaNeural", label: "Asilia (Kenya)", lang: "en-KE" },
+    { id: "en-KE-ChilembaNeural", label: "Chilemba (Kenya)", lang: "en-KE" },
+    { id: "en-NG-AbeoNeural", label: "Abeo (Nigeria)", lang: "en-NG" },
+    { id: "en-NG-EzinneNeural", label: "Ezinne (Nigeria)", lang: "en-NG" },
+    { id: "en-NZ-MitchellNeural", label: "Mitchell (New Zealand)", lang: "en-NZ" },
+    { id: "en-NZ-MollyNeural", label: "Molly (New Zealand)", lang: "en-NZ" },
+    { id: "en-PH-JamesNeural", label: "James (Philippines)", lang: "en-PH" },
+    { id: "en-PH-RosaNeural", label: "Rosa (Philippines)", lang: "en-PH" },
+    { id: "en-TZ-ElimuNeural", label: "Elimu (Tanzania)", lang: "en-TZ" },
+    { id: "en-TZ-ImaniNeural", label: "Imani (Tanzania)", lang: "en-TZ" },
+    { id: "en-ZA-LeahNeural", label: "Leah (South Africa)", lang: "en-ZA" },
+    { id: "en-ZA-LukeNeural", label: "Luke (South Africa)", lang: "en-ZA" },
+
+    // --- INDONESIAN REGION (ID, JV, SU) ---
+    { id: "id-ID-GadisNeural", label: "Gadis (Indonesia)", lang: "id-ID" },
+    { id: "id-ID-ArdiNeural", label: "Ardi (Indonesia)", lang: "id-ID" },
+    { id: "jv-ID-DimasNeural", label: "Dimas (Javanese)", lang: "jv-ID" },
+    { id: "jv-ID-SitiNeural", label: "Siti (Javanese)", lang: "jv-ID" },
+    { id: "su-ID-JajangNeural", label: "Jajang (Sundanese)", lang: "su-ID" },
+    { id: "su-ID-TutiNeural", label: "Tuti (Sundanese)", lang: "su-ID" }
 ];
 
+// --- UPDATED HELPER: Grouping with Strict English Priority ---
+// Order: UK -> US -> AU -> SG -> Others
+const groupVoicesByRegion = (voiceList, context = 'general') => {
+    // Definisi Urutan Object Keys menentukan urutan render pada sebagian besar browser modern
+    const groups = {
+        "UK (United Kingdom)": [],
+        "US (United States)": [],
+        "AU (Australia)": [],
+        "SG (Singapore)": [],
+        "Other English": [],
+        // Container untuk Meaning (jika context membolehkan)
+        "Indonesia & Regional (ID/JV/SU)": [] 
+    };
+
+    voiceList.forEach(v => {
+        const lang = (v.lang || "").replace('_', '-'); // Normalize en_US to en-US
+        const isEnglish = lang.startsWith("en");
+        const isIndoRegion = lang.includes("ID") || lang === 'id' || lang === 'jv' || lang === 'su' || lang.includes("indones");
+
+        // --- FILTERING LOGIC ---
+        if (context === 'main') {
+            // Untuk Main Voice: HANYA English. Hapus ID.
+            if (!isEnglish) return; 
+        } else if (context === 'meaning') {
+            // Untuk Meaning Voice: Prioritas ID/JV/SU
+            if (isIndoRegion) {
+                groups["Indonesia & Regional (ID/JV/SU)"].push(v);
+                return;
+            }
+            // Skip English voices for Meaning context (optional, but cleaner UI)
+            return; 
+        } else {
+            // Context 'general' (Browser TTS raw list)
+            // Masukkan ID ke grup Indo, English ke grup English
+            if (isIndoRegion) {
+                groups["Indonesia & Regional (ID/JV/SU)"].push(v);
+                return; 
+            }
+        }
+        
+        // --- GROUPING LOGIC (ENGLISH) ---
+        if (isEnglish) {
+            if (lang.includes("GB") || lang.includes("UK")) groups["UK (United Kingdom)"].push(v);
+            else if (lang.includes("US")) groups["US (United States)"].push(v);
+            else if (lang.includes("AU")) groups["AU (Australia)"].push(v);
+            else if (lang.includes("SG")) groups["SG (Singapore)"].push(v);
+            else groups["Other English"].push(v);
+        }
+    });
+
+    return groups;
+};
+
 // --- HELPER COMPONENT: GROUPED VOICE SELECT ---
-const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className }) => {
-    const grouped = groupVoicesByRegion(voices);
+const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, context = 'general' }) => {
+    const grouped = groupVoicesByRegion(voices, context);
+    const hasOptions = Object.values(grouped).some(g => g.length > 0);
+
+    if (!hasOptions) {
+        return (
+             <div className={`${className} opacity-50 text-slate-500 italic flex items-center px-2`}>
+                No voices available
+             </div>
+        );
+    }
     
     return (
         <select 
@@ -182,11 +276,11 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
 
                 {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.4</span>
+                    ProLingo <span className="text-indigo-500">v5.5</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
-                    <br/><span className="text-sm opacity-70">Hybrid Engine • Edge TTS Enhanced • Grouped Voices</span>
+                    <br/><span className="text-sm opacity-70">Hybrid Engine • Edge TTS Enhanced • Priority Sorting</span>
                 </p>
 
                 {/* Feature Pills */}
@@ -623,7 +717,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const [rate, setRate] = useState(1);
   // eslint-disable-next-line no-unused-vars
-  const [pitch, setPitch] = useState(1); // FIXED: setPitch was missing in v5.1 destructuring
+  const [pitch, setPitch] = useState(1); 
   
   const [playWord, setPlayWord] = useState(true);
   const [playSentence, setPlaySentence] = useState(true);
@@ -671,7 +765,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // EDGE VOICE STATES (Expanded)
   // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
-  const [edgeVoice, setEdgeVoice] = useState("en-US-AriaNeural");
+  const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Default to UK
   const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("id-ID-GadisNeural"); // New: Indo Voice for Edge
 
   const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)
@@ -916,62 +1010,56 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.4 (Edge Hybrid).");
+    addLog("System", "Ready. ProLingo v5.5 (Edge Hybrid).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- VOICE PERSISTENCE ---
+  // --- VOICE PERSISTENCE (Browser TTS) ---
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = synth.getVoices();
       
-      // FIX EDGE MOBILE: If no voices yet, return (will be caught by interval/onvoiceschanged)
       if (allVoices.length === 0) return;
 
-      let engVoices = allVoices.filter(v => v.lang.includes('en'));
+      // Filter and Sort English Voices: UK > US > AU > SG > Others
+      let engVoices = allVoices.filter(v => v.lang.startsWith('en'));
       engVoices.sort((a, b) => {
-          const aUK = a.lang.includes('GB') || a.lang.includes('UK');
-          const bUK = b.lang.includes('GB') || b.lang.includes('UK');
-          if (aUK && !bUK) return -1;
-          if (!aUK && bUK) return 1;
-          return 0;
+          const getPriority = (lang) => {
+              if (lang.includes('GB') || lang.includes('UK')) return 1;
+              if (lang.includes('US')) return 2;
+              if (lang.includes('AU')) return 3;
+              if (lang.includes('SG')) return 4;
+              return 5;
+          };
+          return getPriority(a.lang) - getPriority(b.lang);
       });
       setVoices(engVoices);
-      const defaultEng = engVoices.find(v => v.lang.includes('GB') && (v.name.includes('Female') || v.name.includes('Google'))) || engVoices[0];
       
-      // ONLY set default if nothing is selected
+      // Default English Voice Logic
+      const defaultEng = engVoices[0]; // First item (UK preferred)
       if (!selectedVoiceRef.current && defaultEng) setSelectedVoice(defaultEng);
 
+      // Filter and Sort Indonesian Voices
       let idVoices = allVoices.filter(v => v.lang.includes('ID') || v.lang.includes('id') || v.lang.toLowerCase().includes('indones'));
       setIndonesianVoices(idVoices);
       const defaultId = idVoices.find(v => v.name.includes('Google') || v.name.includes('Indonesia')) || idVoices[0];
       
-      // ONLY set default if nothing is selected
       if (!selectedIndonesianVoiceRef.current && defaultId) setSelectedIndonesianVoice(defaultId);
     };
     
-    // Initial Load
     loadVoices();
-    
-    // Event listener
     if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = loadVoices;
 
-    // FIX EDGE MOBILE LAZY LOADING: Polling for voices every 500ms for 5 seconds
-    // Chrome Android/Edge often return empty voices array on load until triggered or after a delay.
-    // This forces checking multiple times.
     const pollInterval = setInterval(() => {
         const voices = synth.getVoices();
         if (voices.length > 0) {
             loadVoices();
-            // Optional: Don't clear immediately, some browsers load voices in chunks
-            // But usually once length > 0 we are good.
             if (voices.length > 5) clearInterval(pollInterval); 
         }
     }, 500);
 
-    // Stop polling after 5 seconds to save resources
     const timeoutId = setTimeout(() => clearInterval(pollInterval), 5000);
 
     return () => {
@@ -988,7 +1076,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
               const isBackgroundPlayback = (isPlaying || independentPlayingId) && (playingContext && playingContext !== (mode === 'table' ? tableViewMode : 'text'));
               const indexChanged = prevCurrentIndex.current !== currentIndex;
               
-              // Only auto-scroll if actively playing or just switched tabs via Global controls
               const shouldScroll = justSwitchedTab.current || (indexChanged && !isBackgroundPlayback && isPlaying);
 
               if (activeItem && shouldScroll) {
@@ -996,28 +1083,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                   const rowH = rowHeights[mode];
                   
                   if (isMobile) {
-                      // MOBILE SCROLL LOGIC (Full Screen Focus)
-                      
-                      // FIX: Mark as auto-scrolling to block scroll listener interference
                       isAutoScrolling.current = true;
                       
-                      // FIX 1: Auto-Hide Header ONLY if in Player Tab
                       if (!isSidebarOpen && mobileTab === 'player') {
                           setShowAppBar(false); 
                       } else {
                           setShowAppBar(true); 
                       }
                       
-                      // 2. Calculate Target: We want Active Index to be the 2nd item visible.
-                      // So we scroll to the top of (Index - 1).
                       const targetIdx = Math.max(0, idx - 1);
-                      
-                      // 3. Get Container Padding (matches the paddingTop in renderPlaylist)
-                      // Table: 160px, Text: 120px
                       const containerPadding = mode === 'table' ? 160 : 120;
-                      
-                      // 4. Calculate absolute scroll position
-                      // Position in Doc = Padding + (Index * RowHeight)
                       const targetScrollY = containerPadding + (targetIdx * rowH);
                       
                       window.scrollTo({
@@ -1025,38 +1100,28 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                           behavior: 'smooth'
                       });
 
-                      // FIX BARU: MENGGUNAKAN DETEKTOR PERGERAKAN, BUKAN TIMER STATIS
-                      // Ini memastikan timer 1 detik baru jalan SETELAH scroll benar-benar berhenti secara fisik.
                       let lastPos = window.scrollY;
                       let samePosCount = 0;
 
                       const checkScrollComplete = () => {
                           const currentPos = window.scrollY;
-                          
-                          // Jika perbedaan posisi sangat kecil (kurang dari 1px), anggap berhenti
                           if (Math.abs(currentPos - lastPos) < 1) {
                               samePosCount++;
-                              // Pastikan berhenti setidaknya 3 frame berturut-turut untuk menghindari false positive awal
                               if (samePosCount > 3) {
-                                  // SCROLL SELESAI -> Mulai Timer Buffer 0.5 Detik (500ms)
                                   setTimeout(() => {
-                                      isAutoScrolling.current = false; // Unlock Header Logic
+                                      isAutoScrolling.current = false; 
                                   }, 500);
-                                  return; // Stop checking
+                                  return; 
                               }
                           } else {
-                              // Masih bergerak
                               samePosCount = 0;
                               lastPos = currentPos;
                           }
                           requestAnimationFrame(checkScrollComplete);
                       };
-
-                      // Beri waktu browser memulai scroll sebelum mulai mengecek (50ms)
                       setTimeout(() => requestAnimationFrame(checkScrollComplete), 50);
 
                   } else {
-                      // DESKTOP SCROLL LOGIC
                       const targetTop = idx * rowH;
                       if (listContainerRef.current) {
                           listContainerRef.current.scrollTo({
@@ -1082,11 +1147,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   useEffect(() => {
       const handleWindowScroll = () => {
           if (isMobile) {
-              // FIX CRITICAL: Jangan update state jika sedang auto-restore scroll
-              // Ini mencegah posisi "tertimpa" oleh browser saat layout berubah drastis
-              // TAPI untuk scroll biasa, biarkan lewat
-              // if (isAutoScrolling.current) return; 
-
               setScrollTop(window.scrollY);
               setContainerHeight(window.innerHeight); 
           }
@@ -2672,7 +2732,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.4</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.5</h1></div>
             </div>
             </div>
             
@@ -2841,14 +2901,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                             selectedValue={edgeVoice} 
                             onChange={e => setEdgeVoice(e.target.value)}
                             className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                            context="main" // HANYA ENGLISH
                         />
                         
                         <label className="text-[9px] text-slate-500 font-bold block mb-1 mt-2">Meaning Voice (Indonesian)</label>
                         <GroupedVoiceSelect 
-                            voices={edgeVoices.filter(v => v.lang.includes('ID') || v.lang.includes('id'))} 
+                            voices={edgeVoices} 
                             selectedValue={edgeIndonesianVoice} 
                             onChange={e => setEdgeIndonesianVoice(e.target.value)}
                             className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                            context="meaning" // KHUSUS INDO/REGIONAL
                         />
 
                         <div className="grid grid-cols-2 gap-2 mt-2">
@@ -2874,6 +2936,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                     selectedValue={selectedVoice?.name || ''}
                     onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))}
                     className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                    context="main"
                 />
                 
                 {mode === 'table' && (
@@ -2885,6 +2948,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                                 selectedValue={selectedIndonesianVoice?.name || ''}
                                 onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))}
                                 className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                                context="meaning"
                            />
                        ) : (
                            <div className="text-[10px] text-red-400 italic border p-1 rounded bg-red-50 dark:bg-red-900/20">Browser Anda tidak mendukung suara Indonesia.</div>
