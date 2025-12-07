@@ -1,0 +1,110 @@
+[
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (id-ID, ArdiNeural)",
+    "ShortName": "id-ID-ArdiNeural",
+    "Gender": "Male",
+    "Locale": "id-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Ardi Online (Natural) - Indonesian (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  },
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (id-ID, GadisNeural)",
+    "ShortName": "id-ID-GadisNeural",
+    "Gender": "Female",
+    "Locale": "id-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Gadis Online (Natural) - Indonesian (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  },
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (jv-ID, DimasNeural)",
+    "ShortName": "jv-ID-DimasNeural",
+    "Gender": "Male",
+    "Locale": "jv-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Dimas Online (Natural) - Javanese (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  },
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (jv-ID, SitiNeural)",
+    "ShortName": "jv-ID-SitiNeural",
+    "Gender": "Female",
+    "Locale": "jv-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Siti Online (Natural) - Javanese (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  },
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (su-ID, JajangNeural)",
+    "ShortName": "su-ID-JajangNeural",
+    "Gender": "Male",
+    "Locale": "su-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Jajang Online (Natural) - Sundanese (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  },
+  {
+    "Name": "Microsoft Server Speech Text to Speech Voice (su-ID, TutiNeural)",
+    "ShortName": "su-ID-TutiNeural",
+    "Gender": "Female",
+    "Locale": "su-ID",
+    "SuggestedCodec": "audio-24khz-48kbitrate-mono-mp3",
+    "FriendlyName": "Microsoft Tuti Online (Natural) - Sundanese (Indonesia)",
+    "Status": "GA",
+    "VoiceTag": {
+      "ContentCategories": [
+        "General"
+      ],
+      "VoicePersonalities": [
+        "Friendly",
+        "Positive"
+      ]
+    }
+  }
+]

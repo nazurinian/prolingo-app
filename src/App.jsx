@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 // --- SYSTEM ENVIRONMENT VAR ---
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ""; 
+const apiKey = ""; 
 
 // --- VIRTUALIZATION CONSTANTS ---
 const DEFAULT_ROW_HEIGHT_PC = 160; 
@@ -79,23 +79,37 @@ const formatVoiceLabel = (voice) => {
   name = name.replace(/^Microsoft /i, '').replace(/^Google /i, '').replace(/^Android /i, '');
   name = name.replace(/ - English \(.+\)/i, '').replace(/ English \(.+\)/i, '');
   name = name.replace(/ - Indonesian \(.+\)/i, '').replace(/ Indonesian \(.+\)/i, '');
-  let region = "??";
-  if (voice.lang.includes("US")) region = "US";
-  else if (voice.lang.includes("GB") || voice.lang.includes("UK")) region = "UK";
-  else if (voice.lang.includes("ID") || voice.lang.toLowerCase().includes("indones")) region = "ID";
-  else if (voice.lang.includes("AU")) region = "AU";
-  else if (voice.lang.includes("IN")) region = "IN";
-  return `${name} [${region}]`;
+  return name; // Simplified label
+};
+
+// Fungsi helper untuk mengelompokkan suara berdasarkan Region/Lang
+const groupVoicesByRegion = (voiceList) => {
+    const groups = {
+        "US (United States)": [],
+        "UK (United Kingdom)": [],
+        "ID (Indonesia)": [],
+        "AU (Australia)": [],
+        "Other": []
+    };
+
+    voiceList.forEach(v => {
+        const lang = v.lang || "";
+        if (lang.includes("US") || lang.includes("en-US")) groups["US (United States)"].push(v);
+        else if (lang.includes("GB") || lang.includes("UK") || lang.includes("en-GB")) groups["UK (United Kingdom)"].push(v);
+        else if (lang.includes("ID") || lang.includes("id-ID") || lang.toLowerCase().includes("indones")) groups["ID (Indonesia)"].push(v);
+        else if (lang.includes("AU") || lang.includes("en-AU")) groups["AU (Australia)"].push(v);
+        else groups["Other"].push(v);
+    });
+
+    return groups;
 };
 
 // --- HELPER: Highlight Word in Text ---
 const HighlightedText = ({ text, highlight, className = "" }) => {
   if (!highlight || !text) return <span className={className}>{text}</span>;
   
-  // Escape regex special characters from highlight word
   const safeHighlight = highlight.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   
-  // Split text based on highlight word (case insensitive)
   const parts = text.split(new RegExp(`(${safeHighlight})`, 'gi'));
   return (
     <span className={className}>
@@ -110,18 +124,50 @@ const HighlightedText = ({ text, highlight, className = "" }) => {
   );
 };
 
-// --- DATA: EDGE TTS VOICES ---
-const edgeVoicesList = [
+// --- DATA: EDGE TTS VOICES (EXPANDED) ---
+const initialEdgeVoices = [
     { id: "en-US-AriaNeural", label: "Aria (US - Female)", lang: "en-US" },
     { id: "en-US-GuyNeural", label: "Guy (US - Male)", lang: "en-US" },
     { id: "en-US-JennyNeural", label: "Jenny (US - Female)", lang: "en-US" },
     { id: "en-US-ChristopherNeural", label: "Christopher (US - Male)", lang: "en-US" },
+    { id: "en-US-EricNeural", label: "Eric (US - Male)", lang: "en-US" },
+    { id: "en-US-MichelleNeural", label: "Michelle (US - Female)", lang: "en-US" },
+    
     { id: "en-GB-SoniaNeural", label: "Sonia (UK - Female)", lang: "en-GB" },
     { id: "en-GB-RyanNeural", label: "Ryan (UK - Male)", lang: "en-GB" },
+    { id: "en-GB-LibbyNeural", label: "Libby (UK - Female)", lang: "en-GB" },
+    
     { id: "en-AU-NatashaNeural", label: "Natasha (AU - Female)", lang: "en-AU" },
+    { id: "en-AU-WilliamNeural", label: "William (AU - Male)", lang: "en-AU" },
+
     { id: "id-ID-GadisNeural", label: "Gadis (ID - Female)", lang: "id-ID" },
     { id: "id-ID-ArdiNeural", label: "Ardi (ID - Male)", lang: "id-ID" }
 ];
+
+// --- HELPER COMPONENT: GROUPED VOICE SELECT ---
+const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className }) => {
+    const grouped = groupVoicesByRegion(voices);
+    
+    return (
+        <select 
+            className={className} 
+            onChange={onChange} 
+            value={selectedValue}
+        >
+            {Object.keys(grouped).map(groupName => (
+                grouped[groupName].length > 0 && (
+                    <optgroup key={groupName} label={groupName}>
+                        {grouped[groupName].map(v => (
+                            <option key={v.id || v.name} value={v.id || v.name}>
+                                {v.label || formatVoiceLabel(v)}
+                            </option>
+                        ))}
+                    </optgroup>
+                )
+            ))}
+        </select>
+    );
+};
 
 // --- COMPONENT: LANDING PAGE ---
 const LandingPage = ({ onStart, theme, setTheme }) => {
@@ -136,11 +182,11 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
 
                 {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.1</span>
+                    ProLingo <span className="text-indigo-500">v5.2</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
-                    <br/><span className="text-sm opacity-70">Hybrid Engine (Gemini AI + Edge TTS) • Local Proxy Support</span>
+                    <br/><span className="text-sm opacity-70">Hybrid Engine • Edge TTS Enhanced • Grouped Voices</span>
                 </p>
 
                 {/* Feature Pills */}
@@ -167,7 +213,7 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                 </button>
 
-                {/* Theme Selector - FIXED: Added explicit active states visual feedback */}
+                {/* Theme Selector */}
                 <div className="mt-16 p-1.5 bg-white dark:bg-slate-900 rounded-full border border-slate-200 dark:border-slate-800 flex items-center shadow-sm relative">
                     {/* Active Background Indicator */}
                     <div className={`absolute top-1.5 bottom-1.5 w-8 rounded-full bg-indigo-100 dark:bg-slate-800 transition-all duration-300 ease-out ${
@@ -208,7 +254,8 @@ const MemoizedRow = memo(({
     revealedCells, 
     toggleCellReveal, 
     localWordUrl,     
-    localSentUrl,     
+    localSentUrl, 
+    localMeaningUrl,    
     preferLocalAudio, 
     generateAIAudio, 
     aiLoadingId,
@@ -224,6 +271,7 @@ const MemoizedRow = memo(({
     const isWordUsingLocal = localWordUrl && preferLocalAudio;
     const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
     const sentFilename = `${item.displayId}_${sanitizeFilename(item.word)}_sentence.wav`;
+    const meaningFilename = `${item.displayId}_${sanitizeFilename(item.word)}_meaning.wav`;
 
     const isWordActive = isActive && speakingPart === 'word';
     const isSentActive = isActive && speakingPart === 'sentence';
@@ -240,8 +288,11 @@ const MemoizedRow = memo(({
     const sentRevealed = revealedCells[`${rowId}-sent`];
     const meaningRevealed = revealedCells[`${rowId}-meaning`];
 
+    // Dynamic Icon & Style based on Generator Engine
     const GenIcon = generatorEngine === 'edge' ? Server : Wand2;
-    const genColorClass = generatorEngine === 'edge' ? 'text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20' : 'text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 bg-slate-50 dark:bg-slate-800';
+    const genColorClass = generatorEngine === 'edge' 
+        ? 'text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 hover:bg-teal-100 dark:hover:bg-teal-900/40' 
+        : 'text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900 bg-slate-50 dark:bg-slate-800 hover:bg-indigo-50';
 
     return (
         <div style={style} className="absolute left-0 right-0 px-2 py-2 z-0">
@@ -267,7 +318,7 @@ const MemoizedRow = memo(({
 
                     {/* --- MOBILE MENU DROPDOWN --- */}
                     {isMenuOpen && (
-                        <div className="absolute top-8 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-2 flex flex-col gap-2 w-32 z-30 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
+                        <div className="absolute top-8 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-2 flex flex-col gap-2 w-36 z-30 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                              <button
                                 onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); onMenuToggle(null); }}
                                 className={`w-full px-2 py-2 flex items-center gap-2 rounded text-xs font-bold border transition-all ${isInQueue
@@ -280,19 +331,31 @@ const MemoizedRow = memo(({
                             </button>
                             <div className="h-[1px] bg-slate-100 dark:bg-slate-700 w-full my-0.5"></div>
                              {localWordUrl ? (
-                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word Audio</span></a>
+                                    <a href={localWordUrl} download={wordFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word</span></a>
                                 ) : (
                                     <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
                                     </button>
                                 )}
                              {localSentUrl ? (
-                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent Audio</span></a>
+                                    <a href={localSentUrl} download={sentFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent</span></a>
                                 ) : (
                                     <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
                                     </button>
                                 )}
+                             {/* Meaning Option (Edge Only) */}
+                             {generatorEngine === 'edge' && (
+                                <>
+                                 {localMeaningUrl ? (
+                                        <a href={localMeaningUrl} download={meaningFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Meaning</span></a>
+                                    ) : (
+                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Meaning</span>
+                                        </button>
+                                    )}
+                                </>
+                             )}
                         </div>
                     )}
                 </div>
@@ -401,6 +464,18 @@ const MemoizedRow = memo(({
                                     </button>
                                 )}
                             </div>
+                            {/* NEW: Manual Meaning Download Button (Edge Only) */}
+                            {generatorEngine === 'edge' && (
+                                <div className="flex-none">
+                                    {localMeaningUrl ? (
+                                        <a href={localMeaningUrl} download={meaningFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 text-amber-600 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Mean</span></a>
+                                    ) : (
+                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Mean</span>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -423,6 +498,7 @@ const MemoizedRow = memo(({
         prev.preferLocalAudio === next.preferLocalAudio &&
         prev.localWordUrl === next.localWordUrl && 
         prev.localSentUrl === next.localSentUrl && 
+        prev.localMeaningUrl === next.localMeaningUrl && 
         prev.aiLoadingId === next.aiLoadingId &&
         prev.style.top === next.style.top &&
         prev.activeMenuId === next.activeMenuId &&
@@ -447,8 +523,12 @@ const MemoizedTextRow = memo(({
     preferLocalAudio,
     generatorEngine
 }) => {
+    
+    // Dynamic Icon & Style
     const GenIcon = generatorEngine === 'edge' ? Server : Wand2;
-    const genColorClass = generatorEngine === 'edge' ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800' : 'text-indigo-600 dark:text-indigo-400 bg-slate-50 dark:bg-slate-800';
+    const genColorClass = generatorEngine === 'edge' 
+        ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 hover:bg-teal-100 dark:hover:bg-teal-900/40' 
+        : 'text-indigo-600 dark:text-indigo-400 bg-slate-50 dark:bg-slate-800 border-indigo-100 dark:border-indigo-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/30';
 
     return (
         <div 
@@ -473,7 +553,7 @@ const MemoizedTextRow = memo(({
                     {localTextUrl ? (
                         <a href={localTextUrl} download={textFilename} className={`flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded text-xs font-bold border border-green-200 dark:border-green-800 ${isSystemBusy ? 'opacity-50 pointer-events-none' : ''}`}><Download className="w-3 h-3" /> DL</a>
                     ) : (
-                        <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-xs font-bold ${genColorClass} ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
+                        <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border text-xs font-bold transition-all ${genColorClass} ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
                             {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <GenIcon className="w-3 h-3"/>} Gen
                         </button>
                     )}
@@ -511,7 +591,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [savedIndices, setSavedIndices] = useState({ table: -1, text: -1 });
   
+  // -- NEW: SCROLL POSITION PERSISTENCE --
   const viewScrollPosRef = useRef({ master: 0, study: 0, text: 0 });
+  // -- NEW: Pending Scroll Restoration Ref --
   const pendingScrollRestoration = useRef(null);
 
   const [masterIndex, setMasterIndex] = useState(-1);
@@ -537,7 +619,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedIndonesianVoiceRef = useRef(null);
 
   const [rate, setRate] = useState(1);
-  const [pitch] = useState(1);
+  // eslint-disable-next-line no-unused-vars
+  const [pitch, setPitch] = useState(1); // FIXED: setPitch was missing in v5.1 destructuring
   
   const [playWord, setPlayWord] = useState(true);
   const [playSentence, setPlaySentence] = useState(true);
@@ -560,7 +643,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   
   const [mobileTab, setMobileTab] = useState('player'); 
   const [isBatchOpen, setIsBatchOpen] = useState(false);
-  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doSentence: true });
+  // NEW: Batch Config includes doMeaning
+  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doSentence: true, doMeaning: false });
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [batchStatusText, setBatchStatusText] = useState(""); 
   const [isBatchStopping, setIsBatchStopping] = useState(false); 
@@ -580,7 +664,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   // --- NEW: GENERATOR ENGINE STATES ---
   const [generatorEngine, setGeneratorEngine] = useState('gemini'); // 'gemini' | 'edge'
+  
+  // EDGE VOICE STATES (Expanded)
+  // eslint-disable-next-line no-unused-vars
+  const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
   const [edgeVoice, setEdgeVoice] = useState("en-US-AriaNeural");
+  const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("id-ID-GadisNeural"); // New: Indo Voice for Edge
+
   const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)
   const [edgePitch, setEdgePitch] = useState(0); // -20 to +20 (Hz)
 
@@ -823,7 +913,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.1 (Edge Hybrid).");
+    addLog("System", "Ready. ProLingo v5.2 (Edge Hybrid).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1262,6 +1352,28 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (stopSignalRef.current) { resolve(); return; }
 
       if (part === 'meaning') {
+         // Special handling: if Edge mode, we might want to try playing local audio for meaning too
+         if (generatorEngine === 'edge' && preferLocalAudio) {
+              const audioUrl = getLocalAudioUrl(item, 'meaning');
+              if (audioUrl) {
+                  const audio = new Audio(audioUrl);
+                  currentAudioObjRef.current = audio;
+                  audio.rate = rate;
+                  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+                  
+                  audio.onended = () => {
+                      currentAudioObjRef.current = null;
+                      resolve();
+                  };
+                  audio.onerror = () => {
+                      // Fallback to TTS if file fails
+                      playTTS(text, selectedIndonesianVoiceRef.current).then(resolve);
+                  };
+                  audio.play().catch(() => resolve());
+                  return;
+              }
+         }
+         
          playTTS(text, selectedIndonesianVoiceRef.current).then(resolve);
          return;
       }
@@ -1858,9 +1970,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         if (part === 'word') {
             textToSpeak = item.word;
             filename = `${item.displayId}_${safeWord}_word.wav`;
-        } else {
+        } else if (part === 'sentence') {
             textToSpeak = item.sentence;
             filename = `${item.displayId}_${safeWord}_sentence.wav`;
+        } else if (part === 'meaning') {
+            textToSpeak = item.meaning;
+            filename = `${item.displayId}_${safeWord}_meaning.wav`;
         }
     } else {
         textToSpeak = item.text;
@@ -1878,12 +1993,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
              const rateStr = edgeRate >= 0 ? `+${edgeRate}%` : `${edgeRate}%`;
              const pitchStr = edgePitch >= 0 ? `+${edgePitch}Hz` : `${edgePitch}Hz`;
 
+             // Determine Voice based on Part
+             const activeVoiceId = part === 'meaning' ? edgeIndonesianVoice : edgeVoice;
+
              const response = await fetch('/api/tts', {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify({
                      text: textToSpeak,
-                     voice: edgeVoice, // Use Edge specific voice ID
+                     voice: activeVoiceId, 
                      rate: rateStr,
                      pitch: pitchStr
                  })
@@ -1997,6 +2115,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                 await generateAIAudio(item, 'sentence'); // Uses the smart wrapper
                 await new Promise(r => setTimeout(r, 1000)); 
             }
+            if (batchStopSignalRef.current) break;
+            
+            // New Meaning Logic
+            if (batchConfig.doMeaning && generatorEngine === 'edge') { 
+                 setBatchStatusText(`${item.displayId} Meaning`); 
+                 await generateAIAudio(item, 'meaning'); 
+                 await new Promise(r => setTimeout(r, 1000)); 
+            }
         } else {
              setBatchStatusText(`${item.displayId} Full`); 
              await generateAIAudio(item, 'full'); // Uses the smart wrapper
@@ -2054,6 +2180,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                    let type = null;
                    if (lowerName.includes('word') || lowerName.includes('kata')) type = 'word';
                    else if (lowerName.includes('sentence') || lowerName.includes('kalimat')) type = 'sentence';
+                   else if (lowerName.includes('meaning') || lowerName.includes('arti')) type = 'meaning';
                    if (type) { newMap[`${id}_${type}`] = URL.createObjectURL(file); count++; }
                 }
             }
@@ -2110,18 +2237,27 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         </div>
         <div className="p-3 space-y-3">
              {mode === 'table' ? (
-                 <div className="flex gap-2 text-xs">
-                     <div className="flex items-center gap-1">
-                         <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                             {batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}
-                         </button>
-                         <span className="dark:text-slate-300">Words</span>
+                 <div className="flex flex-col gap-2 text-xs">
+                     <div className="flex gap-2">
+                         <div className="flex items-center gap-1">
+                             <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                 {batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}
+                             </button>
+                             <span className="dark:text-slate-300">Words</span>
+                         </div>
+                         <div className="flex items-center gap-1">
+                             <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                 {batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}
+                             </button>
+                             <span className="dark:text-slate-300">Sentences</span>
+                         </div>
                      </div>
-                     <div className="flex items-center gap-1">
-                         <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                             {batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}
+                     {/* Meaning Checkbox (Edge Only) */}
+                     <div className="flex items-center gap-1 border-t border-slate-100 dark:border-slate-700 pt-2">
+                          <button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doMeaning: !p.doMeaning}))} className={`${batchConfig.doMeaning ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} ${(isBatchDownloading || generatorEngine !== 'edge') ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                             {batchConfig.doMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}
                          </button>
-                         <span className="dark:text-slate-300">Sentences</span>
+                         <span className={`dark:text-slate-300 ${generatorEngine !== 'edge' ? 'line-through opacity-50' : ''}`}>Meaning (Indonesian)</span>
                      </div>
                  </div>
              ) : (
@@ -2169,7 +2305,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                      </>
                  )}
              </button>
-             <div className="text-[10px] text-center italic text-slate-400">Using: {generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini AI'}</div>
+             <div className="text-[10px] text-center italic text-slate-400 mt-1">Using: {generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini AI'}</div>
         </div>
      </div>
   );
@@ -2185,7 +2321,63 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                <FolderOpen className="w-3.5 h-3.5" /> Load Audio Folder
              </button>
           </div>
-          {/* Mobile Tools Simplified - Full functionality in Sidebar */}
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
+             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Database className="w-4 h-4"/> Decks</h3>
+             <select disabled={isSystemBusy} className={`w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded mb-2 bg-slate-50 dark:bg-slate-700 dark:text-white ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
+                <option value="" disabled>Load Saved...</option>
+                {Object.keys(savedDecks).map(name => <option key={name} value={name}>{name}</option>)}
+            </select>
+             <div className="flex gap-2">
+                 <input disabled={isSystemBusy} className={`flex-1 border border-slate-200 dark:border-slate-600 rounded px-2 text-xs dark:bg-slate-700 dark:text-white ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="Deck Name" value={currentDeckName} onChange={(e) => setCurrentDeckName(e.target.value)} />
+                 <button disabled={isSystemBusy} onClick={handleSaveDeck} className={`p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}><Save className="w-4 h-4"/></button>
+                 {selectedDeckId && <button disabled={isSystemBusy} onClick={handleDeleteDeckInit} className={`p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}><Trash2 className="w-4 h-4"/></button>}
+             </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
+             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><ListPlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/> Add to Queue (Range)</h3>
+             <div className="flex gap-2">
+                 <input 
+                    className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-3 py-2 focus:outline-indigo-500 dark:bg-slate-700 dark:text-white"
+                    placeholder="Ex: 1-10, 15"
+                    value={rangeInput}
+                    onChange={(e) => setRangeInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRangeAdd()}
+                    disabled={isSystemBusy}
+                 />
+                 <button onClick={handleRangeAdd} disabled={!rangeInput.trim() || isSystemBusy} className={`px-4 py-2 rounded text-xs font-bold ${!rangeInput.trim() || isSystemBusy ? 'bg-slate-100 dark:bg-slate-700 text-slate-400' : 'bg-indigo-600 text-white'}`}>
+                     Apply
+                 </button>
+             </div>
+             <p className="text-[10px] text-slate-400 mt-2 italic">Menambahkan item ke Study Queue berdasarkan nomor urut.</p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
+             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600 dark:text-purple-400"/> Batch Download</h3>
+             <div className="space-y-3">
+                 <div className="flex gap-4">
+                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
+                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
+                 </div>
+                 {/* Mobile Batch Meaning */}
+                 <div className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-700 pt-2">
+                      <button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doMeaning: !p.doMeaning}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doMeaning ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'} ${(isBatchDownloading || generatorEngine !== 'edge') ? 'opacity-50' : ''}`}>{batchConfig.doMeaning ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Meaning (Indonesian)</button>
+                 </div>
+
+                 <div className="flex items-center gap-2 text-xs">
+                     <span className="dark:text-slate-400">Range:</span>
+                     <input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.start} onChange={e=>setBatchConfig(p=>({...p, start:e.target.value}))} />
+                     <span className="dark:text-slate-400">to</span>
+                     <input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.end} onChange={e=>setBatchConfig(p=>({...p, end:e.target.value}))} />
+                 </div>
+                 <button onClick={runBatchDownload} disabled={isSystemBusy && !isBatchDownloading} className={`w-full py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 ${(isSystemBusy && !isBatchDownloading) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : (isBatchDownloading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 text-white hover:bg-purple-700')}`}>
+                     {isBatchDownloading ? <Loader2 className="w-3 h-3 animate-spin"/> : <DownloadCloudIcon className="w-3 h-3"/>}
+                     {isBatchDownloading ? "Downloading..." : "Start Batch Download"}
+                 </button>
+                 <div className="text-[10px] text-center italic text-slate-400">Using: {generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini AI'}</div>
+             </div>
+          </div>
       </div>
   );
 
@@ -2279,6 +2471,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
     const totalHeight = totalCount * rowHeight;
     
+    // --- FIX MOBILE SCROLL & ADDRESS BAR HIDING ---
     let mobileSpacerHeight = 0;
     if (isMobile) {
         const headerOffset = mode === 'table' ? 160 : 115; 
@@ -2309,6 +2502,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       <div 
          ref={listContainerRef} 
          onScroll={handleScroll} 
+         // MODIFIED PADDING: pb-20 (Requested by user)
          className={`${isMobile ? 'overflow-visible pb-20' : 'h-full overflow-y-auto pb-0 custom-scrollbar'} relative w-full touch-pan-y`}
       >
         {mode === 'text' && (
@@ -2335,6 +2529,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
              </div>
         )}
 
+        {/* Desktop Only Range Input */}
         {mode === 'table' && tableViewMode === 'master' && (
              <div className="hidden md:block sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 pb-2 px-1">
                  <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-indigo-100 dark:border-slate-700 shadow-sm flex gap-2 items-center">
@@ -2356,6 +2551,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         )}
 
         
+        {/* FIX: Container Height = Total Konten + Spacer Mobile. Removed Subtraction logic that cut off last items. */}
         <div style={{ height: totalHeight + mobileSpacerHeight, position: 'relative' }} className="w-full">
             {virtualItems.map((item) => {
                if (mode === 'table' && item.isStructured) {
@@ -2364,6 +2560,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                    const isInQueue = studyQueueSet.has(item.id);
                    const localWordUrl = localAudioMapTable[`${item.displayId}_word`] || null;
                    const localSentUrl = localAudioMapTable[`${item.displayId}_sentence`] || null;
+                   const localMeaningUrl = localAudioMapTable[`${item.displayId}_meaning`] || null;
 
                    return (
                        <MemoizedRow 
@@ -2382,7 +2579,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                            revealedCells={revealedCells}
                            toggleCellReveal={toggleCellReveal}
                            localWordUrl={localWordUrl} 
-                           localSentUrl={localSentUrl} 
+                           localSentUrl={localSentUrl}
+                           localMeaningUrl={localMeaningUrl}
                            preferLocalAudio={preferLocalAudio}
                            generateAIAudio={generateAIAudio}
                            aiLoadingId={aiLoadingId}
@@ -2426,6 +2624,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                }
              })}
              
+             {/* RENDER MOBILE SPACER IF NEEDED (Allows Address Bar Hiding) */}
              {isMobile && mobileSpacerHeight > 0 && (
                  <div 
                     style={{ 
@@ -2461,7 +2660,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.1</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.2</h1></div>
             </div>
             </div>
             
@@ -2558,6 +2757,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
       <div className="flex-1 flex overflow-hidden relative z-0">
         
+        {/* --- BACKDROP FOR MOBILE SIDEBAR --- */}
         {isMobile && isSidebarOpen && (
           <div 
             className="fixed inset-0 bg-black/50 z-[40] backdrop-blur-sm"
@@ -2577,6 +2777,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain"> 
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
+              {/* THEME SELECTOR IN SIDEBAR */}
               <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Theme</span>
                   <div className="flex gap-1">
@@ -2624,13 +2825,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                         <p className="text-[9px] text-slate-400 text-right">Requires API Key</p>
                     </div>
                 ) : (
-                    // EDGE TTS CONTROLS
+                    // EDGE TTS CONTROLS (Grouped)
                     <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
-                        <select className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium" onChange={e => setEdgeVoice(e.target.value)} value={edgeVoice}>
-                            {edgeVoicesList.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                        </select>
+                        <label className="text-[9px] text-slate-500 font-bold block mb-1">Main Voice (English)</label>
+                        <GroupedVoiceSelect 
+                            voices={edgeVoices} 
+                            selectedValue={edgeVoice} 
+                            onChange={e => setEdgeVoice(e.target.value)}
+                            className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                        />
                         
-                        <div className="grid grid-cols-2 gap-2">
+                        <label className="text-[9px] text-slate-500 font-bold block mb-1 mt-2">Meaning Voice (Indonesian)</label>
+                        <GroupedVoiceSelect 
+                            voices={edgeVoices.filter(v => v.lang.includes('ID') || v.lang.includes('id'))} 
+                            selectedValue={edgeIndonesianVoice} 
+                            onChange={e => setEdgeIndonesianVoice(e.target.value)}
+                            className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                        />
+
+                        <div className="grid grid-cols-2 gap-2 mt-2">
                              <div>
                                  <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)</label>
                                  <input type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600" />
@@ -2647,17 +2860,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
               <div className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS (Playback)</p>
-                <select className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600" onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))} value={selectedVoice?.name || ''}>
-                  {voices.map(v => <option key={v.name} value={v.name}>{formatVoiceLabel(v)}</option>)}
-                </select>
+                {/* Browser Voice Grouped Select */}
+                <GroupedVoiceSelect 
+                    voices={voices}
+                    selectedValue={selectedVoice?.name || ''}
+                    onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))}
+                    className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                />
                 
                 {mode === 'table' && (
                   <div className="mt-2">
                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Indonesian Voice (Meaning)</p>
                        {indonesianVoices.length > 0 ? (
-                           <select className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600" onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))} value={selectedIndonesianVoice?.name || ''}>
-                             {indonesianVoices.map(v => <option key={v.name} value={v.name}>{formatVoiceLabel(v)}</option>)}
-                           </select>
+                           <GroupedVoiceSelect
+                                voices={indonesianVoices}
+                                selectedValue={selectedIndonesianVoice?.name || ''}
+                                onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))}
+                                className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                           />
                        ) : (
                            <div className="text-[10px] text-red-400 italic border p-1 rounded bg-red-50 dark:bg-red-900/20">Browser Anda tidak mendukung suara Indonesia.</div>
                        )}
