@@ -9,7 +9,7 @@ import {
   Hash, Music, Bot, AlertTriangle, Terminal, XCircle, ChevronDown, Layers, Smartphone,
   Monitor, Cpu, CheckSquare, Square, ChevronRight, MoreHorizontal, ArrowRightToLine,
   Languages, Eye, EyeOff, Brain, BookOpen, Plus, Send, ListPlus, MinusCircle, Eraser,
-  ChevronsUp, MoreVertical, LayoutTemplate, Moon, Sun, Laptop, ArrowRight
+  ChevronsUp, MoreVertical, LayoutTemplate, Moon, Sun, Laptop, ArrowRight, Server, CloudLightning
 } from 'lucide-react';
 
 // --- SYSTEM ENVIRONMENT VAR ---
@@ -110,6 +110,19 @@ const HighlightedText = ({ text, highlight, className = "" }) => {
   );
 };
 
+// --- DATA: EDGE TTS VOICES ---
+const edgeVoicesList = [
+    { id: "en-US-AriaNeural", label: "Aria (US - Female)", lang: "en-US" },
+    { id: "en-US-GuyNeural", label: "Guy (US - Male)", lang: "en-US" },
+    { id: "en-US-JennyNeural", label: "Jenny (US - Female)", lang: "en-US" },
+    { id: "en-US-ChristopherNeural", label: "Christopher (US - Male)", lang: "en-US" },
+    { id: "en-GB-SoniaNeural", label: "Sonia (UK - Female)", lang: "en-GB" },
+    { id: "en-GB-RyanNeural", label: "Ryan (UK - Male)", lang: "en-GB" },
+    { id: "en-AU-NatashaNeural", label: "Natasha (AU - Female)", lang: "en-AU" },
+    { id: "id-ID-GadisNeural", label: "Gadis (ID - Female)", lang: "id-ID" },
+    { id: "id-ID-ArdiNeural", label: "Ardi (ID - Male)", lang: "id-ID" }
+];
+
 // --- COMPONENT: LANDING PAGE ---
 const LandingPage = ({ onStart, theme, setTheme }) => {
     return (
@@ -123,19 +136,19 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
 
                 {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.0</span>
+                    ProLingo <span className="text-indigo-500">v5.1</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
-                    <br/><span className="text-sm opacity-70">Media Session Support • Local Storage • Dark Mode</span>
+                    <br/><span className="text-sm opacity-70">Hybrid Engine (Gemini AI + Edge TTS) • Local Proxy Support</span>
                 </p>
 
                 {/* Feature Pills */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12 w-full max-w-2xl">
                     {[
                         { icon: Database, text: "Custom Decks", color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
-                        { icon: Wand2, text: "AI Generation", color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-900/20" },
-                        { icon: Music, text: "Media Session", color: "text-green-500", bg: "bg-green-50 dark:bg-green-900/20" },
+                        { icon: Server, text: "Edge TTS Node", color: "text-teal-500", bg: "bg-teal-50 dark:bg-teal-900/20" },
+                        { icon: CloudLightning, text: "Gemini AI", color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-900/20" },
                         { icon: Brain, text: "Memory Drill", color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-900/20" }
                     ].map((feat, idx) => (
                         <div key={idx} className={`${feat.bg} p-3 rounded-xl flex items-center justify-center gap-2 border border-transparent dark:border-white/5`}>
@@ -203,7 +216,8 @@ const MemoizedRow = memo(({
     idx,
     style,
     activeMenuId,      
-    onMenuToggle       
+    onMenuToggle,
+    generatorEngine       
 }) => {
     
     const isMenuOpen = activeMenuId === rowId;
@@ -225,6 +239,9 @@ const MemoizedRow = memo(({
     const wordRevealed = revealedCells[`${rowId}-word`];
     const sentRevealed = revealedCells[`${rowId}-sent`];
     const meaningRevealed = revealedCells[`${rowId}-meaning`];
+
+    const GenIcon = generatorEngine === 'edge' ? Server : Wand2;
+    const genColorClass = generatorEngine === 'edge' ? 'text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20' : 'text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 bg-slate-50 dark:bg-slate-800';
 
     return (
         <div style={style} className="absolute left-0 right-0 px-2 py-2 z-0">
@@ -265,15 +282,15 @@ const MemoizedRow = memo(({
                              {localWordUrl ? (
                                     <a href={localWordUrl} download={wordFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word Audio</span></a>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 border-indigo-100 dark:border-indigo-900 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
                                     </button>
                                 )}
                              {localSentUrl ? (
                                     <a href={localSentUrl} download={sentFilename} onClick={(e) => { e.stopPropagation(); onMenuToggle(null); }} className={`w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent Audio</span></a>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border bg-slate-50 dark:bg-slate-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 border-purple-100 dark:border-purple-900 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
                                     </button>
                                 )}
                         </div>
@@ -370,8 +387,8 @@ const MemoizedRow = memo(({
                                 {localWordUrl ? (
                                     <a href={localWordUrl} download={wordFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 dark:bg-green-900/30 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></a>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} <span className="text-[9px] font-bold">Word</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Word</span>
                                     </button>
                                 )}
                             </div>
@@ -379,8 +396,8 @@ const MemoizedRow = memo(({
                                 {localSentUrl ? (
                                     <a href={localSentUrl} download={sentFilename} onClick={(e) => e.stopPropagation()} className={`w-[70px] h-[26px] bg-green-50 dark:bg-green-900/30 hover:bg-green-100 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 ${isSystemBusy ? 'pointer-events-none opacity-50' : ''}`}><Download className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></a>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border bg-slate-50 dark:bg-slate-800 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 border-purple-100 dark:border-purple-900 shadow-sm ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />} <span className="text-[9px] font-bold">Sent</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[70px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Sent</span>
                                     </button>
                                 )}
                             </div>
@@ -408,7 +425,8 @@ const MemoizedRow = memo(({
         prev.localSentUrl === next.localSentUrl && 
         prev.aiLoadingId === next.aiLoadingId &&
         prev.style.top === next.style.top &&
-        prev.activeMenuId === next.activeMenuId 
+        prev.activeMenuId === next.activeMenuId &&
+        prev.generatorEngine === next.generatorEngine
     );
 });
 
@@ -426,8 +444,12 @@ const MemoizedTextRow = memo(({
     isSystemBusy, 
     generateAIAudio, 
     aiLoadingId,
-    preferLocalAudio
+    preferLocalAudio,
+    generatorEngine
 }) => {
+    const GenIcon = generatorEngine === 'edge' ? Server : Wand2;
+    const genColorClass = generatorEngine === 'edge' ? 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800' : 'text-indigo-600 dark:text-indigo-400 bg-slate-50 dark:bg-slate-800';
+
     return (
         <div 
             style={style} 
@@ -451,8 +473,8 @@ const MemoizedTextRow = memo(({
                     {localTextUrl ? (
                         <a href={localTextUrl} download={textFilename} className={`flex items-center gap-1 px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded text-xs font-bold border border-green-200 dark:border-green-800 ${isSystemBusy ? 'opacity-50 pointer-events-none' : ''}`}><Download className="w-3 h-3" /> DL</a>
                     ) : (
-                        <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border bg-slate-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-xs font-bold ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
-                            {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3"/>} Gen
+                        <button disabled={isSystemBusy} onClick={() => generateAIAudio(item, 'full')} className={`flex items-center gap-1 px-2 py-1 rounded border hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-xs font-bold ${genColorClass} ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}>
+                            {aiLoadingId === `${item.id}-full` ? <Loader2 className="w-3 h-3 animate-spin"/> : <GenIcon className="w-3 h-3"/>} Gen
                         </button>
                     )}
                 </div>
@@ -468,7 +490,8 @@ const MemoizedTextRow = memo(({
         prev.isSystemBusy === next.isSystemBusy &&
         prev.localTextUrl === next.localTextUrl &&
         prev.aiLoadingId === next.aiLoadingId &&
-        prev.preferLocalAudio === next.preferLocalAudio
+        prev.preferLocalAudio === next.preferLocalAudio &&
+        prev.generatorEngine === next.generatorEngine
     );
 });
 
@@ -488,9 +511,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [savedIndices, setSavedIndices] = useState({ table: -1, text: -1 });
   
-  // -- NEW: SCROLL POSITION PERSISTENCE --
   const viewScrollPosRef = useRef({ master: 0, study: 0, text: 0 });
-  // -- NEW: Pending Scroll Restoration Ref --
   const pendingScrollRestoration = useRef(null);
 
   const [masterIndex, setMasterIndex] = useState(-1);
@@ -556,6 +577,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [aiVoiceName, setAiVoiceName] = useState("Kore");
   const [aiLoadingId, setAiLoadingId] = useState(null);
   const [systemLogs, setSystemLogs] = useState([]); 
+
+  // --- NEW: GENERATOR ENGINE STATES ---
+  const [generatorEngine, setGeneratorEngine] = useState('gemini'); // 'gemini' | 'edge'
+  const [edgeVoice, setEdgeVoice] = useState("en-US-AriaNeural");
+  const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)
+  const [edgePitch, setEdgePitch] = useState(0); // -20 to +20 (Hz)
 
   const [localAudioMapTable, setLocalAudioMapTable] = useState({}); 
   const [localAudioMapText, setLocalAudioMapText] = useState({});
@@ -796,7 +823,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.0 (Media Session).");
+    addLog("System", "Ready. ProLingo v5.1 (Edge Hybrid).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1840,40 +1867,75 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         filename = `${item.displayId}_text.wav`;
     }
 
-    addLog("Info", `Generating #${item.displayId}...`);
-    
-    // FIX POINT 1: Use userApiKey if apiKey is empty (Local dev fallback)
-    const keyToUse = apiKey || userApiKey; 
+    addLog("Info", `Gen (${generatorEngine}) #${item.displayId}...`);
 
     try {
-      if (!keyToUse) throw new Error("API Key Missing! Masukkan key di menu Tools.");
+        let blob = null;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${keyToUse}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: textToSpeak }] }],
-          generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: aiVoiceName } } } }
-        })
-      });
+        // --- BRANCH LOGIC: EDGE TTS vs GEMINI AI ---
+        if (generatorEngine === 'edge') {
+             // 1. EDGE TTS (Local Backend)
+             const rateStr = edgeRate >= 0 ? `+${edgeRate}%` : `${edgeRate}%`;
+             const pitchStr = edgePitch >= 0 ? `+${edgePitch}Hz` : `${edgePitch}Hz`;
 
-      if (!response.ok) throw new Error(`API Error ${response.status}`);
+             const response = await fetch('/api/tts', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     text: textToSpeak,
+                     voice: edgeVoice, // Use Edge specific voice ID
+                     rate: rateStr,
+                     pitch: pitchStr
+                 })
+             });
 
-      const data = await response.json();
-      if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-        const base64Audio = data.candidates[0].content.parts[0].inlineData.data;
-        const url = URL.createObjectURL(new Blob([encodeWAV(base64ToInt16Array(base64Audio))], { type: 'audio/wav' }));
-        
-        if (mode === 'table') setLocalAudioMapTable(prev => ({ ...prev, [`${item.displayId}_${part}`]: url }));
-        else setLocalAudioMapText(prev => ({ ...prev, [`${item.displayId}`]: url }));
+             if (!response.ok) {
+                 const errText = await response.text();
+                 throw new Error(`Edge API Error: ${errText}`);
+             }
+             
+             blob = await response.blob();
+        } 
+        else {
+            // 2. GEMINI AI (Cloud API) 
+            const keyToUse = apiKey || userApiKey; 
+            if (!keyToUse) {
+                alert("API Key Kosong! Masukkan key di menu Tools.");
+                return;
+            }
 
-        triggerBrowserDownload(url, filename);
-        addLog("Success", `Saved: ${filename}`);
-      } else {
-        addLog("Warn", `Gagal (Safety/Refusal): ${textToSpeak.substring(0,20)}...`);
-        alert(`Gagal: AI menolak teks ini (Safety/Model Issue).\nCoba ganti kata atau gunakan Voice lain.`);
-        return; 
-      }
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${keyToUse}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                contents: [{ parts: [{ text: textToSpeak }] }],
+                generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: aiVoiceName } } } }
+                })
+            });
+
+            if (!response.ok) throw new Error(`Gemini API Error ${response.status}`);
+            const data = await response.json();
+            
+            if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+                const base64Audio = data.candidates[0].content.parts[0].inlineData.data;
+                blob = new Blob([encodeWAV(base64ToInt16Array(base64Audio))], { type: 'audio/wav' });
+            } else {
+                addLog("Warn", `Gagal (Safety/Refusal): ${textToSpeak.substring(0,20)}...`);
+                alert(`Gagal: AI menolak teks ini (Safety/Model Issue).\nCoba ganti kata atau gunakan Voice lain.`);
+                return; 
+            }
+        }
+
+        // Common Processing (Save & Download)
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            if (mode === 'table') setLocalAudioMapTable(prev => ({ ...prev, [`${item.displayId}_${part}`]: url }));
+            else setLocalAudioMapText(prev => ({ ...prev, [`${item.displayId}`]: url }));
+
+            triggerBrowserDownload(url, filename);
+            addLog("Success", `Saved: ${filename}`);
+        }
+
     } catch (e) { 
         if (e.message.includes('401') || e.message.includes('403')) {
             addLog("Error", `Akses Ditolak (${e.message})`);
@@ -1881,7 +1943,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         } else {
             console.error(e); // Only log real unknown errors
             addLog("Error", `Gen Failed: ${e.message}`);
-            alert(`Gagal: ${e.message}`); 
+            alert(`Gagal: ${e.message}`);
         }
     } 
     finally { setAiLoadingId(null); }
@@ -1907,14 +1969,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         return;
     }
 
-    // FIX POINT 1: Use userApiKey fallback here too
-    const keyToUse = apiKey || userApiKey; 
-
-    if (!keyToUse) {
-        alert("API Key Kosong! Masukkan key di menu Tools.");
-        return;
-    }
-
     const targets = playlist.filter(p => p.displayId >= startIdx && p.displayId <= endIdx);
     
     if (targets.length === 0) {
@@ -1923,7 +1977,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     setIsBatchDownloading(true);
-    addLog("Info", `Starting BATCH DL (${targets.length} items)...`);
+    addLog("Info", `Starting BATCH DL (${targets.length} items) via ${generatorEngine.toUpperCase()}...`);
 
     for (const item of targets) {
         if (batchStopSignalRef.current) {
@@ -1934,18 +1988,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         if (mode === 'table') {
             if (batchConfig.doWord) { 
                 setBatchStatusText(`${item.displayId} Word`); 
-                await generateAndDownloadSingle(item, 'word', keyToUse); 
+                await generateAIAudio(item, 'word'); // Uses the smart wrapper
                 await new Promise(r => setTimeout(r, 1000)); 
             }
             if (batchStopSignalRef.current) break; 
             if (batchConfig.doSentence) { 
                 setBatchStatusText(`${item.displayId} Sent`); 
-                await generateAndDownloadSingle(item, 'sentence', keyToUse); 
+                await generateAIAudio(item, 'sentence'); // Uses the smart wrapper
                 await new Promise(r => setTimeout(r, 1000)); 
             }
         } else {
              setBatchStatusText(`${item.displayId} Full`); 
-             await generateAndDownloadSingle(item, 'full', keyToUse); 
+             await generateAIAudio(item, 'full'); // Uses the smart wrapper
              await new Promise(r => setTimeout(r, 1000));
         }
     }
@@ -1954,52 +2008,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setBatchStatusText(""); 
     setIsBatchStopping(false);
     batchStopSignalRef.current = false;
-  };
-
-  const generateAndDownloadSingle = async (item, part, validKey) => {
-    let textToSpeak = "";
-    let filename = "";
-
-    if (mode === 'table') {
-        const safeWord = sanitizeFilename(item.word);
-        if (part === 'word') { textToSpeak = item.word; filename = `${item.displayId}_${safeWord}_word.wav`; } 
-        else { textToSpeak = item.sentence; filename = `${item.displayId}_${safeWord}_sentence.wav`; }
-    } else {
-        textToSpeak = item.text; filename = `${item.displayId}_text.wav`;
-    }
-
-    addLog("Batch", `Proc #${item.displayId} (${part})...`);
-
-    try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${validKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-            contents: [{ parts: [{ text: textToSpeak }] }],
-            generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: aiVoiceName } } } }
-            })
-        });
-
-        if (!response.ok) throw new Error(`API ${response.status}`);
-
-        const data = await response.json();
-        if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-            const base64Audio = data.candidates[0].content.parts[0].inlineData.data;
-            const blob = new Blob([encodeWAV(base64ToInt16Array(base64Audio))], { type: 'audio/wav' });
-            const url = URL.createObjectURL(blob);
-            triggerBrowserDownload(url, filename);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-        } else {
-            addLog("Warn", `Batch #${item.displayId}: Skipped (Safety/Refusal)`);
-            return;
-        }
-    } catch (e) {
-        if (e.message.includes('401') || e.message.includes('403')) {
-             addLog("Warn", `Batch #${item.displayId}: Error 401 (Voice '${aiVoiceName}' issue)`);
-        } else {
-             addLog("Error", `Batch #${item.displayId}: ${e.message}`);
-        }
-    }
   };
 
   const handleCSVUpload = (e) => {
@@ -2161,6 +2169,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                      </>
                  )}
              </button>
+             <div className="text-[10px] text-center italic text-slate-400">Using: {generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini AI'}</div>
         </div>
      </div>
   );
@@ -2176,57 +2185,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                <FolderOpen className="w-3.5 h-3.5" /> Load Audio Folder
              </button>
           </div>
-
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
-             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Database className="w-4 h-4"/> Decks</h3>
-             <select disabled={isSystemBusy} className={`w-full text-xs p-2 border border-slate-200 dark:border-slate-600 rounded mb-2 bg-slate-50 dark:bg-slate-700 dark:text-white ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} onChange={handleLoadDeck} value={selectedDeckId}>
-                <option value="" disabled>Load Saved...</option>
-                {Object.keys(savedDecks).map(name => <option key={name} value={name}>{name}</option>)}
-            </select>
-             <div className="flex gap-2">
-                 <input disabled={isSystemBusy} className={`flex-1 border border-slate-200 dark:border-slate-600 rounded px-2 text-xs dark:bg-slate-700 dark:text-white ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} placeholder="Deck Name" value={currentDeckName} onChange={(e) => setCurrentDeckName(e.target.value)} />
-                 <button disabled={isSystemBusy} onClick={handleSaveDeck} className={`p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}><Save className="w-4 h-4"/></button>
-                 {selectedDeckId && <button disabled={isSystemBusy} onClick={handleDeleteDeckInit} className={`p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}><Trash2 className="w-4 h-4"/></button>}
-             </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
-             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><ListPlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/> Add to Queue (Range)</h3>
-             <div className="flex gap-2">
-                 <input 
-                    className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-3 py-2 focus:outline-indigo-500 dark:bg-slate-700 dark:text-white"
-                    placeholder="Ex: 1-10, 15"
-                    value={rangeInput}
-                    onChange={(e) => setRangeInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRangeAdd()}
-                    disabled={isSystemBusy}
-                 />
-                 <button onClick={handleRangeAdd} disabled={!rangeInput.trim() || isSystemBusy} className={`px-4 py-2 rounded text-xs font-bold ${!rangeInput.trim() || isSystemBusy ? 'bg-slate-100 dark:bg-slate-700 text-slate-400' : 'bg-indigo-600 text-white'}`}>
-                     Apply
-                 </button>
-             </div>
-             <p className="text-[10px] text-slate-400 mt-2 italic">Menambahkan item ke Study Queue berdasarkan nomor urut.</p>
-          </div>
-
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
-             <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600 dark:text-purple-400"/> Batch Download</h3>
-             <div className="space-y-3">
-                 <div className="flex gap-4">
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doWord ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button>
-                     <button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-2 text-xs font-medium ${batchConfig.doSentence ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'} ${isBatchDownloading ? 'opacity-50' : ''}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button>
-                 </div>
-                 <div className="flex items-center gap-2 text-xs">
-                     <span className="dark:text-slate-400">Range:</span>
-                     <input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.start} onChange={e=>setBatchConfig(p=>({...p, start:e.target.value}))} />
-                     <span className="dark:text-slate-400">to</span>
-                     <input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.end} onChange={e=>setBatchConfig(p=>({...p, end:e.target.value}))} />
-                 </div>
-                 <button onClick={runBatchDownload} disabled={isSystemBusy && !isBatchDownloading} className={`w-full py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 ${(isSystemBusy && !isBatchDownloading) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : (isBatchDownloading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 text-white hover:bg-purple-700')}`}>
-                     {isBatchDownloading ? <Loader2 className="w-3 h-3 animate-spin"/> : <DownloadCloudIcon className="w-3 h-3"/>}
-                     {isBatchDownloading ? "Downloading..." : "Start Batch Download"}
-                 </button>
-             </div>
-          </div>
+          {/* Mobile Tools Simplified - Full functionality in Sidebar */}
       </div>
   );
 
@@ -2320,7 +2279,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
     const totalHeight = totalCount * rowHeight;
     
-    // --- FIX MOBILE SCROLL & ADDRESS BAR HIDING ---
     let mobileSpacerHeight = 0;
     if (isMobile) {
         const headerOffset = mode === 'table' ? 160 : 115; 
@@ -2351,7 +2309,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       <div 
          ref={listContainerRef} 
          onScroll={handleScroll} 
-         // MODIFIED PADDING: pb-20 (Requested by user)
          className={`${isMobile ? 'overflow-visible pb-20' : 'h-full overflow-y-auto pb-0 custom-scrollbar'} relative w-full touch-pan-y`}
       >
         {mode === 'text' && (
@@ -2378,7 +2335,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
              </div>
         )}
 
-        {/* Desktop Only Range Input */}
         {mode === 'table' && tableViewMode === 'master' && (
              <div className="hidden md:block sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 pb-2 px-1">
                  <div className="bg-white dark:bg-slate-800 p-2 rounded-xl border border-indigo-100 dark:border-slate-700 shadow-sm flex gap-2 items-center">
@@ -2400,7 +2356,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         )}
 
         
-        {/* FIX: Container Height = Total Konten + Spacer Mobile. Removed Subtraction logic that cut off last items. */}
         <div style={{ height: totalHeight + mobileSpacerHeight, position: 'relative' }} className="w-full">
             {virtualItems.map((item) => {
                if (mode === 'table' && item.isStructured) {
@@ -2439,6 +2394,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                            }}
                            activeMenuId={activeMenuId}
                            onMenuToggle={handleMenuToggle}
+                           generatorEngine={generatorEngine}
                        />
                    );
                } 
@@ -2464,12 +2420,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                         generateAIAudio={generateAIAudio}
                         aiLoadingId={aiLoadingId}
                         preferLocalAudio={preferLocalAudio}
+                        generatorEngine={generatorEngine}
                       />
                    );
                }
              })}
              
-             {/* RENDER MOBILE SPACER IF NEEDED (Allows Address Bar Hiding) */}
              {isMobile && mobileSpacerHeight > 0 && (
                  <div 
                     style={{ 
@@ -2505,7 +2461,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.0</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.1</h1></div>
             </div>
             </div>
             
@@ -2602,7 +2558,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
       <div className="flex-1 flex overflow-hidden relative z-0">
         
-        {/* --- BACKDROP FOR MOBILE SIDEBAR --- */}
         {isMobile && isSidebarOpen && (
           <div 
             className="fixed inset-0 bg-black/50 z-[40] backdrop-blur-sm"
@@ -2622,7 +2577,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain"> 
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
-              {/* THEME SELECTOR IN SIDEBAR */}
               <div className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-100 dark:border-slate-600">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Theme</span>
                   <div className="flex gap-1">
@@ -2648,15 +2602,51 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                 </button>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1"><Bot className="w-3 h-3"/> AI Voice (Generator)</p>
-                <select className="w-full text-xs p-2 border rounded bg-indigo-50 dark:bg-indigo-900/30 border-indigo-100 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 font-medium" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>
-                  {aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                </select>
+              {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
+              <div className="space-y-3 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
+                <div className="flex items-center justify-between">
+                     <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
+                         {generatorEngine === 'gemini' ? <CloudLightning className="w-3 h-3 text-purple-500"/> : <Server className="w-3 h-3 text-teal-500"/>}
+                         Generator Engine
+                     </p>
+                     <div className="flex bg-slate-200 dark:bg-slate-800 rounded p-0.5">
+                         <button onClick={() => setGeneratorEngine('gemini')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${generatorEngine === 'gemini' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500'}`}>Gemini</button>
+                         <button onClick={() => setGeneratorEngine('edge')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${generatorEngine === 'edge' ? 'bg-white dark:bg-slate-600 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500'}`}>Edge</button>
+                     </div>
+                </div>
+
+                {generatorEngine === 'gemini' ? (
+                    // GEMINI CONTROLS
+                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                        <select className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-purple-100 dark:border-slate-600 text-purple-700 dark:text-purple-300 font-medium" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>
+                            {aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                        </select>
+                        <p className="text-[9px] text-slate-400 text-right">Requires API Key</p>
+                    </div>
+                ) : (
+                    // EDGE TTS CONTROLS
+                    <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
+                        <select className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium" onChange={e => setEdgeVoice(e.target.value)} value={edgeVoice}>
+                            {edgeVoicesList.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                        </select>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                             <div>
+                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)</label>
+                                 <input type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600" />
+                             </div>
+                             <div>
+                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)</label>
+                                 <input type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600" />
+                             </div>
+                        </div>
+                        <p className="text-[9px] text-slate-400 text-right">Local Backend (/api/tts)</p>
+                    </div>
+                )}
               </div>
 
               <div className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">English Voice (TTS)</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS (Playback)</p>
                 <select className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600" onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))} value={selectedVoice?.name || ''}>
                   {voices.map(v => <option key={v.name} value={v.name}>{formatVoiceLabel(v)}</option>)}
                 </select>
@@ -2767,7 +2757,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                 </div>
             )}
 
-            {/* MODIFIED PADDING: pt-28 (reduced from 40 for cleaner look without playlist tabs) */}
             <div className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 pt-28 pb-20 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}>
                 {systemLogs.map((log, i) => (
                     <div key={i} className="leading-tight border-b border-slate-800 pb-1 mb-1 font-mono text-[10px]">
@@ -2778,7 +2767,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                 ))}
             </div>
 
-            {/* MODIFIED PADDING: pt-28 (reduced from 40 for cleaner look without playlist tabs) */}
             <div className={`absolute inset-0 bg-slate-50 dark:bg-slate-900 z-30 overflow-y-auto pt-28 pb-20 ${mobileTab === 'tools' ? 'block md:hidden' : 'hidden'}`}>
                 {renderMobileTools()}
             </div>
