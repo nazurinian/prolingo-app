@@ -182,7 +182,7 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
 
                 {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.3</span>
+                    ProLingo <span className="text-indigo-500">v5.4</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
@@ -269,8 +269,6 @@ const MemoizedRow = memo(({
     
     const isMenuOpen = activeMenuId === rowId;
     const isWordUsingLocal = localWordUrl && preferLocalAudio;
-    // Filenames not really used for rendering but good to have context
-    // const wordFilename = `${item.displayId}_${sanitizeFilename(item.word)}_word.wav`;
     
     const isWordActive = isActive && speakingPart === 'word';
     const isSentActive = isActive && speakingPart === 'sentence';
@@ -315,36 +313,36 @@ const MemoizedRow = memo(({
                         <MoreVertical className="w-5 h-5" />
                     </button>
 
-                    {/* --- MOBILE MENU DROPDOWN --- */}
+                    {/* --- MOBILE MENU DROPDOWN (Adjusted Size) --- */}
                     {isMenuOpen && (
-                        <div className="absolute top-8 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-2 flex flex-col gap-2 w-36 z-30 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
+                        <div className="absolute top-8 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl rounded-lg p-1 flex flex-col gap-1 w-32 z-30 animate-in fade-in zoom-in-95 duration-150 origin-top-right">
                              <button
                                 onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); onMenuToggle(null); }}
-                                className={`w-full px-2 py-2 flex items-center gap-2 rounded text-xs font-bold border transition-all ${isInQueue
+                                className={`w-full px-2 py-1.5 flex items-center gap-2 rounded text-[10px] font-bold border transition-all ${isInQueue
                                         ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800'
                                         : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-100 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                                     }`}
                             >
-                                {isInQueue ? <CheckCircle className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                                {isInQueue ? "Added" : "Add Queue"}
+                                {isInQueue ? <CheckCircle className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                {isInQueue ? "Added" : "Queue"}
                             </button>
                             <div className="h-[1px] bg-slate-100 dark:bg-slate-700 w-full my-0.5"></div>
                              
                              {/* Word Action */}
                              {localWordUrl ? (
-                                    <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Word OK</span></button>
+                                    <button disabled className="w-full px-2 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3 h-3" /> <span className="text-[10px] font-bold">Word OK</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Word</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); onMenuToggle(null); }} className={`w-full px-2 py-1.5 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[10px] font-bold">Word</span>
                                     </button>
                                 )}
                              
                              {/* Sentence Action */}
                              {localSentUrl ? (
-                                    <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Sent OK</span></button>
+                                    <button disabled className="w-full px-2 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3 h-3" /> <span className="text-[10px] font-bold">Sent OK</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Sent</span>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); onMenuToggle(null); }} className={`w-full px-2 py-1.5 flex items-center gap-2 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[10px] font-bold">Sent</span>
                                     </button>
                                 )}
                              
@@ -352,10 +350,10 @@ const MemoizedRow = memo(({
                              {generatorEngine === 'edge' && (
                                 <>
                                  {localMeaningUrl ? (
-                                        <button disabled className="w-full px-2 py-2 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3.5 h-3.5" /> <span className="text-xs font-bold">Mean OK</span></button>
+                                        <button disabled className="w-full px-2 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3 h-3" /> <span className="text-[10px] font-bold">Mean OK</span></button>
                                     ) : (
-                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); onMenuToggle(null); }} className={`w-full px-2 py-2 flex items-center gap-2 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
-                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GenIcon className="w-3.5 h-3.5" />} <span className="text-xs font-bold">Gen Mean</span>
+                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); onMenuToggle(null); }} className={`w-full px-2 py-1.5 flex items-center gap-2 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                            {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[10px] font-bold">Mean</span>
                                         </button>
                                     )}
                                 </>
@@ -436,11 +434,11 @@ const MemoizedRow = memo(({
                     </div>
 
                     {/* --- ACTIONS AREA (Desktop Only) --- */}
-                    <div className={`hidden md:flex md:flex-col md:ml-2 justify-start items-end w-auto gap-2 flex-shrink-0 md:border-l md:pl-2 ${isActive ? 'border-blue-500' : 'border-slate-100 dark:border-slate-700'}`}>
+                    <div className={`hidden md:flex md:flex-col md:ml-2 justify-center items-end w-auto gap-1 flex-shrink-0 md:border-l md:pl-2 ${isActive ? 'border-blue-500' : 'border-slate-100 dark:border-slate-700'}`}>
                         <div className="flex-none md:mb-1">
                             <button
                                 onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); }}
-                                className={`md:w-[58px] md:h-[26px] flex items-center justify-center gap-1 rounded border text-[10px] font-bold transition-all ${isInQueue
+                                className={`md:w-[55px] md:h-[22px] flex items-center justify-center gap-1 rounded border text-[9px] font-bold transition-all ${isInQueue
                                         ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800 hover:bg-red-50 hover:text-red-600'
                                         : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
                                     }`}
@@ -449,21 +447,21 @@ const MemoizedRow = memo(({
                                 <span>{isInQueue ? "Added" : "Add"}</span>
                             </button>
                         </div>
-                        <div className="flex flex-col gap-2 items-end justify-end">
+                        <div className="flex flex-col gap-1 items-end justify-end">
                             <div className="flex-none">
                                 {localWordUrl ? (
-                                    <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></button>
+                                    <button disabled className={`w-[55px] h-[22px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Word</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'word'); }} className={`w-[55px] h-[22px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-word` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Word</span>
                                     </button>
                                 )}
                             </div>
                             <div className="flex-none">
                                 {localSentUrl ? (
-                                    <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></button>
+                                    <button disabled className={`w-[55px] h-[22px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Sent</span></button>
                                 ) : (
-                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                    <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'sentence'); }} className={`w-[55px] h-[22px] flex items-center justify-center gap-1 rounded border shadow-sm ${genColorClass} ${isSystemBusy ? 'opacity-50' : ''}`}>
                                         {aiLoadingId === `${item.id}-sentence` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Sent</span>
                                     </button>
                                 )}
@@ -472,9 +470,9 @@ const MemoizedRow = memo(({
                             {generatorEngine === 'edge' && (
                                 <div className="flex-none">
                                     {localMeaningUrl ? (
-                                        <button disabled className={`w-[58px] h-[26px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Mean</span></button>
+                                        <button disabled className={`w-[55px] h-[22px] bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center justify-center gap-1 cursor-not-allowed`}><CheckCircle className="w-3 h-3" /> <span className="text-[9px] font-bold">Mean</span></button>
                                     ) : (
-                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); }} className={`w-[58px] h-[26px] flex items-center justify-center gap-1 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
+                                        <button disabled={isSystemBusy} onClick={(e) => { e.stopPropagation(); generateAIAudio(item, 'meaning'); }} className={`w-[55px] h-[22px] flex items-center justify-center gap-1 rounded border shadow-sm text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 ${isSystemBusy ? 'opacity-50' : ''}`}>
                                             {aiLoadingId === `${item.id}-meaning` ? <Loader2 className="w-3 h-3 animate-spin" /> : <GenIcon className="w-3 h-3" />} <span className="text-[9px] font-bold">Mean</span>
                                         </button>
                                     )}
@@ -918,7 +916,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.3 (Edge Hybrid).");
+    addLog("System", "Ready. ProLingo v5.4 (Edge Hybrid).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2674,7 +2672,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.3</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.4</h1></div>
             </div>
             </div>
             
@@ -2739,11 +2737,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </div>
 
             <div className="md:hidden ml-auto">
-                {mode === 'table' && tableViewMode === 'study' && studyQueue.length > 0 ? (
-                    <button onClick={clearStudyQueue} className="p-2 rounded-lg bg-red-50 dark:bg-red-900/50 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 transition-colors shadow-sm border border-red-100 dark:border-red-900" title="Clear Playlist">
-                        <Eraser className="w-5 h-5"/>
-                    </button>
-                ) : null}
+                {/* REMOVED DUPLICATE ERASER BUTTON AS REQUESTED */}
             </div>
         </div>
 
