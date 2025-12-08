@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 // --- SYSTEM ENVIRONMENT VAR ---
-const apiKey = ""; 
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ""; 
 
 // --- VIRTUALIZATION CONSTANTS ---
 const DEFAULT_ROW_HEIGHT_PC = 160; 
@@ -217,7 +217,7 @@ const groupVoicesByRegion = (voiceList, context = 'general') => {
     return groups;
 };
 
-const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, context = 'general' }) => {
+const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, context = 'general', disabled }) => {
     const grouped = groupVoicesByRegion(voices, context);
     const hasOptions = Object.values(grouped).some(g => g.length > 0);
 
@@ -234,6 +234,7 @@ const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, contex
             className={className} 
             onChange={onChange} 
             value={selectedValue}
+            disabled={disabled}
         >
             {Object.keys(grouped).map(groupName => (
                 grouped[groupName].length > 0 && (
@@ -259,7 +260,7 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
                     <Mic className="w-12 h-12 text-white" />
                 </div>
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.6</span>
+                    ProLingo <span className="text-indigo-500">v5.7</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
@@ -584,6 +585,7 @@ const MemoizedTextRow = memo(({
     handleManualRowClick, 
     handleDeleteTextItem, 
     localTextUrl, 
+    // eslint-disable-next-line no-unused-vars
     textFilename, 
     isSystemBusy, 
     generateAIAudio, 
@@ -687,6 +689,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedIndonesianVoiceRef = useRef(null);
 
   const [rate, setRate] = useState(1);
+  // eslint-disable-next-line no-unused-vars
   const [pitch, setPitch] = useState(1); 
   
   const [playWord, setPlayWord] = useState(true);
@@ -733,6 +736,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [generatorEngine, setGeneratorEngine] = useState('gemini'); // 'gemini' | 'edge'
   
   // EDGE VOICE STATES (Expanded)
+  // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
   const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Default to UK
   const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("id-ID-GadisNeural"); // New: Indo Voice for Edge
@@ -1013,7 +1017,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.6 (Fixed).");
+    addLog("System", "Ready. ProLingo v5.7 (Safe Lock).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1963,6 +1967,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                  let tCount = 0;
                  let aCount = 0;
 
+                 // MODIFIED: Speed to 200ms for smoother scroll
                  mediaIntervalRef.current = setInterval(() => {
                      let displayTitle = title;
                      let displayArtist = artist;
@@ -1983,7 +1988,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                      
                      // Update Tampilan Widget
                      updateMetadata(displayTitle, displayArtist);
-                 }, 1000); // Update setiap 1 detik (Cukup lambat agar hemat baterai & stabil)
+                 }, 200); // REVISED: 1000ms -> 200ms
              }
         }
 
@@ -2827,7 +2832,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">v5.6</span></h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">v5.7</span></h1></div>
             </div>
             </div>
             
@@ -2976,15 +2981,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                          Generator Engine
                      </p>
                      <div className="flex bg-slate-200 dark:bg-slate-800 rounded p-0.5">
-                         <button onClick={() => setGeneratorEngine('gemini')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${generatorEngine === 'gemini' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500'}`}>Gemini</button>
-                         <button onClick={() => setGeneratorEngine('edge')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${generatorEngine === 'edge' ? 'bg-white dark:bg-slate-600 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500'}`}>Edge</button>
+                         <button disabled={isSystemBusy} onClick={() => setGeneratorEngine('gemini')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${generatorEngine === 'gemini' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500'}`}>Gemini</button>
+                         <button disabled={isSystemBusy} onClick={() => setGeneratorEngine('edge')} className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${generatorEngine === 'edge' ? 'bg-white dark:bg-slate-600 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500'}`}>Edge</button>
                      </div>
                 </div>
 
                 {generatorEngine === 'gemini' ? (
                     // GEMINI CONTROLS
                     <div className="space-y-2 animate-in fade-in zoom-in-95 duration-200">
-                        <select className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-purple-100 dark:border-slate-600 text-purple-700 dark:text-purple-300 font-medium" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>
+                        <select disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-purple-100 dark:border-slate-600 text-purple-700 dark:text-purple-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>
                             {aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
                         </select>
                         <p className="text-[9px] text-slate-400 text-right">Requires API Key</p>
@@ -2997,7 +3002,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                             voices={edgeVoices} 
                             selectedValue={edgeVoice} 
                             onChange={e => setEdgeVoice(e.target.value)}
-                            className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                            disabled={isSystemBusy}
+                            className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                             context="main" // HANYA ENGLISH
                         />
                         
@@ -3006,18 +3012,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                             voices={edgeVoices} 
                             selectedValue={edgeIndonesianVoice} 
                             onChange={e => setEdgeIndonesianVoice(e.target.value)}
-                            className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium"
+                            disabled={isSystemBusy}
+                            className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                             context="meaning" // KHUSUS INDO/REGIONAL
                         />
 
                         <div className="grid grid-cols-2 gap-2 mt-2">
                              <div>
                                  <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)</label>
-                                 <input type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600" />
+                                 <input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
                              </div>
                              <div>
                                  <label className="text-[9px] text-slate-500 font-bold block mb-1">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)</label>
-                                 <input type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600" />
+                                 <input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
                              </div>
                         </div>
                         <p className="text-[9px] text-slate-400 text-right">Local Backend (/api/tts)</p>
@@ -3032,7 +3039,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                     voices={voices}
                     selectedValue={selectedVoice?.name || ''}
                     onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))}
-                    className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                    disabled={isSystemBusy}
+                    className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                     context="main"
                 />
                 
@@ -3044,7 +3052,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                                 voices={indonesianVoices}
                                 selectedValue={selectedIndonesianVoice?.name || ''}
                                 onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))}
-                                className="w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600"
+                                disabled={isSystemBusy}
+                                className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 context="meaning"
                            />
                        ) : (
@@ -3116,7 +3125,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </div>
             
             <div className="flex-1 p-2 relative flex flex-col min-h-[300px] bg-white dark:bg-slate-800">
-              <textarea ref={textareaRef} disabled={isSystemBusy} readOnly={isLocked} className={`w-full flex-1 text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy ? 'bg-slate-100 dark:bg-slate-900 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-600`} placeholder={mode === 'table' ? "Paste Excel/CSV..." : "Paste text..."} value={mode === 'table' ? tableContent : textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
+              <textarea ref={textareaRef} disabled={isSystemBusy} readOnly={isLocked || isSystemBusy} className={`w-full flex-1 text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy ? 'bg-slate-100 dark:bg-slate-900 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-600`} placeholder={mode === 'table' ? "Paste Excel/CSV..." : "Paste text..."} value={mode === 'table' ? tableContent : textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
               <div className="flex justify-end items-center mt-2 px-1 flex-shrink-0 gap-2">
                  <button disabled={isLocked || isSystemBusy} onClick={handleInsertTab} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-700 text-slate-400' : 'bg-white dark:bg-slate-600 hover:bg-slate-50 dark:hover:bg-slate-500 text-slate-600 dark:text-white border-slate-200 dark:border-slate-500'}`} title="Insert Tab Character (Separator)">
                     <ArrowRightToLine className="w-3 h-3" /> Add Tab
