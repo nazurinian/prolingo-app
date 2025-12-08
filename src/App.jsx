@@ -104,7 +104,6 @@ const HighlightedText = ({ text, highlight, className = "" }) => {
 };
 
 // --- DATA: EDGE TTS VOICES (COMPREHENSIVE v5.5 LIST) ---
-// Includes all known English variants and ID/JV/SU variants
 const initialEdgeVoices = [
     // --- UK (GB) ---
     { id: "en-GB-SoniaNeural", label: "Sonia (UK)", lang: "en-GB" },
@@ -112,7 +111,7 @@ const initialEdgeVoices = [
     { id: "en-GB-LibbyNeural", label: "Libby (UK)", lang: "en-GB" },
     { id: "en-GB-MaisieNeural", label: "Maisie (UK - Child)", lang: "en-GB" },
     { id: "en-GB-ThomasNeural", label: "Thomas (UK)", lang: "en-GB" },
-    { id: "en-GB-AlfiesNeural", label: "Alfie (UK)", lang: "en-GB" }, // Often listed slightly differently in some builds
+    { id: "en-GB-AlfiesNeural", label: "Alfie (UK)", lang: "en-GB" },
 
     // --- US ---
     { id: "en-US-AriaNeural", label: "Aria (US)", lang: "en-US" },
@@ -176,47 +175,36 @@ const initialEdgeVoices = [
     { id: "su-ID-TutiNeural", label: "Tuti (Sundanese)", lang: "su-ID" }
 ];
 
-// --- UPDATED HELPER: Grouping with Strict English Priority ---
-// Order: UK -> US -> AU -> SG -> Others
 const groupVoicesByRegion = (voiceList, context = 'general') => {
-    // Definisi Urutan Object Keys menentukan urutan render pada sebagian besar browser modern
     const groups = {
         "UK (United Kingdom)": [],
         "US (United States)": [],
         "AU (Australia)": [],
         "SG (Singapore)": [],
         "Other English": [],
-        // Container untuk Meaning (jika context membolehkan)
         "Indonesia & Regional (ID/JV/SU)": [] 
     };
 
     voiceList.forEach(v => {
-        const lang = (v.lang || "").replace('_', '-'); // Normalize en_US to en-US
+        const lang = (v.lang || "").replace('_', '-'); 
         const isEnglish = lang.startsWith("en");
         const isIndoRegion = lang.includes("ID") || lang === 'id' || lang === 'jv' || lang === 'su' || lang.includes("indones");
 
-        // --- FILTERING LOGIC ---
         if (context === 'main') {
-            // Untuk Main Voice: HANYA English. Hapus ID.
             if (!isEnglish) return; 
         } else if (context === 'meaning') {
-            // Untuk Meaning Voice: Prioritas ID/JV/SU
             if (isIndoRegion) {
                 groups["Indonesia & Regional (ID/JV/SU)"].push(v);
                 return;
             }
-            // Skip English voices for Meaning context (optional, but cleaner UI)
             return; 
         } else {
-            // Context 'general' (Browser TTS raw list)
-            // Masukkan ID ke grup Indo, English ke grup English
             if (isIndoRegion) {
                 groups["Indonesia & Regional (ID/JV/SU)"].push(v);
                 return; 
             }
         }
         
-        // --- GROUPING LOGIC (ENGLISH) ---
         if (isEnglish) {
             if (lang.includes("GB") || lang.includes("UK")) groups["UK (United Kingdom)"].push(v);
             else if (lang.includes("US")) groups["US (United States)"].push(v);
@@ -229,7 +217,6 @@ const groupVoicesByRegion = (voiceList, context = 'general') => {
     return groups;
 };
 
-// --- HELPER COMPONENT: GROUPED VOICE SELECT ---
 const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, context = 'general' }) => {
     const grouped = groupVoicesByRegion(voices, context);
     const hasOptions = Object.values(grouped).some(g => g.length > 0);
@@ -268,22 +255,16 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center transition-colors duration-500">
             <div className="max-w-3xl w-full flex flex-col items-center animate-in fade-in zoom-in-95 duration-700">
-                
-                {/* Logo Area */}
                 <div className="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-500/30 mb-8 rotate-3 hover:rotate-6 transition-transform">
                     <Mic className="w-12 h-12 text-white" />
                 </div>
-
-                {/* Title */}
                 <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-                    ProLingo <span className="text-indigo-500">v5.5</span>
+                    ProLingo <span className="text-indigo-500">v5.6</span>
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
                     Professional Pronunciation & Memory Training Platform.
                     <br/><span className="text-sm opacity-70">Hybrid Engine • Edge TTS Enhanced • Priority Sorting</span>
                 </p>
-
-                {/* Feature Pills */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12 w-full max-w-2xl">
                     {[
                         { icon: Database, text: "Custom Decks", color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
@@ -297,8 +278,6 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
                         </div>
                     ))}
                 </div>
-
-                {/* Main Action */}
                 <button 
                     onClick={onStart}
                     className="group relative px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-lg shadow-lg hover:shadow-indigo-500/50 transition-all w-full md:w-auto flex items-center justify-center gap-3 overflow-hidden"
@@ -306,10 +285,7 @@ const LandingPage = ({ onStart, theme, setTheme }) => {
                     <span className="relative z-10 flex items-center gap-2">Mulai Latihan <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform"/></span>
                     <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                 </button>
-
-                {/* Theme Selector */}
                 <div className="mt-16 p-1.5 bg-white dark:bg-slate-900 rounded-full border border-slate-200 dark:border-slate-800 flex items-center shadow-sm relative">
-                    {/* Active Background Indicator */}
                     <div className={`absolute top-1.5 bottom-1.5 w-8 rounded-full bg-indigo-100 dark:bg-slate-800 transition-all duration-300 ease-out ${
                         theme === 'light' ? 'left-1.5' : theme === 'system' ? 'left-[calc(50%-16px)]' : 'left-[calc(100%-38px)]'
                     }`}></div>
@@ -379,7 +355,6 @@ const MemoizedRow = memo(({
     const sentRevealed = revealedCells[`${rowId}-sent`];
     const meaningRevealed = revealedCells[`${rowId}-meaning`];
 
-    // Dynamic Icon & Style based on Generator Engine
     const GenIcon = generatorEngine === 'edge' ? Server : Wand2;
     const genColorClass = generatorEngine === 'edge' 
         ? 'text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 hover:bg-teal-100 dark:hover:bg-teal-900/40' 
@@ -422,7 +397,6 @@ const MemoizedRow = memo(({
                             </button>
                             <div className="h-[1px] bg-slate-100 dark:bg-slate-700 w-full my-0.5"></div>
                              
-                             {/* Word Action */}
                              {localWordUrl ? (
                                     <button disabled className="w-full px-2 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3 h-3" /> <span className="text-[10px] font-bold">Word OK</span></button>
                                 ) : (
@@ -431,7 +405,6 @@ const MemoizedRow = memo(({
                                     </button>
                                 )}
                              
-                             {/* Sentence Action */}
                              {localSentUrl ? (
                                     <button disabled className="w-full px-2 py-1.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded border border-green-200 dark:border-green-800 flex items-center gap-2 cursor-not-allowed"><CheckCircle className="w-3 h-3" /> <span className="text-[10px] font-bold">Sent OK</span></button>
                                 ) : (
@@ -440,7 +413,6 @@ const MemoizedRow = memo(({
                                     </button>
                                 )}
                              
-                             {/* Meaning Option (Edge Only) */}
                              {generatorEngine === 'edge' && (
                                 <>
                                  {localMeaningUrl ? (
@@ -612,7 +584,6 @@ const MemoizedTextRow = memo(({
     handleManualRowClick, 
     handleDeleteTextItem, 
     localTextUrl, 
-    // eslint-disable-next-line no-unused-vars
     textFilename, 
     isSystemBusy, 
     generateAIAudio, 
@@ -716,7 +687,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedIndonesianVoiceRef = useRef(null);
 
   const [rate, setRate] = useState(1);
-  // eslint-disable-next-line no-unused-vars
   const [pitch, setPitch] = useState(1); 
   
   const [playWord, setPlayWord] = useState(true);
@@ -763,7 +733,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [generatorEngine, setGeneratorEngine] = useState('gemini'); // 'gemini' | 'edge'
   
   // EDGE VOICE STATES (Expanded)
-  // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
   const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Default to UK
   const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("id-ID-GadisNeural"); // New: Indo Voice for Edge
@@ -863,6 +832,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     { id: "Fenrir", label: "Fenrir (M)", gender: "Male" },
     { id: "Charon", label: "Charon (M)", gender: "Male" }
   ];
+
+  // --- NEW: SYNC BODY BACKGROUND WITH THEME (Fixes Mobile Bounce "White Layer" issue) ---
+  useEffect(() => {
+      const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      // Colors match bg-slate-50 and bg-slate-900
+      document.body.style.backgroundColor = isDark ? '#0f172a' : '#f8fafc';
+  }, [theme]);
 
   // --- SCROLL AUTO-HIDE LOGIC (UPDATED WITH FLAG & TAB CHECK) ---
   useEffect(() => {
@@ -1010,7 +986,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.5 (Edge Hybrid).");
+    addLog("System", "Ready. ProLingo v5.6 (Fixed).");
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1426,6 +1402,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                   
                   audio.onended = () => {
                       currentAudioObjRef.current = null;
+                      // REMOVED: navigator.mediaSession.playbackState = "none";
                       resolve();
                   };
                   audio.onerror = () => {
@@ -1456,8 +1433,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
         audio.onended = () => { 
             currentAudioObjRef.current = null; 
-            // --- MEDIA SESSION UPDATE: ENDED ---
-            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
+            // FIX: Removed "none" state setting here to keep widget alive between tracks
             resolve(); 
         };
         audio.onerror = () => {
@@ -1494,8 +1470,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       };
 
       utterance.onend = () => {
-          // --- MEDIA SESSION UPDATE: TTS END ---
-          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
+          // FIX: Removed "none" state setting here to keep widget alive
           currentUtteranceRef.current = null; // Clear ref on end
           resolve();
       };
@@ -1816,6 +1791,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     
     // --- MEDIA SESSION UPDATE: RESET ---
+    // Only reset state here (on explicit stop or end of playlist)
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
 
     setIsPlaying(false);
@@ -2026,23 +2002,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setAiLoadingId(uniqueLoadingId);
     
     let textToSpeak = "";
+    
+    // FIX: Voice Name in Filename Logic
+    // Determine active voice name for file suffix
+    const voiceLabel = generatorEngine === 'edge'
+        ? (part === 'meaning' ? edgeIndonesianVoice : edgeVoice)
+        : aiVoiceName;
+    
+    const safeVoice = sanitizeFilename(voiceLabel || 'Voice');
+    
     let filename = "";
     
     if (mode === 'table') {
         const safeWord = sanitizeFilename(item.word);
         if (part === 'word') {
             textToSpeak = item.word;
-            filename = `${item.displayId}_${safeWord}_word.wav`;
+            filename = `${item.displayId}_${safeWord}_${safeVoice}_word.wav`;
         } else if (part === 'sentence') {
             textToSpeak = item.sentence;
-            filename = `${item.displayId}_${safeWord}_sentence.wav`;
+            filename = `${item.displayId}_${safeWord}_${safeVoice}_sentence.wav`;
         } else if (part === 'meaning') {
             textToSpeak = item.meaning;
-            filename = `${item.displayId}_${safeWord}_meaning.wav`;
+            filename = `${item.displayId}_${safeWord}_${safeVoice}_meaning.wav`;
         }
     } else {
         textToSpeak = item.text;
-        filename = `${item.displayId}_text.wav`;
+        filename = `${item.displayId}_${safeVoice}_text.wav`;
     }
 
     addLog("Info", `Gen (${generatorEngine}) #${item.displayId}...`);
@@ -2732,7 +2717,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.5</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.6</h1></div>
             </div>
             </div>
             
@@ -2810,13 +2795,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
         {/* 3. TABLE TABS (Mobile Version) */}
         {isMobile && mode === 'table' && mobileTab === 'player' && (
-             <div className="flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
+            // FIX: Added 'relative' here to contain the absolute positioned delete button
+             <div className="flex border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0 relative">
                 <button onClick={() => handleTabSwitch('master')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'master' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20' : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}><Database className="w-4 h-4"/> MASTER DATA</button>
                 <button onClick={() => handleTabSwitch('study')} className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${tableViewMode === 'study' ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20' : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}>
                     <ListPlus className="w-4 h-4"/> STUDY QUEUE
                     {studyQueue.length > 0 && <span className="bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-full">{studyQueue.length}</span>}
                 </button>
                 {tableViewMode === 'study' && studyQueue.length > 0 && (
+                    // This button is now correctly positioned relative to the tabs container
                     <button onClick={clearStudyQueue} className="absolute right-2 top-2 p-1.5 bg-red-50 dark:bg-red-900/50 text-red-500 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900 transition-colors" title="Clear Queue"><Eraser className="w-4 h-4"/></button>
                 )}
             </div>
