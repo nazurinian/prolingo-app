@@ -1896,6 +1896,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const playRef = useRef(handleGlobalPlay);
     const navRef = useRef(handleSmartNav);
     const stopRef = useRef(forceStopAll);
+    const mediaIntervalRef = useRef(null); // --- ADD: Ref untuk Teks Berjalan ---
 
     // Always update ref values to latest functions
     playRef.current = handleGlobalPlay;
@@ -1909,7 +1910,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         const activeItem = currentPlayerList.find(p => p.id === playingIndex);
         if (!activeItem) return;
 
-        // 2. Tentukan Metadata
+        // 2. Tentukan Metadata Awal
         let title = activeItem.word || activeItem.text || "Unknown Item";
         let artist = "ProLingo Audio";
 
@@ -1923,19 +1924,68 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             title = `Artinya: ${activeItem.meaning}`;
         }
 
-        // 3. Set Metadata sekali per perubahan track / part
-        navigator.mediaSession.metadata = new MediaMetadata({
-            title,
-            artist,
-            album: currentDeckName || "ProLingo Deck",
-            artwork: [
-                { 
-                    src: "https://cdn-icons-png.flaticon.com/512/2995/2995101.png",
-                    sizes: "512x512",
-                    type: "image/png"
-                }
-            ]
-        });
+        // --- FUNGSI UPDATE METADATA (Helper) ---
+        const updateMetadata = (t, a) => {
+             navigator.mediaSession.metadata = new MediaMetadata({
+                title: t,
+                artist: a,
+                album: currentDeckName || "ProLingo Deck",
+                artwork: [
+                    { 
+                        src: "https://cdn-icons-png.flaticon.com/512/2995/2995101.png",
+                        sizes: "512x512",
+                        type: "image/png"
+                    }
+                ]
+            });
+        };
+
+        // Set Awal (Static)
+        updateMetadata(title, artist);
+
+        // --- NEW: LOGIKA TEKS BERJALAN (MARQUEE) ---
+        // Bersihkan interval sebelumnya jika ada
+        if (mediaIntervalRef.current) {
+            clearInterval(mediaIntervalRef.current);
+            mediaIntervalRef.current = null;
+        }
+
+        // Hanya jalankan scroll jika sedang PLAYING dan teksnya PANJANG
+        if (isPlaying) {
+             const needScrollTitle = title.length > 25;
+             const needScrollArtist = artist.length > 35; // Biasanya kalimat panjang disini
+
+             if (needScrollTitle || needScrollArtist) {
+                 // Tambah padding spasi di akhir supaya muternya enak dilihat
+                 const combinedTitle = title + "     "; 
+                 const combinedArtist = artist + "     ";
+                 
+                 let tCount = 0;
+                 let aCount = 0;
+
+                 mediaIntervalRef.current = setInterval(() => {
+                     let displayTitle = title;
+                     let displayArtist = artist;
+
+                     // Logika Geser Title
+                     if (needScrollTitle) {
+                         const offset = tCount % combinedTitle.length;
+                         displayTitle = combinedTitle.slice(offset) + combinedTitle.slice(0, offset);
+                         tCount++;
+                     }
+
+                     // Logika Geser Artist
+                     if (needScrollArtist) {
+                         const offset = aCount % combinedArtist.length;
+                         displayArtist = combinedArtist.slice(offset) + combinedArtist.slice(0, offset);
+                         aCount++;
+                     }
+                     
+                     // Update Tampilan Widget
+                     updateMetadata(displayTitle, displayArtist);
+                 }, 1000); // Update setiap 1 detik (Cukup lambat agar hemat baterai & stabil)
+             }
+        }
 
         // 4. Set Action Handlers (STABLE with refs)
         navigator.mediaSession.setActionHandler("play", () => playRef.current());
@@ -1944,11 +1994,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         navigator.mediaSession.setActionHandler("nexttrack", () => navRef.current("next"));
         navigator.mediaSession.setActionHandler("stop", () => stopRef.current());
 
+        // Cleanup saat unmount atau track berubah
+        return () => {
+            if (mediaIntervalRef.current) {
+                clearInterval(mediaIntervalRef.current);
+            }
+        };
+
     }, [
         playingIndex,
         speakingPart,
         currentPlayerList,
-        currentDeckName
+        currentDeckName,
+        isPlaying // Tambah dependency isPlaying agar scroll berhenti saat pause
     ]);
 
   const cyclePlaybackMode = () => {
@@ -2769,7 +2827,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             </button>
             <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
                 <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo v5.6</h1></div>
+                <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">v5.6</span></h1></div>
             </div>
             </div>
             
