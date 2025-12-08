@@ -15,6 +15,10 @@ import {
 // --- SYSTEM ENVIRONMENT VAR ---
 const apiKey = ""; 
 
+// --- SILENT AUDIO BASE64 (Keep-Alive Anchor) ---
+// MP3 Hening 1 detik untuk menjaga Media Session tetap hidup di Android/iOS
+const SILENT_AUDIO_DATA = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+
 // --- VIRTUALIZATION CONSTANTS ---
 const DEFAULT_ROW_HEIGHT_PC = 160; 
 const DEFAULT_ROW_HEIGHT_MOBILE = 205; 
@@ -794,6 +798,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // FIX: REFERENCE FOR CURRENT UTTERANCE TO PREVENT GARBAGE COLLECTION
   const currentUtteranceRef = useRef(null);
 
+  // --- SILENT AUDIO REF (Keep-Alive) ---
+  const silentAudioRef = useRef(null);
+
   const synth = window.speechSynthesis;
   const folderInputRef = useRef(null);
   const csvInputRef = useRef(null);
@@ -987,6 +994,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     addLog("System", "Ready. ProLingo v5.6 (Fixed).");
+
+    // --- INITIALIZE SILENT AUDIO ---
+    const silent = new Audio(SILENT_AUDIO_DATA);
+    silent.loop = true;
+    silent.volume = 0; // Pure silence
+    silentAudioRef.current = silent;
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1390,6 +1403,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return new Promise((resolve) => {
       if (stopSignalRef.current) { resolve(); return; }
 
+      // --- SILENT KEEPALIVE CHECK ---
+      // Pastikan audio hening berjalan
+      if (silentAudioRef.current && silentAudioRef.current.paused) {
+          silentAudioRef.current.play().catch(() => {});
+      }
+
       if (part === 'meaning') {
          // Special handling: if Edge mode, we might want to try playing local audio for meaning too
          if (generatorEngine === 'edge' && preferLocalAudio) {
@@ -1398,11 +1417,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                   const audio = new Audio(audioUrl);
                   currentAudioObjRef.current = audio;
                   audio.rate = rate;
+                  
+                  // --- MEDIA SESSION: PLAYING ---
                   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
                   
                   audio.onended = () => {
                       currentAudioObjRef.current = null;
-                      // REMOVED: navigator.mediaSession.playbackState = "none";
                       resolve();
                   };
                   audio.onerror = () => {
@@ -1433,7 +1453,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
         audio.onended = () => { 
             currentAudioObjRef.current = null; 
-            // FIX: Removed "none" state setting here to keep widget alive between tracks
             resolve(); 
         };
         audio.onerror = () => {
@@ -1486,6 +1505,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     await new Promise(r => setTimeout(r, 200));
     stopSignalRef.current = false;
+
+    // --- START SILENT AUDIO HERE (On user interaction) ---
+    // Ini krusial: browser memblokir audio otomatis kecuali dipicu user click
+    if (silentAudioRef.current) {
+        silentAudioRef.current.play().catch(e => console.log("Silent audio start failed", e));
+    }
+
     await actionCallback();
   };
 
@@ -1774,6 +1800,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
       setIsPlaying(false);
       setSpeakingPart(null);
+      // STOP SILENT AUDIO IF LOOP FINISHES
+      if (silentAudioRef.current) silentAudioRef.current.pause();
       addLog("Info", "Playback Finished/Paused.");
     });
   };
@@ -1788,6 +1816,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       audio.onended = null;
       audio.onerror = null;
       currentAudioObjRef.current = null;
+    }
+
+    // --- STOP SILENT AUDIO ---
+    if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current.currentTime = 0;
     }
     
     // --- MEDIA SESSION UPDATE: RESET ---
