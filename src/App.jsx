@@ -15,14 +15,10 @@ import {
 // --- SYSTEM ENVIRONMENT VAR ---
 const apiKey = ""; 
 
-// --- SILENT AUDIO BASE64 (Keep-Alive Anchor) ---
-// MP3 Hening 1 detik untuk menjaga Media Session tetap hidup di Android/iOS
-const SILENT_AUDIO_DATA = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
-
 // --- VIRTUALIZATION CONSTANTS ---
 const DEFAULT_ROW_HEIGHT_PC = 160; 
 const DEFAULT_ROW_HEIGHT_MOBILE = 205; 
-const OVERSCAN = 20;           
+const OVERSCAN = 20;
 
 // --- UTILITIES ---
 const writeString = (view, offset, string) => {
@@ -176,7 +172,7 @@ const initialEdgeVoices = [
     { id: "jv-ID-DimasNeural", label: "Dimas (Javanese)", lang: "jv-ID" },
     { id: "jv-ID-SitiNeural", label: "Siti (Javanese)", lang: "jv-ID" },
     { id: "su-ID-JajangNeural", label: "Jajang (Sundanese)", lang: "su-ID" },
-    { id: "su-ID-TutiNeural", label: "Tuti (Sundanese)", lang: "su-ID" }
+    { id: "su-ID-JajangNeural", label: "Jajang (Sundanese)", lang: "su-ID" }
 ];
 
 const groupVoicesByRegion = (voiceList, context = 'general') => {
@@ -767,6 +763,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const isSystemBusy = isBatchDownloading || aiLoadingId !== null;
 
+  // FIX: Silent Audio Ref (Anchor) - NEW GENERATION STRATEGY
+  const silentAudioRef = useRef(null);
+  const silentWavUrlRef = useRef(null);
+
   // FIX 1: Lock Body Scroll when Sidebar is Open (Prevent background scrolling)
   useEffect(() => {
       if (isMobile && isSidebarOpen) {
@@ -797,9 +797,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   
   // FIX: REFERENCE FOR CURRENT UTTERANCE TO PREVENT GARBAGE COLLECTION
   const currentUtteranceRef = useRef(null);
-
-  // --- SILENT AUDIO REF (Keep-Alive) ---
-  const silentAudioRef = useRef(null);
 
   const synth = window.speechSynthesis;
   const folderInputRef = useRef(null);
@@ -846,6 +843,29 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       // Colors match bg-slate-50 and bg-slate-900
       document.body.style.backgroundColor = isDark ? '#0f172a' : '#f8fafc';
   }, [theme]);
+
+  // --- INITIALIZE SILENT AUDIO (ROBUST WAV) ---
+  useEffect(() => {
+      // Create 30 seconds of silence WAV
+      const silentWavBlob = new Blob([encodeWAV(new Int16Array(48000 * 30))], { type: 'audio/wav' });
+      const url = URL.createObjectURL(silentWavBlob);
+      silentWavUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.volume = 0.01; // Tiny volume to ensure system treats as active audio
+      silentAudioRef.current = audio;
+      
+      return () => {
+          if (silentAudioRef.current) {
+              silentAudioRef.current.pause();
+              silentAudioRef.current = null;
+          }
+          if (silentWavUrlRef.current) {
+              URL.revokeObjectURL(silentWavUrlRef.current);
+          }
+      };
+  }, []);
 
   // --- SCROLL AUTO-HIDE LOGIC (UPDATED WITH FLAG & TAB CHECK) ---
   useEffect(() => {
@@ -994,12 +1014,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     addLog("System", "Ready. ProLingo v5.6 (Fixed).");
-
-    // --- INITIALIZE SILENT AUDIO ---
-    const silent = new Audio(SILENT_AUDIO_DATA);
-    silent.loop = true;
-    silent.volume = 0; // Pure silence
-    silentAudioRef.current = silent;
 
     return () => forceStopAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1403,12 +1417,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return new Promise((resolve) => {
       if (stopSignalRef.current) { resolve(); return; }
 
-      // --- SILENT KEEPALIVE CHECK ---
-      // Pastikan audio hening berjalan
-      if (silentAudioRef.current && silentAudioRef.current.paused) {
-          silentAudioRef.current.play().catch(() => {});
-      }
-
       if (part === 'meaning') {
          // Special handling: if Edge mode, we might want to try playing local audio for meaning too
          if (generatorEngine === 'edge' && preferLocalAudio) {
@@ -1418,8 +1426,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                   currentAudioObjRef.current = audio;
                   audio.rate = rate;
                   
-                  // --- MEDIA SESSION: PLAYING ---
-                  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+                  // FIX: DO NOT SET STATE, let Silent Loop handle it
+                  // if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
                   
                   audio.onended = () => {
                       currentAudioObjRef.current = null;
@@ -1448,8 +1456,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         currentAudioObjRef.current = audio;
         audio.rate = rate; 
         
-        // --- MEDIA SESSION UPDATE: PLAYING ---
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+        // FIX: DO NOT SET STATE, let Silent Loop handle it
+        // if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
 
         audio.onended = () => { 
             currentAudioObjRef.current = null; 
@@ -1483,10 +1491,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       utterance.rate = rate;
       utterance.pitch = pitch;
 
-      // --- MEDIA SESSION UPDATE: TTS START ---
-      utterance.onstart = () => {
-          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
-      };
+      // FIX: DO NOT SET STATE, let Silent Loop handle it
+      // utterance.onstart = () => {
+      //    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+      // };
 
       utterance.onend = () => {
           // FIX: Removed "none" state setting here to keep widget alive
@@ -1505,13 +1513,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     await new Promise(r => setTimeout(r, 200));
     stopSignalRef.current = false;
-
-    // --- START SILENT AUDIO HERE (On user interaction) ---
-    // Ini krusial: browser memblokir audio otomatis kecuali dipicu user click
-    if (silentAudioRef.current) {
-        silentAudioRef.current.play().catch(e => console.log("Silent audio start failed", e));
-    }
-
     await actionCallback();
   };
 
@@ -1734,8 +1735,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setIsPlaying(true);
       let index = startIndex;
       addLog("Info", `Global Play (${sessionMode}) start...`);
+      
+      // --- FIX: START SILENT ANCHOR (AGGRESSIVE) ---
+      if (silentAudioRef.current) {
+          silentAudioRef.current.play().catch(e => console.warn("Silent Play Failed", e));
+      }
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+      // ---------------------------------
 
       while (index >= 0 && index < listToPlay.length && !stopSignalRef.current) {
+        // --- HEARTBEAT CHECK ---
+        if (silentAudioRef.current && silentAudioRef.current.paused) {
+             silentAudioRef.current.play().catch(() => {});
+        }
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+        // -----------------------
+
         const item = listToPlay[index];
         setPlayingIndex(item.id); 
 
@@ -1800,9 +1815,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
       setIsPlaying(false);
       setSpeakingPart(null);
-      // STOP SILENT AUDIO IF LOOP FINISHES
-      if (silentAudioRef.current) silentAudioRef.current.pause();
-      addLog("Info", "Playback Finished/Paused.");
+      // forceStopAll akan dipanggil manual oleh user atau cleanup, tapi jika loop habis:
+      if (!stopSignalRef.current) {
+          // Playlist selesai secara alami
+          addLog("Info", "Playback Finished.");
+          forceStopAll(); // Matikan silent audio juga
+      }
     });
   };
 
@@ -1817,8 +1835,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       audio.onerror = null;
       currentAudioObjRef.current = null;
     }
-
-    // --- STOP SILENT AUDIO ---
+    
+    // --- FIX: STOP SILENT ANCHOR ---
     if (silentAudioRef.current) {
         silentAudioRef.current.pause();
         silentAudioRef.current.currentTime = 0;
