@@ -26,3 +26,5 @@ dist-ssr
 .vercel
 .env*.local
 config.md
+public/check_audio_list.py
+.backup/*

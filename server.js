@@ -60,6 +60,35 @@ app.post("/api/tts", async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`Backend TTS Streaming running at http://localhost:${port}`);
+app.get("/", (req, res) => {
+    res.send(`
+        <html>
+            <head><title>ProLingo TTS Backend</title></head>
+            <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: white;">
+                <div style="text-align: center; padding: 2rem; background: #1e293b; border-radius: 1rem; border: 1px solid #334155; max-width: 480px;">
+                    <h2 style="color: #6366f1; margin-top: 0;">⚡ ProLingo TTS Backend Online</h2>
+                    <p style="color: #94a3b8; font-size: 14px;">Ini adalah server API Backend (Port 3001).</p>
+                    <div style="margin: 1.5rem 0; padding: 1rem; background: #0f172a; border-radius: 0.5rem; text-align: left; font-size: 13px;">
+                        <p style="margin: 0 0 0.5rem 0; color: #38bdf8;">👉 <b>Untuk membuka Aplikasi ProLingo:</b></p>
+                        <p style="margin: 0; color: #cbd5e1;">Buka Frontend di <b>Port 5173</b>:</p>
+                        <ul style="margin: 0.5rem 0 0 1.2rem; padding: 0; color: #a5f3fc;">
+                            <li>Lokal: <a href="http://localhost:5173" style="color: #818cf8;">http://localhost:5173</a></li>
+                            <li>Mobile / Tailscale: <code>http://[IP-Laptop]:5173</code></li>
+                        </ul>
+                    </div>
+                    <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">Status API: <span style="color: #4ade80;">Running OK</span></p>
+                </div>
+            </body>
+        </html>
+    `);
+});
+
+app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", service: "Edge TTS Backend", timestamp: new Date().toISOString() });
+});
+
+app.listen(port, "0.0.0.0", () => {
+    console.log(`Backend TTS Streaming running on port ${port} (0.0.0.0)`);
+    console.log(`- Local: http://localhost:${port}`);
+    console.log(`- Network / Tailscale: http://<your-ip>:${port}`);
 });
