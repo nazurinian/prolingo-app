@@ -1,3 +1,4 @@
+import { APP_VERSION_LABEL } from '../../constants/appMetadata';
 import { V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import { downloadTextFile, getRecordAudioNo, sanitizeFilename } from '../../utils/audioUtils';
 import { parseTableRecords, serializeTableRecords, validateTableRecords } from '../../utils/csvUtils';
@@ -25,7 +26,7 @@ export const executeExportTableCsvService = ({
       }
 
       const suffix = scope === 'study' ? 'study_queue' : 'master';
-      const filename = `${sanitizeFilename(currentDeckName || 'ProLingo')}_${suffix}_v5.11.6.csv`;
+      const filename = `${sanitizeFilename(currentDeckName || 'ProLingo')}_${suffix}_${APP_VERSION_LABEL}.csv`;
       const exportBaseName = filename.replace(/\.csv$/i, '');
       // Keep sequence history locally without polluting the CSV schema. Re-importing this exact export
       // in the same browser restores deleted-tail/high-water information.
@@ -229,7 +230,7 @@ export const executeExportMergedDatasetService = ({
 }) => {
       const records = parseTableRecords(tableContent);
       if (!records.length) return;
-      const filename = `${sanitizeFilename(currentDeckName || 'ProLingo')}_MERGED_v5.11.6.csv`;
+      const filename = `${sanitizeFilename(currentDeckName || 'ProLingo')}_MERGED_${APP_VERSION_LABEL}.csv`;
       downloadTextFile(serializeTableRecords(records), filename);
       addLog('Export', `Merged dataset exported: ${filename}. Source baselines unchanged.`);
 };

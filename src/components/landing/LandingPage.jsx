@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_VERSION_LABEL } from '../../constants/appMetadata';
 import { 
   Mic, Database, Server, CloudLightning, Brain, ArrowRight, Sun, Laptop, Moon 
 } from 'lucide-react';
@@ -11,7 +12,7 @@ export const LandingPage = ({ onStart, theme, setTheme }) => {
           <Mic className="w-12 h-12 text-white" />
         </div>
         <h1 className="text-4xl md:text-6xl font-black text-slate-800 dark:text-white mb-4 tracking-tight">
-          ProLingo <span className="text-indigo-500">v5.11.6</span>
+          ProLingo <span className="text-indigo-500">{APP_VERSION_LABEL}</span>
         </h1>
         <p className="text-lg md:text-xl text-slate-600 dark:text-slate-400 mb-10 max-w-xl leading-relaxed">
           Professional Pronunciation & Memory Training Platform.

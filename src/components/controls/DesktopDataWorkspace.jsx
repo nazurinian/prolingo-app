@@ -1,3 +1,4 @@
+import { APP_DATA_MANAGER_RELEASE_NOTE } from '../../constants/appMetadata';
 import React from 'react';
 import { ArrowRightToLine, Lock, Unlock, Layers, Upload, X, FileDown, History, RotateCcw } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
@@ -34,7 +35,7 @@ export default function DesktopDataWorkspace({
                   </div>
                   <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-3">
                       <div className="flex items-center gap-2 mb-2"><History className="w-4 h-4 text-indigo-500"/><span className="text-xs font-bold text-slate-700 dark:text-slate-200">Data Manager</span></div>
-                      <p className="text-[10px] text-slate-400 leading-relaxed">v5.11.6 UI Shell: controls are separated into Player / Learn / Data / System; learning engine remains unchanged.</p>
+                      <p className="text-[10px] text-slate-400 leading-relaxed">{APP_DATA_MANAGER_RELEASE_NOTE}</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 p-2"><div className="text-lg font-black text-emerald-600">+{csvChangeSummary.added}</div><div className="text-[9px] text-slate-400">NEW</div></div>

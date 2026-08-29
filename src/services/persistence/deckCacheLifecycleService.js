@@ -1,3 +1,4 @@
+import { APP_READY_LOG } from '../../constants/appMetadata';
 import { canonicalizeTableContent, getMaxAssignedNoFromRecords, getMaxManualIdFromRecords, parseTableRecords } from '../../utils/csvUtils';
 import { createEmptySourcePack, normalizeDeckEntry, normalizeSourcePack } from '../../utils/multiSourceUtils';
 import { resolveDraftCacheMetadata } from '../../domain/dataset/draftCacheMetadataDomain';
@@ -78,7 +79,7 @@ export const executeStartupRestoreEffect = ({
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", "Ready. ProLingo v5.11.6 (UI Navigation Shell).");
+    addLog("System", APP_READY_LOG);
 
     return () => forceStopAll();
 };

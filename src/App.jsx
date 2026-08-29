@@ -1,4 +1,4 @@
-/* ProLingo v5.11.6 - UI Navigation Shell */
+/* ProLingo - Modular Application Shell */
 /* eslint-disable no-control-regex */
 // eslint-disable-next-line no-unused-vars
 import React, { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect } from 'react';

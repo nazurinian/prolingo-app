@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_MANUAL_EDITOR_RELEASE_LABEL } from '../../constants/appMetadata';
 import { X, ChevronDown, Save } from 'lucide-react';
 
 export const ManualEditorModal = ({
@@ -21,7 +22,7 @@ export const ManualEditorModal = ({
             <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-white">{manualEditingId ? 'Edit Vocabulary' : 'Add Manual Vocabulary'}</h3>
-                <p className="text-[10px] text-slate-400">v5.11.6 • UI Shell + Learning Engine • Imported baseline: {importedRowCount} • Max audio NO: #{sequenceHighWater} • Next: #{sequenceHighWater + 1}</p>
+                <p className="text-[10px] text-slate-400">{APP_MANUAL_EDITOR_RELEASE_LABEL} • Imported baseline: {importedRowCount} • Max audio NO: #{sequenceHighWater} • Next: #{sequenceHighWater + 1}</p>
               </div>
               <button onClick={closeManualEditor} className="p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700"><X className="w-4 h-4"/></button>
             </div>

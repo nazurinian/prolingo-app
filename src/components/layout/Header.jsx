@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_VERSION_LABEL } from '../../constants/appMetadata';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
   Terminal, Play, Settings
@@ -47,7 +48,7 @@ const Header = ({
           </button>
           <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
               <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-              <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">v5.11.6</span></h1></div>
+              <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">{APP_VERSION_LABEL}</span></h1></div>
           </div>
           </div>
           
