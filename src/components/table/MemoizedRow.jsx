@@ -9,6 +9,7 @@ import {
   hasAdvancedContent 
 } from '../../utils/audioUtils';
 import HighlightedText from '../common/HighlightedText';
+import { MasteryStatusControl } from '../progress/MasteryStatusControl';
 
 // --- OPTIMIZED ROW COMPONENT (TABLE MODE) ---
 export const MemoizedRow = memo(({ 
@@ -42,7 +43,10 @@ export const MemoizedRow = memo(({
     onEditItem,
     onDeleteItem,
     advancedExpanded,
-    onToggleAdvanced
+    onToggleAdvanced,
+    masteryState,
+    masteryTrackable,
+    onCycleMastery
 }) => {
     const isMenuOpen = activeMenuId === rowId;
     const isWordUsingLocal = localWordUrl && preferLocalAudio;
@@ -87,6 +91,7 @@ export const MemoizedRow = memo(({
                             <button onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); onMenuToggle(null); }} className={`w-full px-2 py-1.5 flex items-center gap-2 rounded text-[10px] font-bold border ${isInQueue ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-100 dark:border-slate-700'}`}>
                                 {isInQueue ? <CheckCircle className="w-3 h-3" /> : <Plus className="w-3 h-3" />}{isInQueue ? 'Added' : 'Queue'}
                             </button>
+                            {masteryTrackable && <MasteryStatusControl state={masteryState} onCycle={() => { onCycleMastery(); onMenuToggle(null); }} className="w-full" />}
                             {hasAdvanced && <button onClick={(e) => { e.stopPropagation(); onToggleAdvanced(); onMenuToggle(null); }} className="w-full px-2 py-1.5 flex items-center gap-2 rounded text-[10px] font-bold border border-violet-200 dark:border-violet-800 text-violet-600 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20"><Layers className="w-3 h-3"/>{advancedExpanded ? 'Basic View' : `Advanced (${advancedCount})`}</button>}
                             <div className="grid grid-cols-2 gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); onEditItem(item); onMenuToggle(null); }} className="px-2 py-1.5 flex items-center justify-center gap-1 rounded text-[10px] font-bold border border-blue-100 dark:border-blue-900 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"><Edit3 className="w-3 h-3"/> Edit</button>
@@ -116,6 +121,7 @@ export const MemoizedRow = memo(({
                                     {item.partOfSpeech && <span className={`text-[10px] italic border px-1 rounded flex-shrink-0 ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600'}`}>{item.partOfSpeech}</span>}
                                     {item.meaningWord && <div className={`text-[10px] border pl-1 pr-1.5 py-0.5 rounded flex items-center gap-1 min-w-0 ${isWordIdnActive ? 'font-bold text-white bg-blue-500/30 border-blue-300' : (isActive ? 'text-blue-200 border-blue-400 bg-blue-500' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800')}`}><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word_idn', `${rowId}-word-idn`); }} className={miniPlayClass(independentPlayingId === `${rowId}-word-idn`)} title="Play word translation">{independentPlayingId === `${rowId}-word-idn` ? <X className="w-2.5 h-2.5"/> : <Play className="w-2.5 h-2.5 fill-current"/>}</button><span className="truncate">{item.meaningWord}</span></div>}
                                     {item.vocabId && <span className={`hidden lg:inline text-[9px] font-mono border px-1 rounded ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600'}`}>{item.vocabId}</span>}
+                                    {masteryTrackable && <MasteryStatusControl state={masteryState} onCycle={onCycleMastery} compact className="hidden md:inline-flex flex-shrink-0" />}
                                 </div>
                             </div>
                             {hasAdvanced && <button onClick={(e) => { e.stopPropagation(); onToggleAdvanced(); }} className={`hidden md:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-black flex-shrink-0 ${advancedExpanded ? 'bg-violet-600 text-white border-violet-500' : (isActive ? 'bg-blue-700 text-violet-100 border-blue-400' : 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-300 border-violet-200 dark:border-violet-800')}`} title="Toggle INFO + EXP1–EXP5"><Layers className="w-3 h-3"/>ADV {advancedCount}</button>}
@@ -194,7 +200,9 @@ export const MemoizedRow = memo(({
     prev.activeMenuId === next.activeMenuId &&
     prev.changeType === next.changeType &&
     prev.generatorEngine === next.generatorEngine &&
-    prev.advancedExpanded === next.advancedExpanded
+    prev.advancedExpanded === next.advancedExpanded &&
+    prev.masteryState === next.masteryState &&
+    prev.masteryTrackable === next.masteryTrackable
 ));
 
 // --- OPTIMIZED ROW COMPONENT (TEXT MODE) ---

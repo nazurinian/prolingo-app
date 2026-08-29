@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect } from 'react';
 import { useMainAppPrimaryState } from './hooks/useMainAppPrimaryState';
 import { useMainAppRuntimeRefs } from './hooks/useMainAppRuntimeRefs';
+import { useMasteryProgressState } from './hooks/useMasteryProgressState';
 import { 
   Play, Pause, RotateCcw, Volume2, Settings, Trash2, List, Mic, Globe, 
   CheckCircle, Save, Upload, Table, SkipBack, SkipForward, X, 
@@ -88,6 +89,7 @@ import { executeCsvImportFileService, executeFullPackImportService, executeSourc
 import { executeExportMergedDatasetService, executeExportTableCsvService, executeRemoveSourceLayerService, executeSaveUpdatedCsvService, executeSaveUpdatedSourceService } from './services/persistence/datasetPersistenceService';
 import { executeDeleteDeckCacheService, executeDraftAutosaveEffect, executeLoadDeckCacheService, executeSaveDeckCacheService, executeStartupRestoreEffect } from './services/persistence/deckCacheLifecycleService';
 import { executeControlSectionPersistenceEffect, executePlaybackDelaysPersistenceEffect, executePlaybackSequencePersistenceEffect, executeVocabularyPlayOrderPersistenceEffect, loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from './services/persistence/preferencePersistenceService';
+import { executeCycleMasteryState } from './services/progress/masteryInteractionService';
 
 
 // --- SYSTEM ENVIRONMENT VAR ---
@@ -131,6 +133,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     silentAudioRef, silentWavUrlRef,
   } = useMainAppPrimaryState();
 
+  const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
+
   // FIX 1: Lock Body Scroll when Sidebar is Open (Prevent background scrolling)
   useEffect(() => executeBodyScrollLockEffect({ isMobile, isSidebarOpen }), [isMobile, isSidebarOpen]);
 
@@ -146,6 +150,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder });
+
+  const cycleMasteryState = useCallback((vocabId) => executeCycleMasteryState({
+      vocabId, setMasteryByVocabId
+  }), [setMasteryByVocabId]);
 
   const studyQueueSet = useMemo(() => new Set(studyQueue), [studyQueue]);
 
@@ -1081,7 +1089,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     expandedAdvancedId,
     setExpandedAdvancedId,
     localAudioMapText,
-    handleDeleteTextItem
+    handleDeleteTextItem,
+    masteryByVocabId,
+    cycleMasteryState
   });
 
   return renderMainAppShellView({

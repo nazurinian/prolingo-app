@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronsUp, FileText, ListPlus, Send, Table } from 'lucide-react';
 import { OVERSCAN } from '../../constants/datasetConstants';
 import { getStableAudioIdentity } from '../../utils/audioUtils';
+import { resolveMasteryState } from '../../domain/progress/masteryStateDomain.js';
 import { MemoizedRow } from './MemoizedRow';
 import { MemoizedTextRow } from './MemoizedTextRow';
 
@@ -49,7 +50,9 @@ export const renderPlaylistViewport = ({
   expandedAdvancedId,
   setExpandedAdvancedId,
   localAudioMapText,
-  handleDeleteTextItem
+  handleDeleteTextItem,
+  masteryByVocabId,
+  cycleMasteryState
 }) => {
     const rowHeight = rowHeights[mode];
     const totalCount = currentPlayerList.length;
@@ -203,6 +206,9 @@ export const renderPlaylistViewport = ({
                    const localWordIdnUrl = localAudioMapTable[`${audioIdentity}_word_idn`] || null;
                    const localSentUrl = localAudioMapTable[`${audioIdentity}_sentence`] || null;
                    const localMeaningUrl = localAudioMapTable[`${audioIdentity}_meaning`] || null;
+                   const masteryVocabId = String(item.vocabId || '').trim();
+                   const masteryTrackable = Boolean(masteryVocabId);
+                   const masteryState = resolveMasteryState(masteryByVocabId, masteryVocabId);
 
                    return (
                        <MemoizedRow 
@@ -241,6 +247,9 @@ export const renderPlaylistViewport = ({
                            onDeleteItem={deleteStructuredItem}
                            advancedExpanded={expandedAdvancedId === item.id}
                            onToggleAdvanced={() => setExpandedAdvancedId(prev => prev === item.id ? null : item.id)}
+                           masteryState={masteryState}
+                           masteryTrackable={masteryTrackable}
+                           onCycleMastery={() => cycleMasteryState(masteryVocabId)}
                        />
                    );
                } 
