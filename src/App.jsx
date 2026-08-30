@@ -67,6 +67,7 @@ import { resolveExportSourceMetadata, resolveSavedSourceMetadata } from './domai
 import { resolveFullPackImportState, resolveSingleSourceImportState } from './domain/dataset/sourceImportStateDomain';
 import { resolveManualAddForm, resolveManualAddNextNo, resolveManualEditAdvancedOpen, resolveManualEditForm } from './domain/dataset/manualEditorStateDomain';
 import { resolveActivePlaybackList, resolveAdvancedDatasetStats, resolveCurrentPlayerList, resolveMasterFilteredPlaylist, resolveSourceChangeSummaries } from './domain/view/mainAppDerivedStateDomain';
+import { resolveMasteryProgressStatistics } from './domain/progress/masteryStatisticsDomain';
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
 import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecisionDomain';
 import { shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
@@ -172,6 +173,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const dirtySourceKeys = useMemo(() => V510_SOURCE_KEYS.filter(key => sourceChangeSummaries[key]?.isDirty), [sourceChangeSummaries]);
 
   const advancedDatasetStats = useMemo(() => resolveAdvancedDatasetStats({ playlist }), [playlist]);
+
+  const masteryProgressStats = useMemo(() => resolveMasteryProgressStatistics({
+      items: playlist.filter(item => item.isStructured), masteryByVocabId
+  }), [playlist, masteryByVocabId]);
 
   const masterFilteredPlaylist = useMemo(() => resolveMasterFilteredPlaylist({
       playlist, masterFilter, csvChangeSummary, masterSearch, masteryFilter, masteryByVocabId
@@ -1042,7 +1047,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderMasterDataToolbar = (extraClass = '') => renderMasterDataToolbarView({
     extraClass, mode, tableViewMode, playlist, masterSearch, setMasterSearch,
-    masterFilter, setMasterFilter, masteryFilter, setMasteryFilter,
+    masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats,
     isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
     undoStack, undoLastDataChange, masterFilteredPlaylist, lastDraftAutoSaveAt,
     rangeInput, setRangeInput, handleRangeAdd

@@ -172,7 +172,7 @@ export const renderWorkspaceTabsView = ({ mobileContext = false, handleTabSwitch
 
 export const renderMasterDataToolbarView = ({
   extraClass = '', mode, tableViewMode, playlist, masterSearch, setMasterSearch,
-  masterFilter, setMasterFilter, masteryFilter, setMasteryFilter,
+  masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats,
   isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
   undoStack, undoLastDataChange, masterFilteredPlaylist, lastDraftAutoSaveAt,
   rangeInput, setRangeInput, handleRangeAdd
@@ -188,6 +188,7 @@ export const renderMasterDataToolbarView = ({
               setMasterFilter={setMasterFilter}
               masteryFilter={masteryFilter}
               setMasteryFilter={setMasteryFilter}
+              masteryProgressStats={masteryProgressStats}
               isCsvDirty={isCsvDirty}
               setIsChangeReviewOpen={setIsChangeReviewOpen}
               csvChangeSummary={csvChangeSummary}
