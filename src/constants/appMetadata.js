@@ -1,17 +1,17 @@
-export const APP_VERSION = '5.12.4';
+export const APP_VERSION = '5.12.5';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_RELEASE_NAME = 'Storage Safety + Study Tracking';
+export const APP_RELEASE_NAME = 'Progress Backup + Restore';
 export const APP_RELEASE_DATE = '2026-08-30';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Storage Safety + Study Tracking: local storage usage is visible and study encounters are tracked separately from mastery and dataset CSV state.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • Storage Safety + Study Tracking`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Progress Backup + Restore: mastery and study tracking can be exported and restored separately from dataset CSV state.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • Progress Backup + Restore`;
 
 export const APP_CHANGELOG = Object.freeze([
-  'Storage Safety panel added with categorized local storage usage and granular reset actions',
-  'Dataset cache, mastery progress, CSV high-water metadata, preferences, and study tracking remain isolated by storage boundary',
-  'Automatic study tracking records structured VOCAB_ID encounters without automatically changing mastery state',
-  'Study tracking persists compact per-vocab studyCount, firstStudiedAt, and lastStudiedAt metadata instead of an unbounded event log',
-  'Master Data study activity summary added with studied/un-studied coverage, event count, and last-studied information',
-  'VOCAB_ID, permanent NO/audio-slot identity, CSV dirty-state, playback sequence/repeat/delay/shuffle, and audio/TTS invariants preserved'
+  'Progress backup exports Mastery and Study Tracking as portable VOCAB_ID-keyed JSON',
+  'Restore supports idempotent Merge and explicit Replace without touching dataset CSV, NO/audio slots, or CSV high-water metadata',
+  'Unknown or currently unloaded VOCAB_ID progress is preserved instead of being remapped by row position or word text',
+  'Restore persistence includes rollback protection if a multi-key progress write fails partway through',
+  'Storage Safety keeps granular reset actions for dataset cache, Mastery, Study Tracking, and advanced CSV metadata',
+  'v5.12 progress foundation complete: Mastery, filters, statistics, storage safety, automatic tracking, and backup/restore'
 ]);

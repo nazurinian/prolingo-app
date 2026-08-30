@@ -76,7 +76,8 @@ export const renderMobileToolsView = ({
   userApiKey, setUserApiKey, edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
   edgeHealth, folderInputRef, isBatchDownloading, batchConfig, setBatchConfig, runBatchDownload,
-  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
+  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
+  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -162,6 +163,10 @@ export const renderMobileToolsView = ({
           onDatasetCacheCleared={onDatasetCacheCleared}
           onMasteryReset={onMasteryReset}
           onStudyTrackingReset={onStudyTrackingReset}
+          masteryByVocabId={masteryByVocabId}
+          activityByVocabId={activityByVocabId}
+          currentVocabIds={currentVocabIds}
+          onProgressRestored={onProgressRestored}
       />
 );
 

@@ -181,6 +181,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setActivityByVocabId({});
   }, [setActivityByVocabId]);
 
+  const currentProgressVocabIds = useMemo(() => playlist
+      .filter(item => item?.isStructured && item?.vocabId)
+      .map(item => item.vocabId), [playlist]);
+
+  const handleProgressRestored = useCallback(({ masteryByVocabId: nextMastery = {}, activityByVocabId: nextActivity = {} } = {}) => {
+      setMasteryByVocabId(nextMastery);
+      setActivityByVocabId(nextActivity);
+  }, [setMasteryByVocabId, setActivityByVocabId]);
+
   const studyQueueSet = useMemo(() => new Set(studyQueue), [studyQueue]);
 
   const csvChangeSummary = useMemo(
@@ -1068,7 +1077,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading,
     batchConfig, setBatchConfig, runBatchDownload, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
-    onStudyTrackingReset: handleStorageStudyTrackingReset
+    onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
+    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored
   });
 
   const renderWorkspaceTabs = (mobileContext = false) => renderWorkspaceTabsView({
@@ -1165,7 +1175,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, pendingDeleteItem,
     setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck,
     storageRefreshToken, onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
-    onStudyTrackingReset: handleStorageStudyTrackingReset
+    onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
+    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored
   });
 };
 

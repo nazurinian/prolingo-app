@@ -42,7 +42,8 @@ export const renderMainAppShellView = (props) => {
     setSequenceHighWater, setManualIdHighWater, setImportedRowCount, setUndoStack, setMasterSearch, setMasterFilter,
     setLocalAudioMapTable, setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, pendingDeleteItem,
     setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck,
-    storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
+    storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
+    masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
   } = props;
 
   return (
@@ -149,6 +150,10 @@ export const renderMainAppShellView = (props) => {
                 onDatasetCacheCleared={onDatasetCacheCleared}
                 onMasteryReset={onMasteryReset}
                 onStudyTrackingReset={onStudyTrackingReset}
+                masteryByVocabId={masteryByVocabId}
+                activityByVocabId={activityByVocabId}
+                currentVocabIds={currentVocabIds}
+                onProgressRestored={onProgressRestored}
               />}
 
               {sidebarSection === 'player' && <>

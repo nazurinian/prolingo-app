@@ -10,7 +10,8 @@ export default function DesktopSystemControls({
   apiKey, userApiKey, onUserApiKeyChange, folderInputRef, currentMapCount, batchButtonRef,
   isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
   setShowLogs, showLogs, logContainerRef, systemLogs, storageRefreshToken,
-  onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
+  onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
+  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
   return (
     <>
@@ -99,6 +100,10 @@ export default function DesktopSystemControls({
                 onDatasetCacheCleared={onDatasetCacheCleared}
                 onMasteryReset={onMasteryReset}
                 onStudyTrackingReset={onStudyTrackingReset}
+                masteryByVocabId={masteryByVocabId}
+                activityByVocabId={activityByVocabId}
+                currentVocabIds={currentVocabIds}
+                onProgressRestored={onProgressRestored}
               />
 
     </>

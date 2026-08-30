@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Brain, Database, FileKey2, HardDrive, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { formatStorageBytes, LOCAL_STORAGE_SAFETY_REFERENCE_BYTES } from '../../domain/progress/storageSafetyDomain.js';
+import ProgressBackupRestorePanel from './ProgressBackupRestorePanel.jsx';
 import {
   clearCsvMetadataStorage,
   clearDatasetCacheStorage,
@@ -34,6 +35,10 @@ export default function StorageManagerPanel({
   onDatasetCacheCleared,
   onMasteryReset,
   onStudyTrackingReset,
+  masteryByVocabId = {},
+  activityByVocabId = {},
+  currentVocabIds = [],
+  onProgressRestored,
   refreshToken = ''
 }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -140,6 +145,14 @@ export default function StorageManagerPanel({
         {pendingAction && <button type="button" onClick={() => setPendingAction(null)} className="w-full text-[8px] text-slate-400 underline">Cancel confirmation</button>}
         {message && <p className="rounded bg-slate-50 dark:bg-slate-900/50 px-2 py-1.5 text-[8px] text-slate-500 dark:text-slate-400">{message}</p>}
       </div>
+
+      <ProgressBackupRestorePanel
+        masteryByVocabId={masteryByVocabId}
+        activityByVocabId={activityByVocabId}
+        currentVocabIds={currentVocabIds}
+        onProgressRestored={onProgressRestored}
+        onStorageRefresh={refresh}
+      />
     </div>
   );
 }

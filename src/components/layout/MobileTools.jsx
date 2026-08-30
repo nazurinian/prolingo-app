@@ -89,6 +89,10 @@ const MobileTools = ({
   onDatasetCacheCleared,
   onMasteryReset,
   onStudyTrackingReset,
+  masteryByVocabId,
+  activityByVocabId,
+  currentVocabIds,
+  onProgressRestored,
 }) => (
       <div className="p-4 space-y-4">
           <div className="sticky top-0 z-20 -mx-1 pt-1 pb-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm">
@@ -202,6 +206,10 @@ const MobileTools = ({
               onDatasetCacheCleared={onDatasetCacheCleared}
               onMasteryReset={onMasteryReset}
               onStudyTrackingReset={onStudyTrackingReset}
+              masteryByVocabId={masteryByVocabId}
+              activityByVocabId={activityByVocabId}
+              currentVocabIds={currentVocabIds}
+              onProgressRestored={onProgressRestored}
           />}
       </div>
   );

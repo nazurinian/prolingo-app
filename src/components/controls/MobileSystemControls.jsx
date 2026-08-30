@@ -9,7 +9,8 @@ export default function MobileSystemControls({
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
   batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
-  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
+  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
+  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
   return (
     <>
@@ -25,6 +26,10 @@ export default function MobileSystemControls({
                   onDatasetCacheCleared={onDatasetCacheCleared}
                   onMasteryReset={onMasteryReset}
                   onStudyTrackingReset={onStudyTrackingReset}
+                  masteryByVocabId={masteryByVocabId}
+                  activityByVocabId={activityByVocabId}
+                  currentVocabIds={currentVocabIds}
+                  onProgressRestored={onProgressRestored}
               />
 
               <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
