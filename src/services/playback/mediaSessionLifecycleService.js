@@ -2,13 +2,21 @@ import { getItemPartText } from '../../utils/audioUtils';
 
 export const executeMediaSessionLifecycleService = ({
   currentPlayerList, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
-  mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef
+  currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
 }) => {
         if (!('mediaSession' in navigator)) return;
 
         // 1. Tentukan Item yang sedang aktif
         const activeItem = currentPlayerList.find(p => p.id === playingIndex);
-        if (!activeItem) return;
+        if (!activeItem) {
+            // A real Stop removes the active item. Clear any timeline previously
+            // published for local/generated audio so Android does not keep stale
+            // duration/position data after the playback session has ended.
+            try {
+                navigator.mediaSession.setPositionState?.({});
+            } catch (_) {}
+            return;
+        }
 
         // 2. Tentukan Metadata Awal
         let title = activeItem.word || activeItem.text || "Unknown Item";
@@ -55,60 +63,84 @@ export const executeMediaSessionLifecycleService = ({
         // Set Awal (Static)
         updateMetadata(title, artist);
 
-        // --- NEW: LOGIKA TEKS BERJALAN (MARQUEE) ---
-        // Bersihkan interval sebelumnya jika ada
+        // Keep Android/system media metadata static for the lifetime of the
+        // current logical playback part. Replacing MediaMetadata every 200 ms
+        // for a marquee can make the OS media notification rebuild its artwork
+        // and timing surface repeatedly (visible as flicker/reset).
         if (mediaIntervalRef.current) {
             clearInterval(mediaIntervalRef.current);
             mediaIntervalRef.current = null;
         }
 
-        // Hanya jalankan scroll jika sedang PLAYING dan teksnya PANJANG
-        if (isPlaying) {
-             const needScrollTitle = title.length > 25;
-             const needScrollArtist = artist.length > 35; // Biasanya kalimat panjang disini
+        // Publish the timeline from the REAL local/generated MP3, not from the
+        // 30-second silent background anchor. Android can otherwise alternate
+        // between the anchor duration and the real track, which presents as a
+        // missing/incorrect progress bar. MediaSession position state is designed
+        // specifically to tell the OS which duration/position belongs to the
+        // logical media currently being presented.
+        const syncLocalAudioPosition = () => {
+            const audio = currentAudioObjRef?.current;
+            if (!audio || typeof navigator.mediaSession.setPositionState !== 'function') return;
 
-             if (needScrollTitle || needScrollArtist) {
-                 // Tambah padding spasi di akhir supaya muternya enak dilihat
-                 const combinedTitle = title + "     "; 
-                 const combinedArtist = artist + "     ";
-                 
-                 let tCount = 0;
-                 let aCount = 0;
+            const duration = Number(audio.duration);
+            if (!Number.isFinite(duration) || duration <= 0) return;
 
-                 // MODIFIED: Speed to 200ms for smoother scroll
-                 mediaIntervalRef.current = setInterval(() => {
-                     let displayTitle = title;
-                     let displayArtist = artist;
+            const rawPosition = Number(audio.currentTime);
+            const position = Math.min(
+                duration,
+                Math.max(0, Number.isFinite(rawPosition) ? rawPosition : 0)
+            );
+            const rawRate = Number(audio.playbackRate);
+            const playbackRate = Number.isFinite(rawRate) && rawRate !== 0 ? rawRate : 1;
 
-                     // Logika Geser Title
-                     if (needScrollTitle) {
-                         const offset = tCount % combinedTitle.length;
-                         displayTitle = combinedTitle.slice(offset) + combinedTitle.slice(0, offset);
-                         tCount++;
-                     }
+            try {
+                navigator.mediaSession.setPositionState({
+                    duration,
+                    playbackRate,
+                    position
+                });
+            } catch (error) {
+                // Position state is an enhancement. Never let an unsupported or
+                // transient media value interrupt the actual playback session.
+            }
+        };
 
-                     // Logika Geser Artist
-                     if (needScrollArtist) {
-                         const offset = aCount % combinedArtist.length;
-                         displayArtist = combinedArtist.slice(offset) + combinedArtist.slice(0, offset);
-                         aCount++;
-                     }
-                     
-                     // Update Tampilan Widget
-                     updateMetadata(displayTitle, displayArtist);
-                 }, 200); // REVISED: 1000ms -> 200ms
-             }
-        }
+        // One immediate attempt plus a light sync cadence catches loadedmetadata
+        // on newly-created Audio elements. The OS can extrapolate between these
+        // reports, so there is no need for the old 200 ms metadata churn.
+        syncLocalAudioPosition();
+        mediaIntervalRef.current = setInterval(syncLocalAudioPosition, 500);
 
         // 4. Set Action Handlers (STABLE with refs)
-        navigator.mediaSession.setActionHandler("play", () => {
-            if (isPaused) resumePlaybackRef.current();
-            else if (!isPlaying) playRef.current();
+        // Media-session actions can arrive while React rendering is throttled in
+        // the Android background. Do not decide Play vs Resume from captured
+        // isPaused/isPlaying values; playbackState is updated synchronously by
+        // the playback controls and remains the media-session source of truth.
+        const registerAction = (action, handler) => {
+            try {
+                navigator.mediaSession.setActionHandler(action, handler);
+            } catch (error) {
+                console.warn(`MediaSession action unsupported: ${action}`, error);
+            }
+        };
+
+        registerAction("play", () => {
+            // Android may derive playbackState from the silent HTMLAudioElement
+            // and update it later than ProLingo's own Pause state. Use the
+            // realtime pause ref first so a lock-screen Play always resumes the
+            // existing TTS/local session instead of being ignored.
+            if (pauseStateRef?.current) {
+                resumePlaybackRef.current();
+                return;
+            }
+            if (navigator.mediaSession.playbackState !== "playing") {
+                playRef.current();
+            }
         });
-        navigator.mediaSession.setActionHandler("pause", () => pausePlaybackRef.current());
-        navigator.mediaSession.setActionHandler("previoustrack", () => navRef.current("prev"));
-        navigator.mediaSession.setActionHandler("nexttrack", () => navRef.current("next"));
-        navigator.mediaSession.setActionHandler("stop", () => stopRef.current());
+        registerAction("pause", () => pausePlaybackRef.current({ source: 'mediaSession' }));
+        registerAction("previoustrack", () => navRef.current("prev"));
+        registerAction("nexttrack", () => navRef.current("next"));
+        registerAction("stop", () => stopRef.current());
 
         // Cleanup saat unmount atau track berubah
         return () => {

@@ -17,6 +17,9 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
 
   // FIX: REFERENCE FOR CURRENT UTTERANCE TO PREVENT GARBAGE COLLECTION
   const currentUtteranceRef = useRef(null);
+  // Browser TTS logical replay state used only when Android MediaSession pause
+  // destroys the native SpeechSynthesis utterance.
+  const ttsReplayRef = useRef(null);
 
   const synth = window.speechSynthesis;
   const folderInputRef = useRef(null);
@@ -35,7 +38,7 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
   return {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, edgeTestAbortControllerRef, playbackModeRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, currentUtteranceRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   };

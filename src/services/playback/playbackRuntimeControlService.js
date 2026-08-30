@@ -1,5 +1,3 @@
-import { shouldPausePlayback, shouldResumePlayback } from '../../domain/playback/playbackControlDomain';
-
 export const executeSettlePlaybackPromise = ({ playbackResolveRef }) => {
       const resolver = playbackResolveRef.current;
       playbackResolveRef.current = null;
@@ -27,35 +25,86 @@ export const executeWaitPlaybackDelay = async ({
 };
 
 export const executePausePlayback = ({
-  isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog
+  isPlaying, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+  ttsReplayRef, pauseSource = 'ui'
 }) => {
-      if (!shouldPausePlayback({ isPlaying, isPaused })) return;
+      // Realtime playback control must use the ref as source-of-truth. React state
+      // can lag by one render during rapid Pause -> Resume input.
+      if (!isPlaying || pauseStateRef.current) return;
       pauseStateRef.current = true;
-      if (currentAudioObjRef.current && !currentAudioObjRef.current.paused) currentAudioObjRef.current.pause();
-      if (synth.speaking && !synth.paused) synth.pause();
+
+      const activeLocalAudio = currentAudioObjRef.current;
+      if (activeLocalAudio && !activeLocalAudio.paused) activeLocalAudio.pause();
+
+      // Foreground Browser TTS keeps the native pause/resume behavior that already
+      // works on supported voices. Android MediaSession is different: testing shows
+      // the browser may destroy the utterance on background Pause, so synth.resume()
+      // later only restarts the silent media host. In that one path, deliberately
+      // cancel the native utterance while keeping its logical playback promise alive;
+      // Resume will recreate the SAME part from the beginning.
+      const replayState = ttsReplayRef?.current;
+      const shouldSuspendTtsForMediaSession =
+        pauseSource === 'mediaSession' && !activeLocalAudio && replayState;
+
+      if (shouldSuspendTtsForMediaSession) {
+          replayState.suspended = true;
+          synth.cancel();
+      } else {
+          // Do not gate pause on synth.speaking/synth.paused: Chromium can update
+          // those flags after the utterance has already started producing audio.
+          synth.pause();
+      }
+
+      // Pause the media host so Android changes the notification icon to Resume.
       if (silentAudioRef.current) silentAudioRef.current.pause();
+
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
       setIsPaused(true);
-      addLog("Playback", "Paused.");
+      addLog("Playback", shouldSuspendTtsForMediaSession
+        ? "Paused. Browser TTS part armed for restart on Resume."
+        : "Paused.");
 };
 
 export const executeResumePlayback = ({
-  isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog
+  isPlaying, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog, ttsReplayRef
 }) => {
-      if (!shouldResumePlayback({ isPlaying, isPaused })) return;
+      if (!isPlaying || !pauseStateRef.current) return;
       pauseStateRef.current = false;
-      if (currentAudioObjRef.current?.paused) currentAudioObjRef.current.play().catch(() => {});
-      if (synth.paused) synth.resume();
+
+      const activeLocalAudio = currentAudioObjRef.current;
+      if (activeLocalAudio?.paused) activeLocalAudio.play().catch(() => {});
+
+      let restartedTtsPart = false;
+      const replayState = ttsReplayRef?.current;
+      if (!activeLocalAudio && replayState?.suspended && typeof replayState.restart === 'function') {
+          restartedTtsPart = replayState.restart() !== false;
+      } else if (!activeLocalAudio) {
+          synth.resume();
+      } else if (synth.paused || synth.speaking) {
+          synth.resume();
+      }
+
       if (silentAudioRef.current?.paused) silentAudioRef.current.play().catch(() => {});
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
       setIsPaused(false);
-      addLog("Playback", "Resumed.");
+      addLog("Playback", restartedTtsPart
+        ? "Resumed. Browser TTS restarted current part."
+        : "Resumed.");
 };
 
-export const executeSafePlayTransition = async ({ forceStopAll, stopSignalRef, pauseStateRef, actionCallback }) => {
+export const executeSafePlayTransition = async ({
+  forceStopAll, playbackSessionRef, stopSignalRef, pauseStateRef, actionCallback
+}) => {
     forceStopAll();
+    const transitionSession = playbackSessionRef.current;
     await new Promise(r => setTimeout(r, 120));
+
+    // A Stop or newer Play/Next/Prev transition increments the playback session.
+    // Never let this older pending transition clear that newer stop and restart audio.
+    if (transitionSession !== playbackSessionRef.current) return false;
+
     stopSignalRef.current = false;
     pauseStateRef.current = false;
     await actionCallback();
+    return true;
 };

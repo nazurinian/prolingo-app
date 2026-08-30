@@ -3,8 +3,10 @@ export const executeBrowserTtsPlaybackService = ({
   overrideVoice = null,
   selectedVoiceRef,
   stopSignalRef,
+  pauseStateRef,
   synth,
   currentUtteranceRef,
+  ttsReplayRef,
   playbackResolveRef,
   rate,
   pitch
@@ -17,8 +19,6 @@ export const executeBrowserTtsPlaybackService = ({
       }
 
       synth.cancel();
-      const utterance = new SpeechSynthesisUtterance(textToRead);
-      currentUtteranceRef.current = utterance;
       let settled = false;
 
       const finish = () => {
@@ -26,20 +26,81 @@ export const executeBrowserTtsPlaybackService = ({
           settled = true;
           if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
           currentUtteranceRef.current = null;
+          if (ttsReplayRef?.current?.finish === finish) ttsReplayRef.current = null;
           resolve();
       };
 
-      playbackResolveRef.current = finish;
-      utterance.voice = targetVoice;
-      utterance.rate = Number(rate) || 1;
-      utterance.pitch = Number(pitch) || 1;
-      utterance.onend = finish;
-      utterance.onerror = finish;
+      const handleUtteranceDone = () => {
+          const replayState = ttsReplayRef?.current;
+          // Android background MediaSession Pause may terminate the native
+          // utterance. That termination is not the logical end of this ProLingo
+          // part; keep the promise pending so Resume can recreate the same part.
+          if (replayState?.finish === finish && replayState.suspended) {
+              currentUtteranceRef.current = null;
+              return;
+          }
+          finish();
+      };
 
-      setTimeout(() => {
-          if (stopSignalRef.current) finish();
-          else synth.speak(utterance);
-      }, 10);
+      const speakFreshUtterance = () => {
+          if (settled || stopSignalRef.current) {
+              finish();
+              return false;
+          }
+
+          const utterance = new SpeechSynthesisUtterance(textToRead);
+          currentUtteranceRef.current = utterance;
+          utterance.voice = targetVoice;
+          utterance.rate = Number(rate) || 1;
+          utterance.pitch = Number(pitch) || 1;
+          utterance.onend = handleUtteranceDone;
+          utterance.onerror = handleUtteranceDone;
+
+          if (synth.paused) synth.resume();
+          synth.speak(utterance);
+          return true;
+      };
+
+      playbackResolveRef.current = finish;
+      if (ttsReplayRef) {
+          ttsReplayRef.current = {
+              finish,
+              suspended: false,
+              restart: () => {
+                  const replayState = ttsReplayRef.current;
+                  if (settled || stopSignalRef.current || replayState?.finish !== finish) {
+                      finish();
+                      return false;
+                  }
+                  replayState.suspended = false;
+                  // Pause already cancelled the old Android utterance. Give the
+                  // engine one task turn before queueing the replacement so the
+                  // cancellation cannot consume the new utterance as well.
+                  setTimeout(() => {
+                      if (!settled && !stopSignalRef.current && !pauseStateRef?.current) {
+                          speakFreshUtterance();
+                      }
+                  }, 25);
+                  return true;
+              }
+          };
+      }
+
+      const startSpeechWhenActive = async () => {
+          // Keep the short startup deferral from the frozen baseline, but do not
+          // let a pending utterance start after the user has already pressed Pause.
+          await new Promise(resolveStart => setTimeout(resolveStart, 10));
+          while (pauseStateRef?.current && !stopSignalRef.current) {
+              await new Promise(resolvePause => setTimeout(resolvePause, 50));
+          }
+          if (stopSignalRef.current) {
+              finish();
+              return;
+          }
+          speakFreshUtterance();
+      };
+
+      startSpeechWhenActive();
     });
 };
 

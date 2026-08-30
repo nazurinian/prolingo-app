@@ -1,4 +1,4 @@
-import { getAudioFilenameIdentity, getItemPartText, getStableAudioIdentity, isIndonesianAudioPart, sanitizeFilename } from '../../utils/audioUtils';
+import { getAudioFilenameIdentity, getAudioVoiceFilenameLabel, getItemPartText, getStableAudioIdentity, isIndonesianAudioPart, sanitizeFilename } from '../../utils/audioUtils';
 
 export const resolveAudioGenerationPreparation = ({
   item,
@@ -13,7 +13,7 @@ export const resolveAudioGenerationPreparation = ({
   const voiceLabel = generatorEngine === 'edge'
     ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
     : aiVoiceName;
-  const safeVoice = sanitizeFilename(voiceLabel || 'Voice');
+  const safeVoice = mode === 'table' ? getAudioVoiceFilenameLabel(voiceLabel || 'Voice') : sanitizeFilename(voiceLabel || 'Voice');
   const stableId = getStableAudioIdentity(item);
   const filenameIdentity = getAudioFilenameIdentity(item);
   let filename = "";

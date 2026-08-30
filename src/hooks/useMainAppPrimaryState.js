@@ -123,13 +123,13 @@ export const useMainAppPrimaryState = () => {
   const [systemLogs, setSystemLogs] = useState([]); 
 
   // --- NEW: GENERATOR ENGINE STATES ---
-  const [generatorEngine, setGeneratorEngine] = useState('gemini'); // 'gemini' | 'edge'
+  const [generatorEngine, setGeneratorEngine] = useState('edge'); // 'gemini' | 'edge'
 
   // EDGE VOICE STATES (Expanded)
   // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
-  const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Default to UK
-  const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("id-ID-GadisNeural"); // New: Indo Voice for Edge
+  const [edgeVoice, setEdgeVoice] = useState("en-GB-LibbyNeural"); // Preferred Edge generator UK default
+  const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("su-ID-TutiNeural"); // Preferred Edge generator Indonesian-region default
 
   const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)
   const [edgePitch, setEdgePitch] = useState(0); // -20 to +20 (Hz)

@@ -1,0 +1,136 @@
+{
+  "golden": "/mnt/data/Appv5.11.6%20UI%20NAVIGATION%20SHELL.jsx",
+  "extractedCount": 73,
+  "removedStatements": 73,
+  "imports": [
+    {
+      "file": "src/constants/datasetConstants.js",
+      "names": [
+        "DEFAULT_ROW_HEIGHT_MOBILE",
+        "DEFAULT_ROW_HEIGHT_PC",
+        "OVERSCAN",
+        "V510_SOURCE_KEYS",
+        "V510_SOURCE_LABELS",
+        "V58_CANONICAL_HEADERS"
+      ]
+    },
+    {
+      "file": "src/utils/audioUtils.js",
+      "names": [
+        "base64ToInt16Array",
+        "downloadTextFile",
+        "encodeWAV",
+        "formatVoiceLabel",
+        "getAdvancedContentCount",
+        "getAdvancedExpressionPairs",
+        "getAudioFilenameIdentity",
+        "getItemPartText",
+        "getRecordAudioNo",
+        "getStableAudioIdentity",
+        "getVocabIdentity",
+        "groupVoicesByRegion",
+        "hasAdvancedContent",
+        "isIndonesianAudioPart",
+        "sanitizeFilename",
+        "triggerBrowserDownload",
+        "writeString"
+      ]
+    },
+    {
+      "file": "src/constants/playbackConstants.js",
+      "names": [
+        "V5116_CONTROL_SECTIONS",
+        "V5116_CONTROL_SECTION_KEYS",
+        "V511_DEFAULT_DELAYS",
+        "V511_DELAY_OPTIONS",
+        "V511_PLAYBACK_PARTS",
+        "V511_PLAYBACK_PRESETS"
+      ]
+    },
+    {
+      "file": "src/utils/playbackSequenceUtils.js",
+      "names": [
+        "createDefaultPlaybackSequence",
+        "createEmptyVocabularyOrder",
+        "createPlaybackPresetSequence",
+        "formatPlaybackDelay",
+        "getPlaybackItemId",
+        "getPlaybackListSignature",
+        "normalizePlaybackDelays",
+        "normalizePlaybackSequence",
+        "playbackConfigSignature",
+        "reorderPlaybackListByIds",
+        "shuffleVocabularyItems"
+      ]
+    },
+    {
+      "file": "src/utils/csvUtils.js",
+      "names": [
+        "canonicalizeTableContent",
+        "createEmptyManualForm",
+        "csvEscape",
+        "detectDelimiter",
+        "getMaxAssignedNoFromRecords",
+        "getMaxManualIdFromRecords",
+        "getNextManualVocabId",
+        "getRecordSignature",
+        "getTableChangeSummary",
+        "normalizeHeaderKey",
+        "normalizeVocabId",
+        "parseDelimitedText",
+        "parseTableRecords",
+        "serializeTableRecords",
+        "validateTableRecords"
+      ]
+    },
+    {
+      "file": "src/utils/multiSourceUtils.js",
+      "names": [
+        "createEmptySourcePack",
+        "detectV510SourceKey",
+        "getDuplicateSourceIds",
+        "getSourceChangeSummary",
+        "getSourceDiagnostics",
+        "mergeSourcePackBaselines",
+        "normalizeDeckEntry",
+        "normalizeSourcePack",
+        "parseLayerSourceRecords",
+        "readV510FileText",
+        "serializeLayerSourceRecords",
+        "serializeMainSourceRecords",
+        "serializeSourceFromMerged"
+      ]
+    },
+    {
+      "file": "src/components/common/HighlightedText.jsx",
+      "names": [
+        "HighlightedText"
+      ]
+    },
+    {
+      "file": "src/constants/voiceConstants.js",
+      "names": [
+        "initialEdgeVoices"
+      ]
+    },
+    {
+      "file": "src/components/common/GroupedVoiceSelect.jsx",
+      "names": [
+        "GroupedVoiceSelect"
+      ]
+    },
+    {
+      "file": "src/components/landing/LandingPage.jsx",
+      "names": [
+        "LandingPage"
+      ]
+    },
+    {
+      "file": "src/components/table/MemoizedRow.jsx",
+      "names": [
+        "MemoizedRow"
+      ]
+    }
+  ],
+  "appLines": 4435
+}

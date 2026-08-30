@@ -1,5 +1,5 @@
 import React from 'react';
-import { CloudLightning, Server, FolderOpen, Layers, Terminal } from 'lucide-react';
+import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 
@@ -84,7 +84,14 @@ export default function DesktopSystemControls({
               <div className="space-y-2 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">System Utilities</p>
                 <input type="password" placeholder={apiKey ? "System Key Active" : "Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-2 w-full dark:bg-slate-800 dark:text-white ${apiKey ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={apiKey ? "" : userApiKey} disabled={!!apiKey} onChange={onUserApiKeyChange} />
-                <button disabled={isSystemBusy} onClick={() => folderInputRef.current?.click()} className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border ${currentMapCount > 0 ? 'bg-green-600 text-white border-green-700' : 'bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600'} disabled:opacity-50`}><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
+                {currentMapCount > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button disabled={isSystemBusy} onClick={() => folderInputRef.refreshAudioFolder?.() ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/> Refresh Audio</button>
+                    <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: true }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-600 text-white border-green-700 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Change Folder</button>
+                  </div>
+                ) : (
+                  <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
                     <button ref={batchButtonRef} disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen(!isBatchOpen)} className="w-full px-2 py-2 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50"><Layers className="w-3 h-3 inline mr-1"/>Batch</button>

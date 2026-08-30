@@ -129,12 +129,37 @@ export const getStableAudioIdentity = (item) => {
   return `TEXT_${String(item.displayId || 1).padStart(6, '0')}`;
 };
 
-// Download filename keeps BOTH sequence and VOCAB_ID for human/debug safety.
+// Audio filename identity is VOCAB_ID-based. Numeric suffixes are rendered with a
+// minimum of 4 digits for compact human-readable filenames without changing the
+// canonical VOCAB_ID stored in the dataset.
+export const normalizeAudioVocabIdentity = (identity) => {
+  const raw = String(identity || '').trim().toUpperCase();
+  if (!raw) return '';
+  const match = raw.match(/^(.*_)(\d+)$/);
+  if (!match) return sanitizeFilename(raw);
+  const numeric = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(numeric) || numeric < 0) return sanitizeFilename(raw);
+  return `${match[1]}${String(numeric).padStart(4, '0')}`;
+};
+
 export const getAudioFilenameIdentity = (item) => {
   if (!item?.isStructured) return getStableAudioIdentity(item);
   const no = getRecordAudioNo(item) || 1;
-  const vocab = getVocabIdentity(item) || `LEGACY_${String(no).padStart(6, '0')}`;
-  return `${String(no).padStart(6, '0')}_${vocab}`;
+  const vocab = getVocabIdentity(item) || `LEGACY_${String(no).padStart(4, '0')}`;
+  return normalizeAudioVocabIdentity(vocab);
+};
+
+export const getAudioVoiceFilenameLabel = (voiceLabel = '') => {
+  let value = String(voiceLabel || '').trim();
+  if (!value) return 'Voice';
+  value = value
+    .replace(/^Microsoft\s+/i, '')
+    .replace(/^Google\s+/i, '')
+    .replace(/^Android\s+/i, '')
+    .replace(/^[a-z]{2,3}-[a-z]{2,3}-/i, '')
+    .replace(/Neural$/i, '')
+    .trim();
+  return sanitizeFilename(value || 'Voice').replace(/\s+/g, '_');
 };
 
 // --- ADVANCED LEARNING HELPERS ---

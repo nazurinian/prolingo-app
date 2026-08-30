@@ -75,7 +75,7 @@ import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecis
 import { shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
 import { executeAudioGenerationService, executeEdgeBackendHealthService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
-import { executeAudioFolderSelectService } from './services/audio/audioFolderLifecycleService';
+import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
@@ -153,7 +153,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, edgeTestAbortControllerRef, playbackModeRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, currentUtteranceRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder });
@@ -500,8 +500,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       overrideVoice,
       selectedVoiceRef,
       stopSignalRef,
+      pauseStateRef,
       synth,
       currentUtteranceRef,
+      ttsReplayRef,
       playbackResolveRef,
       rate,
       pitch
@@ -528,16 +530,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const pausePlayback = () => executePausePlayback({
-    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog
+  const pausePlayback = (options = {}) => executePausePlayback({
+    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+    ttsReplayRef, pauseSource: options?.source || 'ui'
   });
 
   const resumePlayback = () => executeResumePlayback({
-    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog
+    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog, ttsReplayRef
   });
 
   const safePlayTransition = async (actionCallback) => executeSafePlayTransition({
-    forceStopAll, stopSignalRef, pauseStateRef, actionCallback
+    forceStopAll, playbackSessionRef, stopSignalRef, pauseStateRef, actionCallback
   });
 
   const handleIndependentPlay = (item, part, uiId) => executeIndependentPlaybackInteraction({
@@ -671,7 +674,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     useEffect(() => {
         return executeMediaSessionLifecycleService({
             currentPlayerList, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
-            mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef
+            currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
         });
     }, [
         playingIndex,
@@ -957,6 +960,44 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
+  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => executeAudioFolderSelectService({
+    e: { target: { files, value: '' } },
+    mode,
+    localAudioMapTable,
+    localAudioMapText,
+    playlist,
+    getRecordAudioNo,
+    getVocabIdentity,
+    getStableAudioIdentity,
+    setLocalAudioMapTable,
+    setAudioStatusTable,
+    setLocalAudioMapText,
+    setAudioStatusText,
+    silent: !!options.automatic
+  });
+
+
+  // Remembered folders are matched against the ACTIVE dataset, not against the
+  // folder alone. Re-scan when dataset identity changes (import/add/delete), but
+  // not for search/filter/sort because those do not change `playlist` identity.
+  const audioDatasetIdentitySignature = useMemo(() => {
+    if (!playlist.length) return '';
+    if (mode === 'table') {
+      return playlist
+        .filter(item => item?.isStructured)
+        .map(item => `${getVocabIdentity(item)}:${getRecordAudioNo(item) || ''}`)
+        .join('|');
+    }
+    return playlist.map(item => String(item?.id || '')).join('|');
+  }, [mode, playlist]);
+
+  const getAudioAutoRestoreState = () => {
+    if (!folderInputRef.audioAutoRestoreState) {
+      folderInputRef.audioAutoRestoreState = { signatures: {}, generations: {} };
+    }
+    return folderInputRef.audioAutoRestoreState;
+  };
+
   const handleFolderSelect = (e) => {
     return executeAudioFolderSelectService({
       e,
@@ -973,6 +1014,70 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setAudioStatusText
     });
   };
+
+  const handleRememberedAudioFolderOpen = ({ forcePicker = false } = {}) => {
+    // Manual reconnect/change always supersedes any slower automatic scan.
+    const restoreState = getAudioAutoRestoreState();
+    restoreState.generations[mode] = (restoreState.generations[mode] || 0) + 1;
+    return executeRememberedAudioFolderOpenService({
+      mode,
+      forcePicker,
+      onFiles: loadAudioFolderFiles,
+      fallbackOpen: () => folderInputRef.current?.click(),
+      addLog
+    });
+  };
+
+  const handleRememberedAudioFolderRefresh = () => {
+    // Re-scan the remembered folder against the current dataset without forcing
+    // the user to pick the folder again. This also supersedes slower auto scans.
+    const restoreState = getAudioAutoRestoreState();
+    const generation = (restoreState.generations[mode] || 0) + 1;
+    restoreState.generations[mode] = generation;
+
+    return executeRememberedAudioFolderOpenService({
+      mode,
+      forcePicker: false,
+      onFiles: (files, folderName, options = {}) => {
+        const latestState = getAudioAutoRestoreState();
+        if (latestState.generations[mode] !== generation) return { stale: true };
+        return loadAudioFolderFiles(files, folderName, { ...options, automatic: true });
+      },
+      fallbackOpen: () => folderInputRef.current?.click(),
+      addLog
+    });
+  };
+
+  // Keep existing prop plumbing intact: controls already receive folderInputRef.
+  // The ref exposes remembered-folder open/change plus an explicit re-scan action.
+  folderInputRef.openAudioFolder = handleRememberedAudioFolderOpen;
+  folderInputRef.refreshAudioFolder = handleRememberedAudioFolderRefresh;
+
+  useEffect(() => {
+    if (!playlist.length || !audioDatasetIdentitySignature) return;
+
+    const restoreState = getAudioAutoRestoreState();
+    if (restoreState.signatures[mode] === audioDatasetIdentitySignature) return;
+
+    restoreState.signatures[mode] = audioDatasetIdentitySignature;
+    const generation = (restoreState.generations[mode] || 0) + 1;
+    restoreState.generations[mode] = generation;
+
+    executeRememberedAudioFolderRestoreService({
+      mode,
+      onFiles: (files, folderName, options = {}) => {
+        const latestState = getAudioAutoRestoreState();
+        if (latestState.generations[mode] !== generation) {
+          return { stale: true };
+        }
+        return loadAudioFolderFiles(files, folderName, options);
+      },
+      addLog
+    });
+  // Auto-rescan only when the dataset's audio identities change. Search/filter/sort
+  // do not change this signature, while CSV import/add/delete do.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, audioDatasetIdentitySignature]);
 
   const currentAudioStatus = mode === 'table' ? audioStatusTable : audioStatusText;
   const currentMapCount = mode === 'table' ? Object.keys(localAudioMapTable).length : Object.keys(localAudioMapText).length;

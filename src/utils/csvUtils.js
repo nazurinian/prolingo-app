@@ -65,7 +65,7 @@ export const csvEscape = (value) => {
 export const normalizeVocabId = (value, fallbackNo) => {
   const raw = String(value || '').trim();
   if (raw) return raw.replace(/\s+/g, '_').toUpperCase();
-  return `LEGACY_${String(fallbackNo || 1).padStart(6, '0')}`;
+  return `LEGACY_${String(fallbackNo || 1).padStart(4, '0')}`;
 };
 
 export const parseTableRecords = (input = '') => {

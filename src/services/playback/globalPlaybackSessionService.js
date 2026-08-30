@@ -104,7 +104,7 @@ export const executeGlobalPlaybackSessionService = ({
         let studyEventRecorded = false;
 
         for (let l = 0; l < loops; l++) {
-          if (stopSignalRef.current) break;
+          if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
           if (playbackModeRef.current !== currentMode && currentMode === 'repeat_2x' && l > 0) break;
 
           if (item.isStructured) {
@@ -176,13 +176,17 @@ export const executeGlobalPlaybackSessionService = ({
           }
           if (l < loops - 1) {
               await new Promise(r => setTimeout(r, 500));
+              if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
               await waitWhilePaused();
+              if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
           }
         }
 
-        if (stopSignalRef.current) break;
+        if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
         await new Promise(r => setTimeout(r, 800));
+        if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
         await waitWhilePaused();
+        if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
 
         const liveMode = playbackModeRef.current;
         const advance = resolvePlaybackAdvanceState({
