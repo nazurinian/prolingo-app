@@ -36,7 +36,8 @@ export const executeGlobalPlaybackSessionService = ({
   playbackDelaysRef,
   waitPlaybackDelay,
   playSource,
-  forceStopAll
+  forceStopAll,
+  onStudyVocab
 }) => {
     const sessionStart = resolvePlaybackSessionContextState({
       forcedContext,
@@ -100,6 +101,7 @@ export const executeGlobalPlaybackSessionService = ({
 
         const currentMode = playbackModeRef.current;
         const loops = (currentMode === 'repeat_2x') ? 2 : 1;
+        let studyEventRecorded = false;
 
         for (let l = 0; l < loops; l++) {
           if (stopSignalRef.current) break;
@@ -143,6 +145,10 @@ export const executeGlobalPlaybackSessionService = ({
               }
 
               if (!String(textToPlay || '').trim()) continue;
+              if (!studyEventRecorded) {
+                onStudyVocab?.(item);
+                studyEventRecorded = true;
+              }
 
               const repeatCount = Math.min(5, Math.max(1, Number.parseInt(activeSequence[sequenceIndex]?.repeat, 10) || 1));
               setSpeakingPart(sourcePart);

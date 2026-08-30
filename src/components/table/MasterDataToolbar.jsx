@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, X, History, RotateCcw } from 'lucide-react';
 import ProgressStatisticsSummary from '../progress/ProgressStatisticsSummary';
+import StudyActivitySummary from '../progress/StudyActivitySummary';
 
 export const MasterDataToolbar = ({
   extraClass = '',
@@ -11,6 +12,7 @@ export const MasterDataToolbar = ({
   masteryFilter,
   setMasteryFilter,
   masteryProgressStats,
+  studyActivityStats,
   isCsvDirty,
   setIsChangeReviewOpen,
   csvChangeSummary,
@@ -57,6 +59,7 @@ export const MasterDataToolbar = ({
                   </button>
               </div>
               <ProgressStatisticsSummary stats={masteryProgressStats} />
+              <StudyActivitySummary stats={studyActivityStats} />
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-[10px] text-slate-400">
                   <span>Showing {masterFilteredPlaylist.length} / {totalStructured} • {isCsvDirty ? `+${csvChangeSummary.added} new • ~${csvChangeSummary.modified} edited • -${csvChangeSummary.deleted} deleted` : 'CSV synced'}</span>
                   <div className="flex gap-2 items-center">

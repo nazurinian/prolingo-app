@@ -1,13 +1,15 @@
 import React from 'react';
 import { Settings, FolderOpen, Layers, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import StorageManagerPanel from '../progress/StorageManagerPanel';
 
 export default function MobileSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
   apiKey, userApiKey, onUserApiKeyChange, edgeVoices, edgeVoice, setEdgeVoice,
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
-  batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon
+  batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
+  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
 }) {
   return (
     <>
@@ -17,6 +19,13 @@ export default function MobileSystemControls({
                   {generatorEngine === 'gemini' ? <div className="space-y-2"><select disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>{aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select><input type="password" placeholder={apiKey ? "System Key Active" : "Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-3 py-2 w-full dark:bg-slate-700 dark:text-white ${apiKey ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={apiKey ? "" : userApiKey} disabled={!!apiKey} onChange={onUserApiKeyChange} /></div> : <div className="space-y-2"><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeVoice} onChange={e => setEdgeVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="main"/><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeIndonesianVoice} onChange={e => setEdgeIndonesianVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="meaning"/><div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-slate-500">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)<input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full accent-teal-600"/></label><label className="text-[9px] text-slate-500">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)<input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className="w-full accent-teal-600"/></label></div><button onClick={testEdgeBackend} className="w-full py-2 rounded border border-teal-200 dark:border-teal-800 text-xs font-bold text-teal-700 dark:text-teal-300">Backend: {edgeHealth.status.toUpperCase()} • Test</button></div>}
                   <button disabled={isSystemBusy} onClick={() => folderInputRef.current?.click()} className={`mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition border ${currentMapCount > 0 ? 'bg-green-600 text-white border-green-700' : 'bg-slate-800 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-600'} disabled:opacity-50`}><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
               </div>
+
+              <StorageManagerPanel
+                  refreshToken={storageRefreshToken}
+                  onDatasetCacheCleared={onDatasetCacheCleared}
+                  onMasteryReset={onMasteryReset}
+                  onStudyTrackingReset={onStudyTrackingReset}
+              />
 
               <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
                   <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600 dark:text-purple-400"/> Batch Download</h3>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { CloudLightning, Server, FolderOpen, Layers, Terminal } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import StorageManagerPanel from '../progress/StorageManagerPanel';
 
 export default function DesktopSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -8,7 +9,8 @@ export default function DesktopSystemControls({
   edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth, testEdgeBackend,
   apiKey, userApiKey, onUserApiKeyChange, folderInputRef, currentMapCount, batchButtonRef,
   isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
-  setShowLogs, showLogs, logContainerRef, systemLogs
+  setShowLogs, showLogs, logContainerRef, systemLogs, storageRefreshToken,
+  onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
 }) {
   return (
     <>
@@ -91,6 +93,13 @@ export default function DesktopSystemControls({
                 </div>
                 {showLogs && <div ref={logContainerRef} className="max-h-36 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-[8px] text-slate-300 space-y-1">{systemLogs.length ? systemLogs.slice(-12).map((log, i) => <div key={`${log.time}-${i}`}><span className="text-slate-500">[{log.time}]</span> <span className={log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}>{log.type}</span>: {log.message}</div>) : <div className="text-slate-500 italic">No logs available.</div>}</div>}
               </div>
+
+              <StorageManagerPanel
+                refreshToken={storageRefreshToken}
+                onDatasetCacheCleared={onDatasetCacheCleared}
+                onMasteryReset={onMasteryReset}
+                onStudyTrackingReset={onStudyTrackingReset}
+              />
 
     </>
   );

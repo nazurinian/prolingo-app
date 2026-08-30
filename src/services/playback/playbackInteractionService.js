@@ -7,7 +7,7 @@ import { resolvePlaybackNavigationReferenceState, resolvePlaybackNavigationTarge
 export const executeIndependentPlaybackInteraction = ({
   item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
   playbackSessionRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
-  setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource
+  setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab
 }) => {
     setActiveMenuId(null);
     if (resolveIndependentPlaybackControlAction({ independentPlayingId, uiId }) === 'stop') {
@@ -29,7 +29,8 @@ export const executeIndependentPlaybackInteraction = ({
           return;
       }
 
-      setSpeakingPart(part); 
+      setSpeakingPart(part);
+      onStudyVocab?.(item);
       await playSource(textToPlay, item, part);
       if (playbackSession !== playbackSessionRef.current) return;
       setIndependentPlayingId(null);

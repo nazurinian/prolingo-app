@@ -85,6 +85,10 @@ const MobileTools = ({
   setBatchConfig,
   runBatchDownload,
   DownloadCloudIcon,
+  storageRefreshToken,
+  onDatasetCacheCleared,
+  onMasteryReset,
+  onStudyTrackingReset,
 }) => (
       <div className="p-4 space-y-4">
           <div className="sticky top-0 z-20 -mx-1 pt-1 pb-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm">
@@ -194,6 +198,10 @@ const MobileTools = ({
               advancedDatasetStats={advancedDatasetStats}
               runBatchDownload={runBatchDownload}
               DownloadCloudIcon={DownloadCloudIcon}
+              storageRefreshToken={storageRefreshToken}
+              onDatasetCacheCleared={onDatasetCacheCleared}
+              onMasteryReset={onMasteryReset}
+              onStudyTrackingReset={onStudyTrackingReset}
           />}
       </div>
   );

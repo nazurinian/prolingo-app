@@ -6,6 +6,7 @@ import { useMainAppPrimaryState } from './hooks/useMainAppPrimaryState';
 import { useMainAppRuntimeRefs } from './hooks/useMainAppRuntimeRefs';
 import { useMasteryProgressState } from './hooks/useMasteryProgressState';
 import { useMasteryFilterState } from './hooks/useMasteryFilterState';
+import { useStudyTrackingState } from './hooks/useStudyTrackingState';
 import { 
   Play, Pause, RotateCcw, Volume2, Settings, Trash2, List, Mic, Globe, 
   CheckCircle, Save, Upload, Table, SkipBack, SkipForward, X, 
@@ -68,6 +69,7 @@ import { resolveFullPackImportState, resolveSingleSourceImportState } from './do
 import { resolveManualAddForm, resolveManualAddNextNo, resolveManualEditAdvancedOpen, resolveManualEditForm } from './domain/dataset/manualEditorStateDomain';
 import { resolveActivePlaybackList, resolveAdvancedDatasetStats, resolveCurrentPlayerList, resolveMasterFilteredPlaylist, resolveSourceChangeSummaries } from './domain/view/mainAppDerivedStateDomain';
 import { resolveMasteryProgressStatistics } from './domain/progress/masteryStatisticsDomain';
+import { resolveStudyActivityStatistics } from './domain/progress/studyTrackingDomain.js';
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
 import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecisionDomain';
 import { shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
@@ -92,6 +94,7 @@ import { executeExportMergedDatasetService, executeExportTableCsvService, execut
 import { executeDeleteDeckCacheService, executeDraftAutosaveEffect, executeLoadDeckCacheService, executeSaveDeckCacheService, executeStartupRestoreEffect } from './services/persistence/deckCacheLifecycleService';
 import { executeControlSectionPersistenceEffect, executePlaybackDelaysPersistenceEffect, executePlaybackSequencePersistenceEffect, executeVocabularyPlayOrderPersistenceEffect, loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from './services/persistence/preferencePersistenceService';
 import { executeCycleMasteryState } from './services/progress/masteryInteractionService';
+import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
 
 
 // --- SYSTEM ENVIRONMENT VAR ---
@@ -137,6 +140,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
   const { masteryFilter, setMasteryFilter } = useMasteryFilterState();
+  const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
 
   // FIX 1: Lock Body Scroll when Sidebar is Open (Prevent background scrolling)
   useEffect(() => executeBodyScrollLockEffect({ isMobile, isSidebarOpen }), [isMobile, isSidebarOpen]);
@@ -158,6 +162,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       vocabId, setMasteryByVocabId
   }), [setMasteryByVocabId]);
 
+  const recordStudyActivity = useCallback((item) => executeRecordStudyActivity({
+      item, setActivityByVocabId
+  }), [setActivityByVocabId]);
+
+  const storageRefreshToken = `${Object.keys(savedDecks).length}:${Object.keys(masteryByVocabId).length}:${Object.keys(activityByVocabId).length}`;
+
+  const handleStorageDatasetCacheCleared = useCallback(() => {
+      setSavedDecks({});
+      setSelectedDeckId('');
+  }, [setSavedDecks, setSelectedDeckId]);
+
+  const handleStorageMasteryReset = useCallback(() => {
+      setMasteryByVocabId({});
+  }, [setMasteryByVocabId]);
+
+  const handleStorageStudyTrackingReset = useCallback(() => {
+      setActivityByVocabId({});
+  }, [setActivityByVocabId]);
+
   const studyQueueSet = useMemo(() => new Set(studyQueue), [studyQueue]);
 
   const csvChangeSummary = useMemo(
@@ -177,6 +200,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const masteryProgressStats = useMemo(() => resolveMasteryProgressStatistics({
       items: playlist.filter(item => item.isStructured), masteryByVocabId
   }), [playlist, masteryByVocabId]);
+
+  const studyActivityStats = useMemo(() => resolveStudyActivityStatistics({
+      items: playlist, activityByVocabId
+  }), [playlist, activityByVocabId]);
 
   const masterFilteredPlaylist = useMemo(() => resolveMasterFilteredPlaylist({
       playlist, masterFilter, csvChangeSummary, masterSearch, masteryFilter, masteryByVocabId
@@ -507,7 +534,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleIndependentPlay = (item, part, uiId) => executeIndependentPlaybackInteraction({
     item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
     playbackSessionRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
-    setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource
+    setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab: recordStudyActivity
   });
 
   // --- HELPER FOR SCROLL PERSISTENCE ---
@@ -599,7 +626,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackDelaysRef,
       waitPlaybackDelay,
       playSource,
-      forceStopAll
+      forceStopAll,
+      onStudyVocab: recordStudyActivity
     });
   };
 
@@ -1038,7 +1066,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     userApiKey, setUserApiKey, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading,
-    batchConfig, setBatchConfig, runBatchDownload
+    batchConfig, setBatchConfig, runBatchDownload, storageRefreshToken,
+    onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
+    onStudyTrackingReset: handleStorageStudyTrackingReset
   });
 
   const renderWorkspaceTabs = (mobileContext = false) => renderWorkspaceTabsView({
@@ -1047,7 +1077,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderMasterDataToolbar = (extraClass = '') => renderMasterDataToolbarView({
     extraClass, mode, tableViewMode, playlist, masterSearch, setMasterSearch,
-    masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats,
+    masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats, studyActivityStats,
     isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
     undoStack, undoLastDataChange, masterFilteredPlaylist, lastDraftAutoSaveAt,
     rangeInput, setRangeInput, handleRangeAdd
@@ -1133,7 +1163,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setTableContent, setCsvBaselineContent, setSourcePack, setSequenceHighWater, setManualIdHighWater,
     setImportedRowCount, setUndoStack, setMasterSearch, setMasterFilter, setLocalAudioMapTable,
     setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, pendingDeleteItem,
-    setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck
+    setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck,
+    storageRefreshToken, onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
+    onStudyTrackingReset: handleStorageStudyTrackingReset
   });
 };
 

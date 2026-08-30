@@ -75,7 +75,8 @@ export const renderMobileToolsView = ({
   generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, apiKey,
   userApiKey, setUserApiKey, edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
-  edgeHealth, folderInputRef, isBatchDownloading, batchConfig, setBatchConfig, runBatchDownload
+  edgeHealth, folderInputRef, isBatchDownloading, batchConfig, setBatchConfig, runBatchDownload,
+  storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -157,6 +158,10 @@ export const renderMobileToolsView = ({
           setBatchConfig={setBatchConfig}
           runBatchDownload={runBatchDownload}
           DownloadCloudIcon={DownloadCloudIcon}
+          storageRefreshToken={storageRefreshToken}
+          onDatasetCacheCleared={onDatasetCacheCleared}
+          onMasteryReset={onMasteryReset}
+          onStudyTrackingReset={onStudyTrackingReset}
       />
 );
 
@@ -172,7 +177,7 @@ export const renderWorkspaceTabsView = ({ mobileContext = false, handleTabSwitch
 
 export const renderMasterDataToolbarView = ({
   extraClass = '', mode, tableViewMode, playlist, masterSearch, setMasterSearch,
-  masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats,
+  masterFilter, setMasterFilter, masteryFilter, setMasteryFilter, masteryProgressStats, studyActivityStats,
   isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
   undoStack, undoLastDataChange, masterFilteredPlaylist, lastDraftAutoSaveAt,
   rangeInput, setRangeInput, handleRangeAdd
@@ -189,6 +194,7 @@ export const renderMasterDataToolbarView = ({
               masteryFilter={masteryFilter}
               setMasteryFilter={setMasteryFilter}
               masteryProgressStats={masteryProgressStats}
+              studyActivityStats={studyActivityStats}
               isCsvDirty={isCsvDirty}
               setIsChangeReviewOpen={setIsChangeReviewOpen}
               csvChangeSummary={csvChangeSummary}
