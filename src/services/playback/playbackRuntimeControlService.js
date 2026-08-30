@@ -25,7 +25,7 @@ export const executeWaitPlaybackDelay = async ({
 };
 
 export const executePausePlayback = ({
-  isPlaying, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+  isPlaying, isMobile = false, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
   ttsReplayRef, pauseSource = 'ui'
 }) => {
       // Realtime playback control must use the ref as source-of-truth. React state
@@ -36,17 +36,19 @@ export const executePausePlayback = ({
       const activeLocalAudio = currentAudioObjRef.current;
       if (activeLocalAudio && !activeLocalAudio.paused) activeLocalAudio.pause();
 
-      // Foreground Browser TTS keeps the native pause/resume behavior that already
-      // works on supported voices. Android MediaSession is different: testing shows
-      // the browser may destroy the utterance on background Pause, so synth.resume()
-      // later only restarts the silent media host. In that one path, deliberately
-      // cancel the native utterance while keeping its logical playback promise alive;
-      // Resume will recreate the SAME part from the beginning.
+      // Desktop Browser TTS keeps the native pause/resume behavior that is already
+      // runtime-stable. On Android/mobile Chromium, however, BOTH notification Pause
+      // and the in-app Pause button can destroy/drop the active SpeechSynthesis
+      // utterance. A later synth.resume() may then resume only the silent media host,
+      // leaving ProLingo in a playing-but-silent state. Reuse the proven C7 logical
+      // replay fallback for every mobile Browser TTS Pause: keep the playback promise
+      // pending, cancel the native utterance, and restart the SAME part on Resume.
+      // Local/generated HTMLAudioElement playback remains true pause/resume.
       const replayState = ttsReplayRef?.current;
-      const shouldSuspendTtsForMediaSession =
-        pauseSource === 'mediaSession' && !activeLocalAudio && replayState;
+      const shouldSuspendTtsForReplay =
+        !activeLocalAudio && replayState && (pauseSource === 'mediaSession' || isMobile);
 
-      if (shouldSuspendTtsForMediaSession) {
+      if (shouldSuspendTtsForReplay) {
           replayState.suspended = true;
           synth.cancel();
       } else {
@@ -60,8 +62,8 @@ export const executePausePlayback = ({
 
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
       setIsPaused(true);
-      addLog("Playback", shouldSuspendTtsForMediaSession
-        ? "Paused. Browser TTS part armed for restart on Resume."
+      addLog("Playback", shouldSuspendTtsForReplay
+        ? "Paused. Mobile Browser TTS part armed for restart on Resume."
         : "Paused.");
 };
 

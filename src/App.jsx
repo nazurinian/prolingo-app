@@ -531,7 +531,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const pausePlayback = (options = {}) => executePausePlayback({
-    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+    isPlaying, isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
     ttsReplayRef, pauseSource: options?.source || 'ui'
   });
 
