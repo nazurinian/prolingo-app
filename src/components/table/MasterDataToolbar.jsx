@@ -7,6 +7,8 @@ export const MasterDataToolbar = ({
   setMasterSearch,
   masterFilter,
   setMasterFilter,
+  masteryFilter,
+  setMasteryFilter,
   isCsvDirty,
   setIsChangeReviewOpen,
   csvChangeSummary,
@@ -35,8 +37,15 @@ export const MasterDataToolbar = ({
                       <option value="all">All Data</option>
                       <option value="csv">CSV / Imported</option>
                       <option value="manual">Manual</option>
-                      <option value="added">New</option>
-                      <option value="modified">Edited</option>
+                      <option value="added">Added Rows</option>
+                      <option value="modified">Edited Rows</option>
+                  </select>
+                  <select value={masteryFilter} onChange={e => setMasteryFilter(e.target.value)} aria-label="Mastery progress filter" title="Filter vocabulary by mastery status" className="px-2 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white">
+                      <option value="all">All Mastery</option>
+                      <option value="new">New</option>
+                      <option value="learning">Learning</option>
+                      <option value="familiar">Familiar</option>
+                      <option value="mastered">Mastered</option>
                   </select>
                   <button disabled={!isCsvDirty} onClick={() => setIsChangeReviewOpen(true)} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 ${isCsvDirty ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 border border-slate-200 dark:border-slate-600 cursor-not-allowed'}`}>
                       <History className="w-3.5 h-3.5"/> Review {isCsvDirty ? `(${csvChangeSummary.total})` : ''}

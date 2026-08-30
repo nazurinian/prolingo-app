@@ -3,6 +3,7 @@ import { getAdvancedExpressionPairs } from '../../utils/audioUtils';
 import { parseTableRecords } from '../../utils/csvUtils';
 import { getSourceChangeSummary } from '../../utils/multiSourceUtils';
 import { getPlaybackListSignature, reorderPlaybackListByIds } from '../../utils/playbackSequenceUtils';
+import { resolveMasteryFilteredItems } from '../progress/masteryFilterDomain.js';
 
 export const resolveSourceChangeSummaries = ({ sourcePack, tableContent }) => {
       const currentRecords = parseTableRecords(tableContent);
@@ -33,12 +34,25 @@ export const resolveAdvancedDatasetStats = ({ playlist }) => {
       };
 };
 
-export const resolveMasterFilteredPlaylist = ({ playlist, masterFilter, csvChangeSummary, masterSearch }) => {
+export const resolveMasterFilteredPlaylist = ({
+      playlist,
+      masterFilter,
+      csvChangeSummary,
+      masterSearch,
+      masteryFilter,
+      masteryByVocabId
+}) => {
       let items = playlist.filter(item => item.isStructured);
       if (masterFilter === 'csv') items = items.filter(item => !String(item.vocabId || item.id || '').toUpperCase().startsWith('USR_'));
       else if (masterFilter === 'manual') items = items.filter(item => String(item.vocabId || item.id || '').toUpperCase().startsWith('USR_'));
       else if (masterFilter === 'added') items = items.filter(item => csvChangeSummary.byId[item.id] === 'added');
       else if (masterFilter === 'modified') items = items.filter(item => csvChangeSummary.byId[item.id] === 'modified');
+
+      items = resolveMasteryFilteredItems({
+          items,
+          masteryByVocabId,
+          masteryFilter
+      });
 
       const query = masterSearch.trim().toLowerCase();
       if (!query) return items;

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, memo, useMemo, useCallback, useLayo
 import { useMainAppPrimaryState } from './hooks/useMainAppPrimaryState';
 import { useMainAppRuntimeRefs } from './hooks/useMainAppRuntimeRefs';
 import { useMasteryProgressState } from './hooks/useMasteryProgressState';
+import { useMasteryFilterState } from './hooks/useMasteryFilterState';
 import { 
   Play, Pause, RotateCcw, Volume2, Settings, Trash2, List, Mic, Globe, 
   CheckCircle, Save, Upload, Table, SkipBack, SkipForward, X, 
@@ -134,6 +135,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   } = useMainAppPrimaryState();
 
   const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
+  const { masteryFilter, setMasteryFilter } = useMasteryFilterState();
 
   // FIX 1: Lock Body Scroll when Sidebar is Open (Prevent background scrolling)
   useEffect(() => executeBodyScrollLockEffect({ isMobile, isSidebarOpen }), [isMobile, isSidebarOpen]);
@@ -172,8 +174,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const advancedDatasetStats = useMemo(() => resolveAdvancedDatasetStats({ playlist }), [playlist]);
 
   const masterFilteredPlaylist = useMemo(() => resolveMasterFilteredPlaylist({
-      playlist, masterFilter, csvChangeSummary, masterSearch
-  }), [playlist, masterFilter, masterSearch, csvChangeSummary.byId]);
+      playlist, masterFilter, csvChangeSummary, masterSearch, masteryFilter, masteryByVocabId
+  }), [playlist, masterFilter, masterSearch, csvChangeSummary.byId, masteryFilter, masteryByVocabId]);
 
   const currentPlayerList = useMemo(() => resolveCurrentPlayerList({
       mode, playlist, tableViewMode, studyQueueSet, masterFilteredPlaylist
@@ -1040,7 +1042,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderMasterDataToolbar = (extraClass = '') => renderMasterDataToolbarView({
     extraClass, mode, tableViewMode, playlist, masterSearch, setMasterSearch,
-    masterFilter, setMasterFilter, isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
+    masterFilter, setMasterFilter, masteryFilter, setMasteryFilter,
+    isCsvDirty, setIsChangeReviewOpen, csvChangeSummary,
     undoStack, undoLastDataChange, masterFilteredPlaylist, lastDraftAutoSaveAt,
     rangeInput, setRangeInput, handleRangeAdd
   });
