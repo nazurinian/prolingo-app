@@ -1,4 +1,4 @@
-import { base64ToInt16Array, encodeWAV, triggerBrowserDownload } from '../../utils/audioUtils';
+import { base64ToInt16Array, encodeWAV, isIndonesianAudioPart, triggerBrowserDownload } from '../../utils/audioUtils';
 import {
   resolveAudioGenerationPreparation,
   resolveEdgeHealthCheckRequest,
@@ -86,10 +86,20 @@ setAiLoadingId,
 setEdgeHealth,
 setLocalAudioMapTable,
 setLocalAudioMapText,
+onGeneratedAudio,
 addLog
 }) => {
   const uniqueLoadingId = `${item.id}-${part}`;
   setAiLoadingId(uniqueLoadingId);
+
+  // Product rule: Gemini generation is English-only in Table mode. Keep the
+  // guard in the service as well as the UI so Indonesian audio cannot slip
+  // through from a stale menu/batch configuration.
+  if (mode === 'table' && generatorEngine === 'gemini' && isIndonesianAudioPart(part)) {
+      setAiLoadingId(null);
+      addLog('Warn', `Gemini EN-only: ${part} is locked.`);
+      return { status: 'locked-language', part };
+  }
 
   const generationPreparation = resolveAudioGenerationPreparation({
       item,
@@ -195,8 +205,21 @@ addLog
           }
 
           filename = resolveGeneratedAudioFilename({ generatorEngine, blobType: blob.type, filename });
+          const generatedKey = resolveGeneratedAudioMapKey({ mode, stableId, part });
+          const generatedVoice = generatorEngine === 'edge'
+              ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+              : aiVoiceName;
+          onGeneratedAudio?.({
+              mode,
+              mapKey: generatedKey,
+              part,
+              engine: generatorEngine,
+              voice: generatedVoice,
+              filename
+          });
           triggerBrowserDownload(url, filename);
           addLog("Success", `Saved: ${filename}`);
+          return { status: 'success', mapKey: generatedKey, filename };
       }
   } catch (e) {
       if (isGenerationCancelled(e.name)) {

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Settings, FolderOpen, RotateCcw, Layers, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Settings, FolderOpen, RotateCcw } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
+import BatchPopup from '../table/BatchPopup';
 
 export default function MobileSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -9,7 +10,7 @@ export default function MobileSystemControls({
   geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
-  batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
+  isBatchStopping, batchStatusText, batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
@@ -40,14 +41,21 @@ export default function MobileSystemControls({
                   onProgressRestored={onProgressRestored}
               />
 
-              <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-600 dark:text-purple-400"/> Batch Download</h3>
-                  <div className="space-y-3">
-                      {mode === 'table' ? <><div className="flex flex-wrap gap-3"><button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doWord: !p.doWord}))} className={`flex items-center gap-1 text-xs ${batchConfig.doWord ? 'text-indigo-600' : 'text-slate-400'}`}>{batchConfig.doWord ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word</button><button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doWordTranslation: !p.doWordTranslation}))} className={`flex items-center gap-1 text-xs ${batchConfig.doWordTranslation ? 'text-amber-600' : 'text-slate-400'} disabled:opacity-40`}>{batchConfig.doWordTranslation ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Word IDN</button><button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doSentence: !p.doSentence}))} className={`flex items-center gap-1 text-xs ${batchConfig.doSentence ? 'text-indigo-600' : 'text-slate-400'}`}>{batchConfig.doSentence ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} Sentence</button></div>{advancedDatasetStats.hasAdvanced && <div className="flex flex-wrap gap-3"><button disabled={isBatchDownloading} onClick={() => setBatchConfig(p=>({...p, doExpressions: !p.doExpressions}))} className={`flex items-center gap-1 text-xs ${batchConfig.doExpressions ? 'text-violet-600' : 'text-slate-400'}`}>{batchConfig.doExpressions ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} EXP EN</button><button disabled={isBatchDownloading || generatorEngine !== 'edge'} onClick={() => setBatchConfig(p=>({...p, doExpressionTranslations: !p.doExpressionTranslations}))} className={`flex items-center gap-1 text-xs ${batchConfig.doExpressionTranslations ? 'text-amber-600' : 'text-slate-400'} disabled:opacity-40`}>{batchConfig.doExpressionTranslations ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>} EXP IDN</button></div>}</> : <div className="text-xs text-slate-400 italic">Batch download for full text.</div>}
-                      <div className="flex items-center gap-2 text-xs"><span className="dark:text-slate-400">Range:</span><input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.start} onChange={e=>setBatchConfig(p=>({...p, start:e.target.value}))}/><span>to</span><input disabled={isBatchDownloading} type="number" className="w-16 border border-slate-200 dark:border-slate-600 rounded p-1 dark:bg-slate-700 dark:text-white" value={batchConfig.end} onChange={e=>setBatchConfig(p=>({...p, end:e.target.value}))}/></div>
-                      <button onClick={runBatchDownload} disabled={isSystemBusy && !isBatchDownloading} className={`w-full py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-2 ${(isSystemBusy && !isBatchDownloading) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : (isBatchDownloading ? 'bg-slate-100 text-slate-400' : 'bg-purple-600 text-white hover:bg-purple-700')}`}>{isBatchDownloading ? <Loader2 className="w-3 h-3 animate-spin"/> : <DownloadCloudIcon className="w-3 h-3"/>}{isBatchDownloading ? "Downloading..." : "Start Batch Download"}</button>
-                  </div>
-              </div>
+              <BatchPopup
+                  mode={mode}
+                  setIsBatchOpen={() => {}}
+                  isBatchDownloading={isBatchDownloading}
+                  batchConfig={batchConfig}
+                  setBatchConfig={setBatchConfig}
+                  generatorEngine={generatorEngine}
+                  advancedDatasetStats={advancedDatasetStats}
+                  runBatchDownload={runBatchDownload}
+                  isBatchStopping={isBatchStopping}
+                  batchStatusText={batchStatusText}
+                  DownloadCloudIcon={DownloadCloudIcon}
+                  inline
+                  showClose={false}
+              />
     </>
   );
 }

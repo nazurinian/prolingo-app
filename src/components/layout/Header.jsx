@@ -1,5 +1,5 @@
 import React from 'react';
-import { APP_VERSION_LABEL } from '../../constants/appMetadata';
+import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
   Terminal, Play, Settings
@@ -43,12 +43,12 @@ const Header = ({
       {/* 1. HEADER UTAMA */}
       <div className={`p-3 flex gap-4 justify-between items-center ${!isMobile ? 'border-none shadow-none' : ''} h-16`}>
           <div className="flex items-center gap-3">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300">
+          {!isMobile && <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300">
               {isSidebarOpen ? <PanelLeftClose className="w-5 h-5"/> : <PanelLeftOpen className="w-5 h-5"/>}
-          </button>
-          <div className="flex items-center gap-2 whitespace-nowrap cursor-pointer" onClick={goHome} title="Back to Landing Page">
+          </button>}
+          <div className="flex items-center gap-2 whitespace-nowrap" title="ProLingo">
               <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-              <div><h1 className="font-bold text-slate-800 dark:text-white leading-tight">ProLingo <span className="text-indigo-500">{APP_VERSION_LABEL}</span></h1></div>
+              <div className="min-w-0"><h1 className="font-bold text-slate-800 dark:text-white leading-tight whitespace-nowrap">ProLingo <span className="text-indigo-500">{APP_VERSION_LABEL}</span></h1><p className="text-[8px] leading-tight font-bold text-slate-400 dark:text-slate-500 truncate max-w-40" title={APP_CHECKPOINT_LABEL}>Checkpoint: {APP_CHECKPOINT_ID}</p></div>
           </div>
           </div>
           

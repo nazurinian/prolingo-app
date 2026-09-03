@@ -11,7 +11,7 @@ const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="htt
 export const renderBatchPopupView = ({
   batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
   generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
-  isBatchStopping, batchStatusText
+  isBatchStopping, batchStatusText, inline = false, showClose = true
 }) => (
     <BatchPopup
       batchPanelRef={batchPanelRef}
@@ -27,6 +27,8 @@ export const renderBatchPopupView = ({
       isBatchStopping={isBatchStopping}
       batchStatusText={batchStatusText}
       DownloadCloudIcon={DownloadCloudIcon}
+      inline={inline}
+      showClose={showClose}
     />
 );
 
@@ -76,7 +78,7 @@ export const renderMobileToolsView = ({
   userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
-  edgeHealth, folderInputRef, isBatchDownloading, batchConfig, setBatchConfig, runBatchDownload,
+  edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) => (
@@ -163,6 +165,8 @@ export const renderMobileToolsView = ({
           edgeHealth={edgeHealth}
           folderInputRef={folderInputRef}
           isBatchDownloading={isBatchDownloading}
+          isBatchStopping={isBatchStopping}
+          batchStatusText={batchStatusText}
           batchConfig={batchConfig}
           setBatchConfig={setBatchConfig}
           runBatchDownload={runBatchDownload}

@@ -13,6 +13,7 @@ import ChangeReviewModal from '../modals/ChangeReviewModal';
 import ManualEditorModal from '../modals/ManualEditorModal';
 import { RevertAllConfirmModal, DeleteVocabularyModal, ClearViewModal, DeleteDeckModal } from '../modals/ConfirmDialog';
 import { createEmptySourcePack } from '../../utils/multiSourceUtils';
+import { MOBILE_AUX_TOP_OFFSET, MOBILE_BOTTOM_PLAYER_RESERVE_CSS, getMobilePlayerTopOffset } from '../../constants/layoutConstants';
 
 export const renderMainAppShellView = (props) => {
   const {
@@ -245,7 +246,10 @@ export const renderMainAppShellView = (props) => {
             {/* 4. TABLE WORKSPACE SHELL (Desktop) */}
             {!isMobile && mode === 'table' && renderWorkspaceTabs(false)}
 
-            <div className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 pt-28 pb-20 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}>
+            <div
+              className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}
+              style={isMobile ? { paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
+            >
                 {systemLogs.map((log, i) => (
                     <div key={i} className="leading-tight border-b border-slate-800 pb-1 mb-1 font-mono text-[10px]">
                         <span className="text-slate-500 mr-2">[{log.time}]</span> 
@@ -255,7 +259,10 @@ export const renderMainAppShellView = (props) => {
                 ))}
             </div>
 
-            <div className={`absolute inset-0 bg-slate-50 dark:bg-slate-900 z-30 overflow-y-auto pt-28 pb-20 ${mobileTab === 'tools' ? 'block md:hidden' : 'hidden'}`}>
+            <div
+              className={`absolute inset-0 bg-slate-50 dark:bg-slate-900 z-30 overflow-y-auto ${mobileTab === 'tools' ? 'block md:hidden' : 'hidden'}`}
+              style={isMobile ? { paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
+            >
                 {renderMobileTools()}
             </div>
 
@@ -263,8 +270,7 @@ export const renderMainAppShellView = (props) => {
                  {/* 5. SPACER OTOMATIS */}
                  <div className={`max-w-4xl mx-auto px-2 md:px-4 ${isMobile ? 'h-auto' : 'h-full pt-2 md:pt-4'}`}
                       style={{ 
-                          // FIX 1: Increased top padding for Table mode (150px -> 160px) to prevent first item being hidden behind header
-                          paddingTop: isMobile ? (mode === 'table' ? '160px' : '120px') : '0' 
+                          paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode)}px` : '0'
                       }}
                  >
                     {renderPlaylist()}
@@ -287,14 +293,10 @@ export const renderMainAppShellView = (props) => {
         playbackMode={playbackMode}
         cyclePlaybackMode={cyclePlaybackMode}
         setPlaybackMode={setPlaybackMode}
-        isSidebarOpen={isSidebarOpen}
-        onToggleSidebar={() => {
-          if (isSidebarOpen) {
-            setIsSidebarOpen(false);
-          } else {
-            setShowAppBar(true); 
-            setTimeout(() => setIsSidebarOpen(true), 10);
-          }
+        mobileTab={mobileTab}
+        handleMobileTabSwitch={(target) => {
+          setShowAppBar(true);
+          handleMobileTabSwitch(target);
         }}
         playingContext={playingContext}
       />

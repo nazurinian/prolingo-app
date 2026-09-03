@@ -17,8 +17,8 @@ export const ManualEditorModal = ({
   if (!isManualEditorOpen) return null;
 
   return (
-        <div className="fixed inset-0 bg-black/55 z-[120] flex items-center justify-center p-3 md:p-6 backdrop-blur-sm" onClick={closeManualEditor}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/55 z-[120] flex items-center justify-center p-3 md:p-6 backdrop-blur-sm animate-in fade-in duration-150" onClick={closeManualEditor}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92dvh] overflow-hidden flex flex-col overscroll-contain animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-white">{manualEditingId ? 'Edit Vocabulary' : 'Add Manual Vocabulary'}</h3>

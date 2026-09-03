@@ -1,3 +1,5 @@
+import { getMobilePlayerTopOffset } from '../../constants/layoutConstants';
+
 export const executeMobileHeaderScroll = ({
   isMobile, isAutoScrolling, lastScrollY, mobileTab, setShowAppBar
 }) => {
@@ -97,7 +99,7 @@ export const executeActiveRowAutoFollow = ({
                       }
                       
                       const targetIdx = Math.max(0, idx - 1);
-                      const containerPadding = mode === 'table' ? 160 : 120;
+                      const containerPadding = getMobilePlayerTopOffset(mode);
                       const targetScrollY = containerPadding + (targetIdx * rowH);
                       
                       window.scrollTo({

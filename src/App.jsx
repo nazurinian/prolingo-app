@@ -72,7 +72,7 @@ import { resolveMasteryProgressStatistics } from './domain/progress/masteryStati
 import { resolveStudyActivityStatistics } from './domain/progress/studyTrackingDomain.js';
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
 import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecisionDomain';
-import { shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
+import { resolveGeneratedAudioMapKey, shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
 import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
@@ -151,11 +151,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
-    generationAbortControllerRef, edgeTestAbortControllerRef, playbackModeRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
+    generationAbortControllerRef, generatedAudioMetaRef, edgeTestAbortControllerRef, playbackModeRef, rateRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
     activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
-  } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder });
+  } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder, rate });
 
   const cycleMasteryState = useCallback((vocabId) => executeCycleMasteryState({
       vocabId, setMasteryByVocabId
@@ -561,6 +561,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       currentUtteranceRef,
       ttsReplayRef,
       playbackResolveRef,
+      rateRef,
       rate,
       pitch
     });
@@ -575,6 +576,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       preferLocalAudio,
       getLocalAudioUrl,
       currentAudioObjRef,
+      rateRef,
       rate,
       playbackResolveRef,
       shouldIgnoreLocalAudioFailure,
@@ -585,6 +587,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog
     });
   };
+
+  // Part 1 carryover hotfix: local/generated audio reacts immediately to speed
+  // changes; Browser TTS applies the latest rate when the next utterance/part
+  // starts (native SpeechSynthesis cannot safely retime an utterance mid-speech).
+  useEffect(() => {
+    if (currentAudioObjRef.current) {
+      currentAudioObjRef.current.playbackRate = Number(rate) || 1;
+    }
+  }, [rate, currentAudioObjRef]);
 
   const pausePlayback = (options = {}) => executePausePlayback({
     isPlaying, isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
@@ -953,7 +964,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const generateAIAudio = async (item, part = 'full') => {
+  const generateAIAudio = async (item, part = 'full', options = {}) => {
+    if (mode === 'table' && generatorEngine === 'gemini' && isIndonesianAudioPart(part)) {
+      alert('Gemini Audio hanya mendukung audio English di ProLingo. Bagian IDN dikunci.');
+      return { status: 'locked-language', part };
+    }
+
+    const stableId = getStableAudioIdentity(item);
+    const mapKey = resolveGeneratedAudioMapKey({ mode, stableId, part });
+    const activeMap = mode === 'table' ? localAudioMapTable : localAudioMapText;
+    const existingUrl = activeMap?.[mapKey];
+
+    if (existingUrl && !options.skipReplaceConfirm) {
+      const metaKey = `${mode}:${mapKey}`;
+      const existingMeta = generatedAudioMetaRef.current?.[metaKey];
+      const currentSource = existingMeta
+        ? `${String(existingMeta.engine || '').toUpperCase()} • ${existingMeta.voice || 'voice'}${existingMeta.filename ? ` • ${existingMeta.filename}` : ''}`
+        : 'Audio Folder / local audio yang sedang ter-load';
+      const nextVoice = generatorEngine === 'edge'
+        ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+        : aiVoiceName;
+      const ok = window.confirm(
+        `Audio untuk ${part} sudah ada.\n\nSaat ini: ${currentSource}\nAudio baru: ${generatorEngine.toUpperCase()} • ${nextVoice || 'voice'}\n\nLanjut download ulang? Audio baru hanya mengganti path audio di sesi ProLingo saat ini. File lama di folder utama TIDAK dihapus/ditimpa. Refresh Audio Folder akan membaca audio dari folder utama lagi.`
+      );
+      if (!ok) return { status: 'replace-cancelled', mapKey };
+    }
+
     return executeAudioGenerationService({
       item,
       part,
@@ -970,6 +1006,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setEdgeHealth,
       setLocalAudioMapTable,
       setLocalAudioMapText,
+      onGeneratedAudio: (meta) => {
+        generatedAudioMetaRef.current = {
+          ...generatedAudioMetaRef.current,
+          [`${meta.mode}:${meta.mapKey}`]: meta
+        };
+      },
       addLog
     });
   };
@@ -1020,7 +1062,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => executeAudioFolderSelectService({
+  const clearGeneratedAudioMetaForMode = (targetMode) => {
+    generatedAudioMetaRef.current = Object.fromEntries(
+      Object.entries(generatedAudioMetaRef.current || {}).filter(([key]) => !key.startsWith(`${targetMode}:`))
+    );
+  };
+
+  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
+    clearGeneratedAudioMetaForMode(mode);
+    return executeAudioFolderSelectService({
     e: { target: { files, value: '' } },
     mode,
     localAudioMapTable,
@@ -1034,7 +1084,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setLocalAudioMapText,
     setAudioStatusText,
     silent: !!options.automatic
-  });
+    });
+  };
 
 
   // Remembered folders are matched against the ACTIVE dataset, not against the
@@ -1059,6 +1110,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleFolderSelect = (e) => {
+    clearGeneratedAudioMetaForMode(mode);
     return executeAudioFolderSelectService({
       e,
       mode,
@@ -1155,10 +1207,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
      setScrollTop(currentScroll);
   };
 
-  const renderBatchPopup = () => renderBatchPopupView({
+  const renderBatchPopup = (options = {}) => renderBatchPopupView({
     batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
     generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
-    isBatchStopping, batchStatusText
+    isBatchStopping, batchStatusText,
+    inline: Boolean(options.inline),
+    showClose: options.showClose !== false
   });
 
   const togglePlaybackSequencePart = (key) => executeTogglePlaybackSequencePart({ key, setPlaybackSequence });
@@ -1243,7 +1297,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     geminiByokRegistered: geminiOwnerState.byokRegistered, onGeminiByokRegister: handleGeminiByokRegister,
     onGeminiByokClear: handleGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
-    setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading,
+    setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
     batchConfig, setBatchConfig, runBatchDownload, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,

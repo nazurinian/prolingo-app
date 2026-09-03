@@ -12,8 +12,8 @@ const ChangeReviewModal = ({
   saveUpdatedCSV,
   isMultiSourceMode
 }) => (
-  <div className="fixed inset-0 bg-black/50 z-[140] flex items-center justify-center p-3 backdrop-blur-sm" onClick={() => setIsChangeReviewOpen(false)}>
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+  <div className="fixed inset-0 bg-black/50 z-[140] flex items-center justify-center p-3 backdrop-blur-sm animate-in fade-in duration-150" onClick={() => setIsChangeReviewOpen(false)}>
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85dvh] flex flex-col overscroll-contain animate-in fade-in zoom-in-95 duration-200 border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
       <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3">
         <div>
           <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><History className="w-4 h-4 text-indigo-500"/>Change Review</h3>

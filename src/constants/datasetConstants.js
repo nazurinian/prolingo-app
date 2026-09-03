@@ -1,7 +1,7 @@
 // --- DATASET & VIRTUALIZATION CONSTANTS ---
 
 export const DEFAULT_ROW_HEIGHT_PC = 160; 
-export const DEFAULT_ROW_HEIGHT_MOBILE = 205; 
+export const DEFAULT_ROW_HEIGHT_MOBILE = 184; 
 export const OVERSCAN = 20;
 
 export const V58_CANONICAL_HEADERS = [

@@ -88,6 +88,8 @@ const MobileTools = ({
   edgeHealth,
   folderInputRef,
   isBatchDownloading,
+  isBatchStopping,
+  batchStatusText,
   batchConfig,
   setBatchConfig,
   runBatchDownload,
@@ -211,6 +213,8 @@ const MobileTools = ({
               currentMapCount={currentMapCount}
               mode={mode}
               isBatchDownloading={isBatchDownloading}
+              isBatchStopping={isBatchStopping}
+              batchStatusText={batchStatusText}
               batchConfig={batchConfig}
               setBatchConfig={setBatchConfig}
               advancedDatasetStats={advancedDatasetStats}

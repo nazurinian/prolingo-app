@@ -36,7 +36,7 @@ export const MemoizedTextRow = memo(({
                     e.stopPropagation(); 
                     handleManualRowClick(item, item.virtualIdx); 
                 }} 
-                className={`h-full rounded-lg px-3 py-2 transition-all hover:shadow-sm flex items-start gap-3 cursor-pointer overflow-hidden ${isActive ? 'bg-blue-600 border border-blue-700 dark:border-blue-500' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'}`}
+                className={`h-full rounded-lg px-3 py-2 transition-[background-color,border-color,box-shadow] hover:shadow-sm flex items-start gap-3 cursor-pointer overflow-hidden ${isActive ? 'bg-blue-600 border border-blue-700 dark:border-blue-500' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'}`}
             >
                 <div className="flex flex-col items-center gap-1 mt-0.5 flex-shrink-0">
                     <span className={`text-xs font-mono w-6 text-center ${isActive ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}>#{item.displayId}</span>

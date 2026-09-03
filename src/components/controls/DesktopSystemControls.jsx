@@ -100,12 +100,27 @@ export default function DesktopSystemControls({
                   <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
                 )}
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="relative">
-                    <button ref={batchButtonRef} disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen(!isBatchOpen)} className="w-full px-2 py-2 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50"><Layers className="w-3 h-3 inline mr-1"/>Batch</button>
-                    {isBatchOpen && renderBatchPopup()}
-                  </div>
-                  <button ref={debugButtonRef} onClick={() => setShowLogs(!showLogs)} className="px-2 py-2 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300"><Terminal className="w-3 h-3 inline mr-1"/>Logs</button>
+                  <button
+                    ref={batchButtonRef}
+                    disabled={isSystemBusy && !isBatchDownloading}
+                    onClick={() => {
+                      const next = !isBatchOpen;
+                      setIsBatchOpen(next);
+                      if (next) setShowLogs(false);
+                    }}
+                    className={`w-full px-2 py-2 rounded border text-[10px] font-bold disabled:opacity-50 transition-colors ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'}`}
+                  ><Layers className="w-3 h-3 inline mr-1"/>Batch</button>
+                  <button
+                    ref={debugButtonRef}
+                    onClick={() => {
+                      const next = !showLogs;
+                      setShowLogs(next);
+                      if (next) setIsBatchOpen(false);
+                    }}
+                    className={`px-2 py-2 rounded border text-[10px] font-bold transition-colors ${showLogs ? 'bg-slate-800 border-slate-800 text-white dark:bg-slate-600 dark:border-slate-500' : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300'}`}
+                  ><Terminal className="w-3 h-3 inline mr-1"/>Logs</button>
                 </div>
+                {isBatchOpen && <div className="pt-1">{renderBatchPopup({ inline: true, showClose: false })}</div>}
                 {showLogs && <div ref={logContainerRef} className="max-h-36 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-[8px] text-slate-300 space-y-1">{systemLogs.length ? systemLogs.slice(-12).map((log, i) => <div key={`${log.time}-${i}`}><span className="text-slate-500">[{log.time}]</span> <span className={log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}>{log.type}</span>: {log.message}</div>) : <div className="text-slate-500 italic">No logs available.</div>}</div>}
               </div>
 

@@ -1,3 +1,87 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .prolingo-mobile-bottom-safe {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+
+@keyframes prolingo-enter {
+  from {
+    opacity: var(--prolingo-enter-opacity, 1);
+    transform: translate3d(var(--prolingo-enter-x, 0), var(--prolingo-enter-y, 0), 0) scale(var(--prolingo-enter-scale, 1));
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@layer utilities {
+  /* Lightweight replacement for the previously-declared but unconfigured animate-in utilities. */
+  .animate-in {
+    --prolingo-enter-opacity: 1;
+    --prolingo-enter-x: 0;
+    --prolingo-enter-y: 0;
+    --prolingo-enter-scale: 1;
+    animation-name: prolingo-enter;
+    animation-duration: 180ms;
+    animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation-fill-mode: both;
+  }
+
+  .fade-in { --prolingo-enter-opacity: 0; }
+  .zoom-in-95 { --prolingo-enter-scale: 0.95; }
+  .slide-in-from-top-1 { --prolingo-enter-y: -0.25rem; }
+
+  .animate-in.duration-150 { animation-duration: 150ms; }
+  .animate-in.duration-200 { animation-duration: 200ms; }
+  .animate-in.duration-300 { animation-duration: 300ms; }
+  .animate-in.duration-700 { animation-duration: 700ms; }
+
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.55) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(148 163 184 / 0.5);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

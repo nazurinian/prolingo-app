@@ -106,7 +106,7 @@ export const useMainAppPrimaryState = () => {
   const [mobileTab, setMobileTab] = useState('player'); 
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   // NEW: Batch Config includes doMeaning
-  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doWordTranslation: false, doSentence: true, doMeaning: false, doExpressions: false, doExpressionTranslations: false });
+  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doWordTranslation: false, doSentence: true, doMeaning: false, expEn: [false, false, false, false, false], expIdn: [false, false, false, false, false] });
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [batchStatusText, setBatchStatusText] = useState(""); 
   const [isBatchStopping, setIsBatchStopping] = useState(false); 

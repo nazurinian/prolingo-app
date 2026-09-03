@@ -1,6 +1,7 @@
 import React from 'react';
-import { ChevronsUp, FileText, ListPlus, Send, Table } from 'lucide-react';
+import { FileText, ListPlus, Send, Table } from 'lucide-react';
 import { OVERSCAN } from '../../constants/datasetConstants';
+import { MOBILE_BOTTOM_PLAYER_RESERVE_CSS } from '../../constants/layoutConstants';
 import { getStableAudioIdentity } from '../../utils/audioUtils';
 import { resolveMasteryState } from '../../domain/progress/masteryStateDomain.js';
 import { MemoizedRow } from './MemoizedRow';
@@ -128,18 +129,6 @@ export const renderPlaylistViewport = ({
     }
 
     const totalHeight = totalCount * rowHeight;
-    
-    // --- FIX MOBILE SCROLL & ADDRESS BAR HIDING ---
-    let mobileSpacerHeight = 0;
-    if (isMobile) {
-        const headerOffset = mode === 'table' ? 160 : 115; 
-        const currentContentHeight = totalHeight + headerOffset;
-        const minScrollableHeight = window.innerHeight + 150; 
-        
-        if (currentContentHeight < minScrollableHeight) {
-             mobileSpacerHeight = minScrollableHeight - currentContentHeight;
-        }
-    }
 
     const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
     const endIndex = Math.min(
@@ -160,8 +149,8 @@ export const renderPlaylistViewport = ({
       <div 
          ref={listContainerRef} 
          onScroll={handleScroll} 
-         // MODIFIED PADDING: pb-20 (Requested by user)
-         className={`${isMobile ? 'overflow-visible pb-20' : 'h-full overflow-y-auto pb-0 custom-scrollbar'} relative w-full touch-pan-y`}
+         className={`${isMobile ? 'overflow-visible' : 'h-full overflow-y-auto pb-0 custom-scrollbar'} relative w-full touch-pan-y`}
+         style={isMobile ? { paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
       >
         {mode === 'text' && (
              <div className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 pb-2 px-1">
@@ -194,8 +183,8 @@ export const renderPlaylistViewport = ({
         )}
 
         
-        {/* FIX: Container Height = Total Konten + Spacer Mobile. Removed Subtraction logic that cut off last items. */}
-        <div style={{ height: totalHeight + mobileSpacerHeight, position: 'relative' }} className="w-full">
+        {/* Virtual list owns only real row height; mobile no longer adds artificial page spacer. */}
+        <div style={{ height: totalHeight, position: 'relative' }} className="w-full">
             {virtualItems.map((item) => {
                if (mode === 'table' && item.isStructured) {
                    const isActive = (item.id === playingIndex) && (isPlaying || independentPlayingId !== null) && (playingContext === tableViewMode);
@@ -206,6 +195,11 @@ export const renderPlaylistViewport = ({
                    const localWordIdnUrl = localAudioMapTable[`${audioIdentity}_word_idn`] || null;
                    const localSentUrl = localAudioMapTable[`${audioIdentity}_sentence`] || null;
                    const localMeaningUrl = localAudioMapTable[`${audioIdentity}_meaning`] || null;
+                   const loadedAudioParts = [
+                       'word', 'word_idn', 'sentence', 'meaning',
+                       'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn',
+                       'exp4_en', 'exp4_idn', 'exp5_en', 'exp5_idn'
+                   ].filter(part => Boolean(localAudioMapTable[`${audioIdentity}_${part}`])).join('|');
                    const masteryVocabId = String(item.vocabId || '').trim();
                    const masteryTrackable = Boolean(masteryVocabId);
                    const masteryState = resolveMasteryState(masteryByVocabId, masteryVocabId);
@@ -230,6 +224,7 @@ export const renderPlaylistViewport = ({
                            localWordIdnUrl={localWordIdnUrl}
                            localSentUrl={localSentUrl}
                            localMeaningUrl={localMeaningUrl}
+                           loadedAudioParts={loadedAudioParts}
                            preferLocalAudio={preferLocalAudio}
                            generateAIAudio={generateAIAudio}
                            aiLoadingId={aiLoadingId}
@@ -281,24 +276,6 @@ export const renderPlaylistViewport = ({
                    );
                }
              })}
-             
-             {/* RENDER MOBILE SPACER IF NEEDED (Allows Address Bar Hiding) */}
-             {isMobile && mobileSpacerHeight > 0 && (
-                 <div 
-                    style={{ 
-                        position: 'absolute', 
-                        top: totalHeight, 
-                        height: mobileSpacerHeight, 
-                        width: '100%' 
-                    }} 
-                    className="flex flex-col items-center justify-start pt-10 text-slate-300 pointer-events-none"
-                 >
-                    <div className="flex flex-col items-center gap-2 opacity-30">
-                        <ChevronsUp className="w-4 h-4 animate-bounce" />
-                        <span className="text-[10px] font-medium">Scroll untuk Layar Penuh</span>
-                    </div>
-                 </div>
-             )}
         </div>
       </div>
     );

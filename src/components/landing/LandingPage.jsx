@@ -7,7 +7,7 @@ import {
 export const LandingPage = ({ onStart, theme, setTheme }) => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center transition-colors duration-500">
-      <div className="max-w-3xl w-full flex flex-col items-center animate-in fade-in zoom-in-95 duration-700">
+      <div className="max-w-3xl w-full flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
         <div className="w-24 h-24 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-500/30 mb-8 rotate-3 hover:rotate-6 transition-transform">
           <Mic className="w-12 h-12 text-white" />
         </div>

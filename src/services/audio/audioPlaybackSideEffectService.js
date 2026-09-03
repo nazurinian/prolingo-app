@@ -8,6 +8,7 @@ export const executeBrowserTtsPlaybackService = ({
   currentUtteranceRef,
   ttsReplayRef,
   playbackResolveRef,
+  rateRef,
   rate,
   pitch
 }) => {
@@ -51,7 +52,7 @@ export const executeBrowserTtsPlaybackService = ({
           const utterance = new SpeechSynthesisUtterance(textToRead);
           currentUtteranceRef.current = utterance;
           utterance.voice = targetVoice;
-          utterance.rate = Number(rate) || 1;
+          utterance.rate = Number(rateRef?.current ?? rate) || 1;
           utterance.pitch = Number(pitch) || 1;
           utterance.onend = handleUtteranceDone;
           utterance.onerror = handleUtteranceDone;
@@ -112,6 +113,7 @@ export const executeAudioSourcePlaybackService = ({
   preferLocalAudio,
   getLocalAudioUrl,
   currentAudioObjRef,
+  rateRef,
   rate,
   playbackResolveRef,
   shouldIgnoreLocalAudioFailure,
@@ -131,7 +133,7 @@ export const executeAudioSourcePlaybackService = ({
       if (audioUrl) {
         const audio = new Audio(audioUrl);
         currentAudioObjRef.current = audio;
-        audio.playbackRate = Number(rate) || 1;
+        audio.playbackRate = Number(rateRef?.current ?? rate) || 1;
         let settled = false;
 
         const cleanupAudio = () => {

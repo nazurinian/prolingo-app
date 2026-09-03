@@ -1,5 +1,7 @@
 export const APP_VERSION = '5.12.5';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
+export const APP_CHECKPOINT_ID = 'P2-A9';
+export const APP_CHECKPOINT_LABEL = 'P2-A9 — Mobile UX & Audio Controls + P1-H1 Voice Speed';
 export const APP_RELEASE_NAME = 'Progress Backup + Restore';
 export const APP_RELEASE_DATE = '2026-08-30';
 

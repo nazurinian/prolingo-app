@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckSquare, RotateCcw, Shuffle, Square } from 'lucide-react';
+import { CheckSquare, ChevronDown, ChevronUp, RotateCcw, Shuffle, Square } from 'lucide-react';
 import { V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from '../../constants/playbackConstants';
 import { formatPlaybackDelay } from '../../utils/playbackSequenceUtils';
 
@@ -111,26 +111,48 @@ export const renderPlaybackSequenceBuilderView = ({
           </div>
         </div>
 
-        <div className={`${compact ? 'max-h-72' : 'max-h-80'} overflow-y-auto pr-1 space-y-1`}>
+        <div className={`${compact ? 'overflow-visible' : 'max-h-80 overflow-y-auto pr-1'} space-y-1`}>
           {playbackSequence.map((entry, index) => {
             const meta = V511_PLAYBACK_PARTS.find(part => part.key === entry.key);
             if (!meta) return null;
             const available = isPlaybackSequencePartAvailable(entry.key);
             const active = entry.enabled && available;
             return (
-              <div key={entry.key} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${active ? 'border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-900/15' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60'} ${available ? '' : 'opacity-40'}`}>
-                <span className="w-5 text-[9px] text-center font-mono text-slate-400">{index + 1}</span>
-                <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`${active ? (meta.language === 'IDN' ? 'text-amber-600 dark:text-amber-400' : 'text-violet-600 dark:text-violet-400') : 'text-slate-400'} disabled:cursor-not-allowed`}>{active ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}</button>
-                <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`flex-1 text-left ${compact ? 'text-[10px]' : 'text-xs'} font-bold ${active ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'} disabled:cursor-not-allowed`}>{meta.label}</button>
-                <span className={`text-[8px] font-black px-1 rounded ${meta.language === 'IDN' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'}`}>{meta.language}</span>
-                <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-600 overflow-hidden" title="Repeat this part per item (1–5x)">
-                  <button type="button" disabled={!available || (entry.repeat || 1) <= 1} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) - 1)} className="w-5 h-6 text-[11px] font-black text-slate-500 disabled:opacity-20">−</button>
-                  <span className="min-w-[28px] text-center text-[9px] font-black text-violet-600 dark:text-violet-400 border-x border-slate-200 dark:border-slate-600">{entry.repeat || 1}x</span>
-                  <button type="button" disabled={!available || (entry.repeat || 1) >= 5} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) + 1)} className="w-5 h-6 text-[11px] font-black text-slate-500 disabled:opacity-20">+</button>
+              compact ? (
+                <div key={entry.key} className={`rounded-lg border px-2 py-1.5 space-y-1 ${active ? 'border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-900/15' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60'} ${available ? '' : 'opacity-40'}`}>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-5 text-[9px] text-center font-mono text-slate-400 flex-shrink-0">{index + 1}</span>
+                    <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`${active ? (meta.language === 'IDN' ? 'text-amber-600 dark:text-amber-400' : 'text-violet-600 dark:text-violet-400') : 'text-slate-400'} disabled:cursor-not-allowed flex-shrink-0`}>{active ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}</button>
+                    <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`flex-1 min-w-0 text-left text-[10px] font-bold truncate ${active ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'} disabled:cursor-not-allowed`}>{meta.label}</button>
+                    <span className={`text-[8px] font-black px-1 rounded flex-shrink-0 ${meta.language === 'IDN' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'}`}>{meta.language}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pl-7">
+                    <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-600 overflow-hidden" title="Repeat this part per item (1–5x)">
+                      <button type="button" disabled={!available || (entry.repeat || 1) <= 1} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) - 1)} className="w-7 h-7 text-sm font-black text-slate-500 disabled:opacity-20 active:bg-slate-100 dark:active:bg-slate-700">−</button>
+                      <span className="min-w-[34px] text-center text-[9px] font-black text-violet-600 dark:text-violet-400 border-x border-slate-200 dark:border-slate-600">{entry.repeat || 1}x</span>
+                      <button type="button" disabled={!available || (entry.repeat || 1) >= 5} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) + 1)} className="w-7 h-7 text-sm font-black text-slate-500 disabled:opacity-20 active:bg-slate-100 dark:active:bg-slate-700">+</button>
+                    </div>
+                    <div className="flex items-center gap-0.5" aria-label={`Reorder ${meta.label}`}>
+                      <button type="button" disabled={index === 0} onClick={() => movePlaybackSequencePart(entry.key, -1)} className="w-8 h-7 rounded-md text-slate-400 hover:text-violet-600 dark:text-slate-500 dark:hover:text-violet-400 disabled:opacity-15 flex items-center justify-center" title="Move up"><ChevronUp className="w-4 h-4"/></button>
+                      <button type="button" disabled={index === playbackSequence.length - 1} onClick={() => movePlaybackSequencePart(entry.key, 1)} className="w-8 h-7 rounded-md text-slate-400 hover:text-violet-600 dark:text-slate-500 dark:hover:text-violet-400 disabled:opacity-15 flex items-center justify-center" title="Move down"><ChevronDown className="w-4 h-4"/></button>
+                    </div>
+                  </div>
                 </div>
-                <button type="button" disabled={index === 0} onClick={() => movePlaybackSequencePart(entry.key, -1)} className="w-6 h-6 rounded border border-slate-200 dark:border-slate-600 text-[11px] font-black text-slate-500 disabled:opacity-20">↑</button>
-                <button type="button" disabled={index === playbackSequence.length - 1} onClick={() => movePlaybackSequencePart(entry.key, 1)} className="w-6 h-6 rounded border border-slate-200 dark:border-slate-600 text-[11px] font-black text-slate-500 disabled:opacity-20">↓</button>
-              </div>
+              ) : (
+                <div key={entry.key} className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 ${active ? 'border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-900/15' : 'border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60'} ${available ? '' : 'opacity-40'}`}>
+                  <span className="w-5 text-[9px] text-center font-mono text-slate-400">{index + 1}</span>
+                  <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`${active ? (meta.language === 'IDN' ? 'text-amber-600 dark:text-amber-400' : 'text-violet-600 dark:text-violet-400') : 'text-slate-400'} disabled:cursor-not-allowed`}>{active ? <CheckSquare className="w-4 h-4"/> : <Square className="w-4 h-4"/>}</button>
+                  <button type="button" disabled={!available} onClick={() => togglePlaybackSequencePart(entry.key)} className={`flex-1 text-left text-xs font-bold ${active ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400'} disabled:cursor-not-allowed`}>{meta.label}</button>
+                  <span className={`text-[8px] font-black px-1 rounded ${meta.language === 'IDN' ? 'text-amber-600 bg-amber-50 dark:bg-amber-900/20' : 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'}`}>{meta.language}</span>
+                  <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-600 overflow-hidden" title="Repeat this part per item (1–5x)">
+                    <button type="button" disabled={!available || (entry.repeat || 1) <= 1} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) - 1)} className="w-5 h-6 text-[11px] font-black text-slate-500 disabled:opacity-20">−</button>
+                    <span className="min-w-[28px] text-center text-[9px] font-black text-violet-600 dark:text-violet-400 border-x border-slate-200 dark:border-slate-600">{entry.repeat || 1}x</span>
+                    <button type="button" disabled={!available || (entry.repeat || 1) >= 5} onClick={() => setPlaybackSequencePartRepeat(entry.key, (entry.repeat || 1) + 1)} className="w-5 h-6 text-[11px] font-black text-slate-500 disabled:opacity-20">+</button>
+                  </div>
+                  <button type="button" disabled={index === 0} onClick={() => movePlaybackSequencePart(entry.key, -1)} className="w-6 h-6 rounded border border-slate-200 dark:border-slate-600 text-[11px] font-black text-slate-500 disabled:opacity-20">↑</button>
+                  <button type="button" disabled={index === playbackSequence.length - 1} onClick={() => movePlaybackSequencePart(entry.key, 1)} className="w-6 h-6 rounded border border-slate-200 dark:border-slate-600 text-[11px] font-black text-slate-500 disabled:opacity-20">↓</button>
+                </div>
+              )
             );
           })}
         </div>
