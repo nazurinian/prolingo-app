@@ -6,7 +6,7 @@ import { resolvePlaybackNavigationReferenceState, resolvePlaybackNavigationTarge
 
 export const executeIndependentPlaybackInteraction = ({
   item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
-  playbackSessionRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
+  playbackSessionRef, playbackContextRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
   setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab
 }) => {
     setActiveMenuId(null);
@@ -17,6 +17,15 @@ export const executeIndependentPlaybackInteraction = ({
 
     safePlayTransition(async () => {
       const playbackSession = playbackSessionRef.current;
+      if (playbackContextRef) {
+        playbackContextRef.current = {
+          sessionId: playbackSession,
+          context: resolveIndependentPlaybackContext({ mode, tableViewMode }),
+          kind: 'independent',
+          baseList: [item],
+          orderedList: [item]
+        };
+      }
       setIndependentPlayingId(uiId);
       setPlayingContext(resolveIndependentPlaybackContext({ mode, tableViewMode }));
       setPlayingIndex(item.id);
@@ -93,9 +102,10 @@ export const executeManualRowPlaybackInteraction = ({
 export const executeForceStopPlaybackService = ({
   playbackSessionRef, stopSignalRef, pauseStateRef, currentAudioObjRef, synth,
   settlePlaybackPromise, currentUtteranceRef, silentAudioRef, setIsPlaying,
-  setIsPaused, setSpeakingPart, setIndependentPlayingId
+  setIsPaused, setSpeakingPart, setIndependentPlayingId, playbackContextRef
 }) => {
     playbackSessionRef.current += 1;
+    if (playbackContextRef) playbackContextRef.current = null;
     stopSignalRef.current = true;
     pauseStateRef.current = false;
 
@@ -127,7 +137,7 @@ export const executeForceStopPlaybackService = ({
 export const executeSmartPlaybackNavigation = ({
   direction, setActiveMenuId, justSwitchedTab, playingIndex, playingContext, mode,
   tableViewMode, currentIndex, getBasePlaybackListForContext, vocabularyPlayOrderRef,
-  resolveVocabularyPlaybackList, activeVocabularyOrderRef, setCurrentIndex,
+  resolveVocabularyPlaybackList, activeVocabularyOrderRef, playbackContextRef, setCurrentIndex,
   setPlayingContext, startGlobalPlayback
 }) => {
     setActiveMenuId(null);
@@ -142,14 +152,25 @@ export const executeSmartPlaybackNavigation = ({
     });
     const contextToUse = navigationReference.contextToUse;
     const refId = navigationReference.refId;
-    const baseList = getBasePlaybackListForContext(contextToUse);
+    const sessionSnapshot = playbackContextRef?.current;
+    const canUseSessionSnapshot = Boolean(
+      sessionSnapshot?.kind === 'global' &&
+      sessionSnapshot.context === contextToUse &&
+      Array.isArray(sessionSnapshot.orderedList) &&
+      sessionSnapshot.orderedList.some(item => item.id === refId)
+    );
+    const baseList = canUseSessionSnapshot
+      ? sessionSnapshot.baseList
+      : getBasePlaybackListForContext(contextToUse);
     if (!baseList.length) return;
 
-    let listToUse = vocabularyPlayOrderRef.current === 'shuffle'
-      ? resolveVocabularyPlaybackList(baseList, contextToUse, {
-          anchorId: activeVocabularyOrderRef.current?.signature === getPlaybackListSignature(baseList) ? null : refId
-        })
-      : baseList;
+    let listToUse = canUseSessionSnapshot
+      ? sessionSnapshot.orderedList
+      : (vocabularyPlayOrderRef.current === 'shuffle'
+          ? resolveVocabularyPlaybackList(baseList, contextToUse, {
+              anchorId: activeVocabularyOrderRef.current?.signature === getPlaybackListSignature(baseList) ? null : refId
+            })
+          : baseList);
 
     const navigationTarget = resolvePlaybackNavigationTargetState({
       direction,
@@ -164,5 +185,8 @@ export const executeSmartPlaybackNavigation = ({
        setCurrentIndex(targetItem.id);
     }
     setPlayingContext(contextToUse);
-    startGlobalPlayback(targetItem.id, contextToUse);
+    startGlobalPlayback(targetItem.id, contextToUse, canUseSessionSnapshot ? {
+      baseListOverride: [...sessionSnapshot.baseList],
+      orderedListOverride: [...sessionSnapshot.orderedList]
+    } : {});
 };

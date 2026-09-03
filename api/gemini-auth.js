@@ -7,6 +7,7 @@ import {
 } from '../server/geminiOwnerSession.js';
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'GET') {
     res.status(200).json({ configured: isGeminiOwnerConfigured(), unlocked: isGeminiOwnerSession(req) });
     return;

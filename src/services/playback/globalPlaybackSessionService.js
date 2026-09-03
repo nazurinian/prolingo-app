@@ -16,6 +16,7 @@ export const executeGlobalPlaybackSessionService = ({
   resolveVocabularyPlaybackList,
   safePlayTransition,
   playbackSessionRef,
+  playbackContextRef,
   setIsPlaying,
   setIsPaused,
   pauseStateRef,
@@ -52,19 +53,40 @@ export const executeGlobalPlaybackSessionService = ({
       setPlayingContext(sessionStart.nextPlayingContext);
     }
 
-    const baseList = getBasePlaybackListForContext(sessionMode);
+    const baseList = Array.isArray(options.baseListOverride)
+      ? [...options.baseListOverride]
+      : getBasePlaybackListForContext(sessionMode);
     if (!baseList.length) return;
 
+    // D3: a structured/table session with no enabled playback part has no work.
+    // Refuse before safePlayTransition so no fake playing state, silent anchor,
+    // fixed wait, index change, or shuffle mutation can occur.
+    if (sessionMode !== 'text' && !(Array.isArray(playbackSequenceRef.current) && playbackSequenceRef.current.some(entry => entry.enabled))) {
+      addLog("Info", "Playback not started: no Playback Sequence parts are enabled.");
+      return;
+    }
+
     const requestedId = resolvePlaybackRequestedId(startItemId);
-    let listToPlay = resolveVocabularyPlaybackList(baseList, sessionMode, {
-      forceReshuffle: Boolean(options.forceReshuffle),
-      anchorId: options.anchorShuffle ? requestedId : null
-    });
+    let listToPlay = Array.isArray(options.orderedListOverride)
+      ? [...options.orderedListOverride]
+      : resolveVocabularyPlaybackList(baseList, sessionMode, {
+          forceReshuffle: Boolean(options.forceReshuffle),
+          anchorId: options.anchorShuffle ? requestedId : null
+        });
 
     const startIndex = resolvePlaybackStartIndex(listToPlay, requestedId);
 
     safePlayTransition(async () => {
       const playbackSession = playbackSessionRef.current;
+      if (playbackContextRef) {
+        playbackContextRef.current = {
+          sessionId: playbackSession,
+          context: sessionMode,
+          kind: 'global',
+          baseList: [...baseList],
+          orderedList: [...listToPlay]
+        };
+      }
       setIsPlaying(true);
       setIsPaused(false);
       pauseStateRef.current = false;
@@ -203,6 +225,12 @@ export const executeGlobalPlaybackSessionService = ({
             forceReshuffle: true,
             avoidFirstId: getPlaybackItemId(item)
           });
+          if (playbackContextRef?.current?.sessionId === playbackSession) {
+            playbackContextRef.current = {
+              ...playbackContextRef.current,
+              orderedList: [...listToPlay]
+            };
+          }
         }
         index = advance.nextIndex;
       }

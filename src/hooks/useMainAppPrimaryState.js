@@ -5,6 +5,7 @@ import { createEmptyManualForm } from '../utils/csvUtils';
 import { createEmptySourcePack } from '../utils/multiSourceUtils';
 import { createEmptyVocabularyOrder } from '../utils/playbackSequenceUtils';
 import { loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from '../services/persistence/preferencePersistenceService';
+import { loadTextIdentityState } from '../services/persistence/textIdentityPersistenceService';
 
 export const useMainAppPrimaryState = () => {
   const [mode, setMode] = useState('table'); 
@@ -13,7 +14,8 @@ export const useMainAppPrimaryState = () => {
   const [rangeInput, setRangeInput] = useState("");
 
   const [tableContent, setTableContent] = useState("");
-  const [textContent, setTextContent] = useState("");
+  const [textIdentityState, setTextIdentityState] = useState(() => loadTextIdentityState());
+  const [textContent, setTextContent] = useState(() => textIdentityState.rawContent);
   const [playlist, setPlaylist] = useState([]); 
   const [newTextItem, setNewTextItem] = useState("");
   // v5.8.3: last CSV snapshot that has been imported or explicitly saved to disk.
@@ -117,7 +119,9 @@ export const useMainAppPrimaryState = () => {
 
   const isLocked = lockedStates[mode];
 
+  // E: transient BYOK input only; the plaintext key is never persisted client-side.
   const [userApiKey, setUserApiKey] = useState("");
+  const [geminiOwnerState, setGeminiOwnerState] = useState({ checked: false, configured: false, unlocked: false, byokAvailable: false, byokRegistered: false });
   const [aiVoiceName, setAiVoiceName] = useState("Kore");
   const [aiLoadingId, setAiLoadingId] = useState(null);
   const [systemLogs, setSystemLogs] = useState([]); 
@@ -164,7 +168,7 @@ export const useMainAppPrimaryState = () => {
 
   return {
     mode, setMode, tableViewMode, setTableViewMode, studyQueue, setStudyQueue,
-    rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent,
+    rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
     playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
@@ -187,6 +191,7 @@ export const useMainAppPrimaryState = () => {
     setBatchConfig, isBatchDownloading, setIsBatchDownloading, batchStatusText, setBatchStatusText, isBatchStopping,
     setIsBatchStopping, isMemoryMode, setIsMemoryMode, revealedCells, setRevealedCells, memorySettings,
     setMemorySettings, activeMenuId, setActiveMenuId, isLocked, userApiKey, setUserApiKey,
+    geminiOwnerState, setGeminiOwnerState,
     aiVoiceName, setAiVoiceName, aiLoadingId, setAiLoadingId, systemLogs, setSystemLogs,
     generatorEngine, setGeneratorEngine, edgeVoices, setEdgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,

@@ -19,7 +19,9 @@ export const isGeminiOwnerConfigured = () => Boolean(
 
 export const verifyGeminiOwnerAccessCode = (candidate) => {
   const configured = getOwnerAccessCode();
-  return Boolean(configured) && safeEqual(candidate, configured);
+  const cleanCandidate = String(candidate || '');
+  if (!configured || !cleanCandidate || cleanCandidate.length > 512) return false;
+  return safeEqual(cleanCandidate, configured);
 };
 
 const signPayload = (payload) => crypto

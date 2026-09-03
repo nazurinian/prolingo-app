@@ -70,16 +70,13 @@ export const resolveEdgeTtsRequestState = ({
   };
 };
 
-export const resolveGeminiTtsApiKey = (apiKey, userApiKey) => apiKey || userApiKey;
-
-export const resolveGeminiTtsRequestState = ({ textToSpeak, aiVoiceName, keyToUse }) => {
-  return {
-    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${keyToUse}`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: {
-      contents: [{ parts: [{ text: textToSpeak }] }],
-      generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: aiVoiceName } } } }
-    }
-  };
-};
+export const resolveGeminiTtsRequestState = ({ textToSpeak, aiVoiceName }) => ({
+  url: '/api/gemini-tts',
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',
+  body: {
+    text: textToSpeak,
+    voiceName: aiVoiceName
+  }
+});

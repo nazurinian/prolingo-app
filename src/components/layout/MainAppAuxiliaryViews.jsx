@@ -72,8 +72,9 @@ export const renderMobileToolsView = ({
   handleSaveDeck, handleDeleteDeckInit, csvInputRef, openManualAdd, playlist, tableViewMode,
   exportTableCSV, setIsClearDialogOpen, csvChangeSummary, setIsChangeReviewOpen, undoStack,
   undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput, handleRangeAdd,
-  generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, apiKey,
-  userApiKey, setUserApiKey, edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
+  generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
+  userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
+  edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
   edgeHealth, folderInputRef, isBatchDownloading, batchConfig, setBatchConfig, runBatchDownload,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
@@ -139,9 +140,16 @@ export const renderMobileToolsView = ({
           aiVoiceName={aiVoiceName}
           setAiVoiceName={setAiVoiceName}
           aiVoices={aiVoices}
-          apiKey={apiKey}
           userApiKey={userApiKey}
-          onUserApiKeyChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}}
+          onUserApiKeyChange={onUserApiKeyChange}
+          geminiOwnerConfigured={geminiOwnerConfigured}
+          geminiOwnerUnlocked={geminiOwnerUnlocked}
+          onGeminiOwnerUnlock={onGeminiOwnerUnlock}
+          onGeminiOwnerLock={onGeminiOwnerLock}
+          geminiByokAvailable={geminiByokAvailable}
+          geminiByokRegistered={geminiByokRegistered}
+          onGeminiByokRegister={onGeminiByokRegister}
+          onGeminiByokClear={onGeminiByokClear}
           edgeVoices={edgeVoices}
           edgeVoice={edgeVoice}
           setEdgeVoice={setEdgeVoice}

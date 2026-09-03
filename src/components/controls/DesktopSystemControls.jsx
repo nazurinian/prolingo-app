@@ -7,7 +7,9 @@ export default function DesktopSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice,
   edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth, testEdgeBackend,
-  apiKey, userApiKey, onUserApiKeyChange, folderInputRef, currentMapCount, batchButtonRef,
+  userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock,
+  geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
+  folderInputRef, currentMapCount, batchButtonRef,
   isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
   setShowLogs, showLogs, logContainerRef, systemLogs, storageRefreshToken,
   onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
@@ -34,7 +36,7 @@ export default function DesktopSystemControls({
                         <select disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-purple-100 dark:border-slate-600 text-purple-700 dark:text-purple-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>
                             {aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
                         </select>
-                        <p className="text-[9px] text-slate-400 text-right">Requires API Key</p>
+                        <p className={`text-[9px] text-right font-bold ${geminiOwnerUnlocked ? 'text-green-600 dark:text-green-400' : geminiByokRegistered ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'}`}>{geminiOwnerUnlocked ? 'OWNER • server key protected' : geminiByokRegistered ? 'BYOK • protected on this device' : 'LOCKED • API key required'}</p>
                     </div>
                 ) : (
                     // EDGE TTS CONTROLS (Grouped)
@@ -83,7 +85,12 @@ export default function DesktopSystemControls({
 
               <div className="space-y-2 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">System Utilities</p>
-                <input type="password" placeholder={apiKey ? "System Key Active" : "Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-2 w-full dark:bg-slate-800 dark:text-white ${apiKey ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={apiKey ? "" : userApiKey} disabled={!!apiKey} onChange={onUserApiKeyChange} />
+                <input type="password" autoComplete="off" placeholder={geminiOwnerUnlocked ? "Owner Key Active (server)" : geminiByokRegistered ? "Your API key is registered" : "Your Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-2 w-full dark:bg-slate-800 dark:text-white ${geminiOwnerUnlocked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={geminiOwnerUnlocked || geminiByokRegistered ? "" : userApiKey} disabled={geminiOwnerUnlocked || geminiByokRegistered || !geminiByokAvailable} onChange={onUserApiKeyChange} />
+                {!geminiOwnerUnlocked && !geminiByokRegistered && geminiByokAvailable && <button type="button" disabled={isSystemBusy || !userApiKey.trim()} onClick={onGeminiByokRegister} className="w-full px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-50">Save My API Key</button>}
+                {!geminiOwnerUnlocked && geminiByokRegistered && <button type="button" disabled={isSystemBusy} onClick={onGeminiByokClear} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Remove My API Key</button>}
+                {!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full px-2 py-1.5 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50">Owner Unlock</button>}
+                {geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Owner Lock</button>}
+                {!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600 dark:text-amber-400">BYOK vault belum dikonfigurasi di server.</p>}
                 {currentMapCount > 0 ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button disabled={isSystemBusy} onClick={() => folderInputRef.refreshAudioFolder?.() ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/> Refresh Audio</button>

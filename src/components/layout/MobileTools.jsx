@@ -65,9 +65,16 @@ const MobileTools = ({
   aiVoiceName,
   setAiVoiceName,
   aiVoices,
-  apiKey,
   userApiKey,
   onUserApiKeyChange,
+  geminiOwnerConfigured,
+  geminiOwnerUnlocked,
+  onGeminiOwnerUnlock,
+  onGeminiOwnerLock,
+  geminiByokAvailable,
+  geminiByokRegistered,
+  onGeminiByokRegister,
+  onGeminiByokClear,
   edgeVoices,
   edgeVoice,
   setEdgeVoice,
@@ -179,9 +186,16 @@ const MobileTools = ({
               aiVoiceName={aiVoiceName}
               setAiVoiceName={setAiVoiceName}
               aiVoices={aiVoices}
-              apiKey={apiKey}
               userApiKey={userApiKey}
               onUserApiKeyChange={onUserApiKeyChange}
+              geminiOwnerConfigured={geminiOwnerConfigured}
+              geminiOwnerUnlocked={geminiOwnerUnlocked}
+              onGeminiOwnerUnlock={onGeminiOwnerUnlock}
+              onGeminiOwnerLock={onGeminiOwnerLock}
+              geminiByokAvailable={geminiByokAvailable}
+              geminiByokRegistered={geminiByokRegistered}
+              onGeminiByokRegister={onGeminiByokRegister}
+              onGeminiByokClear={onGeminiByokClear}
               edgeVoices={edgeVoices}
               edgeVoice={edgeVoice}
               setEdgeVoice={setEdgeVoice}

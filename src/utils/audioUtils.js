@@ -126,6 +126,8 @@ export const getStableAudioIdentity = (item) => {
     const no = getRecordAudioNo(item);
     return no ? `NO_${String(no).padStart(6, '0')}` : `ID_${getVocabIdentity(item) || 'UNKNOWN'}`;
   }
+  const textIdentity = String(item.textId || item.id || '').trim().toUpperCase();
+  if (/^TEXT_\d+$/.test(textIdentity)) return textIdentity;
   return `TEXT_${String(item.displayId || 1).padStart(6, '0')}`;
 };
 

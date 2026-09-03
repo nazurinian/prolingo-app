@@ -3,7 +3,6 @@ import {
   resolveAudioGenerationPreparation,
   resolveEdgeHealthCheckRequest,
   resolveEdgeTtsRequestState,
-  resolveGeminiTtsApiKey,
   resolveGeminiTtsRequestState,
   resolveTtsGenerationProvider
 } from '../../domain/audio/ttsRequestProviderDomain';
@@ -81,8 +80,7 @@ edgeVoice,
 aiVoiceName,
 edgeRate,
 edgePitch,
-userApiKey,
-apiKey,
+geminiAccessUnlocked,
 generationAbortControllerRef,
 setAiLoadingId,
 setEdgeHealth,
@@ -151,25 +149,24 @@ addLog
            if (!blob.size) throw new Error('Edge backend returned empty audio.');
            setEdgeHealth({ status: 'online', message: `Last request OK • ${Math.round(blob.size / 1024)} KB` });
       } else {
-          const keyToUse = resolveGeminiTtsApiKey(apiKey, userApiKey);
-          if (!keyToUse) {
-              alert("API Key Kosong! Masukkan key di menu Tools.");
+          if (!geminiAccessUnlocked) {
+              alert("Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.");
               return;
           }
-          const geminiRequest = resolveGeminiTtsRequestState({
-              textToSpeak,
-              aiVoiceName,
-              keyToUse
-          });
+          const geminiRequest = resolveGeminiTtsRequestState({ textToSpeak, aiVoiceName });
 
           const response = await fetch(geminiRequest.url, {
               method: geminiRequest.method,
               headers: geminiRequest.headers,
+              credentials: geminiRequest.credentials,
               signal: controller.signal,
               body: JSON.stringify(geminiRequest.body)
           });
 
-          if (!response.ok) throw new Error(`Gemini API Error ${response.status}`);
+          if (!response.ok) {
+              const errorBody = await response.json().catch(() => ({}));
+              throw new Error(errorBody?.error || `Gemini API Error ${response.status}`);
+          }
           const data = await response.json();
 
           const geminiAudio = resolveGeminiInlineAudioState(data);
@@ -215,4 +212,74 @@ addLog
       if (generationAbortControllerRef.current === controller) generationAbortControllerRef.current = null;
       setAiLoadingId(null);
   }
+};
+
+
+export const executeGeminiOwnerStatusService = async ({ setGeminiOwnerState, addLog }) => {
+  try {
+    const [ownerResponse, byokResponse] = await Promise.all([
+      fetch('/api/gemini-auth', { credentials: 'include' }),
+      fetch('/api/gemini-byok', { credentials: 'include' })
+    ]);
+    if (!ownerResponse.ok) throw new Error(`Owner HTTP ${ownerResponse.status}`);
+    if (!byokResponse.ok) throw new Error(`BYOK HTTP ${byokResponse.status}`);
+    const owner = await ownerResponse.json();
+    const byok = await byokResponse.json();
+    setGeminiOwnerState({
+      checked: true,
+      configured: Boolean(owner.configured),
+      unlocked: Boolean(owner.unlocked),
+      byokAvailable: Boolean(byok.available),
+      byokRegistered: Boolean(byok.registered)
+    });
+  } catch (error) {
+    setGeminiOwnerState(prev => ({ ...prev, checked: true }));
+    addLog?.('Warn', `Gemini access status unavailable: ${error.message}`);
+  }
+};
+
+export const executeGeminiOwnerUnlockService = async ({ accessCode, setGeminiOwnerState, addLog }) => {
+  const response = await fetch('/api/gemini-auth', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accessCode })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+  setGeminiOwnerState(prev => ({ ...prev, checked: true, configured: true, unlocked: true }));
+  addLog?.('Gemini', 'Owner access unlocked on this device.');
+  return data;
+};
+
+export const executeGeminiOwnerLockService = async ({ setGeminiOwnerState, addLog }) => {
+  const response = await fetch('/api/gemini-auth', { method: 'DELETE', credentials: 'include' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+  setGeminiOwnerState(prev => ({ ...prev, checked: true, unlocked: false }));
+  addLog?.('Gemini', 'Owner access locked on this device.');
+  return data;
+};
+
+export const executeGeminiByokRegisterService = async ({ apiKey, setGeminiOwnerState, addLog }) => {
+  const response = await fetch('/api/gemini-byok', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+  setGeminiOwnerState(prev => ({ ...prev, checked: true, byokAvailable: true, byokRegistered: true }));
+  addLog?.('Gemini', 'Your Gemini API key is registered for this device.');
+  return data;
+};
+
+export const executeGeminiByokClearService = async ({ setGeminiOwnerState, addLog }) => {
+  const response = await fetch('/api/gemini-byok', { method: 'DELETE', credentials: 'include' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+  setGeminiOwnerState(prev => ({ ...prev, checked: true, byokRegistered: false }));
+  addLog?.('Gemini', 'Your Gemini API key was removed from this device.');
+  return data;
 };

@@ -14,6 +14,8 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
   const playbackDelaysRef = useRef(playbackDelays);
   const vocabularyPlayOrderRef = useRef(vocabularyPlayOrder);
   const activeVocabularyOrderRef = useRef(activeVocabularyOrder);
+  // D2: session-owned playback list/context. This must remain stable when the visible UI list changes.
+  const playbackContextRef = useRef(null);
 
   // FIX: REFERENCE FOR CURRENT UTTERANCE TO PREVENT GARBAGE COLLECTION
   const currentUtteranceRef = useRef(null);
@@ -38,7 +40,7 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
   return {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, edgeTestAbortControllerRef, playbackModeRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   };

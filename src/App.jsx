@@ -73,7 +73,7 @@ import { resolveStudyActivityStatistics } from './domain/progress/studyTrackingD
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
 import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecisionDomain';
 import { shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
-import { executeAudioGenerationService, executeEdgeBackendHealthService } from './services/audio/audioTtsSideEffectService';
+import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
@@ -95,17 +95,15 @@ import { executeDeleteDeckCacheService, executeDraftAutosaveEffect, executeLoadD
 import { executeControlSectionPersistenceEffect, executePlaybackDelaysPersistenceEffect, executePlaybackSequencePersistenceEffect, executeVocabularyPlayOrderPersistenceEffect, loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from './services/persistence/preferencePersistenceService';
 import { executeCycleMasteryState } from './services/progress/masteryInteractionService';
 import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
-
-
-// --- SYSTEM ENVIRONMENT VAR ---
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
+import { executeTextIdentityPersistenceEffect } from './services/persistence/textIdentityPersistenceService';
 
 
 // --- MAIN COMPONENT ---
 const MainApp = ({ goHome, theme, setTheme }) => {
   const {
     mode, setMode, tableViewMode, setTableViewMode, studyQueue, setStudyQueue,
-    rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent,
+    rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
     playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
@@ -128,6 +126,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setBatchConfig, isBatchDownloading, setIsBatchDownloading, batchStatusText, setBatchStatusText, isBatchStopping,
     setIsBatchStopping, isMemoryMode, setIsMemoryMode, revealedCells, setRevealedCells, memorySettings,
     setMemorySettings, activeMenuId, setActiveMenuId, isLocked, userApiKey, setUserApiKey,
+    geminiOwnerState, setGeminiOwnerState,
     aiVoiceName, setAiVoiceName, aiLoadingId, setAiLoadingId, systemLogs, setSystemLogs,
     generatorEngine, setGeneratorEngine, edgeVoices, setEdgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
@@ -153,7 +152,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, edgeTestAbortControllerRef, playbackModeRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder });
@@ -319,14 +318,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [selectedIndonesianVoice]);
 
   useEffect(() => executeStartupRestoreEffect({
-    setUserApiKey,
     setSavedDecks,
     setTableContent,
     setCsvBaselineContent,
     setSequenceHighWater,
     setManualIdHighWater,
     setImportedRowCount,
-    setTextContent,
     setLockedStates,
     addLog,
     forceStopAll
@@ -356,10 +353,69 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const addLog = (type, message) => executeSystemLogAppend({ type, message, setSystemLogs });
 
+  // E: Gemini access is resolved by server-side OWNER/BYOK sessions.
+  useEffect(() => {
+    executeGeminiOwnerStatusService({ setGeminiOwnerState, addLog });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUserApiKeyChange = (eventOrValue) => {
+    const nextValue = typeof eventOrValue === 'string' ? eventOrValue : eventOrValue?.target?.value || '';
+    setUserApiKey(nextValue);
+  };
+
+  const handleGeminiByokRegister = async () => {
+    const cleanKey = String(userApiKey || '').trim();
+    if (!cleanKey) return;
+    try {
+      await executeGeminiByokRegisterService({ apiKey: cleanKey, setGeminiOwnerState, addLog });
+      setUserApiKey('');
+    } catch (error) {
+      addLog('Error', `Gemini BYOK registration failed: ${error.message}`);
+      alert(`API key tidak dapat disimpan: ${error.message}`);
+    }
+  };
+
+  const handleGeminiOwnerLock = async () => {
+    try {
+      await executeGeminiOwnerLockService({ setGeminiOwnerState, addLog });
+    } catch (error) {
+      addLog('Error', `Gemini owner lock failed: ${error.message}`);
+      alert(`Owner lock gagal: ${error.message}`);
+    }
+  };
+
+  const handleGeminiByokClear = async () => {
+    try {
+      await executeGeminiByokClearService({ setGeminiOwnerState, addLog });
+      setUserApiKey('');
+    } catch (error) {
+      addLog('Error', `Gemini BYOK removal failed: ${error.message}`);
+      alert(`API key tidak dapat dihapus: ${error.message}`);
+    }
+  };
+
+  const handleGeminiOwnerUnlock = async () => {
+    const accessCode = window.prompt('Owner Access Code');
+    if (!accessCode) return;
+    try {
+      await executeGeminiOwnerUnlockService({ accessCode, setGeminiOwnerState, addLog });
+    } catch (error) {
+      addLog('Error', `Gemini owner unlock failed: ${error.message}`);
+      alert(`Owner unlock gagal: ${error.message}`);
+    }
+  };
+
+  useEffect(() => {
+    setTextIdentityState(prev => reconcileTextIdentityState(prev, textContent));
+  }, [textContent, setTextIdentityState]);
+
+  useEffect(() => executeTextIdentityPersistenceEffect({ textIdentityState }), [textIdentityState]);
+
   useEffect(() => executePlaylistContentSyncEffect({
-    mode, textContent, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
+    mode, textIdentityState, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
     setSequenceHighWater, setManualIdHighWater, addLog
-  }), [tableContent, textContent, mode, sequenceHighWater]); 
+  }), [tableContent, textIdentityState, mode, sequenceHighWater]);
 
   const resetFullState = () => executeResetFullState({
     localAudioMapTable, localAudioMapText, setLocalAudioMapTable, setLocalAudioMapText,
@@ -545,7 +601,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleIndependentPlay = (item, part, uiId) => executeIndependentPlaybackInteraction({
     item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
-    playbackSessionRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
+    playbackSessionRef, playbackContextRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
     setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab: recordStudyActivity
   });
 
@@ -618,6 +674,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       resolveVocabularyPlaybackList,
       safePlayTransition,
       playbackSessionRef,
+      playbackContextRef,
       setIsPlaying,
       setIsPaused,
       pauseStateRef,
@@ -646,13 +703,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const forceStopAll = () => executeForceStopPlaybackService({
     playbackSessionRef, stopSignalRef, pauseStateRef, currentAudioObjRef, synth,
     settlePlaybackPromise, currentUtteranceRef, silentAudioRef, setIsPlaying,
-    setIsPaused, setSpeakingPart, setIndependentPlayingId
+    setIsPaused, setSpeakingPart, setIndependentPlayingId, playbackContextRef
   });
 
   const handleSmartNav = (direction) => executeSmartPlaybackNavigation({
     direction, setActiveMenuId, justSwitchedTab, playingIndex, playingContext, mode,
     tableViewMode, currentIndex, getBasePlaybackListForContext, vocabularyPlayOrderRef,
-    resolveVocabularyPlaybackList, activeVocabularyOrderRef, setCurrentIndex,
+    resolveVocabularyPlaybackList, activeVocabularyOrderRef, playbackContextRef, setCurrentIndex,
     setPlayingContext, startGlobalPlayback
   });
   
@@ -673,7 +730,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
     useEffect(() => {
         return executeMediaSessionLifecycleService({
-            currentPlayerList, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
+            currentPlayerList, playbackContextRef, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
             currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
         });
     }, [
@@ -907,8 +964,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       aiVoiceName,
       edgeRate,
       edgePitch,
-      userApiKey,
-      apiKey,
+      geminiAccessUnlocked: geminiOwnerState.unlocked || geminiOwnerState.byokRegistered,
       generationAbortControllerRef,
       setAiLoadingId,
       setEdgeHealth,
@@ -919,6 +975,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const runBatchDownload = async () => {
+    if (generatorEngine === 'gemini' && !geminiOwnerState.unlocked && !geminiOwnerState.byokRegistered) {
+      alert('Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.');
+      return;
+    }
     return executeAudioBatchDownloadService({
       isBatchDownloading,
       batchStopSignalRef,
@@ -1176,8 +1236,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     csvInputRef, openManualAdd, playlist, tableViewMode, exportTableCSV,
     setIsClearDialogOpen, csvChangeSummary, setIsChangeReviewOpen, undoStack, undoLastDataChange,
     saveUpdatedCSV, rangeInput, setRangeInput, handleRangeAdd, generatorEngine,
-    setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, apiKey,
-    userApiKey, setUserApiKey, edgeVoices, edgeVoice, setEdgeVoice,
+    setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
+    userApiKey, onUserApiKeyChange: handleUserApiKeyChange,
+    geminiOwnerConfigured: geminiOwnerState.configured, geminiOwnerUnlocked: geminiOwnerState.unlocked,
+    onGeminiOwnerUnlock: handleGeminiOwnerUnlock, onGeminiOwnerLock: handleGeminiOwnerLock, geminiByokAvailable: geminiOwnerState.byokAvailable,
+    geminiByokRegistered: geminiOwnerState.byokRegistered, onGeminiByokRegister: handleGeminiByokRegister,
+    onGeminiByokClear: handleGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading,
     batchConfig, setBatchConfig, runBatchDownload, storageRefreshToken,
@@ -1258,7 +1322,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
     edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice,
     edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth,
-    testEdgeBackend, apiKey, userApiKey, setUserApiKey, batchButtonRef,
+    testEdgeBackend, userApiKey, onUserApiKeyChange: handleUserApiKeyChange,
+    geminiOwnerConfigured: geminiOwnerState.configured, geminiOwnerUnlocked: geminiOwnerState.unlocked,
+    onGeminiOwnerUnlock: handleGeminiOwnerUnlock, onGeminiOwnerLock: handleGeminiOwnerLock, geminiByokAvailable: geminiOwnerState.byokAvailable,
+    geminiByokRegistered: geminiOwnerState.byokRegistered, onGeminiByokRegister: handleGeminiByokRegister,
+    onGeminiByokClear: handleGeminiByokClear, batchButtonRef,
     isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices,
     selectedVoice, setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,

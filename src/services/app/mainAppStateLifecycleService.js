@@ -1,5 +1,6 @@
 import { getRecordAudioNo } from '../../utils/audioUtils';
 import { getMaxAssignedNoFromRecords, getMaxManualIdFromRecords, parseTableRecords } from '../../utils/csvUtils';
+import { resolveTextPlaylist } from '../../domain/text/textIdentityDomain';
 
 export const executeSystemLogAppend = ({ type, message, setSystemLogs }) => {
       const timestamp = new Date().toLocaleTimeString();
@@ -12,20 +13,12 @@ export const executeSystemLogAppend = ({ type, message, setSystemLogs }) => {
 };
 
 export const executePlaylistContentSyncEffect = ({
-  mode, textContent, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
+  mode, textIdentityState, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
   setSequenceHighWater, setManualIdHighWater, addLog
 }) => {
     try {
         if (mode === 'text') {
-            const safeText = typeof textContent === 'string' ? textContent : String(textContent || "");
-            const lines = safeText.split('\n').filter(l => l.trim());
-            const newPlaylist = lines.map((line, idx) => ({
-                id: `TEXT_${String(idx + 1).padStart(6, '0')}`,
-                vocabId: null,
-                displayId: idx + 1,
-                text: line.trim(),
-                isStructured: false
-            }));
+            const newPlaylist = resolveTextPlaylist(textIdentityState);
             setPlaylist(newPlaylist);
             setBatchConfig(prev => ({ ...prev, end: Math.max(1, newPlaylist.length) }));
             return;

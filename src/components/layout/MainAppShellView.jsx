@@ -24,7 +24,8 @@ export const renderMainAppShellView = (props) => {
     renderControlSectionTabs, currentMapCount, renderStatusBadge, preferLocalAudio, setPreferLocalAudio, generatorEngine,
     setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, edgeVoices, edgeVoice,
     setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
-    setEdgePitch, edgeHealth, testEdgeBackend, apiKey, userApiKey, setUserApiKey,
+    setEdgePitch, edgeHealth, testEdgeBackend, userApiKey, onUserApiKeyChange,
+    geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
     batchButtonRef, isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices, selectedVoice,
     setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate, setRate,
@@ -131,9 +132,16 @@ export const renderMainAppShellView = (props) => {
                 setEdgePitch={setEdgePitch}
                 edgeHealth={edgeHealth}
                 testEdgeBackend={testEdgeBackend}
-                apiKey={apiKey}
                 userApiKey={userApiKey}
-                onUserApiKeyChange={e => {setUserApiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value)}}
+                onUserApiKeyChange={onUserApiKeyChange}
+                geminiOwnerConfigured={geminiOwnerConfigured}
+                geminiOwnerUnlocked={geminiOwnerUnlocked}
+                onGeminiOwnerUnlock={onGeminiOwnerUnlock}
+                onGeminiOwnerLock={onGeminiOwnerLock}
+                geminiByokAvailable={geminiByokAvailable}
+                geminiByokRegistered={geminiByokRegistered}
+                onGeminiByokRegister={onGeminiByokRegister}
+                onGeminiByokClear={onGeminiByokClear}
                 folderInputRef={folderInputRef}
                 currentMapCount={currentMapCount}
                 batchButtonRef={batchButtonRef}

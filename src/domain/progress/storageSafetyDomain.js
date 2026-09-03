@@ -6,10 +6,12 @@ export const DECK_CACHE_STORAGE_KEY = 'pronunciation_decks';
 export const CSV_METADATA_STORAGE_PREFIX = 'prolingo_csv_meta:';
 export const MASTERY_STORAGE_KEY_REFERENCE = 'prolingo_mastery_state_v1';
 export const STUDY_TRACKING_STORAGE_KEY_REFERENCE = 'prolingo_study_activity_v1';
+export const TEXT_IDENTITY_STORAGE_KEY_REFERENCE = 'prolingo_text_identity_v1';
 
 export const PREFERENCE_STORAGE_KEYS = Object.freeze([
   'theme',
-  'gemini_api_key',
+  'gemini_api_key', // legacy; startup removes this security-sensitive key
+  'prolingo_gemini_byok_key_v1', // legacy plaintext BYOK; startup removes it
   'prolingo_playback_sequence_v511',
   'prolingo_playback_delays_v511',
   'prolingo_vocabulary_play_order_v511',
@@ -45,6 +47,7 @@ export const classifyProLingoStorageKey = (key = '') => {
   if (normalizedKey.startsWith(CSV_METADATA_STORAGE_PREFIX)) return 'csvMetadata';
   if (normalizedKey === MASTERY_STORAGE_KEY_REFERENCE) return 'mastery';
   if (normalizedKey === STUDY_TRACKING_STORAGE_KEY_REFERENCE) return 'studyTracking';
+  if (normalizedKey === TEXT_IDENTITY_STORAGE_KEY_REFERENCE) return 'otherProLingo';
   if (preferenceKeySet.has(normalizedKey)) return 'preferences';
   if (normalizedKey.startsWith('prolingo_')) return 'otherProLingo';
   return 'otherOrigin';

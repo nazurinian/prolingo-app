@@ -93,26 +93,34 @@ export const executeAudioFolderSelectService = ({
         });
 
         const newMap = {};
+        const validTextIds = new Set(playlist
+            .filter(item => !item?.isStructured)
+            .map(item => getStableAudioIdentity(item)));
+        let audioFileCount = 0;
+        let orphanCount = 0;
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const lowerName = file.name.toLowerCase();
             if (!(file.type.startsWith('audio/') || lowerName.endsWith('.wav') || lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg') || lowerName.endsWith('.webm'))) continue;
+            audioFileCount++;
 
             const textMatch = file.name.match(/^(TEXT_\d+)_/i);
             const numericMatch = file.name.match(/^(\d+)_/);
             let identity = textMatch ? textMatch[1].toUpperCase() : null;
             if (!identity && numericMatch) identity = `TEXT_${String(Number.parseInt(numericMatch[1], 10)).padStart(6, '0')}`;
 
-            if (identity) {
+            if (identity && validTextIds.has(identity)) {
                 newMap[identity] = URL.createObjectURL(file);
                 count++;
+            } else {
+                orphanCount++;
             }
         }
         setLocalAudioMapText(newMap);
         setAudioStatusText(count > 0 ? 'success' : 'empty');
-        if (!silent) alert(`[Text] Loaded ${count} files. Old files cleared.`);
+        if (!silent) alert(`[Text] Audio scan: ${audioFileCount} file. Matched: ${count}. Orphan/unmatched: ${orphanCount}.`);
         e.target.value = '';
-        return { mode: 'text', matchedCount: count, audioFileCount: count, orphanCount: 0 };
+        return { mode: 'text', matchedCount: count, audioFileCount, orphanCount };
     }
 };
 

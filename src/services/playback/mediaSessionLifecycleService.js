@@ -1,13 +1,16 @@
 import { getItemPartText } from '../../utils/audioUtils';
 
 export const executeMediaSessionLifecycleService = ({
-  currentPlayerList, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
+  currentPlayerList, playbackContextRef, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
   currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
 }) => {
         if (!('mediaSession' in navigator)) return;
 
-        // 1. Tentukan Item yang sedang aktif
-        const activeItem = currentPlayerList.find(p => p.id === playingIndex);
+        // D2: metadata belongs to the active playback session, not the current
+        // filtered/visible UI list. The visible list is only a compatibility fallback.
+        const sessionList = playbackContextRef?.current?.orderedList;
+        const activeItem = (Array.isArray(sessionList) ? sessionList : currentPlayerList)
+            .find(p => p.id === playingIndex);
         if (!activeItem) {
             // A real Stop removes the active item. Clear any timeline previously
             // published for local/generated audio so Android does not keep stale

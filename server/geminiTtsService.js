@@ -17,8 +17,15 @@ export const resolveGeminiRequestCredential = ({ req }) => {
 export const requestGeminiTts = async ({ text, voiceName, apiKey }) => {
   const cleanText = String(text || '').trim();
   if (!cleanText) throw Object.assign(new Error('Text is required.'), { statusCode: 400 });
+  if (cleanText.length > 20000) throw Object.assign(new Error('Text is too long.'), { statusCode: 413 });
+  const cleanVoiceName = String(voiceName || 'Kore').trim();
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(cleanVoiceName)) {
+    throw Object.assign(new Error('Voice name is invalid.'), { statusCode: 400 });
+  }
+  const cleanApiKey = String(apiKey || '').trim();
+  if (!cleanApiKey) throw Object.assign(new Error('Gemini credential is unavailable.'), { statusCode: 401 });
   const model = String(process.env.GEMINI_TTS_MODEL || DEFAULT_GEMINI_TTS_MODEL).trim();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cleanApiKey)}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -26,7 +33,7 @@ export const requestGeminiTts = async ({ text, voiceName, apiKey }) => {
       contents: [{ parts: [{ text: cleanText }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cleanVoiceName } } }
       }
     })
   });

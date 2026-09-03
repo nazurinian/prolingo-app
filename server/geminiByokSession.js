@@ -67,6 +67,7 @@ export const hasGeminiByokSession = (req) => Boolean(readGeminiByokKey(req));
 export const createGeminiByokCookie = (req, apiKey) => {
   const cleanKey = String(apiKey || '').trim();
   if (!cleanKey) throw new Error('Gemini API key is required.');
+  if (cleanKey.length < 10 || cleanKey.length > 512) throw new Error('Gemini API key length is invalid.');
   const token = encryptPayload(JSON.stringify({
     v: 1,
     apiKey: cleanKey,

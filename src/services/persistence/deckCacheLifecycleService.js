@@ -47,20 +47,19 @@ export const executeDraftAutosaveEffect = ({
 };
 
 export const executeStartupRestoreEffect = ({
-  setUserApiKey,
   setSavedDecks,
   setTableContent,
   setCsvBaselineContent,
   setSequenceHighWater,
   setManualIdHighWater,
   setImportedRowCount,
-  setTextContent,
   setLockedStates,
   addLog,
   forceStopAll
 }) => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) setUserApiKey(savedKey);
+    // E security migration: remove legacy plaintext client credentials.
+    localStorage.removeItem('gemini_api_key');
+    localStorage.removeItem('prolingo_gemini_byok_key_v1');
 
     const saved = localStorage.getItem('pronunciation_decks');
     if (saved) {
@@ -78,7 +77,6 @@ MASTER_0005,5,abolish,verb,"menghapuskan, meniadakan, mengakhiri ",,The governme
     setSequenceHighWater(5);
     setManualIdHighWater(0);
     setImportedRowCount(5);
-    setTextContent("Hello world.\nThis is line number two.\nEach line is treated as an item.");
     
     if (demoData.trim().length > 0) {
       setLockedStates(prev => ({ ...prev, table: true }));
