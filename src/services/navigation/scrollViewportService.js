@@ -98,9 +98,19 @@ export const executeActiveRowAutoFollow = ({
                           setShowAppBar(true); 
                       }
                       
-                      const targetIdx = Math.max(0, idx - 1);
+                      // P4 UI pre-patch: Table playback should pin the ACTIVE vocab card
+                      // to the top of the expanded mobile viewport. The previous idx - 1
+                      // behavior intentionally kept the preceding card above it, which made
+                      // playback feel one row behind the old mobile UX. Keep Text behavior
+                      // unchanged until the Part 4 Text layout contract is rebuilt.
+                      const targetIdx = mode === 'table' ? idx : Math.max(0, idx - 1);
                       const containerPadding = getMobilePlayerTopOffset(mode);
-                      const targetScrollY = containerPadding + (targetIdx * rowH);
+                      // The row wrapper contributes 4px vertical padding while the page + row
+                      // contribute ~16px horizontal inset. Leave ~16px visually above the card
+                      // by stopping the row 12px below the viewport edge. Browser max-scroll
+                      // clamping remains authoritative for the final rows (no fake tail spacer).
+                      const activeCardTopInset = mode === 'table' ? 12 : 0;
+                      const targetScrollY = Math.max(0, containerPadding + (targetIdx * rowH) - activeCardTopInset);
                       
                       window.scrollTo({
                           top: targetScrollY,
