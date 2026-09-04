@@ -79,6 +79,7 @@ export const renderMobileToolsView = ({
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
   edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
+  isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) => (
@@ -171,6 +172,12 @@ export const renderMobileToolsView = ({
           setBatchConfig={setBatchConfig}
           runBatchDownload={runBatchDownload}
           DownloadCloudIcon={DownloadCloudIcon}
+          isBatchOpen={isBatchOpen}
+          setIsBatchOpen={setIsBatchOpen}
+          showLogs={showLogs}
+          setShowLogs={setShowLogs}
+          systemLogs={systemLogs}
+          logContainerRef={logContainerRef}
           storageRefreshToken={storageRefreshToken}
           onDatasetCacheCleared={onDatasetCacheCleared}
           onMasteryReset={onMasteryReset}

@@ -140,6 +140,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
   const { masteryFilter, setMasteryFilter } = useMasteryFilterState();
   const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
+  // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
+  const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
+
+  // UI-only: if Advanced is open on the currently playing vocabulary, keep the
+  // reading panel attached to the next vocabulary as playback advances.
+  const previousAdvancedPlaybackIdRef = useRef(playingIndex);
+  useEffect(() => {
+      const previousPlayingId = previousAdvancedPlaybackIdRef.current;
+      if (playingIndex !== previousPlayingId) {
+          if (playingIndex !== null && expandedAdvancedId !== null && expandedAdvancedId === previousPlayingId) {
+              setExpandedAdvancedId(playingIndex);
+          }
+          previousAdvancedPlaybackIdRef.current = playingIndex;
+      }
+  }, [playingIndex, expandedAdvancedId, setExpandedAdvancedId]);
 
   // FIX 1: Lock Body Scroll when Sidebar is Open (Prevent background scrolling)
   useEffect(() => executeBodyScrollLockEffect({ isMobile, isSidebarOpen }), [isMobile, isSidebarOpen]);
@@ -1007,10 +1022,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLocalAudioMapTable,
       setLocalAudioMapText,
       onGeneratedAudio: (meta) => {
+        const metaKey = `${meta.mode}:${meta.mapKey}`;
         generatedAudioMetaRef.current = {
           ...generatedAudioMetaRef.current,
-          [`${meta.mode}:${meta.mapKey}`]: meta
+          [metaKey]: meta
         };
+        setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
       },
       addLog
     });
@@ -1066,6 +1083,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generatedAudioMetaRef.current = Object.fromEntries(
       Object.entries(generatedAudioMetaRef.current || {}).filter(([key]) => !key.startsWith(`${targetMode}:`))
     );
+    setGeneratedAudioMeta(prev => Object.fromEntries(
+      Object.entries(prev || {}).filter(([key]) => !key.startsWith(`${targetMode}:`))
+    ));
   };
 
   const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
@@ -1298,7 +1318,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGeminiByokClear: handleGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
-    batchConfig, setBatchConfig, runBatchDownload, storageRefreshToken,
+    batchConfig, setBatchConfig, runBatchDownload, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
+    systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored
@@ -1362,7 +1383,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     localAudioMapText,
     handleDeleteTextItem,
     masteryByVocabId,
-    cycleMasteryState
+    cycleMasteryState,
+    playbackSequence,
+    generatedAudioMeta
   });
 
   return renderMainAppShellView({
@@ -1408,9 +1431,29 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 };
 
 // --- APP WRAPPER (Theme & View Logic) ---
+const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
+
 const App = () => {
-    // State Views: 'landing' | 'app'
-    const [view, setView] = useState('landing'); 
+    // Keep the current root view across same-tab reloads/HMR fallbacks.
+    // A new browser session still starts on Landing by default.
+    const [view, setView] = useState(() => {
+        if (typeof window === 'undefined') return 'landing';
+        try {
+            return window.sessionStorage.getItem(APP_VIEW_SESSION_KEY) === 'app' ? 'app' : 'landing';
+        } catch {
+            return 'landing';
+        }
+    });
+
+    const openAppView = () => {
+        setView('app');
+        try { window.sessionStorage.setItem(APP_VIEW_SESSION_KEY, 'app'); } catch {}
+    };
+
+    const openLandingView = () => {
+        setView('landing');
+        try { window.sessionStorage.removeItem(APP_VIEW_SESSION_KEY); } catch {}
+    };
     
     // Theme State: 'light' | 'dark' | 'system'
     const [theme, setTheme] = useState(() => {
@@ -1473,12 +1516,12 @@ const App = () => {
         <div className="antialiased transition-colors duration-300">
             {view === 'landing' ? (
                 <LandingPage 
-                    onStart={() => setView('app')} 
+                    onStart={openAppView} 
                     theme={theme}
                     setTheme={setTheme}
                 />
             ) : (
-                <MainApp goHome={() => setView('landing')} theme={theme} setTheme={setTheme} />
+                <MainApp goHome={openLandingView} theme={theme} setTheme={setTheme} />
             )}
         </div>
     );

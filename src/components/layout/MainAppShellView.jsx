@@ -90,7 +90,7 @@ export const renderMainAppShellView = (props) => {
           mode={mode}
           mobileTab={mobileTab}
         >
-          <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain"> 
+          <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain no-scrollbar"> 
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
               <SidebarTopControls
@@ -247,19 +247,6 @@ export const renderMainAppShellView = (props) => {
             {!isMobile && mode === 'table' && renderWorkspaceTabs(false)}
 
             <div
-              className={`absolute inset-0 bg-slate-900 p-4 overflow-auto z-30 ${mobileTab === 'terminal' ? 'block md:hidden' : 'hidden'}`}
-              style={isMobile ? { paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
-            >
-                {systemLogs.map((log, i) => (
-                    <div key={i} className="leading-tight border-b border-slate-800 pb-1 mb-1 font-mono text-[10px]">
-                        <span className="text-slate-500 mr-2">[{log.time}]</span> 
-                        <span className={`font-bold ${log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}`}>{log.type}:</span> 
-                        <span className="text-slate-300 ml-1">{log.message}</span>
-                    </div>
-                ))}
-            </div>
-
-            <div
               className={`absolute inset-0 bg-slate-50 dark:bg-slate-900 z-30 overflow-y-auto ${mobileTab === 'tools' ? 'block md:hidden' : 'hidden'}`}
               style={isMobile ? { paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
             >
@@ -293,11 +280,6 @@ export const renderMainAppShellView = (props) => {
         playbackMode={playbackMode}
         cyclePlaybackMode={cyclePlaybackMode}
         setPlaybackMode={setPlaybackMode}
-        mobileTab={mobileTab}
-        handleMobileTabSwitch={(target) => {
-          setShowAppBar(true);
-          handleMobileTabSwitch(target);
-        }}
         playingContext={playingContext}
       />
       {isChangeReviewOpen && (

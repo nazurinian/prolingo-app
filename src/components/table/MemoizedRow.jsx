@@ -1,18 +1,19 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MOBILE_BOTTOM_PLAYER_RESERVE } from '../../constants/layoutConstants';
 import {
   Play, X, MoreVertical, Plus, CheckCircle, Edit3, Trash2, Loader2,
-  Layers, Globe, Hash, Server, Wand2, FileText, Download
+  Layers, Hash, Server, Wand2, FileText, Download
 } from 'lucide-react';
 import {
   getAdvancedContentCount,
   hasAdvancedContent
 } from '../../utils/audioUtils';
-import HighlightedText from '../common/HighlightedText';
 import { MasteryStatusControl } from '../progress/MasteryStatusControl';
 import AudioDownloadPanel from './AudioDownloadPanel';
 import AdvancedExpressionPanel from './AdvancedExpressionPanel';
+import InlineLearningCarousel from './InlineLearningCarousel';
+import AudioSourceDot from './AudioSourceDot';
 
 // --- OPTIMIZED ROW COMPONENT (TABLE MODE) ---
 export const MemoizedRow = memo(({
@@ -50,7 +51,9 @@ export const MemoizedRow = memo(({
     onToggleAdvanced,
     masteryState,
     masteryTrackable,
-    onCycleMastery
+    onCycleMastery,
+    playbackSequence,
+    audioSourceParts = ''
 }) => {
     const [audioPanelOpen, setAudioPanelOpen] = useState(false);
     const isMenuOpen = activeMenuId === rowId;
@@ -63,6 +66,7 @@ export const MemoizedRow = memo(({
     const hasAdvanced = hasAdvancedContent(item);
     const loadedAudioSet = new Set(String(loadedAudioParts || '').split('|').filter(Boolean));
     const loadedAudioCount = loadedAudioSet.size;
+    const audioSourceByPart = useMemo(() => Object.fromEntries(String(audioSourceParts || '').split('|').filter(Boolean).map(entry => { const [part, source] = entry.split(':'); return [part, source]; })), [audioSourceParts]);
 
     const blurClass = "filter blur-sm bg-slate-100 dark:bg-slate-800 select-none cursor-pointer transition-[filter,background-color] duration-300";
     const revealedClass = "filter-none bg-yellow-50 dark:bg-yellow-900/30 cursor-pointer transition-[filter,background-color] duration-300";
@@ -98,7 +102,7 @@ export const MemoizedRow = memo(({
                     <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onToggleAdvanced(); }}
-                        className={`md:hidden absolute top-2 right-12 z-20 h-8 px-2 rounded-full border flex items-center gap-1 text-[9px] font-black ${advancedExpanded ? 'bg-violet-600 text-white border-violet-500' : isActive ? 'bg-blue-700 text-violet-100 border-blue-400' : 'bg-violet-50 dark:bg-violet-900/25 text-violet-600 dark:text-violet-300 border-violet-200 dark:border-violet-800'}`}
+                        className={`md:hidden absolute top-2 right-11 z-20 h-7 px-2 rounded-full border flex items-center gap-1 text-[9px] font-black ${advancedExpanded ? 'bg-violet-600 text-white border-violet-500' : isActive ? 'bg-blue-700 text-violet-100 border-blue-400' : 'bg-violet-50 dark:bg-violet-900/25 text-violet-600 dark:text-violet-300 border-violet-200 dark:border-violet-800'}`}
                         title="INFO + EXP1–EXP5"
                     >
                         <Layers className="w-3 h-3" /> ADV
@@ -120,8 +124,9 @@ export const MemoizedRow = memo(({
                                 <span className={`text-xs font-mono font-bold ${isActive ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}>#{item.displayId}</span>
                                 {changeType && <span className={`text-[8px] leading-none px-1 py-0.5 rounded font-black tracking-wide ${changeType === 'added' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>{changeType === 'added' ? 'NEW' : 'EDITED'}</span>}
                             </div>
-                            <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word', `${rowId}-word`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 md:mt-0 ${independentPlayingId === `${rowId}-word` ? 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600')}`}>
+                            <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word', `${rowId}-word`); }} className={`relative flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 md:mt-0 ${independentPlayingId === `${rowId}-word` ? 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400' : (isActive ? 'bg-blue-500 border-blue-400 text-white hover:bg-blue-400' : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600')}`}>
                                 {independentPlayingId === `${rowId}-word` ? <X className="w-3 h-3"/> : <Play className="w-3 h-3 fill-current"/>}
+                                <AudioSourceDot source={audioSourceByPart.word} />
                             </button>
                             <div className={`flex-1 min-w-0 ${isWordHidden ? (wordRevealed ? revealedClass : blurClass) : ''}`} onClick={(e) => isWordHidden && toggleCellReveal(e, `${rowId}-word`)}>
                                 <div className="md:hidden min-w-0">
@@ -129,12 +134,12 @@ export const MemoizedRow = memo(({
                                         <h3 className={`min-w-0 truncate text-base leading-snug ${isWordActive ? 'font-bold text-white' : (isActive ? 'text-blue-100' : 'text-slate-800 dark:text-slate-100')}`}>{item.word}</h3>
                                         {item.partOfSpeech && <span className={`text-[9px] italic border px-1 rounded flex-shrink-0 ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600'}`}>{item.partOfSpeech}</span>}
                                     </div>
-                                    {item.meaningWord && <div className={`mt-0.5 h-6 max-w-full rounded-md border px-1.5 flex items-center gap-1.5 ${isWordIdnActive ? 'font-bold text-white bg-blue-500/30 border-blue-300' : isActive ? 'text-blue-200 border-blue-400 bg-blue-500/40' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/30'}`}><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word_idn', `${rowId}-word-idn`); }} className={miniPlayClass(independentPlayingId === `${rowId}-word-idn`)} title="Play word translation">{independentPlayingId === `${rowId}-word-idn` ? <X className="w-2.5 h-2.5"/> : <Play className="w-2.5 h-2.5 fill-current"/>}</button><span className="min-w-0 truncate text-[10px]">{item.meaningWord}</span></div>}
+                                    {item.meaningWord && <div className={`mt-1 h-6 max-w-full rounded-md border px-1.5 flex items-center gap-1.5 ${isWordIdnActive ? 'font-bold text-white bg-blue-500/30 border-blue-300' : isActive ? 'text-blue-200 border-blue-400 bg-blue-500/40' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/30'}`}><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word_idn', `${rowId}-word-idn`); }} className={`${miniPlayClass(independentPlayingId === `${rowId}-word-idn`)} relative`} title="Play word translation">{independentPlayingId === `${rowId}-word-idn` ? <X className="w-2.5 h-2.5"/> : <Play className="w-2.5 h-2.5 fill-current"/>}<AudioSourceDot source={audioSourceByPart.word_idn} /></button><span className="min-w-0 truncate text-[10px]">{item.meaningWord}</span></div>}
                                 </div>
                                 <div className="hidden md:flex md:items-center gap-2 min-w-0">
                                     <h3 className={`text-lg leading-snug line-clamp-1 ${isWordActive ? 'font-bold text-white' : (isActive ? 'text-blue-100' : 'text-slate-800 dark:text-slate-100')}`}>{item.word}</h3>
                                     {item.partOfSpeech && <span className={`text-[10px] italic border px-1 rounded flex-shrink-0 ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600'}`}>{item.partOfSpeech}</span>}
-                                    {item.meaningWord && <div className={`text-[10px] border pl-1 pr-1.5 py-0.5 rounded flex items-center gap-1 min-w-0 ${isWordIdnActive ? 'font-bold text-white bg-blue-500/30 border-blue-300' : (isActive ? 'text-blue-200 border-blue-400 bg-blue-500' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800')}`}><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word_idn', `${rowId}-word-idn`); }} className={miniPlayClass(independentPlayingId === `${rowId}-word-idn`)} title="Play word translation">{independentPlayingId === `${rowId}-word-idn` ? <X className="w-2.5 h-2.5"/> : <Play className="w-2.5 h-2.5 fill-current"/>}</button><span className="truncate">{item.meaningWord}</span></div>}
+                                    {item.meaningWord && <div className={`text-[10px] border pl-1 pr-1.5 py-0.5 rounded flex items-center gap-1 min-w-0 ${isWordIdnActive ? 'font-bold text-white bg-blue-500/30 border-blue-300' : (isActive ? 'text-blue-200 border-blue-400 bg-blue-500' : 'text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800')}`}><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'word_idn', `${rowId}-word-idn`); }} className={`${miniPlayClass(independentPlayingId === `${rowId}-word-idn`)} relative`} title="Play word translation">{independentPlayingId === `${rowId}-word-idn` ? <X className="w-2.5 h-2.5"/> : <Play className="w-2.5 h-2.5 fill-current"/>}<AudioSourceDot source={audioSourceByPart.word_idn} /></button><span className="truncate">{item.meaningWord}</span></div>}
                                     {item.vocabId && <span className={`hidden lg:inline text-[9px] font-mono border px-1 rounded ${isActive ? 'text-blue-200 border-blue-400' : 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-600'}`}>{item.vocabId}</span>}
                                     {masteryTrackable && <MasteryStatusControl state={masteryState} onCycle={onCycleMastery} compact className="hidden md:inline-flex flex-shrink-0" />}
                                 </div>
@@ -143,16 +148,23 @@ export const MemoizedRow = memo(({
                             {isWordUsingLocal ? <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded font-bold hidden md:flex"><Hash className="w-3 h-3"/> OK</span> : <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold hidden md:flex ${isActive ? 'bg-blue-700 text-blue-200' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500'}`}>TTS</span>}
                         </div>
 
-                        <div className={`flex flex-col gap-1.5 md:gap-2 pl-0 md:pl-11 flex-1 pr-1 ${isActive ? 'overflow-y-auto overscroll-contain' : 'overflow-hidden'} md:overflow-y-auto custom-scrollbar`}>
-                            {item.sentence && <div className="flex gap-2 items-start">
-                                <button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'sentence', `${rowId}-sent`); }} className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors mt-0.5 ${independentPlayingId === `${rowId}-sent` ? 'bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400' : (isActive ? 'bg-blue-500 border-blue-400 text-white' : 'bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600')}`}>{independentPlayingId === `${rowId}-sent` ? <X className="w-3 h-3"/> : <Play className="w-3 h-3 fill-current"/>}</button>
-                                <div className={`flex-1 ${isSentHidden ? (sentRevealed ? revealedClass : blurClass) : ''}`} onClick={(e) => isSentHidden && toggleCellReveal(e, `${rowId}-sent`)}><p className={`text-[13px] md:text-sm leading-relaxed ${isSentActive ? 'line-clamp-none font-bold text-white' : `line-clamp-2 ${isActive ? 'text-blue-50 font-medium' : 'text-slate-600 dark:text-slate-300'}`}`}>&ldquo;<HighlightedText text={item.sentence} highlight={item.word} />&rdquo;</p></div>
-                            </div>}
-                            {item.meaning && <div className="flex gap-2 items-start md:ml-6">
-                                <div className="w-6 flex justify-center flex-shrink-0 mt-0.5"><button onClick={(e) => { e.stopPropagation(); handleIndependentPlay(item, 'meaning', `${rowId}-meaning`); }} className={`w-4 h-4 flex items-center justify-center rounded-full border ${independentPlayingId === `${rowId}-meaning` ? 'bg-red-50 dark:bg-red-900/30 text-red-500' : (isActive ? 'bg-blue-500/50 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-indigo-600')}`}>{independentPlayingId === `${rowId}-meaning` ? <X className="w-2 h-2"/> : <Play className="w-2 h-2 fill-current"/>}</button></div>
-                                <div className={`flex-1 ${isMeaningHidden ? (meaningRevealed ? revealedClass : blurClass) : ''}`} onClick={(e) => isMeaningHidden && toggleCellReveal(e, `${rowId}-meaning`)}><p className={`text-[11px] md:text-xs italic ${isMeaningActive ? 'line-clamp-none font-bold text-white bg-blue-500/20 px-1 rounded' : `line-clamp-2 ${isActive ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}`}><HighlightedText text={item.meaning} highlight={item.meaningWord || item.word}/><Globe className="w-3 h-3 inline-block ml-1 opacity-50"/></p></div>
-                            </div>}
-                        </div>
+                        <InlineLearningCarousel
+                            item={item}
+                            rowId={rowId}
+                            isActive={isActive}
+                            speakingPart={speakingPart}
+                            playbackSequence={playbackSequence}
+                            independentPlayingId={independentPlayingId}
+                            handleIndependentPlay={handleIndependentPlay}
+                            isSentHidden={isSentHidden}
+                            isMeaningHidden={isMeaningHidden}
+                            isExpressionsHidden={isExpressionsHidden}
+                            revealedCells={revealedCells}
+                            toggleCellReveal={toggleCellReveal}
+                            blurClass={blurClass}
+                            revealedClass={revealedClass}
+                            audioSourceByPart={audioSourceByPart}
+                        />
                     </div>
 
                     <div className={`hidden md:flex md:flex-col md:ml-2 justify-center items-end w-[78px] gap-1.5 flex-shrink-0 md:border-l md:pl-2 ${isActive ? 'border-blue-500' : 'border-slate-100 dark:border-slate-700'}`}>
@@ -164,16 +176,16 @@ export const MemoizedRow = memo(({
             </div>
 
             {isMenuOpen && typeof document !== 'undefined' && createPortal(
-                <div className="md:hidden fixed inset-0 z-[85]" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" aria-label="Close vocabulary actions" onClick={() => onMenuToggle(null)} className="absolute inset-x-0 top-0 bg-slate-950/45 backdrop-blur-[1px]" style={{ bottom: `calc(${MOBILE_BOTTOM_PLAYER_RESERVE}px + env(safe-area-inset-bottom, 0px))` }} />
-                    <section className="absolute inset-x-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-3" style={{ bottom: `calc(${MOBILE_BOTTOM_PLAYER_RESERVE + 8}px + env(safe-area-inset-bottom, 0px))` }}>
-                        <div className="flex items-center justify-between gap-2 mb-2"><div className="min-w-0"><p className="truncate text-xs font-black text-slate-800 dark:text-white">{item.word}</p><p className="text-[9px] text-slate-400">Vocabulary actions</p></div><button type="button" onClick={() => onMenuToggle(null)} className="h-8 w-8 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500"><X className="w-3.5 h-3.5"/></button></div>
+                <div className="md:hidden fixed inset-0 z-[85] flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" aria-label="Close vocabulary actions" onClick={() => onMenuToggle(null)} className="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]" />
+                    <section className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-3" style={{ maxHeight: `calc(100dvh - ${MOBILE_BOTTOM_PLAYER_RESERVE + 28}px - env(safe-area-inset-bottom, 0px))` }}>
+                        <div className="flex items-center justify-between gap-2 mb-2"><div className="min-w-0"><p className="truncate text-sm font-black text-slate-800 dark:text-white">{item.word}</p><p className="text-[9px] text-slate-400">Vocabulary actions</p></div><button type="button" onClick={() => onMenuToggle(null)} className="h-8 w-8 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500"><X className="w-3.5 h-3.5"/></button></div>
                         <div className="grid grid-cols-2 gap-2">
                             <button onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); onMenuToggle(null); }} className={`min-h-10 px-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold border ${isInQueue ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : 'bg-slate-50 dark:bg-slate-900/40 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}>{isInQueue ? <CheckCircle className="w-3.5 h-3.5"/> : <Plus className="w-3.5 h-3.5"/>}{isInQueue ? 'In Queue' : 'Add Queue'}</button>
                             {masteryTrackable ? <MasteryStatusControl state={masteryState} onCycle={() => { onCycleMastery(); onMenuToggle(null); }} className="w-full min-h-10" /> : <div />}
                             <button onClick={(e) => { e.stopPropagation(); onEditItem(item); onMenuToggle(null); }} className="min-h-10 px-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold border border-blue-100 dark:border-blue-900 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"><Edit3 className="w-3.5 h-3.5"/> Edit</button>
                             <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item); onMenuToggle(null); }} className="min-h-10 px-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold border border-red-100 dark:border-red-900 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"><Trash2 className="w-3.5 h-3.5"/> Delete</button>
-                            <button disabled={isSystemBusy} onClick={openAudioPanel} className={`col-span-2 min-h-11 px-3 rounded-xl flex items-center justify-between gap-2 text-[10px] font-black border ${genColorClass} ${isSystemBusy ? 'opacity-45' : ''}`}><span className="flex items-center gap-2"><Download className="w-3.5 h-3.5"/> Audio Download</span><span className="text-[9px] opacity-70">{loadedAudioCount ? `${loadedAudioCount} loaded` : generatorEngine.toUpperCase()}</span></button>
+                            <button disabled={isSystemBusy} onClick={openAudioPanel} className={`col-span-2 min-h-11 px-3 rounded-xl flex items-center justify-between gap-2 text-[10px] font-black border ${genColorClass} ${isSystemBusy ? 'opacity-45' : ''}`}><span className="flex items-center gap-2"><Download className="w-3.5 h-3.5"/> Audio</span><span className="text-[9px] opacity-70">{loadedAudioCount ? `${loadedAudioCount} loaded` : generatorEngine.toUpperCase()}</span></button>
                         </div>
                     </section>
                 </div>,
@@ -194,12 +206,8 @@ export const MemoizedRow = memo(({
                 toggleCellReveal={toggleCellReveal}
                 blurClass={blurClass}
                 revealedClass={revealedClass}
-                miniPlayClass={miniPlayClass}
-                generatorEngine={generatorEngine}
-                isSystemBusy={isSystemBusy}
-                aiLoadingId={aiLoadingId}
-                generateAIAudio={generateAIAudio}
-                loadedAudioParts={loadedAudioParts}
+                playbackSequence={playbackSequence}
+                audioSourceByPart={audioSourceByPart}
             />
             <AudioDownloadPanel
                 open={audioPanelOpen}
@@ -236,7 +244,9 @@ export const MemoizedRow = memo(({
     prev.generatorEngine === next.generatorEngine &&
     prev.advancedExpanded === next.advancedExpanded &&
     prev.masteryState === next.masteryState &&
-    prev.masteryTrackable === next.masteryTrackable
+    prev.masteryTrackable === next.masteryTrackable &&
+    prev.playbackSequence === next.playbackSequence &&
+    prev.audioSourceParts === next.audioSourceParts
 ));
 
 // --- OPTIMIZED ROW COMPONENT (TEXT MODE) ---

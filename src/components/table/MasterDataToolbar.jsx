@@ -60,18 +60,18 @@ export const MasterDataToolbar = ({
     <div className={`${extraClass} bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-1.5 md:p-2`}>
       {/* Mobile: search stays visible; study/filter detail is opt-in. */}
       <div className="md:hidden space-y-1.5">
-        <SearchField masterSearch={masterSearch} setMasterSearch={setMasterSearch} />
-        <div className="flex items-center justify-between gap-2 min-h-8">
-          <p className="min-w-0 truncate text-[10px] text-slate-500 dark:text-slate-400">
-            <span className="font-black text-slate-700 dark:text-slate-200">{masterFilteredPlaylist.length}</span> / {totalStructured} shown
-            {filtersActive ? ' • filtered' : ''}{isCsvDirty ? ` • ${csvChangeSummary.total} changes` : ''}
-          </p>
-          <button type="button" onClick={() => setMobileDetailsOpen(value => !value)} className={`flex-shrink-0 h-8 px-2.5 rounded-lg border flex items-center gap-1.5 text-[10px] font-black ${mobileDetailsOpen || filtersActive ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300'}`}>
-            <SlidersHorizontal className="w-3.5 h-3.5"/> Study Status {mobileDetailsOpen ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
+        <div className="flex items-stretch gap-1.5">
+          <SearchField masterSearch={masterSearch} setMasterSearch={setMasterSearch} />
+          <button type="button" onClick={() => setMobileDetailsOpen(value => !value)} className={`flex-shrink-0 min-w-[104px] px-2.5 rounded-lg border flex items-center justify-center gap-1.5 text-[10px] font-black ${mobileDetailsOpen || filtersActive ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>
+            <SlidersHorizontal className="w-3.5 h-3.5"/>
+            <span>Study</span>
+            <span className="min-w-5 h-5 px-1 rounded-full bg-slate-100 dark:bg-slate-700 text-[9px] flex items-center justify-center">{masterFilteredPlaylist.length}</span>
+            {mobileDetailsOpen ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
           </button>
         </div>
         {mobileDetailsOpen && (
           <div className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/25 p-2 space-y-2 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between gap-2 px-0.5 text-[9px] text-slate-500 dark:text-slate-400"><span><strong className="text-slate-700 dark:text-slate-200">{masterFilteredPlaylist.length}</strong> / {totalStructured} shown</span><span>{filtersActive ? 'Filtered' : 'All data'}{isCsvDirty ? ` • ${csvChangeSummary.total} changes` : ''}</span></div>
             <div className="grid grid-cols-2 gap-1.5"><FilterSelects masterFilter={masterFilter} setMasterFilter={setMasterFilter} masteryFilter={masteryFilter} setMasteryFilter={setMasteryFilter} /></div>
             <div className="grid grid-cols-2 gap-1.5">{reviewButton}{undoButton}</div>
             <ProgressStatisticsSummary stats={masteryProgressStats} />

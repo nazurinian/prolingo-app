@@ -1,3 +1,4 @@
+import { getMobilePlayerTopOffset } from '../../constants/layoutConstants';
 export const executeTableViewTabSwitch = ({
   targetTab, tableViewMode, getScrollPos, viewScrollPosRef, isPlaying, playingContext,
   isMobile, setShowAppBar, setMasterIndex, currentIndex, setStudyIndex, playingIndex,
@@ -42,7 +43,7 @@ export const executeTableViewTabSwitch = ({
               
               // Hitung posisi (Mobile vs Desktop logic)
               if (isMobile) {
-                  const containerPadding = mode === 'table' ? 160 : 120;
+                  const containerPadding = getMobilePlayerTopOffset(mode);
                   const targetIdx = Math.max(0, idx - 1);
                   nextPos = containerPadding + (targetIdx * rowH);
                   setShowAppBar(false); // Force hide header
@@ -104,7 +105,7 @@ export const executeMobileTabSwitch = ({
               if (activeItem) {
                   const idx = currentPlayerList.indexOf(activeItem);
                   const rowH = rowHeights[mode];
-                  const containerPadding = mode === 'table' ? 160 : 120;
+                  const containerPadding = getMobilePlayerTopOffset(mode);
                   const targetIdx = Math.max(0, idx - 1);
                   targetPos = containerPadding + (targetIdx * rowH);
                   

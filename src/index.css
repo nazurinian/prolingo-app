@@ -85,3 +85,11 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* P2-A15: horizontal card carousel stays swipeable without adding another visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

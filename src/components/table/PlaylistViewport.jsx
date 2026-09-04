@@ -53,7 +53,9 @@ export const renderPlaylistViewport = ({
   localAudioMapText,
   handleDeleteTextItem,
   masteryByVocabId,
-  cycleMasteryState
+  cycleMasteryState,
+  playbackSequence,
+  generatedAudioMeta = {}
 }) => {
     const rowHeight = rowHeights[mode];
     const totalCount = currentPlayerList.length;
@@ -200,6 +202,15 @@ export const renderPlaylistViewport = ({
                        'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn',
                        'exp4_en', 'exp4_idn', 'exp5_en', 'exp5_idn'
                    ].filter(part => Boolean(localAudioMapTable[`${audioIdentity}_${part}`])).join('|');
+                   const audioSourceParts = ['word', 'word_idn', 'sentence', 'meaning', 'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn', 'exp4_en', 'exp4_idn', 'exp5_en', 'exp5_idn']
+                       .filter(part => Boolean(localAudioMapTable[`${audioIdentity}_${part}`]))
+                       .map(part => {
+                           const meta = generatedAudioMeta?.[`table:${audioIdentity}_${part}`];
+                           const engine = String(meta?.engine || '').toLowerCase();
+                           const source = engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : 'local';
+                           return `${part}:${source}`;
+                       })
+                       .join('|');
                    const masteryVocabId = String(item.vocabId || '').trim();
                    const masteryTrackable = Boolean(masteryVocabId);
                    const masteryState = resolveMasteryState(masteryByVocabId, masteryVocabId);
@@ -245,6 +256,8 @@ export const renderPlaylistViewport = ({
                            masteryState={masteryState}
                            masteryTrackable={masteryTrackable}
                            onCycleMastery={() => cycleMasteryState(masteryVocabId)}
+                           playbackSequence={playbackSequence}
+                           audioSourceParts={audioSourceParts}
                        />
                    );
                } 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, FolderOpen, RotateCcw } from 'lucide-react';
+import { Settings, FolderOpen, RotateCcw, Layers, Terminal } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import BatchPopup from '../table/BatchPopup';
@@ -11,6 +11,7 @@ export default function MobileSystemControls({
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
   isBatchStopping, batchStatusText, batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
+  isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
@@ -41,21 +42,50 @@ export default function MobileSystemControls({
                   onProgressRestored={onProgressRestored}
               />
 
-              <BatchPopup
-                  mode={mode}
-                  setIsBatchOpen={() => {}}
-                  isBatchDownloading={isBatchDownloading}
-                  batchConfig={batchConfig}
-                  setBatchConfig={setBatchConfig}
-                  generatorEngine={generatorEngine}
-                  advancedDatasetStats={advancedDatasetStats}
-                  runBatchDownload={runBatchDownload}
-                  isBatchStopping={isBatchStopping}
-                  batchStatusText={batchStatusText}
-                  DownloadCloudIcon={DownloadCloudIcon}
-                  inline
-                  showClose={false}
-              />
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                      <button
+                          type="button"
+                          disabled={isSystemBusy && !isBatchDownloading}
+                          onClick={() => { const next = !isBatchOpen; setIsBatchOpen(next); if (next) setShowLogs(false); }}
+                          className={`min-h-10 rounded-lg border text-[10px] font-black flex items-center justify-center gap-1.5 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'}`}
+                      ><Layers className="w-3.5 h-3.5"/> Batch</button>
+                      <button
+                          type="button"
+                          onClick={() => { const next = !showLogs; setShowLogs(next); if (next) setIsBatchOpen(false); }}
+                          className={`min-h-10 rounded-lg border text-[10px] font-black flex items-center justify-center gap-1.5 ${showLogs ? 'bg-slate-800 dark:bg-slate-600 border-slate-800 dark:border-slate-500 text-white' : 'border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300'}`}
+                      ><Terminal className="w-3.5 h-3.5"/> Logs</button>
+                  </div>
+                  {isBatchOpen && (
+                      <div className="pt-3">
+                          <BatchPopup
+                              mode={mode}
+                              setIsBatchOpen={setIsBatchOpen}
+                              isBatchDownloading={isBatchDownloading}
+                              batchConfig={batchConfig}
+                              setBatchConfig={setBatchConfig}
+                              generatorEngine={generatorEngine}
+                              advancedDatasetStats={advancedDatasetStats}
+                              runBatchDownload={runBatchDownload}
+                              isBatchStopping={isBatchStopping}
+                              batchStatusText={batchStatusText}
+                              DownloadCloudIcon={DownloadCloudIcon}
+                              inline
+                              showClose={false}
+                          />
+                      </div>
+                  )}
+                  {showLogs && (
+                      <div ref={logContainerRef} className="mt-3 max-h-44 overflow-y-auto rounded-xl bg-slate-950 p-2.5 font-mono text-[9px] text-slate-300 custom-scrollbar">
+                          {systemLogs?.length ? systemLogs.slice(-16).map((log, index) => (
+                              <div key={`${log.time}-${index}`} className="border-b border-slate-800/80 py-1 last:border-b-0">
+                                  <span className="text-slate-500">[{log.time}]</span>{' '}
+                                  <span className={log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}>{log.type}</span>: {log.message}
+                              </div>
+                          )) : <div className="py-2 text-center italic text-slate-500">No logs available.</div>}
+                      </div>
+                  )}
+              </div>
     </>
   );
 }

@@ -111,7 +111,7 @@ export const renderPlaybackSequenceBuilderView = ({
           </div>
         </div>
 
-        <div className={`${compact ? 'overflow-visible' : 'max-h-80 overflow-y-auto pr-1'} space-y-1`}>
+        <div className={`${compact ? 'overflow-visible' : 'max-h-80 overflow-y-auto overscroll-contain no-scrollbar'} space-y-1`}>
           {playbackSequence.map((entry, index) => {
             const meta = V511_PLAYBACK_PARTS.find(part => part.key === entry.key);
             if (!meta) return null;

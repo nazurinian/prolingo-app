@@ -1,5 +1,5 @@
 import React from 'react';
-import { SkipBack, SkipForward, Pause, Play, XCircle, List, Repeat1, Shuffle, Settings } from 'lucide-react';
+import { SkipBack, SkipForward, Pause, Play, XCircle, List, Repeat1, Shuffle } from 'lucide-react';
 
 const BottomPlayerBar = ({
   isMobile,
@@ -13,13 +13,11 @@ const BottomPlayerBar = ({
   playbackMode,
   cyclePlaybackMode,
   setPlaybackMode,
-  mobileTab,
-  handleMobileTabSwitch,
   playingContext
 }) => (
   <div className={`bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 flex-shrink-0 ${isMobile ? 'fixed inset-x-0 bottom-0 w-full px-2 pt-2 prolingo-mobile-bottom-safe' : 'p-4'}`}>
     <div className="max-w-4xl mx-auto">
-       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 md:hidden">
+       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 md:hidden">
            <div className="flex flex-col min-w-0 pr-1">
              <p className="text-[10px] font-bold text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : 'NOW PLAYING'}</p>
              <p className="text-xs font-semibold truncate text-slate-800 dark:text-slate-200">
@@ -34,15 +32,15 @@ const BottomPlayerBar = ({
                  : "Ready"}
              </p>
            </div>
-           <div className="flex items-center gap-1">
+           <div className="relative -left-1 flex items-center gap-1.5">
               <button onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
               <button onClick={handleGlobalPlay} className={`p-2.5 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800' : 'bg-indigo-600 text-white'}`}>
                 {isPlaying && !isPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
               <button onClick={() => handleSmartNav('next')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
-              <button onClick={forceStopAll} className="p-1.5 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
+              <button onClick={forceStopAll} className="ml-1.5 p-1.5 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
            </div>
-           <div className="flex justify-end gap-1">
+           <div className="flex justify-end gap-1 pl-1">
               <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700">
                   {playbackMode === 'once' && <span className="text-xs font-mono border border-slate-500 rounded px-1 text-slate-600 dark:text-slate-400">1</span>}
                   {playbackMode === 'sequence' && <List className="w-5 h-5 text-indigo-600 dark:text-indigo-400"/>}
@@ -51,15 +49,7 @@ const BottomPlayerBar = ({
                   {playbackMode === 'random' && <Shuffle className="w-5 h-5 text-blue-500"/>}
                   <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-full">{playbackMode === 'once' ? 'Once' : playbackMode === 'sequence' ? 'Next' : playbackMode === 'repeat_2x' ? '2x' : playbackMode === 'loop_one' ? 'Loop' : 'Rand'}</span>
               </button>
-              
-              <button
-                  onClick={() => handleMobileTabSwitch(mobileTab === 'tools' ? 'player' : 'tools')}
-                  className={`flex flex-col items-center justify-center gap-0.5 min-w-[38px] p-1 rounded transition-[background-color,color,transform] active:scale-95 ${mobileTab === 'tools' ? 'bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300' : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 active:bg-slate-100'}`}
-                  title={mobileTab === 'tools' ? 'Back to Player' : 'Open Controls'}
-              >
-                  <Settings className={`w-5 h-5 ${mobileTab === 'tools' ? '' : 'text-indigo-600 dark:text-indigo-400'}`}/>
-                  <span className="text-[9px] font-bold uppercase">{mobileTab === 'tools' ? 'Player' : 'Tools'}</span>
-              </button>
+
            </div>
        </div>
 

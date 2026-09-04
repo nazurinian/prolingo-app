@@ -2,7 +2,7 @@ import React from 'react';
 import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
-  Terminal, Play, Settings
+  Settings
 } from 'lucide-react';
 
 /**
@@ -87,18 +87,19 @@ const Header = ({
           </div>
     
           <div className="md:hidden ml-auto">
-              {/* REMOVED DUPLICATE ERASER BUTTON AS REQUESTED */}
+              <button
+                  type="button"
+                  onClick={() => handleMobileTabSwitch(mobileTab === 'tools' ? 'player' : 'tools')}
+                  className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-[background-color,border-color,color,transform] active:scale-95 ${mobileTab === 'tools' ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-indigo-600 dark:text-indigo-300'}`}
+                  title={mobileTab === 'tools' ? 'Close Controls' : 'Open Controls'}
+                  aria-label={mobileTab === 'tools' ? 'Close Controls' : 'Open Controls'}
+              >
+                  <Settings className="w-5 h-5"/>
+              </button>
           </div>
       </div>
     
-      {/* 2. MOBILE TAB BAR */}
-      <div className="md:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex text-xs font-bold text-slate-500 z-10 relative">
-          <button onClick={() => handleMobileTabSwitch('terminal')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'terminal' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent'}`}><Terminal className="w-4 h-4"/> Logs</button>
-          <button onClick={() => handleMobileTabSwitch('player')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'player' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent'}`}><Play className="w-4 h-4"/> Player</button>
-          <button onClick={() => handleMobileTabSwitch('tools')} className={`flex-1 py-3 border-b-2 flex items-center justify-center gap-2 ${mobileTab === 'tools' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent'}`}><Settings className="w-4 h-4"/> Controls</button>
-      </div>
-    
-      {/* 3. TABLE WORKSPACE TABS (Mobile) */}
+      {/* 2. TABLE WORKSPACE TABS (Mobile). Utility navigation now lives behind the top-right Controls button. */}
       {isMobile && mode === 'table' && mobileTab === 'player' && renderWorkspaceTabs(true)}
     </div>
   );

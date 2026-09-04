@@ -1,7 +1,7 @@
 import React from 'react';
 
 const SidebarShell = ({ isMobile, isSidebarOpen, children }) => {
-  // Mobile navigation is owned by the Header tabs + Bottom Player Tools shortcut.
+  // Mobile navigation is owned by the top-right Controls button; the sidebar is desktop-only.
   // Keeping a second drawer with the same controls duplicated navigation and
   // consumed scarce viewport space, so the sidebar is desktop-only.
   if (isMobile) return null;

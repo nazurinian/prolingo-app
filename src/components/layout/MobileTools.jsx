@@ -94,6 +94,12 @@ const MobileTools = ({
   setBatchConfig,
   runBatchDownload,
   DownloadCloudIcon,
+  isBatchOpen,
+  setIsBatchOpen,
+  showLogs,
+  setShowLogs,
+  systemLogs,
+  logContainerRef,
   storageRefreshToken,
   onDatasetCacheCleared,
   onMasteryReset,
@@ -220,6 +226,12 @@ const MobileTools = ({
               advancedDatasetStats={advancedDatasetStats}
               runBatchDownload={runBatchDownload}
               DownloadCloudIcon={DownloadCloudIcon}
+              isBatchOpen={isBatchOpen}
+              setIsBatchOpen={setIsBatchOpen}
+              showLogs={showLogs}
+              setShowLogs={setShowLogs}
+              systemLogs={systemLogs}
+              logContainerRef={logContainerRef}
               storageRefreshToken={storageRefreshToken}
               onDatasetCacheCleared={onDatasetCacheCleared}
               onMasteryReset={onMasteryReset}
