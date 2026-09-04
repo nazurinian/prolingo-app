@@ -129,6 +129,8 @@ export const executeGlobalPlaybackSessionService = ({
           if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
           if (playbackModeRef.current !== currentMode && currentMode === 'repeat_2x' && l > 0) break;
 
+          let playedAnyPartThisLoop = false;
+
           if (item.isStructured) {
             const expressionPairs = getAdvancedExpressionPairs(item);
             const activeSequence = playbackSequenceRef.current.filter(entry => entry.enabled);
@@ -183,20 +185,25 @@ export const executeGlobalPlaybackSessionService = ({
                 // v5.11.6: repeat-gap and part-gap are independently configurable.
                 const delayMs = repeatIndex > 0
                   ? playbackDelaysRef.current.repeatDelayMs
-                  : (sequenceIndex > 0 ? playbackDelaysRef.current.partDelayMs : 0);
+                  : (playedAnyPartThisLoop ? playbackDelaysRef.current.partDelayMs : 0);
                 if (delayMs > 0) {
                   const delayCompleted = await waitPlaybackDelay(delayMs, playbackSession);
                   if (!delayCompleted) break;
                 }
 
                 await playSource(textToPlay, item, sourcePart);
+                playedAnyPartThisLoop = true;
               }
             }
           } else {
             setSpeakingPart('full');
             await playSource(item.text, item, 'full');
+            playedAnyPartThisLoop = true;
           }
           if (l < loops - 1) {
+              // Keep the legacy Item 2x gap only when this loop actually played content.
+              // A structured item with no playable enabled content must not create a silent wait.
+              if (item.isStructured && !playedAnyPartThisLoop) continue;
               await new Promise(r => setTimeout(r, 500));
               if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
               await waitWhilePaused();
@@ -205,8 +212,15 @@ export const executeGlobalPlaybackSessionService = ({
         }
 
         if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
-        await new Promise(r => setTimeout(r, 800));
-        if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
+
+        // P3-B: table vocabulary playback must not add a hidden fixed 800 ms gap
+        // after every item. User-configured part/repeat delays remain the only
+        // learning gaps for structured vocabulary. Preserve the legacy Text-mode
+        // boundary until Text Mode is audited separately in Part 4.
+        if (sessionMode === 'text') {
+          await new Promise(r => setTimeout(r, 800));
+          if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
+        }
         await waitWhilePaused();
         if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
 
