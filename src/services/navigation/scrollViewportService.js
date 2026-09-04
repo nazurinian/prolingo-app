@@ -105,12 +105,19 @@ export const executeActiveRowAutoFollow = ({
                       // unchanged until the Part 4 Text layout contract is rebuilt.
                       const targetIdx = mode === 'table' ? idx : Math.max(0, idx - 1);
                       const containerPadding = getMobilePlayerTopOffset(mode);
-                      // The row wrapper contributes 4px vertical padding while the page + row
-                      // contribute ~16px horizontal inset. Leave ~16px visually above the card
-                      // by stopping the row 12px below the viewport edge. Browser max-scroll
-                      // clamping remains authoritative for the final rows (no fake tail spacer).
-                      const activeCardTopInset = mode === 'table' ? 12 : 0;
-                      const targetScrollY = Math.max(0, containerPadding + (targetIdx * rowH) - activeCardTopInset);
+                      // Mobile Master owns a Search/Study toolbar before the virtual rows. While
+                      // playback is active that toolbar is allowed to scroll away (not sticky),
+                      // so include its *actual rendered height* instead of hard-coding separate
+                      // collapsed/expanded values. This keeps the active vocab as the first
+                      // visible content even if the Study details panel is open.
+                      const masterToolbarHeight = mode === 'table'
+                          ? (document.querySelector('[data-master-toolbar-shell="true"]')?.getBoundingClientRect().height || 0)
+                          : 0;
+                      // Mobile cards have ~16px horizontal inset (page + row padding). The row
+                      // wrapper itself contributes ~6px top padding, so stopping the row origin
+                      // about 10px above the viewport leaves a matching ~16px visual top inset.
+                      const activeRowOriginOffset = mode === 'table' ? -10 : 0;
+                      const targetScrollY = Math.max(0, containerPadding + masterToolbarHeight + (targetIdx * rowH) + activeRowOriginOffset);
                       
                       window.scrollTo({
                           top: targetScrollY,

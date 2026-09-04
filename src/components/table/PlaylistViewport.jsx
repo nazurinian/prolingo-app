@@ -179,7 +179,10 @@ export const renderPlaylistViewport = ({
         )}
 
         {mode === 'table' && tableViewMode === 'master' && (
-             <div className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 pb-2 px-1">
+             <div
+                 data-master-toolbar-shell="true"
+                 className={`${isMobile && (isPlaying || independentPlayingId !== null) && playingContext === tableViewMode ? 'relative' : 'sticky top-0'} z-10 bg-slate-50 dark:bg-slate-900 pb-2 px-1`}
+             >
                  {renderMasterDataToolbar()}
              </div>
         )}
