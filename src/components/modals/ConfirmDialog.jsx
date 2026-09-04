@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
 export const RevertAllConfirmModal = ({ isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, revertAllChanges }) => {
   if (!isRevertAllConfirmOpen) return null;
@@ -33,7 +34,7 @@ export const DeleteVocabularyModal = ({ pendingDeleteItem, setPendingDeleteItem,
           <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center"><Trash2 className="w-5 h-5"/></div>
             <h3 className="text-lg font-bold text-slate-800 dark:text-white text-center">Delete Vocabulary?</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">#{pendingDeleteItem.displayId} • {pendingDeleteItem.vocabId || pendingDeleteItem.id}<br/><span className="font-semibold">{pendingDeleteItem.word}</span></p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center mt-2">#{pendingDeleteItem.displayId} • {pendingDeleteItem.vocabId || pendingDeleteItem.id}<br/><span className="font-semibold">{capitalizeDisplayText(pendingDeleteItem.word)}</span></p>
             <p className="text-[10px] text-amber-600 dark:text-amber-400 text-center mt-3">Audio slot #{pendingDeleteItem.displayId} will not be reused. Existing disk audio becomes orphan until removed manually.</p>
             <div className="flex gap-3 w-full mt-5">
                 <button onClick={() => setPendingDeleteItem(null)} className="flex-1 py-2 rounded border dark:border-slate-600 dark:text-slate-300">Cancel</button>

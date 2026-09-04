@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Volume2, ToggleRight, ToggleLeft } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import MobileLearnControls from '../controls/MobileLearnControls';
@@ -108,9 +108,77 @@ const MobileTools = ({
   activityByVocabId,
   currentVocabIds,
   onProgressRestored,
-}) => (
-      <div className="p-4 space-y-4">
-          <div className="sticky top-0 z-20 -mx-1 pt-1 pb-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm">
+}) => {
+  const rootRef = useRef(null);
+  const lastScrollTopRef = useRef(0);
+  const directionRef = useRef(0);
+  const directionDistanceRef = useRef(0);
+  const rafRef = useRef(0);
+  const [controlTabsVisible, setControlTabsVisible] = useState(true);
+
+  useEffect(() => {
+    const scrollHost = rootRef.current?.parentElement;
+    if (!scrollHost) return undefined;
+
+    lastScrollTopRef.current = Math.max(0, scrollHost.scrollTop || 0);
+    directionRef.current = 0;
+    directionDistanceRef.current = 0;
+
+    const updateFromScroll = () => {
+      rafRef.current = 0;
+      const nextTop = Math.max(0, scrollHost.scrollTop || 0);
+      const delta = nextTop - lastScrollTopRef.current;
+      lastScrollTopRef.current = nextTop;
+
+      if (nextTop <= 12) {
+        directionRef.current = 0;
+        directionDistanceRef.current = 0;
+        setControlTabsVisible(true);
+        return;
+      }
+
+      if (Math.abs(delta) < 1) return;
+      const nextDirection = delta > 0 ? 1 : -1;
+      if (directionRef.current !== nextDirection) {
+        directionRef.current = nextDirection;
+        directionDistanceRef.current = 0;
+      }
+      directionDistanceRef.current += Math.abs(delta);
+
+      if (nextDirection > 0 && nextTop > 96 && directionDistanceRef.current >= 14) {
+        setControlTabsVisible(false);
+        directionDistanceRef.current = 0;
+      } else if (nextDirection < 0 && directionDistanceRef.current >= 8) {
+        setControlTabsVisible(true);
+        directionDistanceRef.current = 0;
+      }
+    };
+
+    const handleScroll = () => {
+      if (rafRef.current) return;
+      rafRef.current = window.requestAnimationFrame(updateFromScroll);
+    };
+
+    scrollHost.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      scrollHost.removeEventListener('scroll', handleScroll);
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    };
+  }, []);
+
+  useEffect(() => {
+    setControlTabsVisible(true);
+    directionRef.current = 0;
+    directionDistanceRef.current = 0;
+  }, [sidebarSection]);
+
+  return (
+      <div ref={rootRef} className="p-4 space-y-4">
+          <div
+              className={`sticky top-0 z-20 -mx-1 pt-1 pb-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm transition-[transform,opacity] duration-200 ease-out motion-reduce:transition-none will-change-transform ${controlTabsVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 pointer-events-none'}`}
+              onFocusCapture={() => setControlTabsVisible(true)}
+          >
               <div className="flex items-center justify-between px-1 mb-2">
                   <div>
                       <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Control Center</p>
@@ -243,5 +311,6 @@ const MobileTools = ({
           />}
       </div>
   );
+};
 
 export default MobileTools;

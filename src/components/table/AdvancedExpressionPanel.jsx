@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Layers, List, Play, Rows3, X } from 'lucide-react';
 import { MOBILE_BOTTOM_PLAYER_RESERVE } from '../../constants/layoutConstants';
 import { getAdvancedContentCount, getAdvancedExpressionPairs } from '../../utils/audioUtils';
-import AudioSourceDot from './AudioSourceDot';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils';
+import { getMemoryRevealKey, isMemoryPartHidden } from '../../utils/memoryModeUtils';
 import { resolveFirstEnabledTextSlideKey, resolveSpeakingPartSlideKey } from '../../utils/playbackCarouselUtils';
+import AudioSourceDot from './AudioSourceDot';
 
 const buildSlides = (item) => {
   if (!item) return [];
@@ -35,12 +37,30 @@ const SourcePlayButton = ({ item, part, playId, independentPlayingId, handleInde
   );
 };
 
-const ExpressionLine = ({ item, part, playId, text, secondary = false, active, independentPlayingId, handleIndependentPlay, source }) => {
+const ExpressionLine = ({
+  item,
+  part,
+  playId,
+  text,
+  secondary = false,
+  active,
+  independentPlayingId,
+  handleIndependentPlay,
+  source,
+  hidden,
+  revealed,
+  revealKey,
+  toggleCellReveal,
+  blurClass,
+  revealedClass,
+}) => {
   if (!text) return null;
   return (
     <div className="grid grid-cols-[28px_1fr] items-start gap-2">
       <SourcePlayButton item={item} part={part} playId={playId} independentPlayingId={independentPlayingId} handleIndependentPlay={handleIndependentPlay} active={active} source={source} />
-      <p className={`${secondary ? 'text-[12px] italic text-slate-500 dark:text-slate-400' : 'text-[13px] md:text-sm text-slate-700 dark:text-slate-200'} leading-relaxed ${active ? 'font-black text-indigo-700 dark:text-indigo-300' : ''}`}>{text}</p>
+      <div className={hidden ? (revealed ? revealedClass : blurClass) : ''} onClick={(event) => hidden && toggleCellReveal(event, revealKey)}>
+        <p className={`${secondary ? 'text-[12px] italic text-slate-500 dark:text-slate-400' : 'text-[13px] md:text-sm text-slate-700 dark:text-slate-200'} leading-relaxed ${active ? 'font-black text-indigo-700 dark:text-indigo-300' : ''}`}>{text}</p>
+      </div>
     </div>
   );
 };
@@ -54,7 +74,8 @@ export default function AdvancedExpressionPanel({
   speakingPart,
   independentPlayingId,
   handleIndependentPlay,
-  isExpressionsHidden,
+  isMemoryMode,
+  memorySettings,
   revealedCells,
   toggleCellReveal,
   blurClass,
@@ -132,12 +153,12 @@ export default function AdvancedExpressionPanel({
   };
 
   const renderSlideBody = (slide) => {
-    const isSentence = slide.key === 'sentence';
-    const revealKey = isSentence ? `${rowId}-sent` : `${rowId}-${slide.key}`;
-    const revealed = revealedCells[revealKey];
-    const contentHidden = !isSentence && isExpressionsHidden;
+    const enRevealKey = getMemoryRevealKey(rowId, slide.enPart);
+    const idRevealKey = getMemoryRevealKey(rowId, slide.idnPart);
+    const enHidden = isMemoryMode && isMemoryPartHidden(memorySettings, slide.enPart);
+    const idHidden = isMemoryMode && isMemoryPartHidden(memorySettings, slide.idnPart);
     return (
-      <div className={`space-y-3 ${contentHidden ? (revealed ? revealedClass : blurClass) : ''}`} onClick={(event) => contentHidden && toggleCellReveal(event, revealKey)}>
+      <div className="space-y-3">
         <ExpressionLine
           item={item}
           part={slide.enPart}
@@ -147,6 +168,12 @@ export default function AdvancedExpressionPanel({
           independentPlayingId={independentPlayingId}
           handleIndependentPlay={handleIndependentPlay}
           source={audioSourceByPart[slide.enPart]}
+          hidden={enHidden}
+          revealed={revealedCells[enRevealKey]}
+          revealKey={enRevealKey}
+          toggleCellReveal={toggleCellReveal}
+          blurClass={blurClass}
+          revealedClass={revealedClass}
         />
         <ExpressionLine
           item={item}
@@ -158,22 +185,33 @@ export default function AdvancedExpressionPanel({
           independentPlayingId={independentPlayingId}
           handleIndependentPlay={handleIndependentPlay}
           source={audioSourceByPart[slide.idnPart]}
+          hidden={idHidden}
+          revealed={revealedCells[idRevealKey]}
+          revealKey={idRevealKey}
+          toggleCellReveal={toggleCellReveal}
+          blurClass={blurClass}
+          revealedClass={revealedClass}
         />
       </div>
     );
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-end md:items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
-      <button aria-label="Close advanced expressions" onClick={onClose} className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px]" />
+    <div className="fixed inset-0 z-[90] pointer-events-none md:flex md:items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
+      <button
+        aria-label="Close advanced expressions"
+        onClick={onClose}
+        className="pointer-events-auto fixed inset-x-0 top-0 bg-slate-950/50 backdrop-blur-[1px]"
+        style={{ height: '100lvh' }}
+      />
       <section
-        className="relative z-10 w-full rounded-t-2xl border border-violet-200 dark:border-violet-900 bg-white dark:bg-slate-800 shadow-2xl overflow-hidden flex flex-col md:w-[min(920px,92vw)] md:rounded-2xl md:max-h-[86dvh]"
+        className="pointer-events-auto fixed inset-x-0 bottom-0 z-10 w-full rounded-t-2xl border border-violet-200 dark:border-violet-900 bg-white dark:bg-slate-800 shadow-2xl overflow-hidden flex flex-col md:relative md:inset-auto md:w-[min(920px,92vw)] md:rounded-2xl md:max-h-[86dvh]"
         style={{ maxHeight: `calc(100dvh - ${MOBILE_BOTTOM_PLAYER_RESERVE + 12}px - env(safe-area-inset-bottom, 0px))` }}
       >
         <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-violet-50/85 dark:bg-violet-950/30 flex-shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-violet-700 dark:text-violet-300"><Layers className="h-4 w-4" /><span className="text-[10px] font-black uppercase tracking-wider">Advanced • {advancedCount} EXP</span></div>
-            <p className="truncate text-sm font-black text-slate-800 dark:text-slate-100">{item.word}</p>
+            <p className="truncate text-sm font-black text-slate-800 dark:text-slate-100">{capitalizeDisplayText(item.word)}</p>
             <p className="text-[9px] text-slate-500 dark:text-slate-400">One by One follows playback but remains manually swipeable. Show Full keeps every available Sentence/EXP visible.</p>
           </div>
           <button onClick={onClose} className="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-300 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600"><X className="h-4 w-4" /></button>

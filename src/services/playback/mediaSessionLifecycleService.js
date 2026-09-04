@@ -1,4 +1,5 @@
 import { getItemPartText } from '../../utils/audioUtils';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
 export const executeMediaSessionLifecycleService = ({
   currentPlayerList, playbackContextRef, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
@@ -22,7 +23,7 @@ export const executeMediaSessionLifecycleService = ({
         }
 
         // 2. Tentukan Metadata Awal
-        let title = activeItem.word || activeItem.text || "Unknown Item";
+        let title = activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.text ? capitalizeDisplayText(activeItem.text) : "Unknown Item");
         let artist = "ProLingo Audio";
 
         // Jika mode Table
@@ -32,8 +33,8 @@ export const executeMediaSessionLifecycleService = ({
 
         // Jika sedang memutar bagian Meaning
         if (speakingPart === 'word_idn') {
-            title = `Arti kata: ${activeItem.meaningWord}`;
-            artist = activeItem.word || 'Word Translation';
+            title = `Arti kata: ${capitalizeDisplayText(activeItem.meaningWord)}`;
+            artist = activeItem.word ? capitalizeDisplayText(activeItem.word) : 'Word Translation';
         }
         if (speakingPart === "meaning") {
             title = `Terjemahan kalimat: ${activeItem.meaning}`;
@@ -44,7 +45,7 @@ export const executeMediaSessionLifecycleService = ({
             const lang = activeExpMatch[2].toLowerCase();
             const expText = getItemPartText(activeItem, `exp${expNo}_${lang}`);
             title = `EXP${expNo}${lang === 'idn' ? ' IDN' : ''}: ${expText}`;
-            artist = `${activeItem.word || activeItem.vocabId || 'ProLingo'} • Advanced Practice`;
+            artist = `${activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.vocabId || 'ProLingo')} • Advanced Practice`;
         }
 
         // --- FUNGSI UPDATE METADATA (Helper) ---

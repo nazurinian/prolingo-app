@@ -43,32 +43,47 @@ export const executeMobileHeaderScrollListenerEffect = ({ isMobile, isAutoScroll
           isMobile, isAutoScrolling, lastScrollY, mobileTab, setShowAppBar
       });
       
-      window.addEventListener('scroll', handleScroll);
+      window.addEventListener('scroll', handleScroll, { passive: true });
       return () => window.removeEventListener('scroll', handleScroll);
 };
 
 export const executeResponsiveViewportLifecycleEffect = ({ isMobile, listContainerRef, setIsMobile, setIsSidebarOpen, setContainerHeight, setRowHeights, setActiveMenuId }) => {
-      const handleResize = () => {
+      let lastMobile = null;
+      let resizeFrame = null;
+
+      const applyViewport = () => {
+          resizeFrame = null;
           const width = window.innerWidth;
           const mobile = width < 768;
-          setIsMobile(mobile);
-          setIsSidebarOpen(!mobile);
+          const breakpointChanged = lastMobile === null || mobile !== lastMobile;
 
-          if (!mobile && listContainerRef.current) {
+          // Mobile browser chrome can change viewport HEIGHT repeatedly while scrolling.
+          // Do not recreate sidebar/row-height state for those height-only resize events.
+          if (breakpointChanged) {
+              setIsMobile(mobile);
+              setIsSidebarOpen(!mobile);
+              setRowHeights(mobile
+                  ? { table: DEFAULT_ROW_HEIGHT_MOBILE, text: 100 }
+                  : { table: DEFAULT_ROW_HEIGHT_PC, text: 70 });
+              lastMobile = mobile;
+          }
+
+          if (mobile) {
+              setContainerHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+          } else if (listContainerRef.current) {
               setContainerHeight(listContainerRef.current.clientHeight);
           }
-          
-          if (mobile) {
-              setRowHeights({ table: DEFAULT_ROW_HEIGHT_MOBILE, text: 100 });
-              setContainerHeight(window.innerHeight); 
-          } else {
-              setRowHeights({ table: DEFAULT_ROW_HEIGHT_PC, text: 70 });
-          }
+      };
+
+      const handleResize = () => {
+          if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+          resizeFrame = requestAnimationFrame(applyViewport);
       };
       
-      handleResize();
-      window.addEventListener('resize', handleResize);
-      setTimeout(() => {
+      applyViewport();
+      window.addEventListener('resize', handleResize, { passive: true });
+      window.visualViewport?.addEventListener('resize', handleResize, { passive: true });
+      const settleTimer = setTimeout(() => {
           if (!isMobile && listContainerRef.current) {
               setContainerHeight(listContainerRef.current.clientHeight);
           }
@@ -78,7 +93,10 @@ export const executeResponsiveViewportLifecycleEffect = ({ isMobile, listContain
       window.addEventListener('click', handleGlobalClick);
 
       return () => {
+          clearTimeout(settleTimer);
+          if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
           window.removeEventListener('resize', handleResize);
+          window.visualViewport?.removeEventListener('resize', handleResize);
           window.removeEventListener('click', handleGlobalClick);
       };
 };
@@ -100,12 +118,12 @@ export const executeMobileWindowScrollEffect = ({ isMobile, setScrollTop, setCon
       const handleWindowScroll = () => {
           if (isMobile) {
               setScrollTop(window.scrollY);
-              setContainerHeight(window.innerHeight); 
+              setContainerHeight(Math.round(window.visualViewport?.height || window.innerHeight)); 
           }
       };
 
       if (isMobile) {
-          window.addEventListener('scroll', handleWindowScroll);
+          window.addEventListener('scroll', handleWindowScroll, { passive: true });
           handleWindowScroll(); 
       } else {
           window.removeEventListener('scroll', handleWindowScroll);

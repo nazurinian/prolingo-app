@@ -6,6 +6,7 @@ import { createEmptySourcePack } from '../utils/multiSourceUtils';
 import { createEmptyVocabularyOrder } from '../utils/playbackSequenceUtils';
 import { loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from '../services/persistence/preferencePersistenceService';
 import { loadTextIdentityState } from '../services/persistence/textIdentityPersistenceService';
+import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 
 export const useMainAppPrimaryState = () => {
   const [mode, setMode] = useState('table'); 
@@ -113,7 +114,7 @@ export const useMainAppPrimaryState = () => {
 
   const [isMemoryMode, setIsMemoryMode] = useState(false);
   const [revealedCells, setRevealedCells] = useState({}); 
-  const [memorySettings, setMemorySettings] = useState({ word: true, sentence: true, meaning: true, expressions: true }); 
+  const [memorySettings, setMemorySettings] = useState(createDefaultMemorySettings); 
 
   const [activeMenuId, setActiveMenuId] = useState(null);
 

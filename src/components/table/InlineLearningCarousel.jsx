@@ -4,6 +4,7 @@ import HighlightedText from '../common/HighlightedText';
 import { getAdvancedExpressionPairs } from '../../utils/audioUtils';
 import AudioSourceDot from './AudioSourceDot';
 import { resolveFirstEnabledTextSlideKey, resolveSpeakingPartSlideKey } from '../../utils/playbackCarouselUtils';
+import { getMemoryRevealKey, isMemoryPartHidden } from '../../utils/memoryModeUtils';
 
 const getEnabledContentSlides = (item, playbackSequence) => {
   const enabled = new Set((Array.isArray(playbackSequence) ? playbackSequence : [])
@@ -49,9 +50,8 @@ export default function InlineLearningCarousel({
   playbackSequence,
   independentPlayingId,
   handleIndependentPlay,
-  isSentHidden,
-  isMeaningHidden,
-  isExpressionsHidden,
+  isMemoryMode,
+  memorySettings,
   revealedCells,
   toggleCellReveal,
   blurClass,
@@ -160,14 +160,12 @@ export default function InlineLearningCarousel({
           const enActive = isActive && speakingPart === slide.enPart;
           const idnActive = isActive && speakingPart === slide.idnPart;
           const slideActive = enActive || idnActive;
-          const revealKey = isSentence ? `${rowId}-sent` : `${rowId}-${slide.key}`;
-          const contentHidden = isSentence ? false : isExpressionsHidden;
-          const revealed = revealedCells[revealKey];
-          const wrapperClass = contentHidden ? (revealed ? revealedClass : blurClass) : '';
-          const enHidden = isSentence && isSentHidden;
-          const idHidden = isSentence && isMeaningHidden;
-          const enReveal = revealedCells[`${rowId}-sent`];
-          const idReveal = revealedCells[`${rowId}-meaning`];
+          const enHidden = isMemoryMode && isMemoryPartHidden(memorySettings, slide.enPart);
+          const idHidden = isMemoryMode && isMemoryPartHidden(memorySettings, slide.idnPart);
+          const enRevealKey = getMemoryRevealKey(rowId, slide.enPart);
+          const idRevealKey = getMemoryRevealKey(rowId, slide.idnPart);
+          const enReveal = revealedCells[enRevealKey];
+          const idReveal = revealedCells[idRevealKey];
           return (
             <article
               key={slide.key}
@@ -187,11 +185,11 @@ export default function InlineLearningCarousel({
                 </div>
               </div>
 
-              <div className={`space-y-1 ${wrapperClass}`} onClick={(event) => contentHidden && toggleCellReveal(event, revealKey)}>
+              <div className="space-y-1">
                 {slide.en && (
                   <div className="flex items-start gap-1.5">
                     <SourcePlayButton item={item} part={slide.enPart} playId={`${rowId}-${slide.key}-en`} independentPlayingId={independentPlayingId} handleIndependentPlay={handleIndependentPlay} isActive={isActive} source={audioSourceByPart[slide.enPart]} />
-                    <div className={`min-w-0 flex-1 ${enHidden ? (enReveal ? revealedClass : blurClass) : ''}`} onClick={(event) => enHidden && toggleCellReveal(event, `${rowId}-sent`)}>
+                    <div className={`min-w-0 flex-1 ${enHidden ? (enReveal ? revealedClass : blurClass) : ''}`} onClick={(event) => enHidden && toggleCellReveal(event, enRevealKey)}>
                       <p className={`text-[12px] md:text-sm leading-snug ${enActive ? 'font-black text-white line-clamp-none' : `line-clamp-2 ${isActive ? 'text-blue-50' : 'text-slate-600 dark:text-slate-300'}`}`}>
                         <HighlightedText text={slide.en} highlight={item.word} />
                       </p>
@@ -202,7 +200,7 @@ export default function InlineLearningCarousel({
                 {slide.idn && (
                   <div className="flex items-start gap-1.5 pl-1 md:pl-5">
                     <SourcePlayButton item={item} part={slide.idnPart} playId={`${rowId}-${slide.key}-idn`} independentPlayingId={independentPlayingId} handleIndependentPlay={handleIndependentPlay} isActive={isActive} source={audioSourceByPart[slide.idnPart]} small />
-                    <div className={`min-w-0 flex-1 ${idHidden ? (idReveal ? revealedClass : blurClass) : ''}`} onClick={(event) => idHidden && toggleCellReveal(event, `${rowId}-meaning`)}>
+                    <div className={`min-w-0 flex-1 ${idHidden ? (idReveal ? revealedClass : blurClass) : ''}`} onClick={(event) => idHidden && toggleCellReveal(event, idRevealKey)}>
                       <p className={`text-[10px] md:text-xs italic leading-snug ${idnActive ? 'font-black text-white line-clamp-none' : `line-clamp-2 ${isActive ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}`}>
                         <HighlightedText text={slide.idn} highlight={item.meaningWord || item.word} />
                         <Globe className="ml-1 inline-block h-2.5 w-2.5 opacity-45" />

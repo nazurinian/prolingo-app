@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Loader2, Lock, RefreshCw, X } from 'lucide-react';
 import { getAdvancedExpressionPairs, getItemPartText, isIndonesianAudioPart } from '../../utils/audioUtils';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
 const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, aiLoadingId, generateAIAudio }) => {
   const text = String(getItemPartText(item, part) || '').trim();
@@ -60,9 +61,15 @@ export default function AudioDownloadPanel({
   const engineLabel = generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini';
 
   return createPortal(
-    <div className="fixed inset-0 z-[95] flex items-end md:items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
-      <button type="button" aria-label="Close audio download panel" onClick={onClose} className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px]" />
-      <section className="relative z-10 w-full max-h-[86dvh] rounded-t-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl md:w-[520px] md:rounded-2xl overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom,0px)]">
+    <div className="fixed inset-0 z-[95] pointer-events-none md:flex md:items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Close audio download panel"
+        onClick={onClose}
+        className="pointer-events-auto fixed inset-x-0 top-0 bg-slate-950/50 backdrop-blur-[1px]"
+        style={{ height: '100lvh' }}
+      />
+      <section className="pointer-events-auto fixed inset-x-0 bottom-0 z-10 w-full rounded-t-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl md:relative md:inset-auto md:w-[520px] md:rounded-2xl overflow-hidden flex flex-col pb-[env(safe-area-inset-bottom,0px)]" style={{ maxHeight: 'min(86dvh, 100dvh)' }}>
         <header className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-700 px-4 py-3 flex-shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-slate-800 dark:text-white">
@@ -70,7 +77,7 @@ export default function AudioDownloadPanel({
               <h3 className="text-sm font-black">Audio</h3>
               <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${generatorEngine === 'edge' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'}`}>{engineLabel}</span>
             </div>
-            <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{item.word || item.text || 'Item'} • ↓ download • ↻ replace</p>
+            <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{capitalizeDisplayText(item.word || item.text || 'Item')} • ↓ download • ↻ replace</p>
           </div>
           <button type="button" onClick={onClose} className="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"><X className="h-4 w-4" /></button>
         </header>

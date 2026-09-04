@@ -1,5 +1,6 @@
 import React from 'react';
 import { SkipBack, SkipForward, Pause, Play, XCircle, List, Repeat1, Shuffle } from 'lucide-react';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
 const BottomPlayerBar = ({
   isMobile,
@@ -26,7 +27,7 @@ const BottomPlayerBar = ({
                      const item = activePlaybackList.find(p => p.id === playingIndex);
                      const seqIdx = activePlaybackList.indexOf(item);
                      if (!item) return "Ready";
-                     const itemLabel = item.word || (item.text ? `${item.text.substring(0, 18)}${item.text.length > 18 ? '…' : ''}` : 'Item');
+                     const itemLabel = item.word ? capitalizeDisplayText(item.word) : (item.text ? `${capitalizeDisplayText(item.text.substring(0, 18))}${item.text.length > 18 ? '…' : ''}` : 'Item');
                      return `${seqIdx + 1}. ${itemLabel} (${seqIdx + 1}/${activePlaybackList.length})`;
                    })()
                  : "Ready"}
@@ -65,7 +66,7 @@ const BottomPlayerBar = ({
                      const item = activePlaybackList.find(p => p.id === playingIndex);
                      const seqIdx = activePlaybackList.indexOf(item);
                      if (!item) return "Ready";
-                     return `${seqIdx + 1}. ${item.word || (item.text ? item.text.substring(0, 15)+'...' : 'Item')} (${seqIdx + 1}/${activePlaybackList.length} Items)`;
+                     return `${seqIdx + 1}. ${item.word ? capitalizeDisplayText(item.word) : (item.text ? capitalizeDisplayText(item.text.substring(0, 15))+'...' : 'Item')} (${seqIdx + 1}/${activePlaybackList.length} Items)`;
                    })()
                  : "Ready"}
              </p>
