@@ -1,6 +1,7 @@
 import React from 'react';
 import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, ListPlus } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
+import TextLibraryShell from '../text/TextLibraryShell.jsx';
 
 export default function MobileDataControls({
   mode, isMultiSourceMode, dirtySourceKeys, isSystemBusy, isCsvDirty, openFullPackPicker,
@@ -9,8 +10,25 @@ export default function MobileDataControls({
   currentDeckName, setCurrentDeckName, handleSaveDeck, handleDeleteDeckInit, csvInputRef,
   openManualAdd, playlist, tableViewMode, exportTableCSV, setIsClearDialogOpen, csvChangeSummary,
   setIsChangeReviewOpen, undoStack, undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput,
-  handleRangeAdd
+  handleRangeAdd, textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
+  textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
 }) {
+  if (mode === 'text') {
+    return <TextLibraryShell
+      compact
+      catalog={textLibraryCatalog}
+      activeDocument={activeTextDocument}
+      activeDocumentTree={activeTextDocumentTree}
+      activeDocumentId={activeTextDocumentId}
+      isBusy={textLibraryCommandBusy}
+      error={textLibraryCommandError}
+      onSelectDocument={handleTextLibrarySelectDocument}
+      onCreateDocument={handleTextLibraryCreateDocument}
+      onCreateCollection={handleTextLibraryCreateCollection}
+      onRenameDocument={handleTextLibraryRenameDocument}
+    />;
+  }
   return (
     <>
               {mode === 'table' && <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-violet-200 dark:border-violet-900 shadow-sm">

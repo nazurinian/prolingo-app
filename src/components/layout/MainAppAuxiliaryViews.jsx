@@ -81,7 +81,10 @@ export const renderMobileToolsView = ({
   edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
   isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
-  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
+  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
+  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+  textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -186,6 +189,17 @@ export const renderMobileToolsView = ({
           activityByVocabId={activityByVocabId}
           currentVocabIds={currentVocabIds}
           onProgressRestored={onProgressRestored}
+          textLibraryCatalog={textLibraryCatalog}
+          activeTextDocument={activeTextDocument}
+          activeTextDocumentTree={activeTextDocumentTree}
+          activeTextDocumentId={activeTextDocumentId}
+          activeTextEditorModel={activeTextEditorModel}
+          textLibraryCommandBusy={textLibraryCommandBusy}
+          textLibraryCommandError={textLibraryCommandError}
+          handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
+          handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
+          handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
+          handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
       />
 );
 

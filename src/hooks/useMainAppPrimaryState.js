@@ -6,17 +6,28 @@ import { createEmptySourcePack } from '../utils/multiSourceUtils';
 import { createEmptyVocabularyOrder } from '../utils/playbackSequenceUtils';
 import { loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from '../services/persistence/preferencePersistenceService';
 import { loadTextIdentityState } from '../services/persistence/textIdentityPersistenceService';
+import { createEmptyTextIdentityState } from '../domain/text/textIdentityDomain.js';
 import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 
 export const useMainAppPrimaryState = () => {
-  const [mode, setMode] = useState('table'); 
+  // P4-A0: Part 4 development starts in the isolated Text workspace.
+  const [mode, setMode] = useState('text'); 
   const [tableViewMode, setTableViewMode] = useState('master'); 
   const [studyQueue, setStudyQueue] = useState([]); 
   const [rangeInput, setRangeInput] = useState("");
 
   const [tableContent, setTableContent] = useState("");
-  const [textIdentityState, setTextIdentityState] = useState(() => loadTextIdentityState());
-  const [textContent, setTextContent] = useState(() => textIdentityState.rawContent);
+  // P4-A2: legacy localStorage is migration input only. Keep it separate from the
+  // visible runtime state so stale/default lines never flash before IndexedDB hydrates.
+  const [legacyTextBootstrapState] = useState(() => loadTextIdentityState());
+  const [textIdentityState, setTextIdentityState] = useState(createEmptyTextIdentityState);
+  const [textContent, setTextContent] = useState('');
+  // P4-A1/A2: IndexedDB is the canonical Text persistence layer. Structured runtime
+  // snapshot is independent from the temporary legacy-line editor projection.
+  const [activeTextDocumentId, setActiveTextDocumentId] = useState(null);
+  const [textLibrarySnapshot, setTextLibrarySnapshot] = useState(null);
+  const [textDatabaseStatus, setTextDatabaseStatus] = useState('idle');
+  const [textDatabaseError, setTextDatabaseError] = useState(null);
   const [playlist, setPlaylist] = useState([]); 
   const [newTextItem, setNewTextItem] = useState("");
   // v5.8.3: last CSV snapshot that has been imported or explicitly saved to disk.
@@ -170,6 +181,8 @@ export const useMainAppPrimaryState = () => {
   return {
     mode, setMode, tableViewMode, setTableViewMode, studyQueue, setStudyQueue,
     rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
+    legacyTextBootstrapState, activeTextDocumentId, setActiveTextDocumentId, textLibrarySnapshot, setTextLibrarySnapshot,
+    textDatabaseStatus, setTextDatabaseStatus, textDatabaseError, setTextDatabaseError,
     playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,

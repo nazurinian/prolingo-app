@@ -94,8 +94,8 @@ export const executeManualRowPlaybackInteraction = ({
       setPlayingIndex(item.id);
       setPlayingContext(targetContext);
       startGlobalPlayback(item.id, targetContext, {
-        anchorShuffle: true,
-        forceReshuffle: vocabularyPlayOrderRef.current === 'shuffle'
+        anchorShuffle: targetContext !== 'text',
+        forceReshuffle: targetContext !== 'text' && vocabularyPlayOrderRef.current === 'shuffle'
       });
 };
 
@@ -164,9 +164,10 @@ export const executeSmartPlaybackNavigation = ({
       : getBasePlaybackListForContext(contextToUse);
     if (!baseList.length) return;
 
+    const useTableShuffle = contextToUse !== 'text' && vocabularyPlayOrderRef.current === 'shuffle';
     let listToUse = canUseSessionSnapshot
       ? sessionSnapshot.orderedList
-      : (vocabularyPlayOrderRef.current === 'shuffle'
+      : (useTableShuffle
           ? resolveVocabularyPlaybackList(baseList, contextToUse, {
               anchorId: activeVocabularyOrderRef.current?.signature === getPlaybackListSignature(baseList) ? null : refId
             })

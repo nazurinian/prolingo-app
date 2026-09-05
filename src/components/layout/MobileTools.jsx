@@ -108,6 +108,9 @@ const MobileTools = ({
   activityByVocabId,
   currentVocabIds,
   onProgressRestored,
+  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
+  textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
 }) => {
   const rootRef = useRef(null);
   const lastScrollTopRef = useRef(0);
@@ -253,6 +256,16 @@ const MobileTools = ({
               rangeInput={rangeInput}
               setRangeInput={setRangeInput}
               handleRangeAdd={handleRangeAdd}
+              textLibraryCatalog={textLibraryCatalog}
+              activeTextDocument={activeTextDocument}
+              activeTextDocumentTree={activeTextDocumentTree}
+              activeTextDocumentId={activeTextDocumentId}
+              textLibraryCommandBusy={textLibraryCommandBusy}
+              textLibraryCommandError={textLibraryCommandError}
+              handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
+              handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
+              handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
+              handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
           />}
 
           {sidebarSection === 'system' && <MobileSystemControls

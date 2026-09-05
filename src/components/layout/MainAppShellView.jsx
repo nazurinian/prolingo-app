@@ -42,10 +42,13 @@ export const renderMainAppShellView = (props) => {
     manualEditingId, importedRowCount, sequenceHighWater, manualForm, setManualForm, manualAdvancedOpen,
     setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen, setTableContent, setCsvBaselineContent, setSourcePack,
     setSequenceHighWater, setManualIdHighWater, setImportedRowCount, setUndoStack, setMasterSearch, setMasterFilter,
-    setLocalAudioMapTable, setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, pendingDeleteItem,
+    setLocalAudioMapTable, setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, resetTextState, pendingDeleteItem,
     setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck,
     storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
-    masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
+    masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
+    textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+    textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
   } = props;
 
   return (
@@ -79,6 +82,11 @@ export const renderMainAppShellView = (props) => {
         mobileTab={mobileTab}
         handleMobileTabSwitch={handleMobileTabSwitch}
         renderWorkspaceTabs={renderWorkspaceTabs}
+        textLibraryCatalog={textLibraryCatalog}
+        activeTextDocument={activeTextDocument}
+        activeTextDocumentId={activeTextDocumentId}
+        textLibraryCommandBusy={textLibraryCommandBusy || isSystemBusy}
+        handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
       />
 
       <div className="flex-1 flex overflow-hidden relative z-0">
@@ -208,6 +216,7 @@ export const renderMainAppShellView = (props) => {
                 undoLastDataChange={undoLastDataChange}
                 saveUpdatedCSV={saveUpdatedCSV}
                 isMultiSourceMode={isMultiSourceMode}
+                activeTextEditorModel={activeTextEditorModel}
               />}
             </div>
             
@@ -236,6 +245,17 @@ export const renderMainAppShellView = (props) => {
               undoStack={undoStack}
               undoLastDataChange={undoLastDataChange}
               lastDraftAutoSaveAt={lastDraftAutoSaveAt}
+              textLibraryCatalog={textLibraryCatalog}
+              activeTextDocument={activeTextDocument}
+              activeTextDocumentTree={activeTextDocumentTree}
+              activeTextDocumentId={activeTextDocumentId}
+              activeTextEditorModel={activeTextEditorModel}
+              textLibraryCommandBusy={textLibraryCommandBusy || isSystemBusy}
+              textLibraryCommandError={textLibraryCommandError}
+              handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
+              handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
+              handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
+              handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
             />}
           </div>
         </SidebarShell>
@@ -318,7 +338,21 @@ export const renderMainAppShellView = (props) => {
       {isClearDialogOpen && (
         <ClearViewModal
           onCancel={() => setIsClearDialogOpen(false)}
-          onConfirm={() => { if(mode === 'table') {setTableContent(''); setCsvBaselineContent(''); setSourcePack(createEmptySourcePack()); setSequenceHighWater(0); setManualIdHighWater(0); setImportedRowCount(0); setUndoStack([]); setMasterSearch(''); setMasterFilter('all'); setLocalAudioMapTable({}); setAudioStatusTable('idle');} else {setTextContent(''); setLocalAudioMapText({}); setAudioStatusText('idle');} setLockedStates(p => ({...p, [mode]: false})); setIsClearDialogOpen(false); resetFullState(); }}
+          onConfirm={() => {
+            if (mode === 'table') {
+              setTableContent(''); setCsvBaselineContent(''); setSourcePack(createEmptySourcePack());
+              setSequenceHighWater(0); setManualIdHighWater(0); setImportedRowCount(0); setUndoStack([]);
+              setMasterSearch(''); setMasterFilter('all'); setLocalAudioMapTable({}); setAudioStatusTable('idle');
+              setLockedStates(p => ({...p, table: false}));
+              setIsClearDialogOpen(false);
+              resetFullState();
+              return;
+            }
+            setTextContent('');
+            setLockedStates(p => ({...p, text: false}));
+            setIsClearDialogOpen(false);
+            resetTextState();
+          }}
         />
       )}
 

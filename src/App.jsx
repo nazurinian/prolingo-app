@@ -43,6 +43,8 @@ import ManualEditorModal from './components/modals/ManualEditorModal';
 import { RevertAllConfirmModal, DeleteVocabularyModal, ClearViewModal, DeleteDeckModal } from './components/modals/ConfirmDialog';
 import { MemoizedRow } from './components/table/MemoizedRow';
 import { MemoizedTextRow } from './components/table/MemoizedTextRow';
+import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
+import { TextStructuredDocumentPlaceholder } from './components/text/TextStructuredDocumentPlaceholder.jsx';
 import { renderPlaylistViewport } from './components/table/PlaylistViewport';
 import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE_KEYS, V510_SOURCE_LABELS, V58_CANONICAL_HEADERS } from './constants/datasetConstants';
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
@@ -85,7 +87,7 @@ import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } 
 import { executeActiveRowAutoFollow, executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
 import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
-import { executePlaylistContentSyncEffect, executeResetFullState, executeSystemLogAppend } from './services/app/mainAppStateLifecycleService';
+import { executePlaylistContentSyncEffect, executeResetFullState, executeResetTextState, executeSystemLogAppend } from './services/app/mainAppStateLifecycleService';
 import { executeAddTextItem, executeClearStudyQueue, executeCloseManualEditor, executeDeleteStructuredItemPrompt, executeDeleteTextItem, executeInsertTab, executeMenuToggle, executeOpenManualAdd, executeOpenManualEdit, executeToggleStudyItem } from './services/dataset/manualTextStudyInteractionService';
 import { executePausePlayback, executeResumePlayback, executeSafePlayTransition, executeSettlePlaybackPromise, executeWaitPlaybackDelay, executeWaitWhilePaused } from './services/playback/playbackRuntimeControlService';
 import { executeApplyPlaybackPreset, executeChangeVocabularyPlayOrder, executeMovePlaybackSequencePart, executeResetPlaybackDelays, executeResetPlaybackSequence, executeReshuffleVocabularyPlayback, executeSetPlaybackDelay, executeSetPlaybackSequencePartRepeat, executeShufflePlaybackSequence, executeTogglePlaybackSequencePart, resolvePlaybackSequencePartAvailable } from './services/playback/playbackConfigurationService';
@@ -96,7 +98,9 @@ import { executeControlSectionPersistenceEffect, executePlaybackDelaysPersistenc
 import { executeCycleMasteryState } from './services/progress/masteryInteractionService';
 import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
-import { executeTextIdentityPersistenceEffect } from './services/persistence/textIdentityPersistenceService';
+import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
+import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
+import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument } from './services/persistence/textLibraryWorkspaceService.js';
 
 
 // --- MAIN COMPONENT ---
@@ -104,6 +108,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const {
     mode, setMode, tableViewMode, setTableViewMode, studyQueue, setStudyQueue,
     rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
+    legacyTextBootstrapState, activeTextDocumentId, setActiveTextDocumentId, textLibrarySnapshot, setTextLibrarySnapshot,
+    textDatabaseStatus, setTextDatabaseStatus, textDatabaseError, setTextDatabaseError,
     playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
@@ -142,6 +148,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
   // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
   const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
+  // P4-A4: Text Library UI command state belongs to Text only and never participates in Table busy state.
+  const [textLibraryCommandBusy, setTextLibraryCommandBusy] = useState(false);
+  const [textLibraryCommandError, setTextLibraryCommandError] = useState(null);
 
   // UI-only: if Advanced is open on the currently playing vocabulary, keep the
   // reading panel attached to the next vocabulary as playback advances.
@@ -366,7 +375,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   useEffect(() => executeLogAutoScrollEffect({ logContainerRef }), [systemLogs, showLogs, mobileTab]);
 
-  const addLog = (type, message) => executeSystemLogAppend({ type, message, setSystemLogs });
+  const addLog = useCallback((type, message) => executeSystemLogAppend({ type, message, setSystemLogs }), [setSystemLogs]);
 
   // E: Gemini access is resolved by server-side OWNER/BYOK sessions.
   useEffect(() => {
@@ -421,21 +430,44 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   };
 
+  // P4-A2: bootstrap from isolated migration input. Visible Text state starts empty
+  // until IndexedDB hydration completes, preventing stale/default line flash.
+  useEffect(() => executeTextLibraryBootstrapEffect({
+    legacyState: legacyTextBootstrapState,
+    setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot,
+    setTextDatabaseStatus, setTextDatabaseError, addLog
+  }), [legacyTextBootstrapState, addLog, setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot, setTextDatabaseStatus, setTextDatabaseError]);
+
   useEffect(() => {
     setTextIdentityState(prev => reconcileTextIdentityState(prev, textContent));
   }, [textContent, setTextIdentityState]);
 
-  useEffect(() => executeTextIdentityPersistenceEffect({ textIdentityState }), [textIdentityState]);
+  const activeTextEditorModel = textLibrarySnapshot?.documents?.find(document => document.id === activeTextDocumentId)?.editorModel || null;
+  const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
+  const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
+  const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
+
+
+  useEffect(() => executeTextLibraryCompatibilityPersistenceEffect({
+    textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState,
+    setTextLibrarySnapshot, setTextDatabaseError, addLog
+  }), [textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setTextDatabaseError, addLog]);
 
   useEffect(() => executePlaylistContentSyncEffect({
-    mode, textIdentityState, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
+    mode, textIdentityState, textDatabaseStatus, setTextDatabaseStatus, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
     setSequenceHighWater, setManualIdHighWater, addLog
-  }), [tableContent, textIdentityState, mode, sequenceHighWater]);
+  }), [tableContent, textIdentityState, textDatabaseStatus, mode, sequenceHighWater, setTextDatabaseStatus]);
 
   const resetFullState = () => executeResetFullState({
     localAudioMapTable, localAudioMapText, setLocalAudioMapTable, setLocalAudioMapText,
     setAudioStatusTable, setAudioStatusText, setCurrentIndex, setMasterIndex, setStudyIndex,
     setPlayingIndex, setPlayingContext, setStudyQueue, setTableViewMode, forceStopAll, addLog
+  });
+
+  const resetTextState = () => executeResetTextState({
+    localAudioMapText, setLocalAudioMapText, setAudioStatusText,
+    setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices,
+    forceStopAll, addLog
   });
 
   const pushUndoSnapshot = useCallback((label, snapshot = tableContent) => {
@@ -660,6 +692,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const resolveVocabularyPlaybackList = (baseList, context, options = {}) => {
+    // P4-A0: Text does not inherit the frozen Table Shuffle Vocabulary preference.
+    if (context === 'text') return Array.isArray(baseList) ? [...baseList] : [];
     const resolved = resolveVocabularyPlaybackOrderState(
       baseList,
       context,
@@ -731,6 +765,50 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     settlePlaybackPromise, currentUtteranceRef, silentAudioRef, setIsPlaying,
     setIsPaused, setSpeakingPart, setIndependentPlayingId, playbackContextRef
   });
+
+  const runTextLibraryUiCommand = useCallback(async (operation) => {
+    if (textLibraryCommandBusy || isSystemBusy) return null;
+    setTextLibraryCommandBusy(true);
+    setTextLibraryCommandError(null);
+    try {
+      return await operation();
+    } catch (error) {
+      const message = error?.message || String(error);
+      setTextLibraryCommandError(message);
+      addLog('Error', `Text Library: ${message}`);
+      return null;
+    } finally {
+      setTextLibraryCommandBusy(false);
+    }
+  }, [textLibraryCommandBusy, isSystemBusy, addLog]);
+
+  const handleTextLibrarySelectDocument = useCallback((documentId) => runTextLibraryUiCommand(async () => {
+    forceStopAll();
+    setCurrentIndex(null);
+    setPlayingIndex(null);
+    setPlayingContext(null);
+    setSavedIndices(prev => ({ ...prev, text: null }));
+    return executeTextLibrarySelectDocument({
+      documentId, activeTextDocumentId, activeTextEditorModel, textIdentityState,
+      setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
+    });
+  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+
+  const handleTextLibraryCreateDocument = useCallback((payload) => runTextLibraryUiCommand(async () => {
+    forceStopAll();
+    setCurrentIndex(null);
+    setPlayingIndex(null);
+    setPlayingContext(null);
+    setSavedIndices(prev => ({ ...prev, text: null }));
+    return executeTextLibraryCreateDocument({
+      payload, activeTextDocumentId, activeTextEditorModel, textIdentityState,
+      setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
+    });
+  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+
+  const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+
 
   const handleSmartNav = (direction) => executeSmartPlaybackNavigation({
     direction, setActiveMenuId, justSwitchedTab, playingIndex, playingContext, mode,
@@ -1322,7 +1400,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
-    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored
+    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
+    textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+    textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
   });
 
   const renderWorkspaceTabs = (mobileContext = false) => renderWorkspaceTabsView({
@@ -1337,7 +1418,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     rangeInput, setRangeInput, handleRangeAdd
   });
 
-  const renderPlaylist = () => renderPlaylistViewport({
+  const renderPlaylist = () => {
+    if (mode === 'text' && textDatabaseStatus !== 'ready') {
+      return <TextHydrationGate status={textDatabaseStatus} error={textDatabaseError} />;
+    }
+    if (mode === 'text' && activeTextEditorModel === 'structured-v1') {
+      return <TextStructuredDocumentPlaceholder documentTree={activeTextDocumentTree} />;
+    }
+    return renderPlaylistViewport({
     rowHeights,
     mode,
     currentPlayerList,
@@ -1386,7 +1474,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     cycleMasteryState,
     playbackSequence,
     generatedAudioMeta
-  });
+    });
+  };
 
   return renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
@@ -1422,11 +1511,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setManualForm, manualAdvancedOpen, setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen,
     setTableContent, setCsvBaselineContent, setSourcePack, setSequenceHighWater, setManualIdHighWater,
     setImportedRowCount, setUndoStack, setMasterSearch, setMasterFilter, setLocalAudioMapTable,
-    setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, pendingDeleteItem,
+    setAudioStatusTable, setTextContent, setLocalAudioMapText, setAudioStatusText, resetFullState, resetTextState, pendingDeleteItem,
     setPendingDeleteItem, confirmDeleteStructuredItem, isDeleteDialogOpen, setIsDeleteDialogOpen, confirmDeleteDeck,
     storageRefreshToken, onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
-    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored
+    currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
+    textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+    textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
   });
 };
 

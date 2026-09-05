@@ -4,7 +4,7 @@ import { Upload, Plus, FileDown, Trash2, History, RotateCcw } from 'lucide-react
 export default function DesktopDataActions({
   mode, isSystemBusy, csvInputRef, handleCSVUpload, openManualAdd, playlist, tableViewMode,
   exportTableCSV, setIsClearDialogOpen, isCsvDirty, csvChangeSummary, setIsChangeReviewOpen,
-  undoStack, undoLastDataChange, saveUpdatedCSV, isMultiSourceMode
+  undoStack, undoLastDataChange, saveUpdatedCSV, isMultiSourceMode, activeTextEditorModel
 }) {
   return (
               <div className="grid grid-cols-2 gap-2">
@@ -25,9 +25,9 @@ export default function DesktopDataActions({
                 ) : (
                    <>
                        <div className="col-span-2 mb-1">
-                          <p className="text-[10px] text-slate-400 italic text-center border dark:border-slate-700 p-1 rounded bg-slate-50 dark:bg-slate-800">Gunakan kotak input di atas daftar untuk menambah item.</p>
+                          <p className="text-[10px] text-slate-400 text-center border dark:border-slate-700 p-1.5 rounded bg-slate-50 dark:bg-slate-800">{activeTextEditorModel === 'legacy-line-v1' ? 'Legacy Text bridge aktif. Library dan Document selector ada di bawah.' : 'Structured Text Document aktif. Card/Segment editor belum dibuka pada A4.'}</p>
                        </div>
-                       <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`col-span-2 flex items-center justify-center gap-1 border border-red-100 dark:border-red-900/50 text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear View</button>
+                       {activeTextEditorModel === 'legacy-line-v1' && <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`col-span-2 flex items-center justify-center gap-1 border border-red-100 dark:border-red-900/50 text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear Legacy Text</button>}
                    </>
                 )}
               </div>
