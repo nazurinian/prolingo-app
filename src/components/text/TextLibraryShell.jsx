@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { BookOpen, Edit3, FileText, Layers, Plus, Save, X } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { AlertTriangle, BookOpen, Database, Download, Edit3, FileText, Layers, Plus, RefreshCcw, Save, Upload, X } from 'lucide-react';
 
 const typeLabel = type => type === 'conversation' ? 'Conversation' : type === 'paragraph' ? 'Paragraph' : 'Mixed';
 
@@ -23,6 +23,14 @@ export const TextLibraryShell = ({
   const [newCollectionTitle, setNewCollectionTitle] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
+  const textPackInputRef = useRef(null);
+  const databaseBackupInputRef = useRef(null);
+  const packActions = activeDocumentTree?.__packActions || null;
+  const databaseBackupActions = activeDocumentTree?.__databaseBackupActions || null;
+  const [packStatus, setPackStatus] = useState(null);
+  const [databaseBackupStatus, setDatabaseBackupStatus] = useState(null);
+  const [preparedDatabaseBackup, setPreparedDatabaseBackup] = useState(null);
+  const [databaseRestoreArmed, setDatabaseRestoreArmed] = useState(false);
 
   const blockCount = activeDocumentTree?.blocks?.length || 0;
   const segmentCount = useMemo(
@@ -60,6 +68,63 @@ export const TextLibraryShell = ({
     const result = await onRenameDocument?.(activeDocument.id, title);
     if (!result) return;
     setRenameOpen(false);
+  };
+
+  const runPackAction = async (action, successLabel) => {
+    if (!action || isBusy) return null;
+    setPackStatus(null);
+    const result = await action();
+    if (!result) return null;
+    setPackStatus(successLabel(result));
+    return result;
+  };
+
+  const handleTextPackFile = async event => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file || !packActions?.importMerge || isBusy) return;
+    setPackStatus(null);
+    const result = await packActions.importMerge(file);
+    if (!result) return;
+    const counts = result.counts || {};
+    setPackStatus(`Merged ${counts.documents || 0} document(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
+  };
+
+
+  const runDatabaseBackupExport = async () => {
+    if (!databaseBackupActions?.exportDatabase || isBusy) return;
+    setDatabaseBackupStatus(null);
+    const result = await databaseBackupActions.exportDatabase();
+    if (!result) return;
+    setDatabaseBackupStatus(`Exported ${result.filename}.`);
+  };
+
+  const handleDatabaseBackupFile = async event => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file || !databaseBackupActions?.inspectBackup || isBusy) return;
+    setDatabaseBackupStatus(null);
+    setPreparedDatabaseBackup(null);
+    setDatabaseRestoreArmed(false);
+    const result = await databaseBackupActions.inspectBackup(file);
+    if (!result) return;
+    setPreparedDatabaseBackup(result);
+    const counts = result.diagnostics?.counts || {};
+    setDatabaseBackupStatus(`Validated ${counts.documents || 0} document(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
+  };
+
+  const applyDatabaseReplaceRestore = async () => {
+    if (!preparedDatabaseBackup?.backup || !databaseBackupActions?.restoreDatabase || isBusy) return;
+    if (!databaseRestoreArmed) {
+      setDatabaseRestoreArmed(true);
+      return;
+    }
+    const result = await databaseBackupActions.restoreDatabase(preparedDatabaseBackup.backup);
+    if (!result) return;
+    setDatabaseRestoreArmed(false);
+    setPreparedDatabaseBackup(null);
+    const counts = result.diagnostics?.counts || {};
+    setDatabaseBackupStatus(`Replace restore complete: ${counts.documents || 0} document(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
   };
 
   return (
@@ -107,6 +172,59 @@ export const TextLibraryShell = ({
           <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title); setRenameOpen(true); }} className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 disabled:opacity-50" title="Rename Document"><Edit3 className="w-3.5 h-3.5"/></button>
         </div>
       </div>}
+
+      {packActions && <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 p-2.5 space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">ProLingo Text Pack JSON</p>
+              <span className="text-[7px] font-black px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">MERGE ONLY</span>
+            </div>
+            <p className="text-[8px] text-slate-400 mt-1">Portable Collection/Document/Card/Segment data. Audio identity metadata follows SEGMENT_ID; binary audio is not embedded.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button type="button" disabled={isBusy || activeDocument?.editorModel !== 'structured-v1' || !packActions.exportDocument} onClick={() => runPackAction(packActions.exportDocument, result => `Exported ${result.filename}.`)} className="px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title="Export active structured Document"><Download className="w-3 h-3 inline mr-1"/>Document</button>
+          <button type="button" disabled={isBusy || !activeDocument?.collectionId || !packActions.exportCollection} onClick={() => runPackAction(packActions.exportCollection, result => `Exported ${result.filename}.`)} className="px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title={activeDocument?.collectionId ? 'Export active Collection' : 'Move this Document into a Collection to export a Collection pack'}><Layers className="w-3 h-3 inline mr-1"/>Collection</button>
+          <button type="button" disabled={isBusy} onClick={() => textPackInputRef.current?.click()} className="px-2 py-1.5 rounded bg-indigo-600 text-white text-[9px] font-bold disabled:opacity-40" title="Import Text Pack with safe Merge"><Upload className="w-3 h-3 inline mr-1"/>Import Merge</button>
+        </div>
+        <input ref={textPackInputRef} type="file" accept=".json,application/json" onChange={handleTextPackFile} className="hidden" />
+        {packStatus && <p className="text-[8px] text-emerald-600 dark:text-emerald-400">{packStatus}</p>}
+      </div>}
+
+
+      {databaseBackupActions && <div className="rounded-lg border border-amber-200 dark:border-amber-900/70 bg-amber-50/50 dark:bg-amber-950/10 p-2.5 space-y-2">
+        <div className="flex items-start gap-2">
+          <Database className="w-3.5 h-3.5 mt-0.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Full Text Database Backup / Restore</p>
+              <span className="text-[7px] font-black px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">REPLACE RESTORE</span>
+            </div>
+            <p className="text-[8px] text-slate-400 mt-1">Safety snapshot of the Text IndexedDB: metadata, Collections, Documents, Cards, Segments, audio identity metadata, counters, and active Document. External audio binaries and preferences are not embedded.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <button type="button" disabled={isBusy} onClick={runDatabaseBackupExport} className="px-2 py-1.5 rounded border border-emerald-200 dark:border-emerald-800 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-40" title="Export a full Text IndexedDB safety snapshot"><Download className="w-3 h-3 inline mr-1"/>Export DB</button>
+          <button type="button" disabled={isBusy} onClick={() => databaseBackupInputRef.current?.click()} className="px-2 py-1.5 rounded border border-amber-300 dark:border-amber-800 text-[9px] font-bold text-amber-700 dark:text-amber-300 disabled:opacity-40" title="Load and validate a full Text Database Backup"><Upload className="w-3 h-3 inline mr-1"/>Load Restore</button>
+        </div>
+        <input ref={databaseBackupInputRef} type="file" accept=".json,application/json" onChange={handleDatabaseBackupFile} className="hidden" />
+        {preparedDatabaseBackup?.diagnostics && <div className="rounded-md border border-amber-200 dark:border-amber-900/60 bg-white dark:bg-slate-900/50 p-2 space-y-1.5">
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[8px] text-slate-500 dark:text-slate-400">
+            <span>Documents <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.documents || 0}</b></span>
+            <span>Cards <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.blocks || 0}</b></span>
+            <span>Segments <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.segments || 0}</b></span>
+            <span>Audio metadata <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.audioVariants || 0}</b></span>
+          </div>
+          <p className="text-[8px] text-red-600 dark:text-red-400 flex gap-1.5"><AlertTriangle className="w-3 h-3 shrink-0"/>Restore replaces the entire local Text Library. Use A14 Text Pack Import Merge when you only want to add portable content.</p>
+          <button type="button" disabled={isBusy} onClick={applyDatabaseReplaceRestore} className={`w-full px-2 py-1.5 rounded border text-[9px] font-black ${databaseRestoreArmed ? 'border-red-400 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300' : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'}`}>
+            <RefreshCcw className="w-3 h-3 inline mr-1"/>{databaseRestoreArmed ? 'Confirm Replace Entire Text DB' : 'Arm Replace Restore'}
+          </button>
+          {databaseRestoreArmed && <button type="button" disabled={isBusy} onClick={() => setDatabaseRestoreArmed(false)} className="w-full text-[8px] text-slate-400 underline">Cancel destructive restore confirmation</button>}
+        </div>}
+        {databaseBackupStatus && <p className="text-[8px] text-slate-500 dark:text-slate-400 break-words">{databaseBackupStatus}</p>}
+      </div>}
+
 
       {renameOpen && <div className="flex gap-1.5">
         <input value={renameTitle} onChange={event => setRenameTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitRename()} disabled={isBusy} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white" autoFocus />

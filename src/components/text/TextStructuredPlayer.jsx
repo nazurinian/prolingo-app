@@ -6,9 +6,15 @@ import {
 } from '../../domain/text/textStructuredPlaybackDomain.js';
 import {
   TEXT_STRUCTURED_DISPLAY_MODES,
+  TEXT_STRUCTURED_ORDER_MODES,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
+  TEXT_STRUCTURED_REPEAT_MODES,
+  TEXT_STRUCTURED_RESUME_MODES,
   getStructuredTextDisplayModeLabel,
+  getStructuredTextOrderModeLabel,
   getStructuredTextPlaybackModeLabel,
+  getStructuredTextRepeatModeLabel,
+  getStructuredTextResumeModeLabel,
   hasStructuredTextPlayableChannel,
   resolveStructuredTextDisplayState
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
@@ -43,6 +49,10 @@ const PLAY_OPTIONS = [
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_THEN_TEXT,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY
 ];
+
+const ORDER_OPTIONS = [TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL, TEXT_STRUCTURED_ORDER_MODES.SHUFFLE];
+const REPEAT_OPTIONS = [TEXT_STRUCTURED_REPEAT_MODES.ONCE, TEXT_STRUCTURED_REPEAT_MODES.TWICE, TEXT_STRUCTURED_REPEAT_MODES.LOOP];
+const RESUME_OPTIONS = [TEXT_STRUCTURED_RESUME_MODES.CONTINUE, TEXT_STRUCTURED_RESUME_MODES.RESTART];
 
 const StructuredPlayerCard = ({
   block,
@@ -217,8 +227,10 @@ export const TextStructuredPlayer = ({
   playingIndex,
   displayMode,
   playbackChannelMode,
+  playbackPreferences = {},
   onDisplayModeChange,
   onPlaybackChannelModeChange,
+  onPlaybackFeelChange,
   onPlayDocument,
   onPlayCard,
   onPlaySegment,
@@ -251,6 +263,8 @@ export const TextStructuredPlayer = ({
   onRetryFailedGeneration,
   onGenerateAudio
 }) => {
+  const [audioGenerationExpanded, setAudioGenerationExpanded] = useState(false);
+  const [playbackFeelExpanded, setPlaybackFeelExpanded] = useState(false);
   const blocks = documentTree?.blocks || [];
   const playbackList = useMemo(() => resolveStructuredTextPlaybackList(documentTree), [documentTree]);
   const playableList = useMemo(() => playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode)), [playbackList, playbackChannelMode]);
@@ -305,49 +319,54 @@ export const TextStructuredPlayer = ({
           <p className="mt-1.5 text-[8px] text-slate-400">Speaker profile memilih voice runtime; SEGMENT_ID dan TXTAUDIO identity tidak berubah.</p>
         </div>}
 
-        <div className="mt-3 rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2.5" data-text-audio-generation="true" data-text-edge-only-generation="true">
+        <div className="mt-3 rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2.5" data-text-audio-generation="true" data-text-edge-only-generation="true" data-text-audio-generation-collapsible="true">
           <div className="flex items-center gap-2 flex-wrap">
-            <Wand2 className="w-3.5 h-3.5 text-violet-500"/>
-            <span className="text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Edge Audio Download</span>
-            <span className="text-[8px] text-slate-400">A12.1 • generator terpisah dari Browser TTS + runtime resolver</span>
+            <button type="button" onClick={() => setAudioGenerationExpanded(value => !value)} className="flex items-center gap-1.5 min-w-0 text-left" aria-expanded={audioGenerationExpanded} title="Open Edge audio download settings">
+              {audioGenerationExpanded ? <ChevronDown className="w-3.5 h-3.5 text-violet-500"/> : <ChevronRight className="w-3.5 h-3.5 text-violet-500"/>}
+              <Wand2 className="w-3.5 h-3.5 text-violet-500"/>
+              <span className="text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Audio Download</span>
+            </button>
+            <span className="text-[8px] text-slate-400">{audioGenerationExpanded ? 'Edge settings' : 'collapsed • Card Audio tetap tersedia per Card'}</span>
+            {generationBusy && <span className="text-[8px] font-black text-violet-600 dark:text-violet-300"><Loader2 className="w-3 h-3 inline mr-1 animate-spin"/>{generationState?.completed || 0}/{generationState?.total || 0}</span>}
             <button type="button" disabled={controlsBusy || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="ml-auto px-2 py-1 rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-40">
               {edgeHealth?.status === 'testing' ? <Loader2 className="w-3 h-3 inline mr-1 animate-spin"/> : <Server className="w-3 h-3 inline mr-1"/>}Test Edge
             </button>
           </div>
-
-          <div className="mt-2 grid gap-2 lg:grid-cols-2">
-            <label className="text-[8px] font-bold text-slate-500">Global Edge EN default
-              <select disabled={controlsBusy} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5">
-                {(edgeGenerationVoices || []).filter(voice => String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
-              </select>
-            </label>
-            <label className="text-[8px] font-bold text-slate-500">Global Edge ID / Meaning default
-              <select disabled={controlsBusy} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5">
-                {!edgeGenerationVoices?.some?.(voice => voice.id === generationPreferences?.edgeMeaningVoiceId) && generationPreferences?.edgeMeaningVoiceId && <option value={generationPreferences.edgeMeaningVoiceId}>{generationPreferences.edgeMeaningVoiceId}</option>}
-                {(edgeGenerationVoices || []).filter(voice => !String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
-              </select>
-            </label>
-          </div>
-
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <label className="text-[8px] text-slate-500">Download rate ({Number(generationPreferences?.edgeRate || 0) >= 0 ? '+' : ''}{generationPreferences?.edgeRate || 0}%)<input disabled={controlsBusy} type="range" min="-50" max="50" step="10" value={generationPreferences?.edgeRate || 0} onChange={event => onGenerationPreferencesChange?.({ edgeRate: Number(event.target.value) })} className="w-full accent-violet-600"/></label>
-            <label className="text-[8px] text-slate-500">Download pitch ({Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz)<input disabled={controlsBusy} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/></label>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateText !== false} onChange={event => onGenerationPreferencesChange?.({ generateText: event.target.checked })}/>EN</label>
-            <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateMeaning !== false} onChange={event => onGenerationPreferencesChange?.({ generateMeaning: event.target.checked })}/>ID</label>
-            <button type="button" disabled={controlsBusy} onClick={folderState?.status === 'reconnect-required' ? onReconnectGenerationFolder : onChooseGenerationFolder} className="px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[8px] font-black text-violet-700 dark:text-violet-300"><FolderOpen className="w-3 h-3 inline mr-1"/>{folderState?.status === 'reconnect-required' ? 'Reconnect Folder' : (folderState?.name || 'Choose Folder')}</button>
-            <button type="button" disabled={controlsBusy || !(generationPreferences?.generateText !== false || generationPreferences?.generateMeaning !== false)} onClick={onGenerateDocumentAudio} className="px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-35"><Wand2 className="w-3 h-3 inline mr-1"/>Generate Document</button>
-            {generationBusy && <button type="button" onClick={onCancelGeneration} className="px-2 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-300 text-[8px] font-black">Cancel</button>}
-            {!generationBusy && (generationState?.failedJobs?.length || 0) > 0 && <button type="button" onClick={onRetryFailedGeneration} className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-[8px] font-black"><RotateCcw className="w-3 h-3 inline mr-1"/>Retry {generationState.failedJobs.length}</button>}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[8px] text-slate-400">
-            {generationBusy && <Loader2 className="w-3 h-3 animate-spin"/>}
-            <span>{generationBusy ? `${generationState?.completed || 0}/${generationState?.total || 0} • ${generationState?.current?.segmentId || ''}/${generationState?.current?.channel || ''}` : `Folder: ${folderState?.status || 'idle'}${folderState?.matchedCount ? ` • ${folderState.matchedCount} connected` : ''}`}</span>
+          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[8px] text-slate-400" data-text-audio-generation-summary="true">
+            <span>Folder: {folderState?.status || 'idle'}{folderState?.matchedCount ? ` • ${folderState.matchedCount} connected` : ''}</span>
             <span className={edgeHealth?.status === 'online' ? 'text-emerald-600 dark:text-emerald-300' : edgeHealth?.status === 'error' ? 'text-red-500' : ''}>Edge: {edgeHealth?.message || edgeHealth?.status || 'not tested'}</span>
           </div>
-          <p className="mt-1 text-[8px] text-slate-400">Global voice hanya default. Card Audio dapat override per Paragraph, per Conversation speaker, lalu per Segment. Browser TTS preview dan Edge download memakai effective voice resolver yang sama; audio playback tetap dipilih oleh SEGMENT_ID + channel + voice identity.</p>
+
+          {audioGenerationExpanded && <div className="mt-2 border-t border-violet-100 dark:border-violet-900 pt-2" data-text-audio-generation-details="true">
+            <div className="grid gap-2 lg:grid-cols-2">
+              <label className="text-[8px] font-bold text-slate-500">Global Edge EN default
+                <select disabled={controlsBusy} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5">
+                  {(edgeGenerationVoices || []).filter(voice => String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+                </select>
+              </label>
+              <label className="text-[8px] font-bold text-slate-500">Global Edge ID / Meaning default
+                <select disabled={controlsBusy} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5">
+                  {!edgeGenerationVoices?.some?.(voice => voice.id === generationPreferences?.edgeMeaningVoiceId) && generationPreferences?.edgeMeaningVoiceId && <option value={generationPreferences.edgeMeaningVoiceId}>{generationPreferences.edgeMeaningVoiceId}</option>}
+                  {(edgeGenerationVoices || []).filter(voice => !String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="text-[8px] text-slate-500">Download rate ({Number(generationPreferences?.edgeRate || 0) >= 0 ? '+' : ''}{generationPreferences?.edgeRate || 0}%)<input disabled={controlsBusy} type="range" min="-50" max="50" step="10" value={generationPreferences?.edgeRate || 0} onChange={event => onGenerationPreferencesChange?.({ edgeRate: Number(event.target.value) })} className="w-full accent-violet-600"/></label>
+              <label className="text-[8px] text-slate-500">Download pitch ({Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz)<input disabled={controlsBusy} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/></label>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateText !== false} onChange={event => onGenerationPreferencesChange?.({ generateText: event.target.checked })}/>EN</label>
+              <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateMeaning !== false} onChange={event => onGenerationPreferencesChange?.({ generateMeaning: event.target.checked })}/>ID</label>
+              <button type="button" disabled={controlsBusy} onClick={folderState?.status === 'reconnect-required' ? onReconnectGenerationFolder : onChooseGenerationFolder} className="px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[8px] font-black text-violet-700 dark:text-violet-300"><FolderOpen className="w-3 h-3 inline mr-1"/>{folderState?.status === 'reconnect-required' ? 'Reconnect Folder' : (folderState?.name || 'Choose Folder')}</button>
+              <button type="button" disabled={controlsBusy || !(generationPreferences?.generateText !== false || generationPreferences?.generateMeaning !== false)} onClick={onGenerateDocumentAudio} className="px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-35"><Wand2 className="w-3 h-3 inline mr-1"/>Generate Document</button>
+              {generationBusy && <button type="button" onClick={onCancelGeneration} className="px-2 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-300 text-[8px] font-black">Cancel</button>}
+              {!generationBusy && (generationState?.failedJobs?.length || 0) > 0 && <button type="button" onClick={onRetryFailedGeneration} className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-[8px] font-black"><RotateCcw className="w-3 h-3 inline mr-1"/>Retry {generationState.failedJobs.length}</button>}
+            </div>
+            <p className="mt-1.5 text-[8px] text-slate-400">A12.1 audio contract tetap frozen: Card/Segment override, Edge generation, dan runtime lookup tetap memakai effective voice + SEGMENT_ID/TXTAUDIO identity.</p>
+          </div>}
         </div>
 
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
@@ -377,7 +396,44 @@ export const TextStructuredPlayer = ({
           </div>
         </div>
 
-        <p className="mt-2 text-[9px] text-slate-400">A12.1 • Browser TTS, Edge download, dan audio runtime resolver dipisah. Voice override tidak mengubah SEGMENT_ID/TXTAUDIO identity.</p>
+        <div className="mt-2 rounded-xl border border-emerald-100 dark:border-emerald-900 bg-emerald-50/55 dark:bg-emerald-950/20 p-2" data-text-playback-feel-controls="true">
+          <button type="button" onClick={() => setPlaybackFeelExpanded(value => !value)} className="w-full flex items-center gap-1.5 text-left" aria-expanded={playbackFeelExpanded}>
+            {playbackFeelExpanded ? <ChevronDown className="w-3.5 h-3.5 text-emerald-500"/> : <ChevronRight className="w-3.5 h-3.5 text-emerald-500"/>}
+            <span className="text-[9px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Playback Feel</span>
+            <span className="ml-auto text-[8px] text-slate-400">{getStructuredTextOrderModeLabel(playbackPreferences?.playbackOrderMode)} • {getStructuredTextRepeatModeLabel(playbackPreferences?.repeatMode)} • {Number(playbackPreferences?.channelDelayMs || 0)}/{Number(playbackPreferences?.segmentDelayMs || 0)} ms • {getStructuredTextResumeModeLabel(playbackPreferences?.resumeMode)}</span>
+          </button>
+
+          {playbackFeelExpanded && <div className="mt-2 grid gap-2 border-t border-emerald-100 dark:border-emerald-900 pt-2 md:grid-cols-2" data-text-playback-feel-details="true">
+            <div>
+              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-slate-500">Order</p>
+              <div className="flex gap-1">
+                {ORDER_OPTIONS.map(option => <button key={option} type="button" disabled={controlsBusy} onClick={() => onPlaybackFeelChange?.({ playbackOrderMode: option })} className={`px-2 py-1.5 rounded-lg text-[8px] font-black disabled:opacity-40 ${playbackPreferences?.playbackOrderMode === option ? 'bg-emerald-600 text-white' : 'border border-emerald-100 dark:border-emerald-900 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300'}`}>{getStructuredTextOrderModeLabel(option)}</button>)}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-slate-500">Repeat scope</p>
+              <div className="flex gap-1">
+                {REPEAT_OPTIONS.map(option => <button key={option} type="button" disabled={controlsBusy} onClick={() => onPlaybackFeelChange?.({ repeatMode: option })} className={`px-2 py-1.5 rounded-lg text-[8px] font-black disabled:opacity-40 ${playbackPreferences?.repeatMode === option ? 'bg-emerald-600 text-white' : 'border border-emerald-100 dark:border-emerald-900 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300'}`}>{getStructuredTextRepeatModeLabel(option)}</button>)}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-slate-500">Delay</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <label className="text-[8px] text-slate-500">EN/ID gap<input type="number" min="0" max="5000" step="50" disabled={controlsBusy} value={Number(playbackPreferences?.channelDelayMs || 0)} onChange={event => onPlaybackFeelChange?.({ channelDelayMs: Number(event.target.value) })} className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-[9px]"/></label>
+                <label className="text-[8px] text-slate-500">Segment gap<input type="number" min="0" max="5000" step="50" disabled={controlsBusy} value={Number(playbackPreferences?.segmentDelayMs || 0)} onChange={event => onPlaybackFeelChange?.({ segmentDelayMs: Number(event.target.value) })} className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1 text-[9px]"/></label>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-[8px] font-black uppercase tracking-wide text-slate-500">Global Play after Stop</p>
+              <div className="flex gap-1">
+                {RESUME_OPTIONS.map(option => <button key={option} type="button" disabled={controlsBusy} onClick={() => onPlaybackFeelChange?.({ resumeMode: option })} className={`px-2 py-1.5 rounded-lg text-[8px] font-black disabled:opacity-40 ${playbackPreferences?.resumeMode === option ? 'bg-emerald-600 text-white' : 'border border-emerald-100 dark:border-emerald-900 bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300'}`}>{getStructuredTextResumeModeLabel(option)}</button>)}
+              </div>
+              <p className="mt-1 text-[8px] text-slate-400">Pause/Resume transport tetap true resume untuk local/generated audio; opsi ini hanya memilih cursor saat memulai lagi setelah Stop.</p>
+            </div>
+          </div>}
+        </div>
+
+        <p className="mt-2 text-[9px] text-slate-400">A13 • Text-owned repeat/order/delay/resume aktif. Table repeat/shuffle/delay state tetap tidak dipakai.</p>
       </div>
 
       <div className="space-y-3">

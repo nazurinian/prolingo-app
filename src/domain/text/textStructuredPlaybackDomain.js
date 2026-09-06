@@ -76,6 +76,36 @@ export const resolveStructuredTextPlaybackScopeList = ({
   };
 };
 
+
+export const resolveStructuredTextPlaybackOrder = ({
+  list,
+  orderMode = 'sequential',
+  anchorId = null,
+  random = Math.random
+}) => {
+  const items = Array.isArray(list) ? [...list] : [];
+  if (orderMode !== 'shuffle' || items.length < 2) return items;
+
+  let anchor = null;
+  let pool = items;
+  if (anchorId) {
+    const anchorIndex = items.findIndex(item => item?.id === anchorId || item?.segmentId === anchorId);
+    if (anchorIndex >= 0) {
+      anchor = items[anchorIndex];
+      pool = items.filter((_, index) => index !== anchorIndex);
+    }
+  }
+
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    const value = Number(random?.());
+    const safeRandom = Number.isFinite(value) ? Math.min(0.999999999, Math.max(0, value)) : 0;
+    const swapIndex = Math.floor(safeRandom * (index + 1));
+    [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
+  }
+  return anchor ? [anchor, ...pool] : pool;
+};
+
+
 export const resolveStructuredTextAdjacentSegment = ({ list, currentId, direction }) => {
   const items = Array.isArray(list) ? list : [];
   if (!items.length) return null;

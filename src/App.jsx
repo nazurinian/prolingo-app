@@ -100,7 +100,7 @@ import { executeRecordStudyActivity } from './services/progress/studyTrackingInt
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
-import { hasStructuredTextPlayableChannel, TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
@@ -109,7 +109,11 @@ import { buildTextStructuredAudioContentFingerprint } from './domain/text/textSt
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
-import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeProLingoTextPackExport, executeProLingoTextPackFileMerge } from './services/persistence/textPackJsonService.js';
+import { executeProLingoTextDatabaseBackupExport, executeProLingoTextDatabaseReplaceRestore, readProLingoTextDatabaseBackupFile } from './services/persistence/textDatabaseBackupService.js';
+import { syncLegacyTextProjectionToDatabase } from './services/persistence/textLibraryIndexedDbService.js';
+import { APP_CHECKPOINT_ID, APP_VERSION } from './constants/appMetadata.js';
 import { executeStructuredTextPlaybackSessionService } from './services/playback/textStructuredPlaybackSessionService.js';
 import { executeStructuredTextRuntimeAudioPlaybackService } from './services/playback/textStructuredAudioRuntimeService.js';
 import { executeTextStructuredPreferencePersistenceEffect } from './services/persistence/textStructuredPreferenceService.js';
@@ -1263,6 +1267,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setCurrentIndex,
       setSpeakingPart,
       playbackChannelMode: textStructuredPreferences.playbackChannelMode,
+      playbackOrderMode: textStructuredPreferences.playbackOrderMode,
+      repeatMode: textStructuredPreferences.repeatMode,
+      channelDelayMs: textStructuredPreferences.channelDelayMs,
+      segmentDelayMs: textStructuredPreferences.segmentDelayMs,
       playStructuredChannel: playStructuredTextChannel,
       forceStopAll,
       addLog
@@ -1298,7 +1306,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       else pausePlayback();
       return;
     }
-    const resumeId = structuredTextActivePlaybackList.some(item => item.id === playingIndex) ? playingIndex : null;
+    const allowResumeCursor = textStructuredPreferences.resumeMode !== TEXT_STRUCTURED_RESUME_MODES.RESTART;
+    const resumeId = allowResumeCursor && structuredTextActivePlaybackList.some(item => item.id === playingIndex) ? playingIndex : null;
     startStructuredTextPlayback({
       startSegmentId: resumeId,
       scope: resumeId ? TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE : TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
@@ -1310,11 +1319,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       handleSmartNav(direction);
       return;
     }
-    const anchorId = structuredTextActivePlaybackList.some(item => item.id === playingIndex)
+    const activeSessionOrder = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+      && Array.isArray(playbackContextRef.current?.orderedList)
+      && playbackContextRef.current.orderedList.length
+        ? playbackContextRef.current.orderedList
+        : structuredTextActivePlaybackList;
+    const anchorId = activeSessionOrder.some(item => item.id === playingIndex)
       ? playingIndex
-      : structuredTextActivePlaybackList[0]?.id;
+      : activeSessionOrder[0]?.id;
     const target = resolveStructuredTextAdjacentSegment({
-      list: structuredTextActivePlaybackList,
+      list: activeSessionOrder,
       currentId: anchorId,
       direction
     });
@@ -1368,6 +1382,107 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(() => executeTextLibraryStructuredCommand({ command, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+
+  const textPackSourceMetadata = useMemo(() => ({
+    appVersion: APP_VERSION,
+    checkpoint: 'A15 — Full Text Database Backup / Restore',
+    engineeringLine: APP_CHECKPOINT_ID
+  }), []);
+
+  const handleTextPackExportDocument = useCallback(() => runTextLibraryUiCommand(async () => {
+    if (!textLibrarySnapshot || !activeTextDocument?.id) throw new Error('No active Text Document to export');
+    if (activeTextDocument.editorModel !== 'structured-v1') throw new Error('A14 Text Pack export supports structured-v1 Documents only');
+    const result = executeProLingoTextPackExport({
+      snapshot: textLibrarySnapshot,
+      scopeType: 'document',
+      rootId: activeTextDocument.id,
+      title: activeTextDocument.title,
+      source: textPackSourceMetadata
+    });
+    addLog('Text Pack', `Exported Document ${activeTextDocument.id} → ${result.filename}.`);
+    return result;
+  }), [runTextLibraryUiCommand, textLibrarySnapshot, activeTextDocument, textPackSourceMetadata, addLog]);
+
+  const handleTextPackExportCollection = useCallback(() => runTextLibraryUiCommand(async () => {
+    const collectionId = activeTextDocument?.collectionId || null;
+    if (!textLibrarySnapshot || !collectionId) throw new Error('Active Text Document is not inside a Collection');
+    const collection = textLibrarySnapshot.collections.find(item => item.id === collectionId);
+    if (!collection) throw new Error(`Collection ${collectionId} is missing`);
+    const result = executeProLingoTextPackExport({
+      snapshot: textLibrarySnapshot,
+      scopeType: 'collection',
+      rootId: collection.id,
+      title: collection.title,
+      source: textPackSourceMetadata
+    });
+    addLog('Text Pack', `Exported Collection ${collection.id} → ${result.filename}.`);
+    return result;
+  }), [runTextLibraryUiCommand, textLibrarySnapshot, activeTextDocument?.collectionId, textPackSourceMetadata, addLog]);
+
+  const handleTextPackImportMerge = useCallback((file) => runTextLibraryUiCommand(async () => {
+    const merged = await executeProLingoTextPackFileMerge({ file });
+    setTextLibrarySnapshot(merged.snapshot);
+    addLog('Text Pack', `Merge ${merged.packageId}: +${merged.counts.documents} Document, +${merged.counts.blocks} Card, +${merged.counts.segments} Segment, +${merged.counts.audioVariants} audio metadata.`);
+    return merged;
+  }), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+
+  const textDatabaseBackupSourceMetadata = useMemo(() => ({
+    appVersion: APP_VERSION,
+    checkpoint: 'A15 — Full Text Database Backup / Restore',
+    engineeringLine: APP_CHECKPOINT_ID
+  }), []);
+
+  const handleTextDatabaseBackupExport = useCallback(() => runTextLibraryUiCommand(async () => {
+    if (activeTextDocumentId && activeTextEditorModel === 'legacy-line-v1') {
+      const flushed = await syncLegacyTextProjectionToDatabase({
+        documentId: activeTextDocumentId,
+        textIdentityState
+      });
+      if (flushed?.librarySnapshot) setTextLibrarySnapshot(flushed.librarySnapshot);
+    }
+    const result = await executeProLingoTextDatabaseBackupExport({ source: textDatabaseBackupSourceMetadata });
+    addLog('Text DB', `Full backup exported → ${result.filename}.`);
+    return result;
+  }), [runTextLibraryUiCommand, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, textDatabaseBackupSourceMetadata, addLog]);
+
+  const handleTextDatabaseBackupInspect = useCallback((file) => runTextLibraryUiCommand(async () => {
+    const prepared = await readProLingoTextDatabaseBackupFile(file);
+    const counts = prepared.diagnostics?.counts || {};
+    addLog('Text DB', `Backup validated: ${counts.documents || 0} Document, ${counts.blocks || 0} Card, ${counts.segments || 0} Segment.`);
+    return prepared;
+  }), [runTextLibraryUiCommand, addLog]);
+
+  const handleTextDatabaseBackupRestore = useCallback((backup) => runTextLibraryUiCommand(async () => {
+    forceStopAll();
+    setCurrentIndex(null);
+    setPlayingIndex(null);
+    setPlayingContext(null);
+    setSavedIndices(prev => ({ ...prev, text: null }));
+    const result = await executeProLingoTextDatabaseReplaceRestore({ backup });
+    const projection = resolveTextLibraryActiveProjection(result.snapshot);
+    setTextLibrarySnapshot(result.snapshot);
+    setActiveTextDocumentId(result.snapshot.activeDocumentId || null);
+    setTextIdentityState(projection.textIdentityState);
+    setTextContent(projection.textContent);
+    const counts = result.diagnostics?.counts || {};
+    addLog('Text DB', `REPLACE restore complete: ${counts.documents || 0} Document, ${counts.blocks || 0} Card, ${counts.segments || 0} Segment, ${counts.audioVariants || 0} audio metadata.`);
+    return result;
+  }), [runTextLibraryUiCommand, forceStopAll, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog]);
+
+  const textLibraryShellDocumentTree = useMemo(() => ({
+    ...(activeTextDocumentTree || {}),
+    blocks: activeTextDocumentTree?.blocks || [],
+    __packActions: {
+      exportDocument: handleTextPackExportDocument,
+      exportCollection: activeTextDocument?.collectionId ? handleTextPackExportCollection : null,
+      importMerge: handleTextPackImportMerge
+    },
+    __databaseBackupActions: {
+      exportDatabase: handleTextDatabaseBackupExport,
+      inspectBackup: handleTextDatabaseBackupInspect,
+      restoreDatabase: handleTextDatabaseBackupRestore
+    }
+  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackImportMerge, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore]);
 
   const handleStructuredTextAttachAudioFile = useCallback(async (segmentId, channel, file) => {
     if (!file || !segmentId || !['text', 'meaning'].includes(channel)) return null;
@@ -2172,7 +2287,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
-    textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+    textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
   });
@@ -2203,8 +2318,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         playingIndex={playingIndex}
         displayMode={textStructuredPreferences.displayMode}
         playbackChannelMode={textStructuredPreferences.playbackChannelMode}
+        playbackPreferences={textStructuredPreferences}
         onDisplayModeChange={(displayMode) => setTextStructuredPreferences(prev => ({ ...prev, displayMode }))}
         onPlaybackChannelModeChange={(playbackChannelMode) => setTextStructuredPreferences(prev => ({ ...prev, playbackChannelMode }))}
+        onPlaybackFeelChange={(patch) => setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...patch }))}
         onPlayDocument={handleStructuredTextPlayDocument}
         onPlayCard={handleStructuredTextPlayCard}
         onPlaySegment={handleStructuredTextPlaySegment}
@@ -2333,7 +2450,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     storageRefreshToken, onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
-    textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+    textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
   });
