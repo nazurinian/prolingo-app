@@ -28,3 +28,4 @@ dist-ssr
 config.md
 public/check_audio_list.py
 .backup/*
+docs/part4/*
