@@ -67,5 +67,6 @@ export const initialEdgeVoices = [
   { id: "id-ID-ArdiNeural", label: "Ardi (Indonesia)", lang: "id-ID" },
   { id: "jv-ID-DimasNeural", label: "Dimas (Javanese)", lang: "jv-ID" },
   { id: "jv-ID-SitiNeural", label: "Siti (Javanese)", lang: "jv-ID" },
+  { id: "su-ID-TutiNeural", label: "Tuti (Sundanese)", lang: "su-ID" },
   { id: "su-ID-JajangNeural", label: "Jajang (Sundanese)", lang: "su-ID" }
 ];

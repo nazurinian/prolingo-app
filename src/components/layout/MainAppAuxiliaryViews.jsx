@@ -66,7 +66,7 @@ export const renderMobileToolsView = ({
   sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
   setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
-  rate, setRate, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
+  rate, setRate, showIndonesianBrowserVoice, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
   memorySettings, setMemorySettings, advancedDatasetStats, isMultiSourceMode,
   dirtySourceKeys, isCsvDirty, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries,
   sourcePack, openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset,
@@ -81,7 +81,10 @@ export const renderMobileToolsView = ({
   edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
   isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
-  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
+  masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
+  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
+  textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -98,6 +101,7 @@ export const renderMobileToolsView = ({
           indonesianVoices={indonesianVoices}
           selectedIndonesianVoice={selectedIndonesianVoice}
           setSelectedIndonesianVoice={setSelectedIndonesianVoice}
+          showIndonesianBrowserVoice={showIndonesianBrowserVoice}
           rate={rate}
           setRate={setRate}
           renderPlaybackSequenceBuilder={renderPlaybackSequenceBuilder}
@@ -186,6 +190,18 @@ export const renderMobileToolsView = ({
           activityByVocabId={activityByVocabId}
           currentVocabIds={currentVocabIds}
           onProgressRestored={onProgressRestored}
+          textLibraryCatalog={textLibraryCatalog}
+          activeTextDocument={activeTextDocument}
+          activeTextDocumentTree={activeTextDocumentTree}
+          activeTextDocumentId={activeTextDocumentId}
+          activeTextEditorModel={activeTextEditorModel}
+          textLibraryCommandBusy={textLibraryCommandBusy}
+          textLibraryCommandError={textLibraryCommandError}
+          handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
+          handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
+          handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
+          handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+          handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
       />
 );
 

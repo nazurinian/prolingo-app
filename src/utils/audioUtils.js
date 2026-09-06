@@ -122,6 +122,10 @@ export const getRecordAudioNo = (item) => {
 // Internal audio map key is sequence-based so legacy numbered audio never shifts to another row.
 export const getStableAudioIdentity = (item) => {
   if (!item) return 'UNKNOWN';
+  // P4-A6: structured Text playback is segment-addressed. TEXT_ID identifies
+  // the card, while SEGMENT_ID is the permanent playable/audio identity.
+  const structuredTextSegmentIdentity = String(item.segmentId || (item.isTextStructuredSegment ? item.id : '') || '').trim().toUpperCase();
+  if (/^SEGMENT_\d+$/.test(structuredTextSegmentIdentity)) return structuredTextSegmentIdentity;
   if (item.isStructured) {
     const no = getRecordAudioNo(item);
     return no ? `NO_${String(no).padStart(6, '0')}` : `ID_${getVocabIdentity(item) || 'UNKNOWN'}`;

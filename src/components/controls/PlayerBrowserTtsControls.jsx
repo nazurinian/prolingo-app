@@ -10,6 +10,8 @@ export default function PlayerBrowserTtsControls({
   indonesianVoices,
   selectedIndonesianVoice,
   setSelectedIndonesianVoice,
+  showIndonesianVoice = mode === 'table',
+  structuredTextModeActive = false,
   rate,
   setRate,
 }) {
@@ -17,6 +19,7 @@ export default function PlayerBrowserTtsControls({
               <div className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS (Playback)</p>
                 {/* Browser Voice Grouped Select */}
+                {structuredTextModeActive && <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">English Voice (Text)</p>}
                 <GroupedVoiceSelect 
                     voices={voices}
                     selectedValue={selectedVoice?.name || ''}
@@ -26,7 +29,7 @@ export default function PlayerBrowserTtsControls({
                     context="main"
                 />
                 
-                {mode === 'table' && (
+                {showIndonesianVoice && (
                   <div className="mt-2">
                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Indonesian Voice (Meaning)</p>
                        {indonesianVoices.length > 0 ? (

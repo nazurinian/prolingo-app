@@ -2,22 +2,50 @@ import { APP_DATA_MANAGER_RELEASE_NOTE } from '../../constants/appMetadata';
 import React from 'react';
 import { ArrowRightToLine, Lock, Unlock, Layers, Upload, X, FileDown, History, RotateCcw } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
+import TextLibraryShell from '../text/TextLibraryShell.jsx';
+import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
 
 export default function DesktopDataWorkspace({
   mode, textareaRef, isSystemBusy, isLocked, textContent, handleInputContentChange, handleInsertTab,
   setLockedStates, isMultiSourceMode, dirtySourceKeys, isCsvDirty, openFullPackPicker,
   sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
   saveUpdatedSource, exportMergedDataset, csvChangeSummary, setIsChangeReviewOpen, undoStack,
-  undoLastDataChange, lastDraftAutoSaveAt
+  undoLastDataChange, lastDraftAutoSaveAt, textLibraryCatalog, activeTextDocument, activeTextDocumentTree,
+  activeTextDocumentId, activeTextEditorModel, textLibraryCommandBusy, textLibraryCommandError,
+  handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
+  handleTextLibraryStructuredCommand
 }) {
   return (
     mode === 'text' ? (
-              <div className="flex-1 p-2 relative flex flex-col min-h-[300px] bg-white dark:bg-slate-800">
-                <textarea ref={textareaRef} disabled={isSystemBusy} readOnly={isLocked || isSystemBusy} className={`w-full flex-1 text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy ? 'bg-slate-100 dark:bg-slate-900 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-600`} placeholder="Paste text..." value={textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
-                <div className="flex justify-end items-center mt-2 px-1 flex-shrink-0 gap-2">
-                   <button disabled={isLocked || isSystemBusy} onClick={handleInsertTab} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-700 text-slate-400' : 'bg-white dark:bg-slate-600 hover:bg-slate-50 dark:hover:bg-slate-500 text-slate-600 dark:text-white border-slate-200 dark:border-slate-500'}`} title="Insert Tab Character (Separator)"><ArrowRightToLine className="w-3 h-3" /> Add Tab</button>
-                   <button disabled={isSystemBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded ${isSystemBusy ? 'opacity-50 cursor-not-allowed text-slate-400' : (isLocked ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700')}`}>{isLocked ? <><Lock className="w-3 h-3"/> Locked</> : <><Unlock className="w-3 h-3"/> Unlocked</>}</button>
-                </div>
+              <div className="flex-1 p-2 relative flex flex-col min-h-[300px] bg-white dark:bg-slate-800 gap-2 overflow-y-auto">
+                <TextLibraryShell
+                  catalog={textLibraryCatalog}
+                  activeDocument={activeTextDocument}
+                  activeDocumentTree={activeTextDocumentTree}
+                  activeDocumentId={activeTextDocumentId}
+                  isBusy={textLibraryCommandBusy}
+                  error={textLibraryCommandError}
+                  onSelectDocument={handleTextLibrarySelectDocument}
+                  onCreateDocument={handleTextLibraryCreateDocument}
+                  onCreateCollection={handleTextLibraryCreateCollection}
+                  onRenameDocument={handleTextLibraryRenameDocument}
+                />
+                {activeTextEditorModel === 'legacy-line-v1' ? <>
+                  <textarea ref={textareaRef} disabled={isSystemBusy || textLibraryCommandBusy} readOnly={isLocked || isSystemBusy || textLibraryCommandBusy} className={`w-full flex-1 min-h-[180px] text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'bg-slate-100 dark:bg-slate-900 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-600`} placeholder="Legacy Text import/editor bridge" value={textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
+                  <div className="flex justify-end items-center px-1 flex-shrink-0 gap-2">
+                     <span className="mr-auto text-[8px] text-amber-600 dark:text-amber-400">Legacy bridge • temporary migration/editor surface</span>
+                     <button disabled={isLocked || isSystemBusy || textLibraryCommandBusy} onClick={handleInsertTab} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-700 text-slate-400' : 'bg-white dark:bg-slate-600 hover:bg-slate-50 dark:hover:bg-slate-500 text-slate-600 dark:text-white border-slate-200 dark:border-slate-500'}`} title="Insert Tab Character (Legacy)"><ArrowRightToLine className="w-3 h-3" /> Add Tab</button>
+                     <button disabled={isSystemBusy || textLibraryCommandBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded ${isSystemBusy || textLibraryCommandBusy ? 'opacity-50 cursor-not-allowed text-slate-400' : (isLocked ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700')}`}>{isLocked ? <><Lock className="w-3 h-3"/> Locked</> : <><Unlock className="w-3 h-3"/> Unlocked</>}</button>
+                  </div>
+                </> : <div className="space-y-2">
+                  <div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Structured Document aktif • Card/Segment editor</div>
+                  <TextStructuredEditor
+                    documentTree={activeTextDocumentTree}
+                    isBusy={textLibraryCommandBusy || isSystemBusy}
+                    error={textLibraryCommandError}
+                    onCommand={handleTextLibraryStructuredCommand}
+                  />
+                </div>}
               </div>
             ) : (
               <div className="flex-1 p-3 min-h-[220px] bg-white dark:bg-slate-800 flex flex-col gap-3">

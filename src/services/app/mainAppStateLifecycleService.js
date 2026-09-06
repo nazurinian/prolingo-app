@@ -13,14 +13,24 @@ export const executeSystemLogAppend = ({ type, message, setSystemLogs }) => {
 };
 
 export const executePlaylistContentSyncEffect = ({
-  mode, textIdentityState, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
+  mode, textIdentityState, textDatabaseStatus, setTextDatabaseStatus, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
   setSequenceHighWater, setManualIdHighWater, addLog
 }) => {
     try {
         if (mode === 'text') {
+            // P4-A2 hydration gate: never project legacy/default rows before IndexedDB wins.
+            if (textDatabaseStatus !== 'hydrated' && textDatabaseStatus !== 'ready') {
+                setPlaylist([]);
+                setBatchConfig(prev => ({ ...prev, end: 1 }));
+                return;
+            }
             const newPlaylist = resolveTextPlaylist(textIdentityState);
             setPlaylist(newPlaylist);
             setBatchConfig(prev => ({ ...prev, end: Math.max(1, newPlaylist.length) }));
+            if (textDatabaseStatus === 'hydrated') {
+                setTextDatabaseStatus('ready');
+                addLog('Text DB', `Text UI projection ready (${newPlaylist.length} items).`);
+            }
             return;
         }
 
@@ -59,4 +69,23 @@ export const executeResetFullState = ({
     setTableViewMode('master');
     forceStopAll(); 
     addLog("System", "State fully reset.");
+};
+
+
+export const executeResetTextState = ({
+  localAudioMapText, setLocalAudioMapText, setAudioStatusText,
+  setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices,
+  forceStopAll, addLog
+}) => {
+    Object.values(localAudioMapText || {}).forEach(url => {
+        try { URL.revokeObjectURL(url); } catch (e) { console.warn("Failed to revoke Text audio URL", e); }
+    });
+    setLocalAudioMapText({});
+    setAudioStatusText('idle');
+    setCurrentIndex(null);
+    setPlayingIndex(null);
+    setPlayingContext(null);
+    setSavedIndices(prev => ({ ...prev, text: null }));
+    forceStopAll();
+    addLog("System", "Text state reset without mutating Table state.");
 };

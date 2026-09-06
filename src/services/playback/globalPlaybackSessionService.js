@@ -49,6 +49,9 @@ export const executeGlobalPlaybackSessionService = ({
       tableViewMode
     });
     const sessionMode = sessionStart.sessionMode;
+    // P4-A0: Table vocabulary order is a Table-domain preference. Legacy Text
+    // playback remains deterministic/sequential until Text owns its own order contract.
+    const sessionPlayOrder = sessionMode === 'text' ? 'sequential' : vocabularyPlayOrderRef.current;
     if (sessionStart.shouldSetPlayingContext) {
       setPlayingContext(sessionStart.nextPlayingContext);
     }
@@ -91,7 +94,7 @@ export const executeGlobalPlaybackSessionService = ({
       setIsPaused(false);
       pauseStateRef.current = false;
       let index = startIndex;
-      addLog("Info", `Global Play (${sessionMode}) start • ${vocabularyPlayOrderRef.current === 'shuffle' ? 'Shuffle' : 'Sequential'} order.`);
+      addLog("Info", `Global Play (${sessionMode}) start • ${sessionPlayOrder === 'shuffle' ? 'Shuffle' : 'Sequential'} order.`);
 
       // --- FIX: START SILENT ANCHOR (AGGRESSIVE) ---
       if (silentAudioRef.current) {
@@ -227,7 +230,7 @@ export const executeGlobalPlaybackSessionService = ({
         const liveMode = playbackModeRef.current;
         const advance = resolvePlaybackAdvanceState({
           liveMode,
-          vocabularyPlayOrder: vocabularyPlayOrderRef.current,
+          vocabularyPlayOrder: sessionPlayOrder,
           index,
           listLength: listToPlay.length
         });
