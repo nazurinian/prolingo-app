@@ -11,8 +11,9 @@ import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
 export const useMainAppPrimaryState = () => {
-  // P4-A0: Part 4 development starts in the isolated Text workspace.
-  const [mode, setMode] = useState('text'); 
+  // P4-A17.1 UX hotfix: the finished app opens in the established Table workspace.
+  // Text remains available as an isolated workspace, but is no longer the startup tab.
+  const [mode, setMode] = useState('table'); 
   const [tableViewMode, setTableViewMode] = useState('master'); 
   const [studyQueue, setStudyQueue] = useState([]); 
   const [rangeInput, setRangeInput] = useState("");

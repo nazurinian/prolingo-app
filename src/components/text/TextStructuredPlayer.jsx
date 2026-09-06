@@ -83,7 +83,9 @@ const StructuredPlayerCard = ({
   onSegmentVoiceChange,
   onPreviewTts,
   onGenerateCardAudio,
-  onGenerateSpeakerAudio
+  onGenerateSpeakerAudio,
+  focusTarget = null,
+  onFocusConsumed
 }) => {
   const [manualExpanded, setManualExpanded] = useState(false);
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
@@ -91,12 +93,32 @@ const StructuredPlayerCard = ({
   const segments = block.segments || [];
   const activeSegment = segments.find(segment => segment.id === playingIndex) || null;
   const isActiveCard = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && Boolean(activeSegment) && (isPlaying || isPaused);
-  const expanded = manualExpanded || isActiveCard;
+  const isFocusCard = focusTarget?.documentId === documentTree?.id && focusTarget?.blockId === block.id;
+  const expanded = manualExpanded || isActiveCard || isFocusCard;
 
   useEffect(() => {
-    if (!isActiveCard || !cardRef.current) return;
-    cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [isActiveCard, playingIndex]);
+    if (!cardRef.current) return undefined;
+    if (isFocusCard) {
+      setManualExpanded(true);
+      const frame = window.requestAnimationFrame(() => {
+        const target = focusTarget?.segmentId
+          ? cardRef.current?.querySelector(`[data-text-player-segment="${focusTarget.segmentId}"]`)
+          : cardRef.current;
+        (target || cardRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1400);
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
+      };
+    }
+    if (!isActiveCard) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const target = cardRef.current?.querySelector('[data-text-player-segment-active="true"]') || cardRef.current;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isActiveCard, playingIndex, isFocusCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed]);
 
   const firstSegment = segments[0] || null;
   const collapsedDisplay = resolveStructuredTextDisplayState({ displayMode, isActive: false });
@@ -106,10 +128,10 @@ const StructuredPlayerCard = ({
     : (firstSegment?.meaning || 'No meaning yet.');
 
   return (<>
-    <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id}>
-      <div className="flex items-center gap-2 p-3 bg-slate-50/80 dark:bg-slate-900/40">
-        <button type="button" onClick={() => setManualExpanded(value => !value)} className="p-1 rounded text-slate-400 hover:text-indigo-600" aria-label={expanded ? 'Collapse card' : 'Expand card'}>
-          {expanded ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>}
+    <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50 shadow-indigo-100/40 dark:shadow-none' : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-50/80 dark:bg-slate-900/40">
+        <button type="button" onClick={() => setManualExpanded(value => !value)} className="p-1 rounded text-slate-400 hover:text-indigo-600 transition-all duration-150 active:scale-90" aria-label={expanded ? 'Collapse card' : 'Expand card'}>
+          <ChevronRight className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90' : ''}`}/>
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -119,17 +141,19 @@ const StructuredPlayerCard = ({
             {isActiveCard && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">ACTIVE</span>}
           </div>
           <p className="mt-0.5 text-[8px] font-mono text-slate-400">{block.id} • {segments.length} segment{segments.length === 1 ? '' : 's'}</p>
-          {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">{preview}</p>}
+          {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
-        <button type="button" disabled={controlsBusy} onClick={() => setAudioPanelOpen(true)} className="px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35" title="Card audio profile and Edge download">
-          <Volume2 className="w-3 h-3 inline mr-1"/>Audio
-        </button>
-        <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35" title="Play this card">
-          <Play className="w-3 h-3 inline mr-1 fill-current"/>Card
-        </button>
+        <div className="w-full pl-7 sm:w-auto sm:pl-0 sm:ml-auto flex items-center gap-1.5" data-text-card-quick-actions="true">
+          <button type="button" disabled={controlsBusy} onClick={() => setAudioPanelOpen(true)} className="flex-1 sm:flex-none px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95" title="Card audio profile and Edge download">
+            <Volume2 className="w-3 h-3 inline mr-1"/>Audio
+          </button>
+          <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className="flex-1 sm:flex-none px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play this card">
+            <Play className="w-3 h-3 inline mr-1 fill-current"/>Card
+          </button>
+        </div>
       </div>
 
-      {expanded && <div className="p-3 space-y-2">
+      {expanded && <div className="p-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
         {segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No segments in this card.</div>}
         {segments.map((segment, segmentIndex) => {
           const active = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && segment.id === playingIndex && (isPlaying || isPaused);
@@ -147,7 +171,7 @@ const StructuredPlayerCard = ({
               }).voiceName
             : null;
           return (
-            <div key={segment.id} className={`rounded-xl border p-3 transition ${active ? 'border-indigo-400 bg-indigo-50/70 dark:border-indigo-700 dark:bg-indigo-950/25' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30'}`} data-text-player-segment={segment.id}>
+            <div key={segment.id} className={`rounded-xl border p-3 transition-all duration-200 ease-out ${active ? 'border-indigo-400 bg-indigo-50/70 dark:border-indigo-700 dark:bg-indigo-950/25 shadow-sm' : (isFocusCard && focusTarget?.segmentId === segment.id) ? 'border-amber-400 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-900' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30'}`} data-text-player-segment={segment.id} data-text-player-segment-active={active ? 'true' : undefined} data-text-search-focus-segment={isFocusCard && focusTarget?.segmentId === segment.id ? 'true' : undefined}>
               <div className="flex items-start gap-2">
                 <div className="mt-0.5 text-[9px] font-black text-slate-400 min-w-[24px]">{segmentIndex + 1}</div>
                 <div className="min-w-0 flex-1">
@@ -261,10 +285,14 @@ export const TextStructuredPlayer = ({
   onGenerateSpeakerAudio,
   onCancelGeneration,
   onRetryFailedGeneration,
-  onGenerateAudio
+  onGenerateAudio,
+  focusTarget = null,
+  onFocusConsumed
 }) => {
+  const [controlsExpanded, setControlsExpanded] = useState(false);
   const [audioGenerationExpanded, setAudioGenerationExpanded] = useState(false);
   const [playbackFeelExpanded, setPlaybackFeelExpanded] = useState(false);
+  const playerRef = useRef(null);
   const blocks = documentTree?.blocks || [];
   const playbackList = useMemo(() => resolveStructuredTextPlaybackList(documentTree), [documentTree]);
   const playableList = useMemo(() => playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode)), [playbackList, playbackChannelMode]);
@@ -275,19 +303,36 @@ export const TextStructuredPlayer = ({
   const englishVoiceNames = useMemo(() => [...new Set((Array.isArray(englishVoices) ? englishVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [englishVoices]);
   const textSpeakerMap = speakerVoiceMap?.text && typeof speakerVoiceMap.text === 'object' ? speakerVoiceMap.text : {};
 
+  useEffect(() => {
+    if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
+    playerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1000);
+    return () => window.clearTimeout(timer);
+  }, [focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
+
   return (
-    <section className="h-full overflow-y-auto pb-32 md:pb-4" data-text-structured-player="true">
-      <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-800/95 backdrop-blur shadow-sm p-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
-            {documentTree?.documentType === 'conversation' ? <MessageSquare className="w-5 h-5"/> : <FileText className="w-5 h-5"/>}
+    <section ref={playerRef} className="h-full overflow-y-auto pb-32 md:pb-4 scroll-smooth" data-text-structured-player="true" data-text-segment-auto-follow="true">
+      <div className="mb-2 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/90 dark:bg-slate-800/90 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
+        <div className="flex items-center gap-2 p-2">
+          <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">
+            {documentTree?.documentType === 'conversation' ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-black text-slate-800 dark:text-white truncate">{documentTree?.title || 'Text Document'}</h2>
-            <p className="text-[9px] font-mono text-slate-400">{documentTree?.id || ''} • {blocks.length} cards • {playableList.length}/{playbackList.length} playable</p>
+            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text</p>
+            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable</p>
           </div>
-          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-black disabled:opacity-35"><Play className="w-3.5 h-3.5 inline mr-1 fill-current"/>Play Document</button>
+          <button type="button" onClick={() => setControlsExpanded(value => !value)} className={`px-2 py-1.5 rounded-lg border text-[9px] font-black transition-all duration-150 active:scale-95 ${controlsExpanded ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-700'}`} aria-expanded={controlsExpanded} title="Show Text controls">
+            <ChevronRight className={`w-3 h-3 inline mr-1 transition-transform duration-200 ${controlsExpanded ? 'rotate-90' : ''}`}/>Controls
+          </button>
+          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Document"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
+
+        {controlsExpanded && <div className="border-t border-indigo-100 dark:border-indigo-900 p-2.5 animate-in fade-in slide-in-from-top-1 duration-200" data-text-compact-controls="true">
+          <div className="mb-2 flex items-center gap-2 text-[8px] text-slate-400">
+            <span className="font-black text-slate-600 dark:text-slate-300">Document</span>
+            <span className="truncate" title={documentTree?.title || 'Text Document'}>{documentTree?.title || 'Text Document'}</span>
+            <span className="ml-auto hidden sm:inline font-mono">{documentTree?.id || ''}</span>
+          </div>
 
         {conversationSpeakers.length > 0 && <div className="mt-3 rounded-xl border border-sky-100 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20 p-2.5" data-text-speaker-voice-profiles="true">
           <div className="flex items-center gap-1.5 mb-2">
@@ -433,10 +478,11 @@ export const TextStructuredPlayer = ({
           </div>}
         </div>
 
-        <p className="mt-2 text-[9px] text-slate-400">A13 • Text-owned repeat/order/delay/resume aktif. Table repeat/shuffle/delay state tetap tidak dipakai.</p>
+        <p className="mt-2 text-[9px] text-slate-400">Text controls tetap isolated dari Table. Tutup Controls untuk kembali ke tampilan Card yang lapang.</p>
+        </div>}
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3 animate-in fade-in duration-200">
         {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Document belum memiliki Card. Tambahkan melalui Text → Data.</div>}
         {blocks.map((block, index) => <StructuredPlayerCard
           key={block.id}
@@ -469,6 +515,8 @@ export const TextStructuredPlayer = ({
           onPreviewTts={onPreviewTts}
           onGenerateCardAudio={onGenerateCardAudio}
           onGenerateSpeakerAudio={onGenerateSpeakerAudio}
+          focusTarget={focusTarget}
+          onFocusConsumed={onFocusConsumed}
         />)}
       </div>
     </section>

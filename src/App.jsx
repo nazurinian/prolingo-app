@@ -108,6 +108,7 @@ import { buildTextStructuredSpeakerVoiceMetadata, getTextStructuredSpeakerVoiceM
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
+import { resolveTextLibrarySearchActionTarget, resolveTextLibrarySearchResults, TEXT_LIBRARY_SEARCH_ACTIONS } from './domain/text/textLibrarySearchDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
 import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
 import { executeProLingoTextPackExport, executeProLingoTextPackFileMerge } from './services/persistence/textPackJsonService.js';
@@ -171,6 +172,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // P4-A4: Text Library UI command state belongs to Text only and never participates in Table busy state.
   const [textLibraryCommandBusy, setTextLibraryCommandBusy] = useState(false);
   const [textLibraryCommandError, setTextLibraryCommandError] = useState(null);
+  // P4-A16: Text-only library search/focus state. Search never reuses Table masterSearch.
+  const [textLibrarySearchQuery, setTextLibrarySearchQuery] = useState('');
+  const [pendingTextLibrarySearchAction, setPendingTextLibrarySearchAction] = useState(null);
+  const [textLibrarySearchFocusTarget, setTextLibrarySearchFocusTarget] = useState(null);
+  const textLibrarySearchFocusNonceRef = useRef(0);
   // P4-A10: session-only URLs for structured Text audio. IndexedDB stores metadata only.
   const [structuredTextAudioRuntimeUrls, setStructuredTextAudioRuntimeUrls] = useState({});
   const structuredTextAudioRuntimeUrlsRef = useRef({});
@@ -513,6 +519,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
   const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
+  const textLibrarySearchResults = useMemo(
+    () => resolveTextLibrarySearchResults(textLibrarySnapshot, textLibrarySearchQuery),
+    [textLibrarySnapshot, textLibrarySearchQuery]
+  );
   const structuredTextPlaybackList = useMemo(() => resolveStructuredTextPlaybackList(activeTextDocumentTree), [activeTextDocumentTree]);
   const structuredTextActivePlaybackList = useMemo(
     () => structuredTextPlaybackList.filter(item => hasStructuredTextPlayableChannel(item, textStructuredPreferences.playbackChannelMode)),
@@ -1367,6 +1377,66 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
+
+  const handleTextLibrarySearchAction = useCallback(async (result, requestedAction = TEXT_LIBRARY_SEARCH_ACTIONS.OPEN) => {
+    if (!result?.documentId) return null;
+    const target = resolveTextLibrarySearchActionTarget(result, requestedAction);
+    textLibrarySearchFocusNonceRef.current += 1;
+    const request = { ...target, nonce: textLibrarySearchFocusNonceRef.current };
+    setPendingTextLibrarySearchAction(request);
+    if (target.documentId !== activeTextDocumentId) {
+      const selected = await handleTextLibrarySelectDocument(target.documentId);
+      if (!selected) {
+        setPendingTextLibrarySearchAction(current => current?.nonce === request.nonce ? null : current);
+        return null;
+      }
+    }
+    return request;
+  }, [activeTextDocumentId, handleTextLibrarySelectDocument]);
+
+  useEffect(() => {
+    const request = pendingTextLibrarySearchAction;
+    if (!request || mode !== 'text' || activeTextDocumentTree?.id !== request.documentId) return;
+
+    const block = request.blockId
+      ? (activeTextDocumentTree.blocks || []).find(item => item.id === request.blockId) || null
+      : null;
+    const segment = request.segmentId
+      ? (block?.segments || []).find(item => item.id === request.segmentId) || null
+      : null;
+
+    // Fail closed to the nearest stable parent if an indexed search result became stale
+    // after an edit/import between click and document activation.
+    const focusTarget = {
+      documentId: activeTextDocumentTree.id,
+      blockId: block?.id || null,
+      segmentId: segment?.id || null,
+      nonce: request.nonce
+    };
+    setTextLibrarySearchFocusTarget(activeTextEditorModel === 'structured-v1' ? focusTarget : null);
+    if (isMobile) setIsSidebarOpen(false);
+
+    if (activeTextEditorModel === 'structured-v1') {
+      if (request.action === TEXT_LIBRARY_SEARCH_ACTIONS.PLAY) {
+        if (segment?.id) {
+          startStructuredTextPlayback({ startSegmentId: segment.id, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT });
+        } else if (block?.id) {
+          startStructuredTextPlayback({ blockId: block.id, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD });
+        } else {
+          startStructuredTextPlayback({ scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT });
+        }
+      } else if (request.action === TEXT_LIBRARY_SEARCH_ACTIONS.START_HERE && segment?.id) {
+        startStructuredTextPlayback({ startSegmentId: segment.id, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE });
+      }
+    }
+
+    setPendingTextLibrarySearchAction(current => current?.nonce === request.nonce ? null : current);
+  }, [pendingTextLibrarySearchAction, mode, activeTextDocumentTree, activeTextEditorModel, isMobile, setIsSidebarOpen]);
+
+  const handleTextLibrarySearchFocusConsumed = useCallback((nonce) => {
+    setTextLibrarySearchFocusTarget(current => current?.nonce === nonce ? null : current);
+  }, []);
+
   const handleTextLibraryCreateDocument = useCallback((payload) => runTextLibraryUiCommand(async () => {
     forceStopAll();
     setCurrentIndex(null);
@@ -1385,7 +1455,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const textPackSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
-    checkpoint: 'A15 — Full Text Database Backup / Restore',
+    checkpoint: 'A16 — Text Search + Final UX Polish',
     engineeringLine: APP_CHECKPOINT_ID
   }), []);
 
@@ -1428,7 +1498,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const textDatabaseBackupSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
-    checkpoint: 'A15 — Full Text Database Backup / Restore',
+    checkpoint: 'A16 — Text Search + Final UX Polish',
     engineeringLine: APP_CHECKPOINT_ID
   }), []);
 
@@ -1481,8 +1551,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       exportDatabase: handleTextDatabaseBackupExport,
       inspectBackup: handleTextDatabaseBackupInspect,
       restoreDatabase: handleTextDatabaseBackupRestore
+    },
+    __search: {
+      query: textLibrarySearchQuery,
+      results: textLibrarySearchResults,
+      onQueryChange: setTextLibrarySearchQuery,
+      onAction: handleTextLibrarySearchAction
     }
-  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackImportMerge, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore]);
+  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackImportMerge, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction]);
 
   const handleStructuredTextAttachAudioFile = useCallback(async (segmentId, channel, file) => {
     if (!file || !segmentId || !['text', 'meaning'].includes(channel)) return null;
@@ -2353,6 +2429,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onCancelGeneration={handleStructuredTextCancelGeneration}
         onRetryFailedGeneration={handleStructuredTextRetryFailedGeneration}
         onGenerateAudio={handleStructuredTextGenerateAudio}
+        focusTarget={textLibrarySearchFocusTarget}
+        onFocusConsumed={handleTextLibrarySearchFocusConsumed}
       />;
     }
     return renderPlaylistViewport({

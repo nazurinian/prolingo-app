@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, Database, Download, Edit3, FileText, Layers, Plus, RefreshCcw, Save, Upload, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Database, Download, Edit3, FileText, Layers, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Upload, X } from 'lucide-react';
 
 const typeLabel = type => type === 'conversation' ? 'Conversation' : type === 'paragraph' ? 'Paragraph' : 'Mixed';
 
@@ -27,6 +27,7 @@ export const TextLibraryShell = ({
   const databaseBackupInputRef = useRef(null);
   const packActions = activeDocumentTree?.__packActions || null;
   const databaseBackupActions = activeDocumentTree?.__databaseBackupActions || null;
+  const search = activeDocumentTree?.__search || null;
   const [packStatus, setPackStatus] = useState(null);
   const [databaseBackupStatus, setDatabaseBackupStatus] = useState(null);
   const [preparedDatabaseBackup, setPreparedDatabaseBackup] = useState(null);
@@ -157,6 +158,63 @@ export const TextLibraryShell = ({
           {(collection.documents || []).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}
         </optgroup>)}
       </select>
+
+      {search && <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/50 dark:bg-sky-950/15 p-2.5 space-y-2" data-text-library-search="true">
+        <div className="flex items-center gap-1.5">
+          <Search className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300 shrink-0"/>
+          <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Search Text Library</p>
+          <span className="ml-auto text-[8px] text-slate-400">Title • Text • Meaning • Speaker</span>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"/>
+          <input
+            value={search.query || ''}
+            onChange={event => search.onQueryChange?.(event.target.value)}
+            placeholder="Search all Text documents…"
+            className="w-full rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900 py-2 pl-8 pr-8 text-[10px] text-slate-700 dark:text-slate-200 outline-none focus:border-sky-400"
+            data-text-library-search-input="true"
+          />
+          {search.query && <button type="button" onClick={() => search.onQueryChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600" title="Clear search"><X className="w-3 h-3"/></button>}
+        </div>
+
+        {(search.query || '').trim().length === 1 && <p className="text-[8px] text-slate-400">Type at least 2 characters.</p>}
+        {(search.query || '').trim().length >= 2 && <div className="space-y-1.5" data-text-library-search-results="true">
+          <div className="flex items-center justify-between text-[8px] text-slate-400"><span>{search.results?.length || 0} result{search.results?.length === 1 ? '' : 's'}</span><span>Library-wide</span></div>
+          {(search.results || []).length === 0 && <div className="rounded-lg border border-dashed border-sky-200 dark:border-sky-900 bg-white/70 dark:bg-slate-900/40 p-3 text-center text-[9px] text-slate-400">No matching Text content.</div>}
+          <div className="max-h-72 space-y-1.5 overflow-y-auto pr-0.5">
+            {(search.results || []).map(result => {
+              const isSegment = result.resultType === 'segment';
+              const isCard = result.resultType === 'card';
+              const canPlay = result.editorModel === 'structured-v1';
+              const title = isSegment ? (result.blockTitle || result.blockId || 'Segment') : isCard ? (result.blockTitle || result.blockId || 'Card') : result.documentTitle;
+              const context = isSegment || isCard ? `${result.documentTitle}${result.blockTitle && isSegment ? ` › ${result.blockTitle}` : ''}` : result.editorModel === 'structured-v1' ? 'Structured Document' : 'Legacy Document';
+              return <div key={result.id} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-2" data-text-library-search-result={result.id}>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[9px] font-black text-slate-700 dark:text-slate-200 truncate">{title}</span>
+                      <span className="text-[7px] font-black uppercase px-1 py-0.5 rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300">{result.resultType}</span>
+                      {(result.matchedFields || []).map(field => <span key={field} className="text-[7px] font-black uppercase px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">{field}</span>)}
+                    </div>
+                    <p className="mt-0.5 text-[8px] text-slate-400 truncate">{context}</p>
+                    {isSegment && <div className="mt-1 space-y-0.5">
+                      {result.speaker && <p className="text-[8px] font-black text-sky-600 dark:text-sky-300">{result.speaker}</p>}
+                      <p className="text-[9px] leading-snug text-slate-600 dark:text-slate-300 line-clamp-2">{result.text}</p>
+                      {result.meaning && <p className="text-[8px] leading-snug text-slate-400 line-clamp-1">{result.meaning}</p>}
+                    </div>}
+                    <p className="mt-1 text-[7px] font-mono text-slate-300 dark:text-slate-600">{result.segmentId || result.blockId || result.documentId}</p>
+                  </div>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <button type="button" disabled={isBusy} onClick={() => search.onAction?.(result, 'open')} className="px-2 py-1 rounded-md border border-sky-200 dark:border-sky-900 text-[8px] font-black text-sky-700 dark:text-sky-300 disabled:opacity-40"><BookOpen className="w-3 h-3 inline mr-1"/>Open</button>
+                  {canPlay && <button type="button" disabled={isBusy} onClick={() => search.onAction?.(result, 'play')} className="px-2 py-1 rounded-md bg-indigo-600 text-white text-[8px] font-black disabled:opacity-40"><PlayCircle className="w-3 h-3 inline mr-1"/>Play</button>}
+                  {canPlay && isSegment && <button type="button" disabled={isBusy} onClick={() => search.onAction?.(result, 'start-here')} className="px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[8px] font-black disabled:opacity-40"><SkipForward className="w-3 h-3 inline mr-1"/>Start Here</button>}
+                </div>
+              </div>;
+            })}
+          </div>
+        </div>}
+      </div>}
 
       {activeDocument && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5">
         <div className="flex items-start gap-2">
