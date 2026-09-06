@@ -18,7 +18,7 @@ export const TextStructuredDocumentPlaceholder = ({ documentTree }) => {
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3"><Layers className="w-4 h-4 mx-auto text-slate-400"/><p className="mt-1 text-xl font-black text-slate-800 dark:text-white">{blocks.length}</p><p className="text-[9px] text-slate-400">Cards / Blocks</p></div>
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3"><FileText className="w-4 h-4 mx-auto text-slate-400"/><p className="mt-1 text-xl font-black text-slate-800 dark:text-white">{segments}</p><p className="text-[9px] text-slate-400">Playable Segments</p></div>
         </div>
-        <p className="mt-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">Document ini sudah memakai database terstruktur. P4-A4 hanya membuka Library shell dan active-document flow; editor Card/Segment akan dibangun pada patch berikutnya.</p>
+        <p className="mt-5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">Document ini sudah memakai database terstruktur. Card/Segment sekarang diedit melalui Text Data tab. Player structured masih ditahan sebagai placeholder sampai playback berbasis SEGMENT_ID dibangun pada patch berikutnya.</p>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React from 'react';
 import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, ListPlus } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
+import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
 
 export default function MobileDataControls({
   mode, isMultiSourceMode, dirtySourceKeys, isSystemBusy, isCsvDirty, openFullPackPicker,
@@ -12,22 +13,31 @@ export default function MobileDataControls({
   setIsChangeReviewOpen, undoStack, undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput,
   handleRangeAdd, textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
 }) {
   if (mode === 'text') {
-    return <TextLibraryShell
-      compact
-      catalog={textLibraryCatalog}
-      activeDocument={activeTextDocument}
-      activeDocumentTree={activeTextDocumentTree}
-      activeDocumentId={activeTextDocumentId}
-      isBusy={textLibraryCommandBusy}
-      error={textLibraryCommandError}
-      onSelectDocument={handleTextLibrarySelectDocument}
-      onCreateDocument={handleTextLibraryCreateDocument}
-      onCreateCollection={handleTextLibraryCreateCollection}
-      onRenameDocument={handleTextLibraryRenameDocument}
-    />;
+    return <div className="space-y-3">
+      <TextLibraryShell
+        compact
+        catalog={textLibraryCatalog}
+        activeDocument={activeTextDocument}
+        activeDocumentTree={activeTextDocumentTree}
+        activeDocumentId={activeTextDocumentId}
+        isBusy={textLibraryCommandBusy}
+        error={textLibraryCommandError}
+        onSelectDocument={handleTextLibrarySelectDocument}
+        onCreateDocument={handleTextLibraryCreateDocument}
+        onCreateCollection={handleTextLibraryCreateCollection}
+        onRenameDocument={handleTextLibraryRenameDocument}
+      />
+      {activeTextDocument?.editorModel === 'structured-v1' && <TextStructuredEditor
+        documentTree={activeTextDocumentTree}
+        isBusy={textLibraryCommandBusy}
+        error={textLibraryCommandError}
+        onCommand={handleTextLibraryStructuredCommand}
+      />}
+      {activeTextDocument?.editorModel === 'legacy-line-v1' && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[9px] leading-relaxed text-amber-700 dark:text-amber-300">Legacy Document tetap menggunakan editor bridge desktop/playlist lama sementara. Structured Card/Segment Editor hanya menulis ke structured-v1.</div>}
+    </div>;
   }
   return (
     <>

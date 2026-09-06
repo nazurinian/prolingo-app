@@ -3,6 +3,7 @@ import React from 'react';
 import { ArrowRightToLine, Lock, Unlock, Layers, Upload, X, FileDown, History, RotateCcw } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
+import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
 
 export default function DesktopDataWorkspace({
   mode, textareaRef, isSystemBusy, isLocked, textContent, handleInputContentChange, handleInsertTab,
@@ -11,7 +12,8 @@ export default function DesktopDataWorkspace({
   saveUpdatedSource, exportMergedDataset, csvChangeSummary, setIsChangeReviewOpen, undoStack,
   undoLastDataChange, lastDraftAutoSaveAt, textLibraryCatalog, activeTextDocument, activeTextDocumentTree,
   activeTextDocumentId, activeTextEditorModel, textLibraryCommandBusy, textLibraryCommandError,
-  handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+  handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
+  handleTextLibraryStructuredCommand
 }) {
   return (
     mode === 'text' ? (
@@ -35,10 +37,14 @@ export default function DesktopDataWorkspace({
                      <button disabled={isLocked || isSystemBusy || textLibraryCommandBusy} onClick={handleInsertTab} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded border transition ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-700 text-slate-400' : 'bg-white dark:bg-slate-600 hover:bg-slate-50 dark:hover:bg-slate-500 text-slate-600 dark:text-white border-slate-200 dark:border-slate-500'}`} title="Insert Tab Character (Legacy)"><ArrowRightToLine className="w-3 h-3" /> Add Tab</button>
                      <button disabled={isSystemBusy || textLibraryCommandBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className={`text-[10px] flex items-center gap-1 px-2 py-1 rounded ${isSystemBusy || textLibraryCommandBusy ? 'opacity-50 cursor-not-allowed text-slate-400' : (isLocked ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700')}`}>{isLocked ? <><Lock className="w-3 h-3"/> Locked</> : <><Unlock className="w-3 h-3"/> Unlocked</>}</button>
                   </div>
-                </> : <div className="flex-1 min-h-[180px] rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 flex flex-col items-center justify-center text-center">
-                  <FileDown className="w-5 h-5 text-emerald-600 dark:text-emerald-300 mb-2"/>
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Structured Document aktif</p>
-                  <p className="mt-1 text-[9px] leading-relaxed text-slate-400">Textarea legacy tidak boleh menulis ke document ini. Editor Card/Segment akan masuk pada patch setelah Library shell stabil.</p>
+                </> : <div className="space-y-2">
+                  <div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Structured Document aktif • Card/Segment editor</div>
+                  <TextStructuredEditor
+                    documentTree={activeTextDocumentTree}
+                    isBusy={textLibraryCommandBusy || isSystemBusy}
+                    error={textLibraryCommandError}
+                    onCommand={handleTextLibraryStructuredCommand}
+                  />
                 </div>}
               </div>
             ) : (

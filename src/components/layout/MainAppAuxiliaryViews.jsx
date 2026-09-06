@@ -66,7 +66,7 @@ export const renderMobileToolsView = ({
   sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
   setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
-  rate, setRate, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
+  rate, setRate, showIndonesianBrowserVoice, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
   memorySettings, setMemorySettings, advancedDatasetStats, isMultiSourceMode,
   dirtySourceKeys, isCsvDirty, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries,
   sourcePack, openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset,
@@ -84,7 +84,7 @@ export const renderMobileToolsView = ({
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -101,6 +101,7 @@ export const renderMobileToolsView = ({
           indonesianVoices={indonesianVoices}
           selectedIndonesianVoice={selectedIndonesianVoice}
           setSelectedIndonesianVoice={setSelectedIndonesianVoice}
+          showIndonesianBrowserVoice={showIndonesianBrowserVoice}
           rate={rate}
           setRate={setRate}
           renderPlaybackSequenceBuilder={renderPlaybackSequenceBuilder}
@@ -200,6 +201,7 @@ export const renderMobileToolsView = ({
           handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
           handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
           handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+          handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
       />
 );
 

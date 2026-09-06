@@ -1,5 +1,6 @@
 import { getItemPartText } from '../../utils/audioUtils';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils';
+import { resolveStructuredTextPlayerTitle } from '../../domain/text/textStructuredPlaybackDomain.js';
 
 export const executeMediaSessionLifecycleService = ({
   currentPlayerList, playbackContextRef, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
@@ -25,6 +26,14 @@ export const executeMediaSessionLifecycleService = ({
         // 2. Tentukan Metadata Awal
         let title = activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.text ? capitalizeDisplayText(activeItem.text) : "Unknown Item");
         let artist = "ProLingo Audio";
+        let album = currentDeckName || "ProLingo Deck";
+
+        const structuredTextMetadata = resolveStructuredTextPlayerTitle(activeItem);
+        if (structuredTextMetadata) {
+            title = structuredTextMetadata.title;
+            artist = structuredTextMetadata.artist;
+            album = structuredTextMetadata.album;
+        }
 
         // Jika mode Table
         if (activeItem.isStructured) {
@@ -37,7 +46,15 @@ export const executeMediaSessionLifecycleService = ({
             artist = activeItem.word ? capitalizeDisplayText(activeItem.word) : 'Word Translation';
         }
         if (speakingPart === "meaning") {
-            title = `Terjemahan kalimat: ${activeItem.meaning}`;
+            if (activeItem.isTextStructuredSegment) {
+                // P4-A7: structured Text keeps the Document title stable while the
+                // active audio channel switches from Text to Meaning.
+                title = activeItem.documentTitle || "Text Document";
+                const detail = activeItem.speaker || activeItem.blockTitle || (activeItem.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
+                artist = [detail, `Segment ${Number(activeItem.displayId) || 1}`, 'Meaning'].filter(Boolean).join(' • ');
+            } else {
+                title = `Terjemahan kalimat: ${activeItem.meaning}`;
+            }
         }
         const activeExpMatch = String(speakingPart || '').match(/^exp([1-5])_(en|idn)$/i);
         if (activeExpMatch) {
@@ -49,11 +66,11 @@ export const executeMediaSessionLifecycleService = ({
         }
 
         // --- FUNGSI UPDATE METADATA (Helper) ---
-        const updateMetadata = (t, a) => {
+        const updateMetadata = (t, a, albumLabel = album) => {
              navigator.mediaSession.metadata = new MediaMetadata({
                 title: t,
                 artist: a,
-                album: currentDeckName || "ProLingo Deck",
+                album: albumLabel,
                 artwork: [
                     { 
                         src: "https://cdn-icons-png.flaticon.com/512/2995/2995101.png",
@@ -65,7 +82,7 @@ export const executeMediaSessionLifecycleService = ({
         };
 
         // Set Awal (Static)
-        updateMetadata(title, artist);
+        updateMetadata(title, artist, album);
 
         // Keep Android/system media metadata static for the lifetime of the
         // current logical playback part. Replacing MediaMetadata every 200 ms

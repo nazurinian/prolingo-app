@@ -20,6 +20,7 @@ const MobileTools = ({
   indonesianVoices,
   selectedIndonesianVoice,
   setSelectedIndonesianVoice,
+  showIndonesianBrowserVoice = mode === 'table',
   rate,
   setRate,
   renderPlaybackSequenceBuilder,
@@ -110,7 +111,7 @@ const MobileTools = ({
   onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
 }) => {
   const rootRef = useRef(null);
   const lastScrollTopRef = useRef(0);
@@ -204,8 +205,9 @@ const MobileTools = ({
                   </div>
                   <div className="space-y-2">
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS</p>
+                      {mode === 'text' && showIndonesianBrowserVoice && <p className="text-[9px] font-bold text-slate-400 uppercase">English Voice (Text)</p>}
                       <GroupedVoiceSelect voices={voices} selectedValue={selectedVoice?.name || ''} onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))} disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} context="main"/>
-                      {mode === 'table' && (indonesianVoices.length > 0 ? <GroupedVoiceSelect voices={indonesianVoices} selectedValue={selectedIndonesianVoice?.name || ''} onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))} disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} context="meaning"/> : <div className="text-[10px] text-red-400 italic border p-2 rounded bg-red-50 dark:bg-red-900/20">Browser tidak menyediakan suara Indonesia.</div>)}
+                      {showIndonesianBrowserVoice && (indonesianVoices.length > 0 ? <><p className="text-[9px] font-bold text-slate-400 uppercase mt-2">Indonesian Voice (Meaning)</p><GroupedVoiceSelect voices={indonesianVoices} selectedValue={selectedIndonesianVoice?.name || ''} onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))} disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} context="meaning"/></> : <div className="text-[10px] text-red-400 italic border p-2 rounded bg-red-50 dark:bg-red-900/20">Browser tidak menyediakan suara Indonesia.</div>)}
                       <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded border border-slate-100 dark:border-slate-600"><span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-8 text-center">{rate}x</span><input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(e.target.value)} className="flex-1 h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-indigo-600" /></div>
                   </div>
               </div>
@@ -266,6 +268,7 @@ const MobileTools = ({
               handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+              handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
           />}
 
           {sidebarSection === 'system' && <MobileSystemControls

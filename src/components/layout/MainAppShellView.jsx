@@ -29,15 +29,15 @@ export const renderMainAppShellView = (props) => {
     geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
     batchButtonRef, isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices, selectedVoice,
-    setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate, setRate,
+    setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate, setRate, showIndonesianBrowserVoice,
     renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode, memorySettings, setMemorySettings, advancedDatasetStats,
     csvInputRef, handleCSVUpload, openManualAdd, playlist, tableViewMode, exportTableCSV,
     setIsClearDialogOpen, setIsChangeReviewOpen, undoStack, undoLastDataChange, isMultiSourceMode, textareaRef,
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates, dirtySourceKeys,
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
     saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt, renderMobileTools, renderPlaylist, isPaused,
-    isPlaying, playingIndex, activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll,
-    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, isChangeReviewOpen,
+    isPlaying, playingIndex, speakingPart, activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll,
+    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen, closeManualEditor,
     manualEditingId, importedRowCount, sequenceHighWater, manualForm, setManualForm, manualAdvancedOpen,
     setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen, setTableContent, setCsvBaselineContent, setSourcePack,
@@ -48,7 +48,7 @@ export const renderMainAppShellView = (props) => {
     masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
   } = props;
 
   return (
@@ -183,6 +183,8 @@ export const renderMainAppShellView = (props) => {
                 indonesianVoices={indonesianVoices}
                 selectedIndonesianVoice={selectedIndonesianVoice}
                 setSelectedIndonesianVoice={setSelectedIndonesianVoice}
+                showIndonesianVoice={showIndonesianBrowserVoice}
+                structuredTextModeActive={structuredTextModeActive}
                 rate={rate}
                 setRate={setRate}
               />
@@ -256,6 +258,7 @@ export const renderMainAppShellView = (props) => {
               handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+              handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
             />}
           </div>
         </SidebarShell>
@@ -293,6 +296,7 @@ export const renderMainAppShellView = (props) => {
         isPaused={isPaused}
         isPlaying={isPlaying}
         playingIndex={playingIndex}
+        speakingPart={speakingPart}
         activePlaybackList={activePlaybackList}
         handleSmartNav={handleSmartNav}
         handleGlobalPlay={handleGlobalPlay}
@@ -301,6 +305,7 @@ export const renderMainAppShellView = (props) => {
         cyclePlaybackMode={cyclePlaybackMode}
         setPlaybackMode={setPlaybackMode}
         playingContext={playingContext}
+        structuredTextModeActive={structuredTextModeActive}
       />
       {isChangeReviewOpen && (
         <ChangeReviewModal

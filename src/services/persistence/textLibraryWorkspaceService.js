@@ -139,3 +139,11 @@ export const executeTextLibraryRenameDocument = async ({ id, title, setTextLibra
   addLog?.('Text Library', `Renamed Document ${id}.`);
   return result;
 };
+
+export const executeTextLibraryStructuredCommand = async ({ command, setTextLibrarySnapshot, addLog }) => {
+  const result = await executeTextLibraryCommand(command);
+  setTextLibrarySnapshot(result.librarySnapshot);
+  const label = [result.entity, result.action].filter(Boolean).join(' ');
+  addLog?.('Text Library', `${label || 'Structured command'}${result.id ? `: ${result.id}` : ''}.`);
+  return result;
+};

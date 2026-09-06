@@ -44,7 +44,7 @@ import { RevertAllConfirmModal, DeleteVocabularyModal, ClearViewModal, DeleteDec
 import { MemoizedRow } from './components/table/MemoizedRow';
 import { MemoizedTextRow } from './components/table/MemoizedTextRow';
 import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
-import { TextStructuredDocumentPlaceholder } from './components/text/TextStructuredDocumentPlaceholder.jsx';
+import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
 import { renderPlaylistViewport } from './components/table/PlaylistViewport';
 import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE_KEYS, V510_SOURCE_LABELS, V58_CANONICAL_HEADERS } from './constants/datasetConstants';
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
@@ -99,8 +99,13 @@ import { executeCycleMasteryState } from './services/progress/masteryInteraction
 import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
+import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
+import { hasStructuredTextPlayableChannel } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
-import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeStructuredTextPlaybackSessionService } from './services/playback/textStructuredPlaybackSessionService.js';
+import { executeTextStructuredPreferencePersistenceEffect } from './services/persistence/textStructuredPreferenceService.js';
 
 
 // --- MAIN COMPONENT ---
@@ -110,7 +115,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
     legacyTextBootstrapState, activeTextDocumentId, setActiveTextDocumentId, textLibrarySnapshot, setTextLibrarySnapshot,
     textDatabaseStatus, setTextDatabaseStatus, textDatabaseError, setTextDatabaseError,
-    playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
+    textStructuredPreferences, setTextStructuredPreferences, playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
     lastDraftAutoSaveAt, setLastDraftAutoSaveAt, sourcePack, setSourcePack, sourceUploadKey, setSourceUploadKey,
@@ -245,7 +250,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       mode, playlist, tableViewMode, studyQueueSet, masterFilteredPlaylist
   }), [playlist, mode, tableViewMode, studyQueueSet, masterFilteredPlaylist]);
 
-  const activePlaybackList = useMemo(() => resolveActivePlaybackList({
+  const legacyActivePlaybackList = useMemo(() => resolveActivePlaybackList({
       playingContext, playlist, studyQueueSet, masterFilteredPlaylist, vocabularyPlayOrder, activeVocabularyOrder
   }), [playingContext, playlist, studyQueueSet, masterFilteredPlaylist, vocabularyPlayOrder, activeVocabularyOrder]);
 
@@ -328,6 +333,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }), [vocabularyPlayOrder]);
 
   useEffect(() => executeControlSectionPersistenceEffect(sidebarSection), [sidebarSection]);
+
+  useEffect(() => {
+    executeTextStructuredPreferencePersistenceEffect(textStructuredPreferences);
+  }, [textStructuredPreferences]);
 
   useEffect(() => {
     activeVocabularyOrderRef.current = activeVocabularyOrder;
@@ -446,6 +455,48 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
   const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
+  const structuredTextPlaybackList = useMemo(() => resolveStructuredTextPlaybackList(activeTextDocumentTree), [activeTextDocumentTree]);
+  const structuredTextActivePlaybackList = useMemo(
+    () => structuredTextPlaybackList.filter(item => hasStructuredTextPlayableChannel(item, textStructuredPreferences.playbackChannelMode)),
+    [structuredTextPlaybackList, textStructuredPreferences.playbackChannelMode]
+  );
+  const structuredTextVoiceState = useMemo(() => resolveTextStructuredBrowserVoiceState({
+    englishVoices: voices,
+    indonesianVoices,
+    preferences: textStructuredPreferences
+  }), [voices, indonesianVoices, textStructuredPreferences.browserTextVoiceName, textStructuredPreferences.browserMeaningVoiceName]);
+  const selectedTextBrowserVoice = structuredTextVoiceState.textVoice;
+  const selectedTextIndonesianVoice = structuredTextVoiceState.meaningVoice;
+  const structuredTextModeActive = mode === 'text' && activeTextEditorModel === 'structured-v1';
+  const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
+  const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
+  const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
+  const handleActiveBrowserTtsVoiceChange = (voice) => {
+    if (structuredTextModeActive) {
+      setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'text', voice }) }));
+      return;
+    }
+    setSelectedVoice(voice);
+  };
+  const handleActiveBrowserTtsIndonesianVoiceChange = (voice) => {
+    if (structuredTextModeActive) {
+      setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'meaning', voice }) }));
+      return;
+    }
+    setSelectedIndonesianVoice(voice);
+  };
+  const handleActiveBrowserTtsRateChange = (value) => {
+    if (structuredTextModeActive) {
+      const numericRate = Number(value);
+      const browserTtsRate = Number.isFinite(numericRate) ? Math.min(2, Math.max(0.5, Math.round(numericRate * 10) / 10)) : 1;
+      setTextStructuredPreferences(prev => ({ ...prev, browserTtsRate }));
+      return;
+    }
+    setRate(value);
+  };
+  const activePlaybackList = mode === 'text' && activeTextEditorModel === 'structured-v1'
+    ? structuredTextActivePlaybackList
+    : legacyActivePlaybackList;
 
 
   useEffect(() => executeTextLibraryCompatibilityPersistenceEffect({
@@ -766,6 +817,113 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setIsPaused, setSpeakingPart, setIndependentPlayingId, playbackContextRef
   });
 
+  const playStructuredTextChannel = (textToRead, item, channel) => {
+    const targetVoice = channel === 'meaning'
+      ? selectedTextIndonesianVoice
+      : selectedTextBrowserVoice;
+    if (!targetVoice) {
+      addLog('Warn', `Text Player: ${channel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS voice is not ready; channel skipped for ${item?.segmentId || item?.id || 'segment'}.`);
+      return Promise.resolve();
+    }
+    return executeBrowserTtsPlaybackService({
+      textToRead,
+      overrideVoice: targetVoice,
+      selectedVoiceRef: { current: targetVoice },
+      stopSignalRef,
+      pauseStateRef,
+      synth,
+      currentUtteranceRef,
+      ttsReplayRef,
+      playbackResolveRef,
+      rateRef: null,
+      rate: textStructuredPreferences.browserTtsRate,
+      pitch: 1
+    });
+  };
+
+  const startStructuredTextPlayback = ({ startSegmentId = null, blockId = null, scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE } = {}) => {
+    if (mode !== 'text' || activeTextEditorModel !== 'structured-v1' || !activeTextDocumentTree) return false;
+    return executeStructuredTextPlaybackSessionService({
+      documentTree: activeTextDocumentTree,
+      startSegmentId,
+      blockId,
+      scope,
+      safePlayTransition,
+      playbackSessionRef,
+      playbackContextRef,
+      setIsPlaying,
+      setIsPaused,
+      pauseStateRef,
+      stopSignalRef,
+      silentAudioRef,
+      waitWhilePaused,
+      setPlayingContext,
+      setPlayingIndex,
+      setCurrentIndex,
+      setSpeakingPart,
+      playbackChannelMode: textStructuredPreferences.playbackChannelMode,
+      playStructuredChannel: playStructuredTextChannel,
+      forceStopAll,
+      addLog
+    });
+  };
+
+  const handleStructuredTextPlaySegment = (segmentId) => startStructuredTextPlayback({
+    startSegmentId: segmentId,
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
+  });
+
+  const handleStructuredTextPlayCard = (blockId) => startStructuredTextPlayback({
+    blockId,
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD
+  });
+
+  const handleStructuredTextStartFromSegment = (segmentId) => startStructuredTextPlayback({
+    startSegmentId: segmentId,
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+  });
+
+  const handleStructuredTextPlayDocument = () => startStructuredTextPlayback({
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+  });
+
+  const handlePlayerGlobalPlay = () => {
+    if (mode !== 'text' || activeTextEditorModel !== 'structured-v1') {
+      handleGlobalPlay();
+      return;
+    }
+    if (isPlaying && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT) {
+      if (isPaused) resumePlayback();
+      else pausePlayback();
+      return;
+    }
+    const resumeId = structuredTextActivePlaybackList.some(item => item.id === playingIndex) ? playingIndex : null;
+    startStructuredTextPlayback({
+      startSegmentId: resumeId,
+      scope: resumeId ? TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE : TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+    });
+  };
+
+  const handlePlayerSmartNav = (direction) => {
+    if (mode !== 'text' || activeTextEditorModel !== 'structured-v1') {
+      handleSmartNav(direction);
+      return;
+    }
+    const anchorId = structuredTextActivePlaybackList.some(item => item.id === playingIndex)
+      ? playingIndex
+      : structuredTextActivePlaybackList[0]?.id;
+    const target = resolveStructuredTextAdjacentSegment({
+      list: structuredTextActivePlaybackList,
+      currentId: anchorId,
+      direction
+    });
+    if (!target) return;
+    startStructuredTextPlayback({
+      startSegmentId: target.id,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+    });
+  };
+
   const runTextLibraryUiCommand = useCallback(async (operation) => {
     if (textLibraryCommandBusy || isSystemBusy) return null;
     setTextLibraryCommandBusy(true);
@@ -808,6 +966,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(() => executeTextLibraryStructuredCommand({ command, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
 
 
   const handleSmartNav = (direction) => executeSmartPlaybackNavigation({
@@ -818,18 +977,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   });
   
     // --- NEW: MEDIA SESSION API INTEGRATION (ANDROID WIDGET) ---// --- MEDIA SESSION API (STABLE, NO WIDGET FLICKER) ---
-    const playRef = useRef(handleGlobalPlay);
+    const playRef = useRef(handlePlayerGlobalPlay);
     const pausePlaybackRef = useRef(pausePlayback);
     const resumePlaybackRef = useRef(resumePlayback);
-    const navRef = useRef(handleSmartNav);
+    const navRef = useRef(handlePlayerSmartNav);
     const stopRef = useRef(forceStopAll);
     const mediaIntervalRef = useRef(null); // --- ADD: Ref untuk Teks Berjalan ---
 
     // Always update ref values to latest functions
-    playRef.current = handleGlobalPlay;
+    playRef.current = handlePlayerGlobalPlay;
     pausePlaybackRef.current = pausePlayback;
     resumePlaybackRef.current = resumePlayback;
-    navRef.current = handleSmartNav;
+    navRef.current = handlePlayerSmartNav;
     stopRef.current = forceStopAll;
 
     useEffect(() => {
@@ -1378,9 +1537,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderMobileTools = () => renderMobileToolsView({
     sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
-    preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
-    setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate,
-    setRate, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode, memorySettings,
+    preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice: activeBrowserTtsVoice,
+    setSelectedVoice: handleActiveBrowserTtsVoiceChange, indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
+    setSelectedIndonesianVoice: handleActiveBrowserTtsIndonesianVoiceChange, rate: activeBrowserTtsRate,
+    setRate: handleActiveBrowserTtsRateChange, showIndonesianBrowserVoice: (mode === 'table' || structuredTextModeActive),
+    renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode, memorySettings,
     setMemorySettings, advancedDatasetStats, isMultiSourceMode, dirtySourceKeys, isCsvDirty,
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker,
     removeSourceLayer, saveUpdatedSource, exportMergedDataset, savedDecks, selectedDeckId,
@@ -1403,7 +1564,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
   });
 
   const renderWorkspaceTabs = (mobileContext = false) => renderWorkspaceTabsView({
@@ -1423,7 +1584,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       return <TextHydrationGate status={textDatabaseStatus} error={textDatabaseError} />;
     }
     if (mode === 'text' && activeTextEditorModel === 'structured-v1') {
-      return <TextStructuredDocumentPlaceholder documentTree={activeTextDocumentTree} />;
+      return <TextStructuredPlayer
+        documentTree={activeTextDocumentTree}
+        isPlaying={isPlaying}
+        isPaused={isPaused}
+        speakingPart={speakingPart}
+        playingContext={playingContext}
+        playingIndex={playingIndex}
+        displayMode={textStructuredPreferences.displayMode}
+        playbackChannelMode={textStructuredPreferences.playbackChannelMode}
+        onDisplayModeChange={(displayMode) => setTextStructuredPreferences(prev => ({ ...prev, displayMode }))}
+        onPlaybackChannelModeChange={(playbackChannelMode) => setTextStructuredPreferences(prev => ({ ...prev, playbackChannelMode }))}
+        onPlayDocument={handleStructuredTextPlayDocument}
+        onPlayCard={handleStructuredTextPlayCard}
+        onPlaySegment={handleStructuredTextPlaySegment}
+        onStartFromSegment={handleStructuredTextStartFromSegment}
+      />;
     }
     return renderPlaylistViewport({
     rowHeights,
@@ -1495,17 +1671,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGeminiByokClear: handleGeminiByokClear, batchButtonRef,
     isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices,
-    selectedVoice, setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
-    rate, setRate, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
+    selectedVoice: activeBrowserTtsVoice, setSelectedVoice: handleActiveBrowserTtsVoiceChange,
+    indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
+    setSelectedIndonesianVoice: handleActiveBrowserTtsIndonesianVoiceChange,
+    rate: activeBrowserTtsRate, setRate: handleActiveBrowserTtsRateChange,
+    showIndonesianBrowserVoice: (mode === 'table' || structuredTextModeActive),
+    renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
     memorySettings, setMemorySettings, advancedDatasetStats, csvInputRef, handleCSVUpload,
     openManualAdd, playlist, tableViewMode, exportTableCSV, setIsClearDialogOpen,
     setIsChangeReviewOpen, undoStack, undoLastDataChange, isMultiSourceMode, textareaRef,
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates,
     dirtySourceKeys, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack,
     openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt,
-    renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex,
-    activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll, playbackMode,
-    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, isChangeReviewOpen,
+    renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex, speakingPart,
+    activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
+    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen,
     closeManualEditor, manualEditingId, importedRowCount, sequenceHighWater, manualForm,
     setManualForm, manualAdvancedOpen, setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen,
@@ -1518,7 +1698,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
   });
 };
 

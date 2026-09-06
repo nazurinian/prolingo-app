@@ -8,6 +8,7 @@ import { loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybac
 import { loadTextIdentityState } from '../services/persistence/textIdentityPersistenceService';
 import { createEmptyTextIdentityState } from '../domain/text/textIdentityDomain.js';
 import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
+import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
 export const useMainAppPrimaryState = () => {
   // P4-A0: Part 4 development starts in the isolated Text workspace.
@@ -28,6 +29,9 @@ export const useMainAppPrimaryState = () => {
   const [textLibrarySnapshot, setTextLibrarySnapshot] = useState(null);
   const [textDatabaseStatus, setTextDatabaseStatus] = useState('idle');
   const [textDatabaseError, setTextDatabaseError] = useState(null);
+  // P4-A7: Show and Play are independent Text-owned preferences. These are
+  // intentionally separate from Table playback sequence/order/repeat state.
+  const [textStructuredPreferences, setTextStructuredPreferences] = useState(loadTextStructuredPreferences);
   const [playlist, setPlaylist] = useState([]); 
   const [newTextItem, setNewTextItem] = useState("");
   // v5.8.3: last CSV snapshot that has been imported or explicitly saved to disk.
@@ -183,7 +187,7 @@ export const useMainAppPrimaryState = () => {
     rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
     legacyTextBootstrapState, activeTextDocumentId, setActiveTextDocumentId, textLibrarySnapshot, setTextLibrarySnapshot,
     textDatabaseStatus, setTextDatabaseStatus, textDatabaseError, setTextDatabaseError,
-    playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
+    textStructuredPreferences, setTextStructuredPreferences, playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
     lastDraftAutoSaveAt, setLastDraftAutoSaveAt, sourcePack, setSourcePack, sourceUploadKey, setSourceUploadKey,
