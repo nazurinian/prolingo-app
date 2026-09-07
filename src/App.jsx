@@ -552,7 +552,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       documentTree: activeTextDocumentTree,
       item,
       channel,
-      defaultVoiceName: defaultVoiceId
+      defaultVoiceName: defaultVoiceId,
+      // UX-HARDENING C3.1: sidebar is the simple shared default. Legacy A11
+      // Document speaker metadata is retained for compatibility/export, but the
+      // active app flow only applies explicit Card/Segment overrides.
+      includeDocumentSpeakerProfile: false,
+      simpleCardSpeakerMode: true
     });
     const requestedVoiceId = assignment.voiceName || defaultVoice?.name || null;
     const pool = isMeaning ? indonesianVoices : voices;
@@ -572,7 +577,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     runtimeAudioUrls: structuredTextAudioRuntimeUrls,
     textVoiceId: defaultStructuredTextVoiceId,
     meaningVoiceId: defaultStructuredMeaningVoiceId,
-    speakerVoiceMap: structuredTextSpeakerVoiceMap
+    speakerVoiceMap: structuredTextSpeakerVoiceMap,
+    includeDocumentSpeakerProfile: false,
+    simpleCardSpeakerMode: true
   }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;

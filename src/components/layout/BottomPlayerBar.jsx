@@ -42,12 +42,12 @@ const BottomPlayerBar = ({
   };
 
   return (
-  <div className={`bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 flex-shrink-0 ${isMobile ? 'fixed inset-x-0 bottom-0 w-full px-2 pt-2 prolingo-mobile-bottom-safe' : 'p-4'}`}>
+  <div className={`bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 flex-shrink-0 ${isStructuredText ? 'prolingo-text-bottom-player' : ''} ${isMobile ? 'fixed inset-x-0 bottom-0 w-full px-2 pt-2 prolingo-mobile-bottom-safe' : 'p-4'}`}>
     <div className="max-w-4xl mx-auto">
-       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 md:hidden">
+       <div className={`grid ${isStructuredText ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)_auto_auto]'} items-center gap-2 md:hidden`}>
            <div className="flex flex-col min-w-0 pr-1">
-             <p className="text-[10px] font-bold text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : 'NOW PLAYING'}</p>
-             <p className="text-xs font-semibold truncate text-slate-800 dark:text-slate-200">
+             <p className="prolingo-text-player-kicker text-[10px] font-bold text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : 'NOW PLAYING'}</p>
+             <p className="prolingo-text-player-label text-xs font-semibold truncate text-slate-800 dark:text-slate-200">
                {playingIndex !== null 
                  ? (() => {
                      const item = activePlaybackList.find(p => p.id === playingIndex);
@@ -59,32 +59,24 @@ const BottomPlayerBar = ({
                  : "Ready"}
              </p>
            </div>
-           <div className="relative -left-1 flex items-center gap-1.5">
-              <button onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
-              <button onClick={handleGlobalPlay} className={`p-2.5 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800' : 'bg-indigo-600 text-white'}`}>
+           <div className="prolingo-text-player-controls relative -left-1 flex items-center gap-1.5">
+              <button onClick={() => handleSmartNav('prev')} aria-label="Previous item" className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
+              <button onClick={handleGlobalPlay} aria-label={isPlaying && !isPaused ? 'Pause playback' : 'Play or resume'} className={`w-11 h-11 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800' : 'bg-indigo-600 text-white'}`}>
                 {isPlaying && !isPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
-              <button onClick={() => handleSmartNav('next')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
-              <button onClick={forceStopAll} className="ml-1.5 p-1.5 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
+              <button onClick={() => handleSmartNav('next')} aria-label="Next item" className="w-10 h-10 flex items-center justify-center text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
+              <button onClick={forceStopAll} aria-label="Stop playback" className="ml-0.5 w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
            </div>
-           <div className="flex justify-end gap-1 pl-1">
-              {isStructuredText ? (
-                <div className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 text-indigo-600 dark:text-indigo-300">
-                  <List className="w-5 h-5"/>
-                  <span className="text-[9px] font-bold uppercase">Text</span>
-                </div>
-              ) : (
-                <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700">
-                    {playbackMode === 'once' && <span className="text-xs font-mono border border-slate-500 rounded px-1 text-slate-600 dark:text-slate-400">1</span>}
-                    {playbackMode === 'sequence' && <List className="w-5 h-5 text-indigo-600 dark:text-indigo-400"/>}
-                    {playbackMode === 'repeat_2x' && <span className="text-xs font-bold text-purple-600 dark:text-purple-400">2x</span>}
-                    {playbackMode === 'loop_one' && <Repeat1 className="w-5 h-5 text-orange-500"/>}
-                    {playbackMode === 'random' && <Shuffle className="w-5 h-5 text-blue-500"/>}
-                    <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-full">{playbackMode === 'once' ? 'Once' : playbackMode === 'sequence' ? 'Next' : playbackMode === 'repeat_2x' ? '2x' : playbackMode === 'loop_one' ? 'Loop' : 'Rand'}</span>
-                </button>
-              )}
-
-           </div>
+           {!isStructuredText && <div className="flex justify-end gap-1 pl-1">
+              <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700">
+                  {playbackMode === 'once' && <span className="text-xs font-mono border border-slate-500 rounded px-1 text-slate-600 dark:text-slate-400">1</span>}
+                  {playbackMode === 'sequence' && <List className="w-5 h-5 text-indigo-600 dark:text-indigo-400"/>}
+                  {playbackMode === 'repeat_2x' && <span className="text-xs font-bold text-purple-600 dark:text-purple-400">2x</span>}
+                  {playbackMode === 'loop_one' && <Repeat1 className="w-5 h-5 text-orange-500"/>}
+                  {playbackMode === 'random' && <Shuffle className="w-5 h-5 text-blue-500"/>}
+                  <span className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-full">{playbackMode === 'once' ? 'Once' : playbackMode === 'sequence' ? 'Next' : playbackMode === 'repeat_2x' ? '2x' : playbackMode === 'loop_one' ? 'Loop' : 'Rand'}</span>
+              </button>
+           </div>}
        </div>
 
        <div className="hidden md:flex items-center justify-between gap-4">

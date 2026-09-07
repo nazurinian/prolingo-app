@@ -113,6 +113,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
   textVoiceId,
   meaningVoiceId,
   speakerVoiceMap = {},
+  includeDocumentSpeakerProfile = true,
+  simpleCardSpeakerMode = false,
   preferredGeneratedEngine = null
 }) => {
   const map = {};
@@ -126,11 +128,13 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
           block,
           segment,
           channel,
-          defaultVoiceName: defaultVoiceId
+          defaultVoiceName: defaultVoiceId,
+          includeDocumentSpeakerProfile,
+          simpleCardSpeakerMode
         });
         // Compatibility bridge for A11 callers/tests that still pass an explicit
         // speakerVoiceMap outside Document metadata.
-        const requestedVoiceId = effective.source === 'global'
+        const requestedVoiceId = effective.source === 'global' && includeDocumentSpeakerProfile && !simpleCardSpeakerMode
           ? resolveTextStructuredSpeakerVoice({
               speaker: segment?.speaker,
               channel,

@@ -97,6 +97,7 @@ export const useLiveOverlayViewportRef = (open) => {
       node.style.width = `${width}px`;
       node.style.height = `${height}px`;
       node.style.transform = `translate3d(${offsetLeft}px, ${offsetTop}px, 0)`;
+      node.style.setProperty('--prolingo-overlay-width', `${width}px`);
       node.style.setProperty('--prolingo-overlay-height', `${height}px`);
     };
 

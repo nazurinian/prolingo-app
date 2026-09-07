@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, ListPlus } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
@@ -15,9 +15,24 @@ export default function MobileDataControls({
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
   handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
 }) {
+  const [textMobileSurface, setTextMobileSurface] = useState('library');
+
+  useEffect(() => {
+    if (mode !== 'text') return;
+    if (textMobileSurface === 'edit' && activeTextDocument?.editorModel !== 'structured-v1') {
+      setTextMobileSurface('library');
+    }
+  }, [mode, activeTextDocument?.editorModel, textMobileSurface]);
+
   if (mode === 'text') {
-    return <div className="space-y-3">
-      <TextLibraryShell
+    const canEditStructured = activeTextDocument?.editorModel === 'structured-v1';
+    return <div className="space-y-3" data-text-mobile-workspace="true">
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/70 p-1" role="tablist" aria-label="Text mobile workspace">
+        <button type="button" role="tab" aria-selected={textMobileSurface === 'library'} onClick={() => setTextMobileSurface('library')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] ${textMobileSurface === 'library' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Library</button>
+        <button type="button" role="tab" aria-selected={textMobileSurface === 'edit'} disabled={!canEditStructured} onClick={() => canEditStructured && setTextMobileSurface('edit')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] disabled:opacity-35 ${textMobileSurface === 'edit' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Edit Cards</button>
+      </div>
+
+      {textMobileSurface === 'library' && <TextLibraryShell
         compact
         catalog={textLibraryCatalog}
         activeDocument={activeTextDocument}
@@ -29,14 +44,17 @@ export default function MobileDataControls({
         onCreateDocument={handleTextLibraryCreateDocument}
         onCreateCollection={handleTextLibraryCreateCollection}
         onRenameDocument={handleTextLibraryRenameDocument}
-      />
-      {activeTextDocument?.editorModel === 'structured-v1' && <TextStructuredEditor
+      />}
+
+      {textMobileSurface === 'edit' && canEditStructured && <TextStructuredEditor
+        compact
         documentTree={activeTextDocumentTree}
         isBusy={textLibraryCommandBusy}
         error={textLibraryCommandError}
         onCommand={handleTextLibraryStructuredCommand}
       />}
-      {activeTextDocument?.editorModel === 'legacy-line-v1' && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[9px] leading-relaxed text-amber-700 dark:text-amber-300">Legacy Document tetap menggunakan editor bridge desktop/playlist lama sementara. Structured Card/Segment Editor hanya menulis ke structured-v1.</div>}
+
+      {textMobileSurface === 'edit' && activeTextDocument?.editorModel === 'legacy-line-v1' && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">This legacy Text document still uses the compatibility editor. Select a structured document to edit Cards and Segments here.</div>}
     </div>;
   }
   return (

@@ -99,7 +99,9 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
   block,
   segment,
   channel = 'text',
-  defaultVoiceName = null
+  defaultVoiceName = null,
+  includeDocumentSpeakerProfile = true,
+  simpleCardSpeakerMode = false
 }) => {
   const normalizedChannel = normalizeChannel(channel);
   const speakerKey = normalizeTextStructuredSpeakerKey(segment?.speaker);
@@ -107,13 +109,21 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
   const blockProfile = getTextStructuredVoiceOverrideProfile(block);
   const documentSpeakerMap = getTextStructuredSpeakerVoiceMap(documentTree);
 
-  const candidates = [
-    { source: 'segment', voiceName: segmentProfile.channels?.[normalizedChannel] },
-    { source: 'card-speaker', voiceName: speakerKey ? blockProfile.speakers?.[normalizedChannel]?.[speakerKey] : null },
-    { source: 'document-speaker', voiceName: speakerKey ? documentSpeakerMap?.[normalizedChannel]?.[speakerKey] : null },
-    { source: 'card', voiceName: blockProfile.channels?.[normalizedChannel] },
-    { source: 'global', voiceName: defaultVoiceName }
-  ];
+  const isConversation = block?.blockType === 'conversation';
+  const candidates = simpleCardSpeakerMode
+    ? [
+        { source: 'segment', voiceName: segmentProfile.channels?.[normalizedChannel] },
+        { source: 'card-speaker', voiceName: isConversation && speakerKey ? blockProfile.speakers?.[normalizedChannel]?.[speakerKey] : null },
+        { source: 'card', voiceName: !isConversation ? blockProfile.channels?.[normalizedChannel] : null },
+        { source: 'global', voiceName: defaultVoiceName }
+      ]
+    : [
+        { source: 'segment', voiceName: segmentProfile.channels?.[normalizedChannel] },
+        { source: 'card-speaker', voiceName: speakerKey ? blockProfile.speakers?.[normalizedChannel]?.[speakerKey] : null },
+        { source: 'document-speaker', voiceName: includeDocumentSpeakerProfile && speakerKey ? documentSpeakerMap?.[normalizedChannel]?.[speakerKey] : null },
+        { source: 'card', voiceName: blockProfile.channels?.[normalizedChannel] },
+        { source: 'global', voiceName: defaultVoiceName }
+      ];
   const selected = candidates.find(candidate => clean(candidate.voiceName)) || { source: 'none', voiceName: null };
   return {
     channel: normalizedChannel,
@@ -127,13 +137,15 @@ export const resolveTextStructuredEffectiveVoiceForItem = ({
   documentTree,
   item,
   channel = 'text',
-  defaultVoiceName = null
+  defaultVoiceName = null,
+  includeDocumentSpeakerProfile = true,
+  simpleCardSpeakerMode = false
 }) => {
   const blockId = item?.blockId || item?.textId;
   const segmentId = item?.segmentId || item?.id;
   const block = (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate?.id === blockId) || null;
   const segment = (Array.isArray(block?.segments) ? block.segments : []).find(candidate => candidate?.id === segmentId) || null;
-  return resolveTextStructuredEffectiveVoiceProfile({ documentTree, block, segment, channel, defaultVoiceName });
+  return resolveTextStructuredEffectiveVoiceProfile({ documentTree, block, segment, channel, defaultVoiceName, includeDocumentSpeakerProfile, simpleCardSpeakerMode });
 };
 
 export const getTextStructuredVoiceOverrideLabel = source => ({

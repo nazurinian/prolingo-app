@@ -93,3 +93,51 @@
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+
+/* C3: Structured Text mobile player and Audio sheet stay compact in short/landscape viewports. */
+@media (max-width: 767px) and (orientation: landscape) {
+  .prolingo-text-bottom-player {
+    padding-top: 0.25rem !important;
+    padding-bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .prolingo-text-bottom-player .prolingo-text-player-kicker {
+    display: none;
+  }
+
+  .prolingo-text-bottom-player .prolingo-text-player-label {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+
+  .prolingo-text-bottom-player .prolingo-text-player-controls {
+    gap: 0.25rem;
+  }
+
+  .prolingo-text-audio-sheet {
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  .prolingo-text-audio-sheet-header {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+
+/* C3.2: Card Audio is portaled to document.body, then hard-contained to the
+   live visual viewport. Desktop intentionally stays compact; mobile remains a
+   bottom sheet with enough height for touch + keyboard interaction. */
+.prolingo-text-audio-sheet {
+  width: min(100%, calc(var(--prolingo-overlay-width, 100vw) - 0.75rem));
+  max-width: calc(var(--prolingo-overlay-width, 100vw) - 0.75rem);
+  max-height: calc(var(--prolingo-overlay-height, 100dvh) - 0.75rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .prolingo-text-audio-sheet {
+    width: min(26rem, calc(var(--prolingo-overlay-width, 100vw) - 2rem));
+    max-width: calc(var(--prolingo-overlay-width, 100vw) - 2rem);
+    max-height: min(32rem, calc(var(--prolingo-overlay-height, 100dvh) - 2rem));
+  }
+}
