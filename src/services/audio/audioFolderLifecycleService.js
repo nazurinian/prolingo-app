@@ -1,5 +1,39 @@
 import { normalizeAudioVocabIdentity } from '../../utils/audioUtils';
 
+export const buildTableAudioVocabIdentityIndex = ({ playlist, getVocabIdentity }) => {
+  const index = new Map();
+  (playlist || []).forEach(item => {
+    if (!item?.isStructured) return;
+    const canonical = String(getVocabIdentity(item) || '').trim().toUpperCase();
+    if (!canonical) return;
+    const aliases = new Set([canonical, normalizeAudioVocabIdentity(canonical)]);
+    aliases.forEach(alias => {
+      if (!alias) return;
+      if (!index.has(alias)) index.set(alias, item);
+      else if (index.get(alias) !== item) index.set(alias, null);
+    });
+  });
+  return index;
+};
+
+export const resolveTableAudioItemByVocabPrefix = ({ fileName, identityIndex }) => {
+  const upper = String(fileName || '').trim().toUpperCase();
+  if (!upper || !identityIndex?.size) return null;
+  let matchedItem = null;
+  let underscore = upper.indexOf('_');
+  while (underscore > 0) {
+    const prefix = upper.slice(0, underscore);
+    if (identityIndex.has(prefix)) {
+      const candidate = identityIndex.get(prefix);
+      // Longest valid known VOCAB_ID prefix wins. Colliding compact aliases
+      // are stored as null and therefore fail closed instead of guessing.
+      if (candidate) matchedItem = candidate;
+    }
+    underscore = upper.indexOf('_', underscore + 1);
+  }
+  return matchedItem;
+};
+
 export const executeAudioFolderSelectService = ({
   e,
   mode,
@@ -25,6 +59,7 @@ export const executeAudioFolderSelectService = ({
         });
 
         const newMap = {};
+        const tableAudioIdentityIndex = buildTableAudioVocabIdentityIndex({ playlist, getVocabIdentity });
         let orphanCount = 0;
         let audioFileCount = 0;
         for (let i = 0; i < files.length; i++) {
@@ -46,27 +81,16 @@ export const executeAudioFolderSelectService = ({
             else if (lowerName.includes('_meaning.') || lowerName.includes('_arti.')) type = 'meaning';
             if (!type) continue;
 
-            const stableMatch = file.name.match(/^([A-Za-z][A-Za-z0-9_-]*?_\d+)_/);
             const numericMatch = file.name.match(/^(\d+)_/);
-            let matchedItem = null;
+            // Preferred path: resolve the longest known VOCAB_ID prefix from the
+            // loaded playlist. This supports compound IDs such as
+            // ELFAST_01_0001 / VOCAB1_03_0001 / W1P1_14_0001 instead of
+            // stopping at the first numeric block (for example ELFAST_01).
+            let matchedItem = resolveTableAudioItemByVocabPrefix({
+                fileName: file.name,
+                identityIndex: tableAudioIdentityIndex
+            });
 
-            // Preferred path: VOCAB_ID prefix. New filenames may compact only the
-            // trailing numeric part to 4 digits (LEGACY_000001 -> LEGACY_0001),
-            // while the canonical CSV VOCAB_ID remains unchanged.
-            if (stableMatch) {
-                const fileVocabId = stableMatch[1].toUpperCase();
-                const compactFileVocabId = normalizeAudioVocabIdentity(fileVocabId);
-                const exactMatches = playlist.filter(item => item.isStructured && getVocabIdentity(item) === fileVocabId);
-                if (exactMatches.length === 1) {
-                    matchedItem = exactMatches[0];
-                } else if (!matchedItem) {
-                    const compactMatches = playlist.filter(item =>
-                        item.isStructured && normalizeAudioVocabIdentity(getVocabIdentity(item)) === compactFileVocabId
-                    );
-                    // Never guess if two canonical IDs collapse to the same compact alias.
-                    if (compactMatches.length === 1) matchedItem = compactMatches[0];
-                }
-            }
             // Backward compatibility: old numeric-prefix files still use permanent NO.
             if (!matchedItem && numericMatch) {
                 const audioNo = Number.parseInt(numericMatch[1], 10);
