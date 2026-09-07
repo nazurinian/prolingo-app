@@ -81,6 +81,7 @@ export const renderMainAppShellView = (props) => {
         handleFullPackUpload={handleFullPackUpload}
         mobileTab={mobileTab}
         handleMobileTabSwitch={handleMobileTabSwitch}
+        handleModeSwitch={handleModeSwitch}
         renderWorkspaceTabs={renderWorkspaceTabs}
         textLibraryCatalog={textLibraryCatalog}
         activeTextDocument={activeTextDocument}
@@ -98,7 +99,7 @@ export const renderMainAppShellView = (props) => {
           mode={mode}
           mobileTab={mobileTab}
         >
-          <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain no-scrollbar"> 
+          <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain custom-scrollbar"> 
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
               <SidebarTopControls

@@ -334,7 +334,7 @@ export const TextStructuredPlayer = ({
   }, [focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
 
   return (
-    <section ref={playerRef} onWheel={() => { userNavigationRef.current = Date.now(); }} onTouchStart={() => { userNavigationRef.current = Date.now(); }} onPointerDown={() => { userNavigationRef.current = Date.now(); }} className="h-full overflow-y-auto overscroll-contain pb-32 md:pb-4 scroll-smooth" data-text-structured-player="true" data-text-segment-auto-follow="true" data-text-auto-follow-user-grace-ms="1800">
+    <section ref={playerRef} onWheel={() => { userNavigationRef.current = Date.now(); }} onTouchStart={() => { userNavigationRef.current = Date.now(); }} onPointerDown={() => { userNavigationRef.current = Date.now(); }} className="h-full overflow-y-auto overscroll-contain pb-32 md:pb-4 scroll-smooth custom-scrollbar" data-text-structured-player="true" data-text-segment-auto-follow="true" data-text-auto-follow-user-grace-ms="1800">
       <div className="mb-2 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/90 dark:bg-slate-800/90 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
         <div className="flex items-center gap-2 p-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">

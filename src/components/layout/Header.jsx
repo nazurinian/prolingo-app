@@ -2,7 +2,7 @@ import React from 'react';
 import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
-  Settings, FileText
+  Settings, FileText, Table2
 } from 'lucide-react';
 
 /**
@@ -35,6 +35,7 @@ const Header = ({
   handleFullPackUpload,
   mobileTab,
   handleMobileTabSwitch,
+  handleModeSwitch,
   renderWorkspaceTabs,
   textLibraryCatalog,
   activeTextDocument,
@@ -98,7 +99,23 @@ const Header = ({
               <input type="file" ref={fullPackInputRef} accept=".csv,.tsv,.txt" multiple onChange={handleFullPackUpload} />
           </div>
     
-          <div className="md:hidden ml-auto">
+          <div className="md:hidden ml-auto flex items-center gap-1.5 flex-shrink-0">
+              <button
+                  type="button"
+                  disabled={isSystemBusy}
+                  onClick={() => {
+                    const targetMode = mode === 'table' ? 'text' : 'table';
+                    handleModeSwitch?.(targetMode);
+                    if (mobileTab !== 'player') handleMobileTabSwitch?.('player');
+                  }}
+                  className="h-10 min-w-[58px] px-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 flex items-center justify-center gap-1.5 text-[10px] font-black transition-[background-color,border-color,color,transform] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={`Switch to ${mode === 'table' ? 'Text' : 'Table'}`}
+                  aria-label={`Switch to ${mode === 'table' ? 'Text' : 'Table'} mode`}
+                  data-mobile-mode-switch="true"
+              >
+                  {mode === 'table' ? <FileText className="w-4 h-4"/> : <Table2 className="w-4 h-4"/>}
+                  <span>{mode === 'table' ? 'Text' : 'Table'}</span>
+              </button>
               <button
                   type="button"
                   onClick={() => handleMobileTabSwitch(mobileTab === 'tools' ? 'player' : 'tools')}

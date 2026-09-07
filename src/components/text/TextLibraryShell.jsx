@@ -195,7 +195,7 @@ export const TextLibraryShell = ({
         {(search.query || '').trim().length >= 2 && <div className="space-y-1.5" data-text-library-search-results="true">
           <div className="flex items-center justify-between text-[8px] text-slate-400" role="status" aria-live="polite"><span>{search.results?.length || 0} result{search.results?.length === 1 ? '' : 's'}</span><span>Library-wide</span></div>
           {(search.results || []).length === 0 && <div className="rounded-lg border border-dashed border-sky-200 dark:border-sky-900 bg-white/70 dark:bg-slate-900/40 p-3 text-center text-[9px] text-slate-400">No matching Text content.</div>}
-          <div className={`${compact ? 'max-h-[45dvh]' : 'max-h-72'} space-y-1.5 overflow-y-auto overscroll-contain pr-0.5`}>
+          <div className={`${compact ? 'max-h-[45dvh]' : 'max-h-72'} space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar`}>
             {(search.results || []).map(result => {
               const isSegment = result.resultType === 'segment';
               const isCard = result.resultType === 'card';
