@@ -1,6 +1,7 @@
 import { initialEdgeVoices } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioFilename } from './textStructuredAudioIdentityDomain.js';
 import { resolveStructuredTextPlaybackList } from './textStructuredPlaybackDomain.js';
+import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 
 export const TEXT_STRUCTURED_GENERATOR_ENGINES = Object.freeze({ EDGE: 'edge', GEMINI: 'gemini' });
 export const TEXT_STRUCTURED_GENERATION_FEATURES = Object.freeze({ EDGE: true, GEMINI: false });
@@ -74,20 +75,38 @@ export const resolveTextStructuredEdgeVoiceForProfile = ({
 
 export const resolveTextStructuredGenerationVoiceState = ({
   channel,
-  requestedPlaybackVoiceId,
+  requestedDownloadVoiceId = null,
+  requestedPlaybackVoiceId = null,
   preferences,
   edgeVoices = initialEdgeVoices
 }) => {
   const prefs = normalizeTextStructuredAudioGenerationPreferences(preferences);
   const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+  const defaultEdgeVoiceId = normalizedChannel === 'meaning' ? prefs.edgeMeaningVoiceId : prefs.edgeTextVoiceId;
+
+  // C3.4: Download voice is independent from Browser TTS playback voice. The
+  // requestedPlaybackVoiceId branch is kept only as an A12 compatibility bridge
+  // for historical callers/tests; current runtime passes requestedDownloadVoiceId.
+  if (clean(requestedDownloadVoiceId)) {
+    const exact = (Array.isArray(edgeVoices) ? edgeVoices : []).find(voice => lower(voice?.id) === lower(requestedDownloadVoiceId));
+    return {
+      engine: 'edge',
+      engineVoiceId: exact?.id || defaultEdgeVoiceId,
+      downloadProfileVoiceId: exact?.id || defaultEdgeVoiceId,
+      playbackProfileVoiceId: null,
+      matchedProfile: Boolean(exact)
+    };
+  }
+
   const resolved = resolveTextStructuredEdgeVoiceForProfile({
     requestedProfileVoiceId: requestedPlaybackVoiceId,
-    defaultEdgeVoiceId: normalizedChannel === 'meaning' ? prefs.edgeMeaningVoiceId : prefs.edgeTextVoiceId,
+    defaultEdgeVoiceId,
     edgeVoices
   });
   return {
     engine: 'edge',
     engineVoiceId: resolved.voiceId,
+    downloadProfileVoiceId: resolved.voiceId,
     playbackProfileVoiceId: clean(requestedPlaybackVoiceId) || null,
     matchedProfile: resolved.matchedProfile
   };
@@ -119,11 +138,15 @@ export const buildTextStructuredGenerationJobs = ({
   const allowMeaning = requestedChannels ? requestedChannels.has('meaning') : prefs.generateMeaning;
   const jobs = [];
   list.forEach(item => {
+    const block = (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate.id === item.blockId) || null;
+    const segment = (Array.isArray(block?.segments) ? block.segments : []).find(candidate => candidate.id === (item.segmentId || item.id)) || item;
     if (allowText && clean(item?.text)) {
-      jobs.push({ segmentId: item.segmentId || item.id, channel: 'text', blockId: item.blockId, speaker: item.speaker || null });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel: 'text', preferences: prefs });
+      jobs.push({ segmentId: item.segmentId || item.id, channel: 'text', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
     if (allowMeaning && clean(item?.meaning)) {
-      jobs.push({ segmentId: item.segmentId || item.id, channel: 'meaning', blockId: item.blockId, speaker: item.speaker || null });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel: 'meaning', preferences: prefs });
+      jobs.push({ segmentId: item.segmentId || item.id, channel: 'meaning', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
   });
   return jobs;

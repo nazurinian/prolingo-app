@@ -94,6 +94,8 @@ const MobileTools = ({
   batchConfig,
   setBatchConfig,
   runBatchDownload,
+  tableCoverage,
+  structuredTextBatch,
   DownloadCloudIcon,
   isBatchOpen,
   setIsBatchOpen,
@@ -309,6 +311,8 @@ const MobileTools = ({
               setBatchConfig={setBatchConfig}
               advancedDatasetStats={advancedDatasetStats}
               runBatchDownload={runBatchDownload}
+              tableCoverage={tableCoverage}
+              structuredTextBatch={structuredTextBatch}
               DownloadCloudIcon={DownloadCloudIcon}
               isBatchOpen={isBatchOpen}
               setIsBatchOpen={setIsBatchOpen}

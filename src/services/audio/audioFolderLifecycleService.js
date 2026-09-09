@@ -1,4 +1,4 @@
-import { normalizeAudioVocabIdentity } from '../../utils/audioUtils';
+import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils';
 
 export const buildTableAudioVocabIdentityIndex = ({ playlist, getVocabIdentity }) => {
   const index = new Map();
@@ -34,6 +34,18 @@ export const resolveTableAudioItemByVocabPrefix = ({ fileName, identityIndex }) 
   return matchedItem;
 };
 
+export const resolveTableAudioVoiceFromFilename = ({ fileName, part, edgeVoices = [] }) => {
+  const base = String(fileName || '').replace(/\.(wav|mp3|ogg|webm)$/i, '').toLowerCase();
+  const partToken = String(part || '').trim().toLowerCase();
+  if (!base || !partToken) return null;
+  const voices = [...(Array.isArray(edgeVoices) ? edgeVoices : [])].sort((a, b) => String(getAudioVoiceFilenameLabel(b?.id || '')).length - String(getAudioVoiceFilenameLabel(a?.id || '')).length);
+  const matched = voices.find(voice => {
+    const token = String(getAudioVoiceFilenameLabel(voice?.id || '')).toLowerCase();
+    return token && base.endsWith(`_${token}_${partToken}`);
+  });
+  return matched?.id || null;
+};
+
 export const executeAudioFolderSelectService = ({
   e,
   mode,
@@ -47,7 +59,8 @@ export const executeAudioFolderSelectService = ({
   setAudioStatusTable,
   setLocalAudioMapText,
   setAudioStatusText,
-  silent = false
+  silent = false,
+  onMatchedAudio = null
 }) => {
     const files = e.target.files;
     if (!files) return;
@@ -99,7 +112,19 @@ export const executeAudioFolderSelectService = ({
 
             if (matchedItem) {
                 const identity = getStableAudioIdentity(matchedItem);
-                newMap[`${identity}_${type}`] = URL.createObjectURL(file);
+                const mapKey = `${identity}_${type}`;
+                const voice = resolveTableAudioVoiceFromFilename({ fileName: file.name, part: type, edgeVoices });
+                newMap[mapKey] = URL.createObjectURL(file);
+                onMatchedAudio?.({
+                    mode: 'table',
+                    mapKey,
+                    part: type,
+                    engine: voice ? 'edge' : null,
+                    voice,
+                    filename: file.name,
+                    verified: true,
+                    deliveryStatus: 'folder-verified'
+                });
                 count++;
             } else {
                 orphanCount++;

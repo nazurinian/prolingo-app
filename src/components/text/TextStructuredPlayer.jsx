@@ -20,6 +20,7 @@ import {
   resolveStructuredTextDisplayState
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
+import { summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
 import { normalizeTextStructuredSpeakerKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
 import { resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
@@ -85,6 +86,7 @@ const StructuredPlayerCard = ({
   onPlaySegment,
   onStartFromSegment,
   audioRuntimeStatusMap,
+  audioCoverageMap,
   onAttachAudioFile,
   onRemoveAudioVariant,
   onGenerateAudio,
@@ -96,8 +98,12 @@ const StructuredPlayerCard = ({
   documentTree,
   englishVoices = [],
   indonesianVoices = [],
+  generationPreferences = {},
+  edgeGenerationVoices = [],
   onCardVoiceChange,
   onSegmentVoiceChange,
+  onCardDownloadVoiceChange,
+  onSegmentDownloadVoiceChange,
   onPreviewTts,
   onGenerateCardAudio,
   onGenerateSpeakerAudio,
@@ -146,6 +152,11 @@ const StructuredPlayerCard = ({
   const preview = collapsedDisplay.showText
     ? (firstSegment?.text || 'No segment yet.')
     : (firstSegment?.meaning || 'No meaning yet.');
+  const cardCoverage = useMemo(() => summarizeTextStructuredAudioCoverage({
+    documentTree,
+    coverageMap: audioCoverageMap,
+    blockId: block.id
+  }), [documentTree, audioCoverageMap, block.id]);
 
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50 shadow-indigo-100/40 dark:shadow-none' : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
@@ -160,7 +171,7 @@ const StructuredPlayerCard = ({
             <span className={`hidden sm:inline-flex text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'}`}>{blockLabel(block.blockType).toUpperCase()}</span>
             {isActiveCard && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shrink-0">ACTIVE</span>}
           </div>
-          <p className="mt-0.5 text-[8px] text-slate-400">{segments.length} segment{segments.length === 1 ? '' : 's'}</p>
+          <p className="mt-0.5 text-[8px] text-slate-400">{segments.length} segment{segments.length === 1 ? '' : 's'} • Audio {cardCoverage.covered}/{cardCoverage.total}{cardCoverage.needDownload ? ` • ${cardCoverage.needDownload} need download` : ' • ready'}</p>
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
@@ -252,10 +263,15 @@ const StructuredPlayerCard = ({
       indonesianVoices={indonesianVoices}
       defaultTextVoiceName={defaultTextVoiceName}
       defaultMeaningVoiceName={defaultMeaningVoiceName}
+      generationPreferences={generationPreferences}
+      edgeGenerationVoices={edgeGenerationVoices}
+      cardCoverage={cardCoverage}
       disabled={controlsBusy}
       onClose={() => setAudioPanelOpen(false)}
       onCardVoiceChange={onCardVoiceChange}
       onSegmentVoiceChange={onSegmentVoiceChange}
+      onCardDownloadVoiceChange={onCardDownloadVoiceChange}
+      onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}
       onPreviewTts={onPreviewTts}
       onGenerateCardAudio={onGenerateCardAudio}
       onGenerateSpeakerAudio={onGenerateSpeakerAudio}
@@ -281,6 +297,8 @@ export const TextStructuredPlayer = ({
   onPlaySegment,
   onStartFromSegment,
   audioRuntimeStatusMap,
+  audioCoverageMap,
+  documentCoverage = null,
   onAttachAudioFile,
   onRemoveAudioVariant,
   englishVoices = [],
@@ -291,6 +309,8 @@ export const TextStructuredPlayer = ({
   onSpeakerVoiceChange,
   onCardVoiceChange,
   onSegmentVoiceChange,
+  onCardDownloadVoiceChange,
+  onSegmentDownloadVoiceChange,
   onPreviewTts,
   generationPreferences = {},
   onGenerationPreferencesChange,
@@ -342,7 +362,7 @@ export const TextStructuredPlayer = ({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text</p>
-            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable</p>
+            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
           </div>
           <button type="button" onClick={() => setControlsExpanded(value => !value)} className={`min-h-10 sm:min-h-9 px-2.5 py-2 sm:py-1.5 rounded-lg border text-[9px] font-black transition-all duration-150 active:scale-95 ${controlsExpanded ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-700'}`} aria-expanded={controlsExpanded} title="Show Text controls">
             <ChevronRight className={`w-3 h-3 inline mr-1 transition-transform duration-200 ${controlsExpanded ? 'rotate-90' : ''}`}/>Controls
@@ -409,6 +429,7 @@ export const TextStructuredPlayer = ({
           <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[8px] text-slate-400" data-text-audio-generation-summary="true">
             <span>Folder: {folderState?.status || 'idle'}{folderState?.matchedCount ? ` • ${folderState.matchedCount} connected` : ''}</span>
             <span className={edgeHealth?.status === 'online' ? 'text-emerald-600 dark:text-emerald-300' : edgeHealth?.status === 'error' ? 'text-red-500' : ''}>Edge: {edgeHealth?.message || edgeHealth?.status || 'not tested'}</span>
+            <span className={documentCoverage?.needDownload ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'}>Coverage: {documentCoverage?.covered || 0}/{documentCoverage?.total || 0} • need {documentCoverage?.needDownload || 0}</span>
           </div>
 
           {audioGenerationExpanded && <div className="mt-2 border-t border-violet-100 dark:border-violet-900 pt-2" data-text-audio-generation-details="true">
@@ -435,11 +456,12 @@ export const TextStructuredPlayer = ({
               <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateText !== false} onChange={event => onGenerationPreferencesChange?.({ generateText: event.target.checked })}/>EN</label>
               <label className="flex items-center gap-1 text-[8px] font-bold text-slate-600 dark:text-slate-300"><input disabled={controlsBusy} type="checkbox" checked={generationPreferences?.generateMeaning !== false} onChange={event => onGenerationPreferencesChange?.({ generateMeaning: event.target.checked })}/>ID</label>
               <button type="button" disabled={controlsBusy} onClick={folderState?.status === 'reconnect-required' ? onReconnectGenerationFolder : onChooseGenerationFolder} className="px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[8px] font-black text-violet-700 dark:text-violet-300"><FolderOpen className="w-3 h-3 inline mr-1"/>{folderState?.status === 'reconnect-required' ? 'Reconnect Folder' : (folderState?.name || 'Choose Folder')}</button>
-              <button type="button" disabled={controlsBusy || !(generationPreferences?.generateText !== false || generationPreferences?.generateMeaning !== false)} onClick={onGenerateDocumentAudio} className="px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-35"><Wand2 className="w-3 h-3 inline mr-1"/>Generate Document</button>
+              <button type="button" disabled={controlsBusy || !(generationPreferences?.generateText !== false || generationPreferences?.generateMeaning !== false) || !(documentCoverage?.needDownload || 0)} onClick={() => onGenerateDocumentAudio?.({ missingOnly: true })} className="px-2.5 py-1.5 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-35"><Wand2 className="w-3 h-3 inline mr-1"/>Download Missing ({documentCoverage?.needDownload || 0})</button>
+              <button type="button" disabled={controlsBusy || !(documentCoverage?.total || 0)} onClick={() => onGenerateDocumentAudio?.({ missingOnly: false })} className="px-2 py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-35">Redownload All ({documentCoverage?.total || 0})</button>
               {generationBusy && <button type="button" onClick={onCancelGeneration} className="px-2 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-300 text-[8px] font-black">Cancel</button>}
               {!generationBusy && (generationState?.failedJobs?.length || 0) > 0 && <button type="button" onClick={onRetryFailedGeneration} className="px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 text-[8px] font-black"><RotateCcw className="w-3 h-3 inline mr-1"/>Retry {generationState.failedJobs.length}</button>}
             </div>
-            <p className="mt-1.5 text-[8px] text-slate-400">Audio stays attached to the correct Segment even after reorder or voice changes. Card/Segment overrides use the same effective voice for preview and generated audio.</p>
+            <p className="mt-1.5 text-[8px] text-slate-400">Edge Download Profile is independent from Browser/Sidebar playback voices. Generated/local audio is matched by its Edge download voice identity.</p>
           </div>}
         </div>
         </div></>}
@@ -529,6 +551,7 @@ export const TextStructuredPlayer = ({
           onPlaySegment={onPlaySegment}
           onStartFromSegment={onStartFromSegment}
           audioRuntimeStatusMap={audioRuntimeStatusMap}
+          audioCoverageMap={audioCoverageMap}
           onAttachAudioFile={onAttachAudioFile}
           onRemoveAudioVariant={onRemoveAudioVariant}
           onGenerateAudio={onGenerateAudio}
@@ -539,9 +562,13 @@ export const TextStructuredPlayer = ({
           documentTree={documentTree}
           englishVoices={englishVoices}
           indonesianVoices={indonesianVoices}
+          generationPreferences={generationPreferences}
+          edgeGenerationVoices={edgeGenerationVoices}
           controlsBusy={controlsBusy}
           onCardVoiceChange={onCardVoiceChange}
           onSegmentVoiceChange={onSegmentVoiceChange}
+          onCardDownloadVoiceChange={onCardDownloadVoiceChange}
+          onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}
           onPreviewTts={onPreviewTts}
           onGenerateCardAudio={onGenerateCardAudio}
           onGenerateSpeakerAudio={onGenerateSpeakerAudio}

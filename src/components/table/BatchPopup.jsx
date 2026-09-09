@@ -56,13 +56,17 @@ export const BatchPopup = ({
   runBatchDownload,
   isBatchStopping,
   batchStatusText,
+  tableCoverage = null,
+  structuredTextBatch = null,
   DownloadCloudIcon,
   inline = false,
   showClose = true
 }) => {
   const expEn = getExpressionSelection(batchConfig, 'en');
   const expIdn = getExpressionSelection(batchConfig, 'idn');
-  const isGemini = generatorEngine === 'gemini';
+  const isStructuredTextBatch = mode === 'text' && Boolean(structuredTextBatch);
+  const isGemini = !isStructuredTextBatch && generatorEngine === 'gemini';
+  const coverage = isStructuredTextBatch ? structuredTextBatch?.coverage : tableCoverage?.counts;
   const panelClass = inline
     ? 'w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col animate-in fade-in duration-150'
     : 'absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl z-[100] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200';
@@ -70,13 +74,45 @@ export const BatchPopup = ({
   return (
     <div ref={batchPanelRef} className={panelClass}>
       <div className="bg-slate-800 text-white px-3 py-2 text-xs font-bold flex items-center justify-between gap-2">
-        <span>Batch Download ({mode})</span>
-        <span className={`ml-auto rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${isGemini ? 'bg-purple-500/25 text-purple-100' : 'bg-teal-500/25 text-teal-100'}`}>{isGemini ? 'Gemini • EN only' : 'Edge • EN + IDN'}</span>
+        <span>Batch Download ({isStructuredTextBatch ? 'Structured Text' : mode})</span>
+        <span className={`ml-auto rounded-full px-2 py-0.5 text-[8px] font-black uppercase ${isGemini ? 'bg-purple-500/25 text-purple-100' : 'bg-teal-500/25 text-teal-100'}`}>{isStructuredTextBatch ? 'Edge Download Profile' : isGemini ? 'Gemini • EN only' : 'Edge • EN + IDN'}</span>
         {showClose && <button type="button" onClick={() => setIsBatchOpen(false)} className="rounded p-1 hover:bg-white/10" aria-label="Close batch"><X className="w-3.5 h-3.5"/></button>}
       </div>
 
       <div className="p-3 space-y-3">
-        {mode === 'table' ? (
+        {isStructuredTextBatch ? (
+          <>
+            <div className="grid gap-2">
+              <label className="text-[9px] font-bold text-slate-500">Global Edge EN download
+                <select disabled={structuredTextBatch?.running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
+                  {(structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                </select>
+              </label>
+              <label className="text-[9px] font-bold text-slate-500">Global Edge ID / Meaning download
+                <select disabled={structuredTextBatch?.running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
+                  {(structuredTextBatch?.voices || []).filter(v => !String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="flex gap-3 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
+              <ToggleRow checked={structuredTextBatch?.preferences?.generateText !== false} disabled={structuredTextBatch?.running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateText: structuredTextBatch?.preferences?.generateText === false })}>EN</ToggleRow>
+              <ToggleRow checked={structuredTextBatch?.preferences?.generateMeaning !== false} disabled={structuredTextBatch?.running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateMeaning: structuredTextBatch?.preferences?.generateMeaning === false })} tone="amber">ID</ToggleRow>
+            </div>
+            <div className="rounded-lg border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="text">
+              <div className="flex justify-between font-black text-violet-700 dark:text-violet-300"><span>Audio Coverage</span><span>{coverage?.covered || 0}/{coverage?.total || 0}</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400">
+                <span>Ready: {coverage?.ready || 0}</span><span>Downloaded*: {coverage?.downloaded || 0}</span>
+                <span>Other voice: {coverage?.otherVoice || 0}</span><span>Stale: {coverage?.stale || 0}</span>
+                <span>Missing: {coverage?.missing || 0}</span><span className="font-black text-amber-600 dark:text-amber-300">Need: {coverage?.needDownload || 0}</span>
+              </div>
+              <p className="mt-1.5 text-[8px] text-slate-400">Downloaded* = delivery history; reconnect/scan local files to verify them.</p>
+            </div>
+            {structuredTextBatch?.running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BATCH'}</button> : <>
+              <button type="button" disabled={!(coverage?.needDownload || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white disabled:opacity-35"><DownloadCloudIcon className="mr-1 inline h-3 w-3"/>DOWNLOAD MISSING ({coverage?.needDownload || 0})</button>
+              <button type="button" disabled={!(coverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD ALL ({coverage?.total || 0})</button>
+            </>}
+          </>
+        ) : mode === 'table' ? (
           <>
             <div className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
               <ToggleRow checked={batchConfig.doWord} disabled={isBatchDownloading} onClick={() => setBatchConfig(p => ({ ...p, doWord: !p.doWord }))}>Word EN</ToggleRow>
@@ -107,10 +143,16 @@ export const BatchPopup = ({
             )}
           </>
         ) : (
-          <div className="text-xs text-slate-400 italic">Batch download for full text.</div>
+          <div className="text-xs text-slate-400 italic">Legacy Text batch.</div>
         )}
 
-        <div className="flex gap-2 items-center text-xs">
+        {!isStructuredTextBatch && mode === 'table' && <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="table">
+          <div className="flex justify-between font-black text-indigo-700 dark:text-indigo-300"><span>Audio Coverage</span><span>{coverage?.covered || 0}/{coverage?.total || 0}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready: {coverage?.ready || 0}</span><span>Downloaded*: {coverage?.downloaded || 0}</span><span>Other voice: {coverage?.otherVoice || 0}</span><span>Missing: {coverage?.missing || 0}</span></div>
+          <p className="mt-1 font-black text-amber-600 dark:text-amber-300">Need download: {coverage?.needDownload || 0}</p>
+        </div>}
+
+        {!isStructuredTextBatch && <div className="flex gap-2 items-center text-xs">
           <span className="text-slate-500">Range:</span>
           <input
             type="number"
@@ -129,11 +171,11 @@ export const BatchPopup = ({
             onBlur={() => handleBatchRangeBlur?.('end')}
             disabled={isBatchDownloading}
           />
-        </div>
+        </div>}
 
-        <button
+        {!isStructuredTextBatch && <button
           type="button"
-          onClick={runBatchDownload}
+          onClick={isBatchDownloading ? runBatchDownload : () => runBatchDownload?.({ missingOnly: true })}
           className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 text-white transition-colors
             ${isBatchStopping ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : ''}
             ${isBatchDownloading && !isBatchStopping ? 'bg-red-500 hover:bg-red-600' : ''}
@@ -146,9 +188,10 @@ export const BatchPopup = ({
               {isBatchStopping ? 'Stopping...' : (batchStatusText || 'STOP BATCH')}
             </>
           ) : (
-            <><DownloadCloudIcon className="w-3 h-3"/>START BATCH</>
+            <><DownloadCloudIcon className="w-3 h-3"/>DOWNLOAD MISSING ({coverage?.needDownload ?? '—'})</>
           )}
-        </button>
+        </button>}
+        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={!(coverage?.total || 0)} onClick={() => runBatchDownload?.({ missingOnly: false })} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD ALL ({coverage?.total || 0})</button>}
       </div>
     </div>
   );

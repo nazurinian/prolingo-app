@@ -87,7 +87,8 @@ setEdgeHealth,
 setLocalAudioMapTable,
 setLocalAudioMapText,
 onGeneratedAudio,
-addLog
+addLog,
+deferBrowserDownload = false
 }) => {
   const uniqueLoadingId = `${item.id}-${part}`;
   setAiLoadingId(uniqueLoadingId);
@@ -209,17 +210,19 @@ addLog
           const generatedVoice = generatorEngine === 'edge'
               ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
               : aiVoiceName;
+          const deliveryStatus = deferBrowserDownload ? 'pending-package' : 'browser-direct-triggered';
           onGeneratedAudio?.({
               mode,
               mapKey: generatedKey,
               part,
               engine: generatorEngine,
               voice: generatedVoice,
-              filename
+              filename,
+              deliveryStatus
           });
-          triggerBrowserDownload(url, filename);
-          addLog("Success", `Saved: ${filename}`);
-          return { status: 'success', mapKey: generatedKey, filename };
+          if (!deferBrowserDownload) triggerBrowserDownload(url, filename);
+          addLog("Success", `${deferBrowserDownload ? 'Generated' : 'Saved'}: ${filename}`);
+          return { status: 'success', mapKey: generatedKey, filename, blob, url, part, engine: generatorEngine, voice: generatedVoice, deliveryStatus };
       }
   } catch (e) {
       if (isGenerationCancelled(e.name)) {

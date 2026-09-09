@@ -10,7 +10,7 @@ export default function MobileSystemControls({
   geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
-  isBatchStopping, batchStatusText, batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, DownloadCloudIcon,
+  isBatchStopping, batchStatusText, batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, tableCoverage, structuredTextBatch, DownloadCloudIcon,
   isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
@@ -69,6 +69,8 @@ export default function MobileSystemControls({
                               runBatchDownload={runBatchDownload}
                               isBatchStopping={isBatchStopping}
                               batchStatusText={batchStatusText}
+                              tableCoverage={tableCoverage}
+                              structuredTextBatch={structuredTextBatch}
                               DownloadCloudIcon={DownloadCloudIcon}
                               inline
                               showClose={false}

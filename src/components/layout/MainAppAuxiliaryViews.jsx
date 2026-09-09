@@ -11,7 +11,7 @@ const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="htt
 export const renderBatchPopupView = ({
   batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
   generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
-  isBatchStopping, batchStatusText, inline = false, showClose = true
+  isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true
 }) => (
     <BatchPopup
       batchPanelRef={batchPanelRef}
@@ -26,6 +26,8 @@ export const renderBatchPopupView = ({
       runBatchDownload={runBatchDownload}
       isBatchStopping={isBatchStopping}
       batchStatusText={batchStatusText}
+      tableCoverage={tableCoverage}
+      structuredTextBatch={structuredTextBatch}
       DownloadCloudIcon={DownloadCloudIcon}
       inline={inline}
       showClose={showClose}
@@ -79,7 +81,7 @@ export const renderMobileToolsView = ({
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
   edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
-  isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
+  tableCoverage, structuredTextBatch, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
@@ -175,6 +177,8 @@ export const renderMobileToolsView = ({
           batchConfig={batchConfig}
           setBatchConfig={setBatchConfig}
           runBatchDownload={runBatchDownload}
+          tableCoverage={tableCoverage}
+          structuredTextBatch={structuredTextBatch}
           DownloadCloudIcon={DownloadCloudIcon}
           isBatchOpen={isBatchOpen}
           setIsBatchOpen={setIsBatchOpen}

@@ -7,6 +7,7 @@ import {
   resolveTextStructuredEffectiveVoiceProfile
 } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { normalizeTextStructuredSpeakerKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
+import { getTextStructuredAudioDownloadProfile, resolveTextStructuredEffectiveDownloadVoice } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { useLiveOverlayViewportRef } from '../../hooks/useStableOverlayViewport.js';
 
 const clean = value => String(value ?? '').trim();
@@ -54,6 +55,24 @@ const VoiceSummary = ({ label, value, accent = 'slate' }) => (
   </div>
 );
 
+const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', disabled, onChange, testId }) => {
+  const pool = (Array.isArray(voices) ? voices : []).filter(voice => channel === 'meaning'
+    ? !String(voice?.lang || '').startsWith('en-')
+    : String(voice?.lang || '').startsWith('en-'));
+  const known = pool.some(voice => voice?.id === value);
+  return <select
+    value={value || ''}
+    disabled={disabled}
+    onChange={event => onChange?.(event.target.value || null)}
+    className="w-full min-w-0 min-h-11 rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-3 py-2 text-base md:text-[10px] text-violet-800 dark:text-violet-200 disabled:opacity-50"
+    data-text-download-voice-select={testId}
+  >
+    <option value="">Use inherited Edge • {compactVoiceLabel(inheritedVoiceId)}</option>
+    {value && !known && <option value={value}>{compactVoiceLabel(value)}</option>}
+    {pool.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+  </select>;
+};
+
 export const TextStructuredCardAudioPanel = ({
   documentTree,
   block,
@@ -61,10 +80,15 @@ export const TextStructuredCardAudioPanel = ({
   indonesianVoices = [],
   defaultTextVoiceName = null,
   defaultMeaningVoiceName = null,
+  generationPreferences = {},
+  edgeGenerationVoices = [],
+  cardCoverage = null,
   disabled = false,
   onClose,
   onCardVoiceChange,
   onSegmentVoiceChange,
+  onCardDownloadVoiceChange,
+  onSegmentDownloadVoiceChange,
   onPreviewTts,
   onGenerateCardAudio
 }) => {
@@ -74,6 +98,7 @@ export const TextStructuredCardAudioPanel = ({
   const overlayRef = useLiveOverlayViewportRef(true);
   const segments = Array.isArray(block?.segments) ? block.segments : [];
   const cardProfile = getTextStructuredVoiceOverrideProfile(block);
+  const cardDownloadProfile = getTextStructuredAudioDownloadProfile(block);
   const speakers = useMemo(() => collectTextStructuredCardSpeakers(block), [block]);
   const firstSegment = segments[0] || null;
   const isConversation = block?.blockType === 'conversation';
@@ -142,6 +167,52 @@ export const TextStructuredCardAudioPanel = ({
               ? 'All speakers use Sidebar voices. Expand a speaker only to customise this Card.'
               : 'This Card uses Sidebar voices. Open override only when this Paragraph needs a different voice.'}
           </p>
+        </div>
+
+        <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/45 dark:bg-violet-950/15 p-2.5" data-text-card-download-profile="true">
+          <div className="flex items-center gap-2 mb-2">
+            <Download className="w-4 h-4 text-violet-500"/>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Edge Download Profile</p>
+              <p className="text-[8px] text-slate-400">Independent from Browser/Sidebar playback voices.</p>
+            </div>
+            {cardCoverage && <span className={`shrink-0 rounded-lg px-2 py-1 text-[8px] font-black ${cardCoverage.needDownload ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'}`}>{cardCoverage.covered}/{cardCoverage.total}</span>}
+          </div>
+
+          {!isConversation && <div className="grid gap-2 md:grid-cols-2">
+            {['text', 'meaning'].map(channel => {
+              const inherited = resolveTextStructuredEffectiveDownloadVoice({ block: { ...block, metadata: {} }, segment: firstSegment, channel, preferences: generationPreferences });
+              const value = cardDownloadProfile.channels?.[channel] || '';
+              return <label key={channel} className="block min-w-0">
+                <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download voice' : 'EN download voice'}</span>
+                <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, null)} testId={`${block.id}:download:${channel}`}/>
+              </label>;
+            })}
+          </div>}
+
+          {isConversation && <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <VoiceSummary label="Global Edge EN" value={generationPreferences?.edgeTextVoiceId} accent="sky"/>
+              <VoiceSummary label="Global Edge ID" value={generationPreferences?.edgeMeaningVoiceId} accent="sky"/>
+            </div>
+            <p className="text-[8px] text-slate-400">Each detected speaker inherits these Edge defaults unless a speaker download override is set below.</p>
+            {speakers.map(({ key, label }) => {
+              const sample = segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || firstSegment;
+              return <div key={`download-${key}`} className="rounded-lg border border-violet-100 dark:border-violet-900 bg-white/70 dark:bg-slate-900/30 p-2">
+                <p className="mb-1.5 text-[9px] font-black text-violet-700 dark:text-violet-300">{label}</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {['text', 'meaning'].map(channel => {
+                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ block: { ...block, metadata: { ...block.metadata, audioDownloadProfileV1: { ...cardDownloadProfile, speakers: { text: {}, meaning: {} } } } }, segment: sample, channel, preferences: generationPreferences });
+                    const value = cardDownloadProfile.speakers?.[channel]?.[key] || '';
+                    return <label key={channel} className="block min-w-0">
+                      <span className="mb-1 block text-[8px] font-bold text-slate-500">{channel === 'meaning' ? 'ID Edge' : 'EN Edge'}</span>
+                      <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, label)} testId={`${block.id}:${key}:download:${channel}`}/>
+                    </label>;
+                  })}
+                </div>
+              </div>;
+            })}
+          </div>}
         </div>
 
         {!isConversation && <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden" data-text-paragraph-audio-profile="true">
@@ -236,6 +307,16 @@ export const TextStructuredCardAudioPanel = ({
                     </div>;
                   })}
                 </div>
+                <div className="mt-2 grid gap-2 border-t border-violet-100 dark:border-violet-900 pt-2 md:grid-cols-2" data-text-segment-download-overrides="true">
+                  {['text', 'meaning'].map(channel => {
+                    const segmentDownload = getTextStructuredAudioDownloadProfile(segment);
+                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ block, segment: { ...segment, metadata: {} }, channel, preferences: generationPreferences });
+                    return <label key={`download-${channel}`} className="block min-w-0">
+                      <span className="mb-1 block text-[8px] font-bold text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID Edge download' : 'EN Edge download'}</span>
+                      <EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onSegmentDownloadVoiceChange?.(segment.id, channel, voiceId)} testId={`${segment.id}:download:${channel}`}/>
+                    </label>;
+                  })}
+                </div>
               </div>;
             })}
           </div>}
@@ -246,11 +327,12 @@ export const TextStructuredCardAudioPanel = ({
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black text-slate-700 dark:text-slate-200">Generate this Card</p>
-            <p className="truncate text-[8px] text-slate-400">Uses Sidebar defaults + only the overrides above.</p>
+            <p className="truncate text-[8px] text-slate-400">Uses Edge Download Profile. Browser player voice does not affect download.</p>
           </div>
-          <button type="button" disabled={disabled} onClick={() => onGenerateCardAudio?.(block.id, ['text'])} className="min-h-10 px-3 py-2 rounded-xl bg-violet-600 text-white text-[9px] font-black disabled:opacity-35 active:scale-95 transition"><Download className="w-3 h-3 inline mr-1"/>EN</button>
-          <button type="button" disabled={disabled || !segments.some(segment => clean(segment.meaning))} onClick={() => onGenerateCardAudio?.(block.id, ['meaning'])} className="min-h-10 px-3 py-2 rounded-xl bg-emerald-600 text-white text-[9px] font-black disabled:opacity-35 active:scale-95 transition">ID</button>
-          <button type="button" disabled={disabled} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'])} className="hidden sm:block min-h-10 px-3 py-2 rounded-xl bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[9px] font-black disabled:opacity-35 active:scale-95 transition">EN + ID</button>
+          <button type="button" disabled={disabled} onClick={() => onGenerateCardAudio?.(block.id, ['text'], { missingOnly: true })} className="min-h-10 px-3 py-2 rounded-xl bg-violet-600 text-white text-[9px] font-black disabled:opacity-35 active:scale-95 transition"><Download className="w-3 h-3 inline mr-1"/>EN</button>
+          <button type="button" disabled={disabled || !segments.some(segment => clean(segment.meaning))} onClick={() => onGenerateCardAudio?.(block.id, ['meaning'], { missingOnly: true })} className="min-h-10 px-3 py-2 rounded-xl bg-emerald-600 text-white text-[9px] font-black disabled:opacity-35 active:scale-95 transition">ID</button>
+          <button type="button" disabled={disabled} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} className="hidden sm:block min-h-10 px-3 py-2 rounded-xl bg-slate-800 dark:bg-white text-white dark:text-slate-900 text-[9px] font-black disabled:opacity-35 active:scale-95 transition">EN + ID</button>
+          <button type="button" disabled={disabled} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="hidden md:block min-h-10 px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-black disabled:opacity-35 active:scale-95 transition">Redownload all</button>
         </div>
       </div>
     </div>

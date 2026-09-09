@@ -4,6 +4,7 @@ import {
   resolveTextStructuredSpeakerVoice
 } from './textStructuredAudioIdentityDomain.js';
 import { resolveTextStructuredEffectiveVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
+import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 
 const clean = value => String(value ?? '').trim();
 
@@ -12,6 +13,39 @@ const filterContentCompatibleVariants = ({ audioVariants, channel, content }) =>
     isTextStructuredAudioVariantContentCompatible({ variant, channel, content }).compatible
   );
 
+
+const resolveGeneratedVariantByVoice = ({
+  audioVariants,
+  segmentId,
+  channel,
+  voiceId,
+  preferredGeneratedEngine = null,
+  content = ''
+}) => {
+  const requested = clean(voiceId);
+  if (!requested) return null;
+  const engine = clean(preferredGeneratedEngine).toLowerCase();
+  return filterContentCompatibleVariants({ audioVariants, channel, content })
+    .filter(item => String(item?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
+    .filter(item => String(item?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
+    .filter(item => String(item?.source || '').toLowerCase() === 'generated')
+    .filter(item => !engine || String(item?.engine || '').toLowerCase() === engine)
+    .filter(item => clean(item?.voiceId).toLowerCase() === requested.toLowerCase())
+    .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))[0] || null;
+};
+
+const resolveGeneratedMetadataByVoice = ({ audioVariants, segmentId, channel, voiceId, preferredGeneratedEngine = 'edge' }) => {
+  const requested = clean(voiceId);
+  if (!requested) return null;
+  const engine = clean(preferredGeneratedEngine).toLowerCase();
+  return (Array.isArray(audioVariants) ? audioVariants : [])
+    .filter(item => String(item?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
+    .filter(item => String(item?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
+    .filter(item => String(item?.source || '').toLowerCase() === 'generated')
+    .filter(item => !engine || String(item?.engine || '').toLowerCase() === engine)
+    .filter(item => clean(item?.voiceId).toLowerCase() === requested.toLowerCase())
+    .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))[0] || null;
+};
 const resolveProfileBoundGeneratedVariant = ({
   audioVariants,
   segmentId,
@@ -63,6 +97,7 @@ export const resolveTextStructuredRuntimeAudio = ({
   segmentId,
   channel,
   requestedVoiceId,
+  preferredGeneratedVoiceId = null,
   preferredGeneratedEngine = null,
   content = ''
 }) => {
@@ -73,16 +108,30 @@ export const resolveTextStructuredRuntimeAudio = ({
     content
   });
   const requested = clean(requestedVoiceId) || null;
-  let variant = resolveTextStructuredAudioVariant({
+  // C3.4: Browser TTS voice and generated Edge Download voice are independent.
+  // Manual local files may still bind to the playback voice, while generated
+  // files are resolved by their canonical provider/download voice identity.
+  let variant = requested ? resolveTextStructuredAudioVariant({
     audioVariants: runtimeVariants,
     segmentId,
     channel,
+    preferredSource: 'file',
     preferredVoiceId: requested
-  });
+  }) : null;
 
-  // Generated audio keeps the provider voice in canonical identity while the
-  // playback-profile binding remains metadata. Exact manual local audio keeps
-  // priority. A profile mismatch or content fingerprint mismatch fails closed.
+  if (!variant && clean(preferredGeneratedVoiceId)) {
+    variant = resolveGeneratedVariantByVoice({
+      audioVariants: runtimeVariants,
+      segmentId,
+      channel,
+      voiceId: preferredGeneratedVoiceId,
+      preferredGeneratedEngine,
+      content
+    });
+  }
+
+  // Historical A12 generated metadata remains playable as a compatibility
+  // fallback until it is regenerated under the C3.4 Download Profile model.
   if (!variant && requested) {
     variant = resolveProfileBoundGeneratedVariant({
       audioVariants: runtimeVariants,
@@ -115,7 +164,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
   speakerVoiceMap = {},
   includeDocumentSpeakerProfile = true,
   simpleCardSpeakerMode = false,
-  preferredGeneratedEngine = null
+  preferredGeneratedEngine = 'edge',
+  downloadPreferences = null
 }) => {
   const map = {};
   const blocks = Array.isArray(documentTree?.blocks) ? documentTree.blocks : [];
@@ -143,26 +193,30 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
             })
           : effective.voiceName;
         const content = channel === 'meaning' ? segment?.meaning : segment?.text;
-        const metadataVariant = requestedVoiceId
-          ? resolveMetadataVariantIgnoringContent({
-              audioVariants,
-              segmentId: segment.id,
-              channel,
-              requestedVoiceId,
-              preferredGeneratedEngine
-            })
-          : null;
-        const resolved = requestedVoiceId
-          ? resolveTextStructuredRuntimeAudio({
-              audioVariants,
-              runtimeAudioUrls,
-              segmentId: segment.id,
-              channel,
-              requestedVoiceId,
-              preferredGeneratedEngine,
-              content
-            })
-          : null;
+        const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel, preferences: downloadPreferences });
+        const metadataVariant = resolveGeneratedMetadataByVoice({
+          audioVariants,
+          segmentId: segment.id,
+          channel,
+          voiceId: downloadVoice.voiceId,
+          preferredGeneratedEngine
+        }) || (requestedVoiceId ? resolveMetadataVariantIgnoringContent({
+          audioVariants,
+          segmentId: segment.id,
+          channel,
+          requestedVoiceId,
+          preferredGeneratedEngine
+        }) : null);
+        const resolved = resolveTextStructuredRuntimeAudio({
+          audioVariants,
+          runtimeAudioUrls,
+          segmentId: segment.id,
+          channel,
+          requestedVoiceId,
+          preferredGeneratedVoiceId: downloadVoice.voiceId,
+          preferredGeneratedEngine,
+          content
+        });
         const compatibility = metadataVariant
           ? isTextStructuredAudioVariantContentCompatible({ variant: metadataVariant, channel, content })
           : null;
@@ -174,6 +228,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
               contentVerified: resolved.contentVerified,
               assignmentSource: effective.source,
               requestedVoiceId,
+              downloadVoiceId: downloadVoice.voiceId,
+              downloadVoiceSource: downloadVoice.source,
               variantId: resolved.variant.id,
               voiceId: resolved.variant.voiceId,
               engine: resolved.variant.engine,
@@ -188,6 +244,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
                 contentVerified: Boolean(compatibility?.verified),
                 assignmentSource: effective.source,
                 requestedVoiceId,
+                downloadVoiceId: downloadVoice.voiceId,
+                downloadVoiceSource: downloadVoice.source,
                 variantId: metadataVariant.id,
                 voiceId: metadataVariant.voiceId,
                 engine: metadataVariant.engine,
@@ -200,6 +258,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
                 stale: false,
                 contentVerified: false,
                 assignmentSource: effective.source,
+                downloadVoiceId: downloadVoice.voiceId,
+                downloadVoiceSource: downloadVoice.source,
                 variantId: null,
                 voiceId: requestedVoiceId || null,
                 requestedVoiceId

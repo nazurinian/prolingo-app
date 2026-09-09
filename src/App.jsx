@@ -77,6 +77,7 @@ import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecis
 import { resolveGeneratedAudioMapKey, shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
 import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
+import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
 import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
@@ -103,6 +104,8 @@ import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, reso
 import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
+import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
+import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
 import { buildTextStructuredSpeakerVoiceMetadata, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
@@ -119,7 +122,9 @@ import { executeStructuredTextPlaybackSessionService } from './services/playback
 import { executeStructuredTextRuntimeAudioPlaybackService } from './services/playback/textStructuredAudioRuntimeService.js';
 import { executeTextStructuredPreferencePersistenceEffect } from './services/persistence/textStructuredPreferenceService.js';
 import { executeTextStructuredAudioGenerationPreferencePersistenceEffect, loadTextStructuredAudioGenerationPreferences } from './services/persistence/textStructuredAudioGenerationPreferenceService.js';
+import { loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
 import { executeTextStructuredAudioGenerationRequest } from './services/audio/textStructuredAudioGenerationService.js';
+import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
 import { executeTextStructuredAudioFolderChoose, executeTextStructuredAudioFolderReconnect, executeTextStructuredAudioFolderRestore, readTextStructuredAudioFolderFiles, scanTextStructuredAudioFolderFiles, writeTextStructuredAudioFile } from './services/audio/textStructuredAudioFolderService.js';
 
@@ -169,6 +174,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
   // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
   const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
+  // C3.4: delivery history persists the fact that a browser download/package was
+  // triggered even when mobile Chrome cannot re-open Downloads for verification.
+  const [audioDownloadHistory, setAudioDownloadHistory] = useState(loadAudioDownloadHistory);
   // P4-A4: Text Library UI command state belongs to Text only and never participates in Table busy state.
   const [textLibraryCommandBusy, setTextLibraryCommandBusy] = useState(false);
   const [textLibraryCommandError, setTextLibraryCommandError] = useState(null);
@@ -198,6 +206,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   useEffect(() => {
     executeTextStructuredAudioGenerationPreferencePersistenceEffect(structuredTextAudioGenerationPreferences);
   }, [structuredTextAudioGenerationPreferences]);
+
+  useEffect(() => {
+    persistAudioDownloadHistory(audioDownloadHistory);
+  }, [audioDownloadHistory]);
 
   useEffect(() => {
     const validIds = new Set((textLibrarySnapshot?.audioVariants || []).map(item => item.id));
@@ -579,8 +591,36 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     meaningVoiceId: defaultStructuredMeaningVoiceId,
     speakerVoiceMap: structuredTextSpeakerVoiceMap,
     includeDocumentSpeakerProfile: false,
-    simpleCardSpeakerMode: true
-  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap]);
+    simpleCardSpeakerMode: true,
+    preferredGeneratedEngine: 'edge',
+    downloadPreferences: structuredTextAudioGenerationPreferences
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextAudioGenerationPreferences]);
+  const structuredTextAudioCoverageMap = useMemo(() => buildTextStructuredAudioCoverageMap({
+    documentTree: activeTextDocumentTree,
+    audioVariants: textLibrarySnapshot?.audioVariants || [],
+    runtimeAudioUrls: structuredTextAudioRuntimeUrls,
+    preferences: structuredTextAudioGenerationPreferences
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextAudioGenerationPreferences]);
+  const structuredTextDocumentCoverage = useMemo(() => {
+    const channels = [];
+    if (structuredTextAudioGenerationPreferences?.generateText !== false) channels.push('text');
+    if (structuredTextAudioGenerationPreferences?.generateMeaning !== false) channels.push('meaning');
+    return summarizeTextStructuredAudioCoverage({
+      documentTree: activeTextDocumentTree,
+      coverageMap: structuredTextAudioCoverageMap,
+      channels
+    });
+  }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
+  const tableAudioBatchCoverage = useMemo(() => buildTableAudioBatchCoverage({
+    playlist,
+    batchConfig,
+    generatorEngine,
+    edgeVoice,
+    edgeIndonesianVoice,
+    localAudioMapTable,
+    generatedAudioMeta,
+    downloadHistory: audioDownloadHistory
+  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, audioDownloadHistory]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
   const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
@@ -1020,19 +1060,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     item,
     channel,
     blob,
-    generationVoiceState
+    generationVoiceState,
+    deferBrowserDelivery = false
   }) => {
     const segmentId = item?.segmentId || item?.id;
     const engine = generationVoiceState.engine;
     const engineVoiceId = generationVoiceState.engineVoiceId;
-    const playbackProfileVoiceId = generationVoiceState.playbackProfileVoiceId;
+    const downloadProfileVoiceId = generationVoiceState.downloadProfileVoiceId || engineVoiceId;
+    const playbackProfileVoiceId = generationVoiceState.playbackProfileVoiceId || null;
     const content = channel === 'meaning' ? item?.meaning : item?.text;
-    const metadata = {
-      generatedBy: 'P4-A12.1',
+    const baseMetadata = {
+      generatedBy: 'P4-C3.4',
       generatedAt: Date.now(),
       engineVoiceId,
+      downloadProfileVoiceId,
       playbackProfileVoiceId,
-      assignmentSource: generationVoiceState.assignmentSource || 'global',
+      assignmentSource: generationVoiceState.assignmentSource || 'global-download',
       contentFingerprint: buildTextStructuredAudioContentFingerprint({ channel, content }),
       speaker: item?.speaker || null,
       profileMatched: Boolean(generationVoiceState.matchedProfile)
@@ -1048,7 +1091,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           voiceId: engineVoiceId,
           language: channel === 'meaning' ? 'id' : 'en',
           mimeType: blob.type || null,
-          metadata
+          metadata: { ...baseMetadata, deliveryStatus: 'generated-session' }
         }
       },
       setTextLibrarySnapshot,
@@ -1062,6 +1105,42 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       engineVoiceId,
       mimeType: blob.type
     });
+
+    let deliveryStatus = 'generated-session';
+    let packagePending = false;
+    const runtimeUrl = URL.createObjectURL(blob);
+    setStructuredTextAudioRuntimeUrls(prev => {
+      const previous = prev?.[first.id];
+      if (previous?.url) { try { URL.revokeObjectURL(previous.url); } catch {} }
+      return {
+        ...prev,
+        [first.id]: { url: runtimeUrl, filename, mimeType: blob.type || null, generated: true }
+      };
+    });
+
+    const folderHandle = structuredTextAudioDirectoryHandleRef.current;
+    if (folderHandle) {
+      const writeResult = await writeTextStructuredAudioFile({ directoryHandle: folderHandle, filename, blob });
+      if (writeResult.status === 'written') {
+        deliveryStatus = 'folder-written';
+      } else if (deferBrowserDelivery) {
+        deliveryStatus = 'pending-package';
+        packagePending = true;
+        addLog('Warn', `Generation folder unavailable (${writeResult.status}); adding ${filename} to browser batch package.`);
+      } else {
+        deliveryStatus = 'browser-direct-triggered';
+        triggerBrowserDownload(runtimeUrl, filename);
+        addLog('Warn', `Generation folder unavailable (${writeResult.status}); browser download triggered for ${filename}.`);
+      }
+    } else if (deferBrowserDelivery) {
+      deliveryStatus = 'pending-package';
+      packagePending = true;
+    } else {
+      deliveryStatus = 'browser-direct-triggered';
+      triggerBrowserDownload(runtimeUrl, filename);
+    }
+
+    const metadata = { ...baseMetadata, deliveryStatus, deliveredAt: deliveryStatus === 'pending-package' ? null : Date.now() };
     const completed = await executeTextLibraryStructuredCommand({
       command: {
         type: TEXT_LIBRARY_COMMAND_TYPES.UPSERT_AUDIO_VARIANT,
@@ -1081,47 +1160,52 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog
     });
 
-    const runtimeUrl = URL.createObjectURL(blob);
-    setStructuredTextAudioRuntimeUrls(prev => {
-      const previous = prev?.[completed.id];
-      if (previous?.url) { try { URL.revokeObjectURL(previous.url); } catch {} }
-      return {
-        ...prev,
-        [completed.id]: { url: runtimeUrl, filename, mimeType: blob.type || null, generated: true }
-      };
-    });
-
-    const folderHandle = structuredTextAudioDirectoryHandleRef.current;
-    if (folderHandle) {
-      const writeResult = await writeTextStructuredAudioFile({ directoryHandle: folderHandle, filename, blob });
-      if (writeResult.status !== 'written') {
-        addLog('Warn', `Generation folder unavailable (${writeResult.status}); using browser download for ${filename}.`);
-        triggerBrowserDownload(runtimeUrl, filename);
-      }
-    } else {
-      triggerBrowserDownload(runtimeUrl, filename);
-    }
-    return { ...completed, filename, engine, engineVoiceId, playbackProfileVoiceId };
+    return { ...completed, filename, engine, engineVoiceId, downloadProfileVoiceId, playbackProfileVoiceId, deliveryStatus, packagePending, blob };
   }, [setTextLibrarySnapshot, addLog]);
 
-  const generateStructuredTextAudioJob = useCallback(async ({ segmentId, channel }, options = {}) => {
+  const markStructuredTextPackagedDelivery = useCallback(async (records = []) => {
+    for (const record of records) {
+      if (!record?.id) continue;
+      await executeTextLibraryStructuredCommand({
+        command: {
+          type: TEXT_LIBRARY_COMMAND_TYPES.UPSERT_AUDIO_VARIANT,
+          payload: {
+            segmentId: record.segmentId,
+            channel: record.channel,
+            source: record.source || 'generated',
+            engine: record.engine || 'edge',
+            voiceId: record.voiceId || record.engineVoiceId,
+            language: record.language || (record.channel === 'meaning' ? 'id' : 'en'),
+            filename: record.filename,
+            mimeType: record.mimeType || null,
+            metadata: { ...(record.metadata || {}), deliveryStatus: 'browser-package-triggered', deliveredAt: Date.now() }
+          }
+        },
+        setTextLibrarySnapshot,
+        addLog
+      });
+    }
+  }, [setTextLibrarySnapshot, addLog]);
+
+  const generateStructuredTextAudioJob = useCallback(async ({ segmentId, channel, downloadVoiceId = null, downloadVoiceSource = null }, options = {}) => {
     const item = structuredTextPlaybackList.find(candidate => (candidate?.segmentId || candidate?.id) === segmentId);
     if (!item) throw new Error(`Unknown structured Text segment: ${segmentId}`);
     const content = channel === 'meaning' ? item.meaning : item.text;
     if (!String(content || '').trim()) return { status: 'skipped-empty', segmentId, channel };
-    const channelVoiceState = resolveStructuredTextChannelVoiceState(item, channel);
+    const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item.blockId) || null;
+    const segment = (block?.segments || []).find(candidate => candidate.id === segmentId) || item;
+    const resolvedDownloadVoice = downloadVoiceId
+      ? { voiceId: downloadVoiceId, source: downloadVoiceSource || 'job-download' }
+      : resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
     const generationVoiceState = {
       ...resolveTextStructuredGenerationVoiceState({
         channel,
-        requestedPlaybackVoiceId: channelVoiceState.requestedVoiceId,
+        requestedDownloadVoiceId: resolvedDownloadVoice.voiceId,
         preferences: structuredTextAudioGenerationPreferences,
         edgeVoices: initialEdgeVoices
       }),
-      assignmentSource: channelVoiceState.assignmentSource
+      assignmentSource: resolvedDownloadVoice.source
     };
-    if (generationVoiceState.engine === 'edge' && channel === 'text' && item?.speaker && !generationVoiceState.matchedProfile) {
-      addLog('Warn', `Text Generate: ${item.speaker} voice ${channelVoiceState.requestedVoiceId || 'default'} has no Edge equivalent; using ${generationVoiceState.engineVoiceId}.`);
-    }
 
     const controller = new AbortController();
     structuredTextAudioGenerationAbortRef.current = controller;
@@ -1136,7 +1220,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         geminiAccessUnlocked: false,
         signal: controller.signal
       });
-      const registered = await registerStructuredTextGeneratedBlob({ item, channel, blob: generated.blob, generationVoiceState });
+      const registered = await registerStructuredTextGeneratedBlob({
+        item,
+        channel,
+        blob: generated.blob,
+        generationVoiceState,
+        deferBrowserDelivery: Boolean(options.deferBrowserDelivery)
+      });
       addLog('Text Generate', `${segmentId}/${channel} • ${generationVoiceState.engine.toUpperCase()} • ${generationVoiceState.engineVoiceId} → ${registered.filename}.`);
       return { status: 'success', segmentId, channel, ...registered };
     } catch (error) {
@@ -1149,7 +1239,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, structuredTextAudioGenerationPreferences, registerStructuredTextGeneratedBlob, addLog]);
+  }, [structuredTextPlaybackList, activeTextDocumentTree, structuredTextAudioGenerationPreferences, registerStructuredTextGeneratedBlob, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
@@ -1167,37 +1257,57 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [structuredTextAudioGenerationState.running, forceStopAll, generateStructuredTextAudioJob]);
 
-  const runStructuredTextAudioGenerationBatch = useCallback(async (jobsCandidate = null) => {
+  const runStructuredTextAudioGenerationBatch = useCallback(async (jobsCandidate = null, options = {}) => {
     if (structuredTextAudioGenerationState.running || !activeTextDocumentTree) return null;
     forceStopAll();
-    const jobs = Array.isArray(jobsCandidate) && jobsCandidate.length
+    const allJobs = Array.isArray(jobsCandidate)
       ? jobsCandidate
       : buildTextStructuredGenerationJobs({ documentTree: activeTextDocumentTree, preferences: structuredTextAudioGenerationPreferences });
-    if (!jobs.length) return { status: 'empty' };
+    const missingOnly = options.missingOnly !== false;
+    const jobs = missingOnly
+      ? allJobs.filter(job => shouldDownloadTextStructuredCoverageSlot(structuredTextAudioCoverageMap?.[`${String(job.segmentId || '').toUpperCase()}::${job.channel}`]))
+      : allJobs;
+    if (!jobs.length) {
+      addLog('Text Generate', missingOnly ? 'Audio Download: selected scope is already covered.' : 'Audio Download: no jobs in selected scope.');
+      return { status: 'up-to-date', completed: 0, total: 0, failedJobs: [] };
+    }
     structuredTextAudioBatchStopRef.current = false;
     const failedJobs = [];
+    const packageRecords = [];
     let completed = 0;
     setStructuredTextAudioGenerationState({ running: true, completed: 0, total: jobs.length, current: null, failedJobs: [], lastStatus: 'running' });
     try {
       for (const job of jobs) {
         if (structuredTextAudioBatchStopRef.current) break;
-        const result = await generateStructuredTextAudioJob(job, { batch: true });
+        const result = await generateStructuredTextAudioJob(job, { batch: true, deferBrowserDelivery: true });
         if (result?.status === 'success' || result?.status === 'skipped-empty') completed += 1;
         else if (result?.status === 'error') failedJobs.push(job);
+        if (result?.status === 'success' && result?.packagePending && result?.blob) packageRecords.push(result);
         if (result?.status === 'cancelled' && structuredTextAudioBatchStopRef.current) break;
         setStructuredTextAudioGenerationState(prev => ({ ...prev, completed, failedJobs: [...failedJobs] }));
         if (!structuredTextAudioBatchStopRef.current) await new Promise(resolve => setTimeout(resolve, 250));
       }
+
+      if (packageRecords.length) {
+        const safeTitle = sanitizeFilename(activeTextDocumentTree?.title || 'Text_Document').replace(/\s+/g, '_');
+        const packageResult = await triggerBrowserZipDownload({
+          entries: packageRecords.map(record => ({ filename: record.filename, blob: record.blob })),
+          filename: `ProLingo_Text_${safeTitle}_Audio_${Date.now()}.zip`
+        });
+        await markStructuredTextPackagedDelivery(packageRecords);
+        addLog('Text Generate', `Browser package: ${packageResult.fileCount} audio → ${packageResult.filename}.`);
+      }
+
       const stopped = structuredTextAudioBatchStopRef.current;
       const status = stopped ? 'cancelled' : failedJobs.length ? 'completed-with-errors' : 'completed';
       setStructuredTextAudioGenerationState({ running: false, completed, total: jobs.length, current: null, failedJobs, lastStatus: status });
       addLog('Text Generate', `Batch ${status}: ${completed}/${jobs.length}, failed ${failedJobs.length}.`);
-      return { status, completed, total: jobs.length, failedJobs };
+      return { status, completed, total: jobs.length, failedJobs, packaged: packageRecords.length };
     } finally {
       structuredTextAudioBatchStopRef.current = false;
       structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextAudioGenerationState.running, activeTextDocumentTree, structuredTextAudioGenerationPreferences, forceStopAll, generateStructuredTextAudioJob, addLog]);
+  }, [structuredTextAudioGenerationState.running, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextAudioCoverageMap, forceStopAll, generateStructuredTextAudioJob, markStructuredTextPackagedDelivery, addLog]);
 
   const handleStructuredTextCancelGeneration = useCallback(() => {
     structuredTextAudioBatchStopRef.current = true;
@@ -1217,12 +1327,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const targetVoiceId = voiceState.requestedVoiceId;
 
     if (textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY && targetVoiceId) {
+      const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
+      const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
+      const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
+        block,
+        segment,
+        channel,
+        preferences: structuredTextAudioGenerationPreferences
+      });
       const runtimeAudio = resolveTextStructuredRuntimeAudio({
         audioVariants: textLibrarySnapshot?.audioVariants || [],
         runtimeAudioUrls: structuredTextAudioRuntimeUrls,
         segmentId: item?.segmentId || item?.id,
         channel,
         requestedVoiceId: targetVoiceId,
+        preferredGeneratedVoiceId: generatedVoice.voiceId,
+        preferredGeneratedEngine: 'edge',
         content: textToRead
       });
       if (runtimeAudio?.url) {
@@ -1665,6 +1785,38 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
+  const handleStructuredTextCardDownloadVoiceChange = useCallback(async (blockId, channel = 'text', voiceId = null, speaker = null) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
+    if (!block) return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({
+      metadata: block.metadata,
+      channel,
+      voiceId,
+      speaker
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
+      payload: { id: block.id, metadata }
+    });
+    if (result) addLog('Text Download', `${block.id}${speaker ? `/${speaker}` : ''} • ${channel} → ${voiceId || 'global Edge default'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSegmentDownloadVoiceChange = useCallback(async (segmentId, channel = 'text', voiceId = null) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const block = (activeTextDocumentTree.blocks || []).find(candidate => (candidate.segments || []).some(segment => segment.id === segmentId));
+    const segment = (block?.segments || []).find(item => item.id === segmentId);
+    if (!segment) return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({ metadata: segment.metadata, channel, voiceId });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+      payload: { id: segment.id, metadata }
+    });
+    if (result) addLog('Text Download', `${segment.id} • ${channel} → ${voiceId || 'inherit'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
   const handleStructuredTextPreviewTts = useCallback(async (segmentId, channel = 'text') => {
     if (structuredTextAudioGenerationState.running) return null;
     const item = structuredTextPlaybackList.find(candidate => (candidate?.segmentId || candidate?.id) === segmentId);
@@ -1695,7 +1847,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   }, [structuredTextAudioGenerationState.running, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, safePlayTransition, addLog, stopSignalRef, pauseStateRef, synth, currentUtteranceRef, ttsReplayRef, playbackResolveRef, textStructuredPreferences.browserTtsRate]);
 
-  const handleStructuredTextGenerateCardAudio = useCallback((blockId, channels = null) => {
+  const handleStructuredTextGenerateCardAudio = useCallback((blockId, channels = null, options = {}) => {
     if (!activeTextDocumentTree) return null;
     const jobs = buildTextStructuredGenerationJobs({
       documentTree: activeTextDocumentTree,
@@ -1703,10 +1855,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       blockId,
       channels
     });
-    return runStructuredTextAudioGenerationBatch(jobs);
+    return runStructuredTextAudioGenerationBatch(jobs, { missingOnly: options.missingOnly !== false });
   }, [activeTextDocumentTree, structuredTextAudioGenerationPreferences, runStructuredTextAudioGenerationBatch]);
 
-  const handleStructuredTextGenerateSpeakerAudio = useCallback((blockId, speaker, channels = null) => {
+  const handleStructuredTextGenerateSpeakerAudio = useCallback((blockId, speaker, channels = null, options = {}) => {
     if (!activeTextDocumentTree) return null;
     const jobs = buildTextStructuredGenerationJobs({
       documentTree: activeTextDocumentTree,
@@ -1715,14 +1867,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       speaker,
       channels
     });
-    return runStructuredTextAudioGenerationBatch(jobs);
+    return runStructuredTextAudioGenerationBatch(jobs, { missingOnly: options.missingOnly !== false });
   }, [activeTextDocumentTree, structuredTextAudioGenerationPreferences, runStructuredTextAudioGenerationBatch]);
 
   const handleStructuredTextEdgeHealthCheck = useCallback(async () => {
     if (structuredTextAudioGenerationState.running || structuredTextEdgeHealth.status === 'testing') return null;
     const generationVoiceState = resolveTextStructuredGenerationVoiceState({
       channel: 'text',
-      requestedPlaybackVoiceId: defaultStructuredTextVoiceId,
+      requestedDownloadVoiceId: structuredTextAudioGenerationPreferences.edgeTextVoiceId,
       preferences: structuredTextAudioGenerationPreferences,
       edgeVoices: initialEdgeVoices
     });
@@ -2032,7 +2184,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (!ok) return { status: 'replace-cancelled', mapKey };
     }
 
-    return executeAudioGenerationService({
+    const result = await executeAudioGenerationService({
       item,
       part,
       mode,
@@ -2056,11 +2208,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         };
         setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
       },
-      addLog
+      addLog,
+      deferBrowserDownload: Boolean(options.deferBrowserDownload)
     });
+    if (result?.status === 'success' && !options.deferBrowserDownload) {
+      setAudioDownloadHistory(prev => recordAudioDownloadHistory(prev, {
+        mode,
+        mapKey: result.mapKey,
+        part: result.part || part,
+        engine: result.engine || generatorEngine,
+        voice: result.voice || (generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : aiVoiceName),
+        filename: result.filename,
+        delivery: 'browser-direct'
+      }));
+    }
+    return result;
   };
 
-  const runBatchDownload = async () => {
+  const runBatchDownload = async (options = {}) => {
     if (generatorEngine === 'gemini' && !geminiOwnerState.unlocked && !geminiOwnerState.byokRegistered) {
       alert('Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.');
       return;
@@ -2078,7 +2243,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playlist,
       generatorEngine,
       setIsBatchDownloading,
-      generateAIAudio
+      generateAIAudio,
+      coverageByMapKey: tableAudioBatchCoverage?.byMapKey || null,
+      missingOnly: options.missingOnly !== false,
+      onBatchDelivered: (records) => {
+        setAudioDownloadHistory(prev => recordAudioDownloadHistory(prev, records));
+        records.forEach(record => {
+          const metaKey = `${record.mode || 'table'}:${record.mapKey}`;
+          const current = generatedAudioMetaRef.current?.[metaKey] || {};
+          const next = { ...current, ...record, deliveryStatus: 'browser-package-triggered' };
+          generatedAudioMetaRef.current = { ...generatedAudioMetaRef.current, [metaKey]: next };
+          setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: next }));
+        });
+      }
     });
   };
 
@@ -2115,6 +2292,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     ));
   };
 
+  const handleMatchedAudioInventory = (meta) => {
+    if (!meta?.mapKey) return;
+    const metaKey = `${meta.mode || mode}:${meta.mapKey}`;
+    generatedAudioMetaRef.current = { ...generatedAudioMetaRef.current, [metaKey]: meta };
+    setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
+  };
+
   const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
     clearGeneratedAudioMetaForMode(mode);
     return executeAudioFolderSelectService({
@@ -2130,7 +2314,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setAudioStatusTable,
     setLocalAudioMapText,
     setAudioStatusText,
-    silent: !!options.automatic
+    silent: !!options.automatic,
+    onMatchedAudio: handleMatchedAudioInventory,
+    edgeVoices: initialEdgeVoices
     });
   };
 
@@ -2170,7 +2356,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLocalAudioMapTable,
       setAudioStatusTable,
       setLocalAudioMapText,
-      setAudioStatusText
+      setAudioStatusText,
+      onMatchedAudio: handleMatchedAudioInventory,
+      edgeVoices: initialEdgeVoices
     });
   };
 
@@ -2272,10 +2460,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
      setScrollTop(currentScroll);
   };
 
+  const structuredTextBatchControls = structuredTextModeActive ? {
+    preferences: structuredTextAudioGenerationPreferences,
+    voices: initialEdgeVoices,
+    coverage: structuredTextDocumentCoverage,
+    running: Boolean(structuredTextAudioGenerationState.running),
+    statusText: structuredTextAudioGenerationState.running
+      ? `${structuredTextAudioGenerationState.completed || 0}/${structuredTextAudioGenerationState.total || 0}`
+      : structuredTextAudioGenerationState.lastStatus || '',
+    onPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
+    downloadMissing: () => runStructuredTextAudioGenerationBatch(null, { missingOnly: true }),
+    redownloadAll: () => runStructuredTextAudioGenerationBatch(null, { missingOnly: false }),
+    cancel: handleStructuredTextCancelGeneration
+  } : null;
+
   const renderBatchPopup = (options = {}) => renderBatchPopupView({
     batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
     generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
+    tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
     inline: Boolean(options.inline),
     showClose: options.showClose !== false
   });
@@ -2365,7 +2568,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGeminiByokClear: handleGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
-    batchConfig, setBatchConfig, runBatchDownload, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
+    batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
     systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
@@ -2410,6 +2613,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onPlaySegment={handleStructuredTextPlaySegment}
         onStartFromSegment={handleStructuredTextStartFromSegment}
         audioRuntimeStatusMap={structuredTextAudioRuntimeStatusMap}
+        audioCoverageMap={structuredTextAudioCoverageMap}
+        documentCoverage={structuredTextDocumentCoverage}
         onAttachAudioFile={handleStructuredTextAttachAudioFile}
         onRemoveAudioVariant={handleStructuredTextRemoveAudioVariant}
         englishVoices={voices}
@@ -2420,6 +2625,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}
         onSegmentVoiceChange={handleStructuredTextSegmentVoiceChange}
+        onCardDownloadVoiceChange={handleStructuredTextCardDownloadVoiceChange}
+        onSegmentDownloadVoiceChange={handleStructuredTextSegmentDownloadVoiceChange}
         onPreviewTts={handleStructuredTextPreviewTts}
         generationPreferences={structuredTextAudioGenerationPreferences}
         onGenerationPreferencesChange={handleStructuredTextAudioGenerationPreferenceChange}
@@ -2430,7 +2637,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         folderState={structuredTextAudioFolderState}
         onChooseGenerationFolder={handleStructuredTextChooseAudioFolder}
         onReconnectGenerationFolder={handleStructuredTextReconnectAudioFolder}
-        onGenerateDocumentAudio={() => runStructuredTextAudioGenerationBatch()}
+        onGenerateDocumentAudio={(options = {}) => runStructuredTextAudioGenerationBatch(null, { missingOnly: options.missingOnly !== false })}
         onGenerateCardAudio={handleStructuredTextGenerateCardAudio}
         onGenerateSpeakerAudio={handleStructuredTextGenerateSpeakerAudio}
         onCancelGeneration={handleStructuredTextCancelGeneration}
