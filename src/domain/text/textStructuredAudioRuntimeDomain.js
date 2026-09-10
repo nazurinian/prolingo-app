@@ -103,7 +103,7 @@ export const resolveTextStructuredRuntimeAudio = ({
 }) => {
   const urls = runtimeAudioUrls && typeof runtimeAudioUrls === 'object' ? runtimeAudioUrls : {};
   const runtimeVariants = filterContentCompatibleVariants({
-    audioVariants: (Array.isArray(audioVariants) ? audioVariants : []).filter(variant => Boolean(urls?.[variant.id]?.url)),
+    audioVariants: (Array.isArray(audioVariants) ? audioVariants : []).filter(variant => Boolean(urls?.[variant.id]?.url || urls?.[variant.id]?.zipBacked)),
     channel,
     content
   });
@@ -144,11 +144,12 @@ export const resolveTextStructuredRuntimeAudio = ({
   }
   if (!variant) return null;
   const runtime = urls[variant.id];
-  if (!runtime?.url) return null;
+  if (!runtime?.url && !runtime?.zipBacked) return null;
   const compatibility = isTextStructuredAudioVariantContentCompatible({ variant, channel, content });
   return {
     variant,
-    url: runtime.url,
+    url: runtime.url || null,
+    runtime,
     filename: runtime.filename || variant.filename || null,
     mimeType: runtime.mimeType || variant.mimeType || null,
     contentVerified: compatibility.verified

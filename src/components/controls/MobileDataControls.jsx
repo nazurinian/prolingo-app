@@ -13,7 +13,8 @@ export default function MobileDataControls({
   setIsChangeReviewOpen, undoStack, undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput,
   handleRangeAdd, textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) {
   const [textMobileSurface, setTextMobileSurface] = useState('library');
 
@@ -44,6 +45,7 @@ export default function MobileDataControls({
         onCreateDocument={handleTextLibraryCreateDocument}
         onCreateCollection={handleTextLibraryCreateCollection}
         onRenameDocument={handleTextLibraryRenameDocument}
+        audioLibrary={structuredTextAudioLibraryControls}
       />}
 
       {textMobileSurface === 'edit' && canEditStructured && <TextStructuredEditor
@@ -52,6 +54,7 @@ export default function MobileDataControls({
         isBusy={textLibraryCommandBusy}
         error={textLibraryCommandError}
         onCommand={handleTextLibraryStructuredCommand}
+        audioCoverageMap={structuredTextAudioCoverageMap}
       />}
 
       {textMobileSurface === 'edit' && activeTextDocument?.editorModel === 'legacy-line-v1' && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">This legacy Text document still uses the compatibility editor. Select a structured document to edit Cards and Segments here.</div>}

@@ -1,4 +1,9 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import {
+  buildTextStructuredExternalAudioIdentityIndex,
+  parseTextStructuredLegacyAudioFilename,
+  resolveTextStructuredExternalAudioVariant
+} from './textStructuredAudioExternalIdentityService.js';
 
 const DB_NAME = 'prolingo_text_structured_audio_folder_v1';
 const STORE = 'handles';
@@ -67,25 +72,26 @@ const collectFiles = async directoryHandle => {
   return files;
 };
 
-export const scanTextStructuredAudioFolderFiles = ({ files, audioVariants }) => {
-  const variants = new Map((Array.isArray(audioVariants) ? audioVariants : []).map(variant => [String(variant?.id || '').toUpperCase(), variant]));
+export const scanTextStructuredAudioFolderFiles = ({ files, audioVariants, segments = [] }) => {
+  const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments });
   const matches = [];
   const orphans = [];
+  const legacy = [];
   (Array.from(files || [])).forEach(file => {
     const parsed = parseTextStructuredGeneratedFilename(file?.name);
-    if (!parsed) return;
-    const variant = variants.get(parsed.audioVariantId);
-    if (!variant) {
-      orphans.push({ file, parsed, reason: 'missing-metadata' });
+    if (!parsed) {
+      const legacyParsed = parseTextStructuredLegacyAudioFilename(file?.name);
+      if (legacyParsed) legacy.push({ file, parsed: legacyParsed, reason: 'legacy-unresolved' });
       return;
     }
-    if (String(variant.segmentId || '').toUpperCase() !== parsed.segmentId || String(variant.channel || '').toLowerCase() !== parsed.channel) {
-      orphans.push({ file, parsed, reason: 'identity-mismatch' });
+    const resolved = resolveTextStructuredExternalAudioVariant({ filename: file?.name, parsed, index });
+    if (resolved.status !== 'matched' || !resolved.variant) {
+      orphans.push({ file, parsed, reason: resolved.status });
       return;
     }
-    matches.push({ file, parsed, variant });
+    matches.push({ file, parsed, variant: resolved.variant, aliasMatched: resolved.aliasMatched });
   });
-  return { matches, orphans };
+  return { matches, orphans, legacy };
 };
 
 export const executeTextStructuredAudioFolderChoose = async () => {

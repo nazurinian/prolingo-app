@@ -106,6 +106,7 @@ import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, reso
 import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
+import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
 import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
@@ -129,6 +130,7 @@ import { executeTextStructuredAudioGenerationRequest } from './services/audio/te
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
 import { executeTextStructuredAudioFolderChoose, executeTextStructuredAudioFolderReconnect, executeTextStructuredAudioFolderRestore, readTextStructuredAudioFolderFiles, scanTextStructuredAudioFolderFiles, writeTextStructuredAudioFile } from './services/audio/textStructuredAudioFolderService.js';
+import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRuntimeObjectUrl, scanTextStructuredAudioZipFiles } from './services/audio/textStructuredAudioZipArchiveService.js';
 
 
 const TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY = 'prolingo_table_local_audio_playback_v1';
@@ -214,7 +216,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(loadTextStructuredAudioGenerationPreferences);
   const [structuredTextAudioGenerationState, setStructuredTextAudioGenerationState] = useState({ running: false, completed: 0, total: 0, current: null, failedJobs: [], lastStatus: null });
   const [structuredTextEdgeHealth, setStructuredTextEdgeHealth] = useState({ status: 'idle', message: 'Not tested' });
-  const [structuredTextAudioFolderState, setStructuredTextAudioFolderState] = useState({ status: 'idle', name: null, matchedCount: 0, orphanCount: 0 });
+  const [structuredTextAudioFolderState, setStructuredTextAudioFolderState] = useState({ status: 'idle', name: null, matchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0 });
+  // C3.4.2 Text-only: ZIP audio archives are additive to the remembered Folder.
+  // The archive itself is session-bound; only its index is kept in runtime state.
+  const [structuredTextAudioZipState, setStructuredTextAudioZipState] = useState({ archives: [], matchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0, unsupportedCount: 0 });
   const structuredTextAudioGenerationAbortRef = useRef(null);
   const structuredTextAudioBatchStopRef = useRef(false);
   const structuredTextAudioDirectoryHandleRef = useRef(null);
@@ -253,6 +258,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     Object.values(structuredTextAudioRuntimeUrlsRef.current || {}).forEach(entry => {
       if (entry?.url) { try { URL.revokeObjectURL(entry.url); } catch {} }
     });
+    clearTextStructuredAudioZipRuntimeCache();
   }, []);
 
   // UI-only: if Advanced is open on the currently playing vocabulary, keep the
@@ -1080,7 +1086,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const applyStructuredTextAudioFolderFiles = useCallback(async (files, folderName = null) => {
     const scan = scanTextStructuredAudioFolderFiles({
       files,
-      audioVariants: textLibrarySnapshot?.audioVariants || []
+      audioVariants: textLibrarySnapshot?.audioVariants || [],
+      segments: textLibrarySnapshot?.segments || []
     });
     setStructuredTextAudioRuntimeUrls(prev => {
       const next = { ...prev };
@@ -1101,11 +1108,75 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       status: 'connected',
       name: folderName || prev.name,
       matchedCount: scan.matches.length,
-      orphanCount: scan.orphans.length
+      orphanCount: scan.orphans.length,
+      legacyCount: scan.legacy?.length || 0,
+      aliasMatchedCount: scan.matches.filter(match => match.aliasMatched).length
     }));
-    addLog('Text Audio', `Structured audio folder scan: ${scan.matches.length} matched, ${scan.orphans.length} orphan.`);
+    addLog('Text Audio', `Structured audio folder scan: ${scan.matches.length} matched, ${scan.orphans.length} orphan, ${scan.legacy?.length || 0} legacy unresolved.`);
     return scan;
-  }, [textLibrarySnapshot?.audioVariants, addLog]);
+  }, [textLibrarySnapshot?.audioVariants, textLibrarySnapshot?.segments, addLog]);
+
+  const handleStructuredTextAddAudioZipFiles = useCallback(async (files) => {
+    const selected = Array.from(files || []).filter(file => /\.zip$/i.test(file?.name || '') || String(file?.type || '').includes('zip'));
+    if (!selected.length) return { status: 'no-files' };
+    const scan = await scanTextStructuredAudioZipFiles({
+      files: selected,
+      audioVariants: textLibrarySnapshot?.audioVariants || [],
+      segments: textLibrarySnapshot?.segments || []
+    });
+    setStructuredTextAudioRuntimeUrls(prev => {
+      const next = { ...prev };
+      scan.matches.forEach(match => {
+        const current = next[match.variant.id];
+        // Folder/generated runtime remains preferred when already connected.
+        if (current?.url || current?.folderBacked || current?.generated || current?.zipBacked) return;
+        next[match.variant.id] = {
+          url: null,
+          filename: match.filename,
+          mimeType: match.mimeType || match.variant.mimeType || null,
+          zipBacked: true,
+          archiveId: match.archiveId,
+          archiveName: match.archiveName,
+          archiveFile: match.archiveFile,
+          entryId: match.entryId,
+          zipEntry: match.entry,
+          aliasMatched: Boolean(match.aliasMatched)
+        };
+      });
+      return next;
+    });
+    setStructuredTextAudioZipState(prev => {
+      const archiveMap = new Map();
+      [...(prev.archives || []), ...(scan.archives || [])].forEach(archive => {
+        if (!archive?.id || archiveMap.has(archive.id)) return;
+        archiveMap.set(archive.id, archive);
+      });
+      const archives = [...archiveMap.values()];
+      return {
+        archives,
+        matchedCount: archives.reduce((sum, archive) => sum + Number(archive.matchedCount || 0), 0),
+        orphanCount: archives.reduce((sum, archive) => sum + Number(archive.orphanCount || 0), 0),
+        legacyCount: archives.reduce((sum, archive) => sum + Number(archive.legacyCount || 0), 0),
+        aliasMatchedCount: archives.reduce((sum, archive) => sum + Number(archive.aliasMatchedCount || 0), 0),
+        unsupportedCount: archives.reduce((sum, archive) => sum + Number(archive.unsupportedCount || 0), 0)
+      };
+    });
+    addLog('Text Audio', `ZIP archive: ${scan.archiveCount} added • ${scan.matchedCount} matched • ${scan.orphanCount} orphan • ${scan.legacyCount} legacy unresolved.`);
+    return { status: 'added', ...scan };
+  }, [textLibrarySnapshot?.audioVariants, textLibrarySnapshot?.segments, addLog]);
+
+  const handleStructuredTextClearAudioZipFiles = useCallback(() => {
+    clearTextStructuredAudioZipRuntimeCache();
+    setStructuredTextAudioRuntimeUrls(prev => {
+      const next = {};
+      Object.entries(prev || {}).forEach(([id, entry]) => {
+        if (!entry?.zipBacked) next[id] = entry;
+      });
+      return next;
+    });
+    setStructuredTextAudioZipState({ archives: [], matchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0, unsupportedCount: 0 });
+    addLog('Text Audio', 'Text ZIP archives cleared. Remembered Audio Folder remains active.');
+  }, [addLog]);
 
   const handleStructuredTextChooseAudioFolder = useCallback(async () => {
     const result = await executeTextStructuredAudioFolderChoose();
@@ -1448,9 +1519,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         preferredGeneratedEngine: 'edge',
         content: textToRead
       });
-      if (runtimeAudio?.url) {
+      if (runtimeAudio?.url || runtimeAudio?.runtime?.zipBacked) {
+        let runtimeUrl = runtimeAudio.url;
+        if (!runtimeUrl && runtimeAudio.runtime?.zipBacked) {
+          try {
+            runtimeUrl = await getTextStructuredAudioZipRuntimeObjectUrl(runtimeAudio.runtime);
+          } catch (error) {
+            addLog('Warn', `Text ZIP audio ${runtimeAudio.filename || runtimeAudio.variant.id} could not be read: ${error?.message || error}. Falling back to Browser TTS.`);
+          }
+        }
+        if (runtimeUrl) {
         const result = await executeStructuredTextRuntimeAudioPlaybackService({
-          url: runtimeAudio.url,
+          url: runtimeUrl,
           currentAudioObjRef,
           playbackResolveRef,
           stopSignalRef,
@@ -1460,6 +1540,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         });
         if (result.status === 'played' || result.status === 'stopped' || stopSignalRef.current) return;
         // Error falls through to Browser TTS with the same requested voice.
+        }
       }
     }
 
@@ -2576,6 +2657,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, audioDatasetIdentitySignature]);
 
+  const structuredTextAudioInventorySummary = useMemo(() => summarizeTextStructuredAudioRuntimeInventory({
+    documentTree: activeTextDocumentTree,
+    audioVariants: textLibrarySnapshot?.audioVariants || [],
+    runtimeAudioUrls: structuredTextAudioRuntimeUrls
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls]);
+
+  const structuredTextAudioLibraryControls = useMemo(() => ({
+    folderState: structuredTextAudioFolderState,
+    zipState: structuredTextAudioZipState,
+    coverage: structuredTextDocumentCoverage,
+    inventory: structuredTextAudioInventorySummary,
+    onChooseFolder: handleStructuredTextChooseAudioFolder,
+    onReconnectFolder: handleStructuredTextReconnectAudioFolder,
+    onAddZipFiles: handleStructuredTextAddAudioZipFiles,
+    onClearZip: handleStructuredTextClearAudioZipFiles
+  }), [structuredTextAudioFolderState, structuredTextAudioZipState, structuredTextDocumentCoverage, structuredTextAudioInventorySummary, handleStructuredTextChooseAudioFolder, handleStructuredTextReconnectAudioFolder, handleStructuredTextAddAudioZipFiles, handleStructuredTextClearAudioZipFiles]);
+
   const structuredTextRuntimeAudioCount = Object.keys(structuredTextAudioRuntimeUrls || {}).length;
   const currentAudioStatus = structuredTextModeActive
     ? (structuredTextRuntimeAudioCount > 0 ? 'success' : 'idle')
@@ -2726,7 +2824,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 
   const renderWorkspaceTabs = (mobileContext = false) => renderWorkspaceTabsView({
@@ -2895,7 +2994,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 };
 

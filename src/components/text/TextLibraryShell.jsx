@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import TextAudioDataPanel from './TextAudioDataPanel.jsx';
 import { AlertTriangle, BookOpen, ChevronRight, Database, Download, Edit3, FileText, Layers, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Upload, X } from 'lucide-react';
 
 const typeLabel = type => type === 'conversation' ? 'Conversation' : type === 'paragraph' ? 'Paragraph' : 'Mixed';
@@ -14,6 +15,7 @@ export const TextLibraryShell = ({
   onCreateDocument,
   onCreateCollection,
   onRenameDocument,
+  audioLibrary = null,
   compact = false
 }) => {
   const [createMode, setCreateMode] = useState(null);
@@ -229,6 +231,8 @@ export const TextLibraryShell = ({
           </div>
         </div>}
       </div>}
+
+      {activeDocument?.editorModel === 'structured-v1' && <TextAudioDataPanel audioLibrary={audioLibrary} compact={compact} disabled={isBusy} />}
 
       {activeDocument && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5">
         <div className="flex items-start gap-2">

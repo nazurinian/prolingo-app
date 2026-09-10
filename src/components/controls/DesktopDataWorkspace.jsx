@@ -13,7 +13,7 @@ export default function DesktopDataWorkspace({
   undoLastDataChange, lastDraftAutoSaveAt, textLibraryCatalog, activeTextDocument, activeTextDocumentTree,
   activeTextDocumentId, activeTextEditorModel, textLibraryCommandBusy, textLibraryCommandError,
   handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
-  handleTextLibraryStructuredCommand
+  handleTextLibraryStructuredCommand, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) {
   return (
     mode === 'text' ? (
@@ -29,6 +29,7 @@ export default function DesktopDataWorkspace({
                   onCreateDocument={handleTextLibraryCreateDocument}
                   onCreateCollection={handleTextLibraryCreateCollection}
                   onRenameDocument={handleTextLibraryRenameDocument}
+                  audioLibrary={structuredTextAudioLibraryControls}
                 />
                 {activeTextEditorModel === 'legacy-line-v1' ? <>
                   <textarea ref={textareaRef} disabled={isSystemBusy || textLibraryCommandBusy} readOnly={isLocked || isSystemBusy || textLibraryCommandBusy} className={`w-full flex-1 min-h-[180px] text-xs font-mono p-2 border rounded resize-none focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'bg-slate-100 dark:bg-slate-900 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-600`} placeholder="Legacy Text import/editor bridge" value={textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
@@ -44,6 +45,7 @@ export default function DesktopDataWorkspace({
                     isBusy={textLibraryCommandBusy || isSystemBusy}
                     error={textLibraryCommandError}
                     onCommand={handleTextLibraryStructuredCommand}
+                    audioCoverageMap={structuredTextAudioCoverageMap}
                   />
                 </div>}
               </div>

@@ -48,7 +48,8 @@ export const renderMainAppShellView = (props) => {
     masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   } = props;
 
   return (
@@ -268,6 +269,8 @@ export const renderMainAppShellView = (props) => {
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
+              structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
+              structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
             />}
           </div>
         </SidebarShell>

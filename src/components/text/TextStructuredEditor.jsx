@@ -14,9 +14,24 @@ import {
   X
 } from 'lucide-react';
 import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
+import { TEXT_AUDIO_COVERAGE_STATUS, summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
+import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 
 const normalize = value => String(value ?? '').trim();
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
+const coverageLabel = status => ({
+  [TEXT_AUDIO_COVERAGE_STATUS.READY]: 'Ready',
+  [TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED]: 'Downloaded*',
+  [TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE]: 'Other voice',
+  [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'Stale',
+  [TEXT_AUDIO_COVERAGE_STATUS.MISSING]: 'Missing'
+}[status] || 'Missing');
+const coverageTone = status => ({
+  [TEXT_AUDIO_COVERAGE_STATUS.READY]: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900',
+  [TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED]: 'bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-900',
+  [TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE]: 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900',
+  [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-900'
+}[status] || 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700');
 
 const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = false }) => {
   const [text, setText] = useState(segment?.text || '');
@@ -89,13 +104,14 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
   );
 };
 
-const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = false }) => {
+const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = false, documentTree, audioCoverageMap }) => {
   const [expanded, setExpanded] = useState(() => !compact);
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState(block.title || '');
   const [segmentEditor, setSegmentEditor] = useState(null);
   const [showCardActions, setShowCardActions] = useState(false);
   const segments = block.segments || [];
+  const cardAudio = useMemo(() => summarizeTextStructuredAudioCoverage({ documentTree, coverageMap: audioCoverageMap, blockId: block.id }), [documentTree, audioCoverageMap, block.id]);
 
   useEffect(() => setTitle(block.title || ''), [block.id, block.title]);
 
@@ -151,7 +167,7 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
             <span className="text-xs font-black text-slate-800 dark:text-white truncate">{block.title || `${blockLabel(block.blockType)} Card`}</span>
             <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'}`}>{blockLabel(block.blockType).toUpperCase()}</span>
           </div>
-          <div className="mt-0.5 flex gap-2 text-[8px] text-slate-400">{!compact && <span className="font-mono">{block.id}</span>}<span>{segments.length} segment{segments.length === 1 ? '' : 's'}</span></div>
+          <div className="mt-0.5 flex gap-2 flex-wrap text-[8px] text-slate-400">{!compact && <span className="font-mono">{block.id}</span>}<span>{segments.length} segment{segments.length === 1 ? '' : 's'}</span>{cardAudio.total > 0 && <span className={cardAudio.needDownload ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-emerald-600 dark:text-emerald-400 font-bold'}>Audio {cardAudio.covered}/{cardAudio.total}{cardAudio.needDownload ? ` • need ${cardAudio.needDownload}` : ' • ready'}</span>}</div>
         </div>
         {compact ? <button type="button" onClick={() => setShowCardActions(value => !value)} className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-lg transition active:scale-95 ${showCardActions ? 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300' : 'text-slate-400 hover:text-indigo-600'}`} aria-expanded={showCardActions} aria-label="Card actions" title="Card actions"><MoreHorizontal className="w-4 h-4"/></button> : <div className="flex gap-0.5">
           <button type="button" disabled={isBusy || index === 0} onClick={() => moveBlock(-1)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25 active:scale-95 transition" title="Move card up"><ArrowUp className="w-3.5 h-3.5"/></button>
@@ -189,6 +205,14 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
                   </div>
                   <p className="text-xs leading-relaxed text-slate-800 dark:text-slate-100 whitespace-pre-wrap">{segment.text}</p>
                   {segment.meaning && <div className="mt-2 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 px-2 py-1.5"><p className="text-[8px] font-black uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-0.5">Meaning</p><p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{segment.meaning}</p></div>}
+                  <div className="mt-2 flex flex-wrap gap-1" data-text-editor-segment-audio-coverage="true">
+                    {['text', 'meaning'].map(channel => {
+                      const content = normalize(channel === 'meaning' ? segment.meaning : segment.text);
+                      if (!content) return null;
+                      const slot = audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, channel)] || { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING };
+                      return <span key={channel} className={`px-1.5 py-0.5 rounded border text-[7px] font-black ${coverageTone(slot.status)}`} title={`${channel === 'text' ? 'EN' : 'ID'} audio • ${coverageLabel(slot.status)}${slot.requiredVoiceId ? ` • ${slot.requiredVoiceId}` : ''}`}>{channel === 'text' ? 'EN' : 'ID'} {coverageLabel(slot.status)}</span>;
+                    })}
+                  </div>
                 </div>
                 <div className={compact ? "mt-2 grid grid-cols-4 gap-1 border-t border-slate-100 dark:border-slate-700 pt-2" : "flex flex-col gap-0.5"} data-text-editor-segment-actions="true">
                   <button type="button" disabled={isBusy || segmentIndex === 0} onClick={() => moveSegment(segment, -1)} className={`${compact ? 'min-h-10 flex items-center justify-center' : 'p-1'} rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25 active:scale-95 transition`} title="Move segment up" aria-label="Move segment up"><ArrowUp className="w-3 h-3"/></button>
@@ -207,13 +231,14 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
   );
 };
 
-export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, compact = false }) => {
+export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, compact = false, audioCoverageMap = null }) => {
   const [creatingCard, setCreatingCard] = useState(false);
   const [newCardTitle, setNewCardTitle] = useState('');
   const [newCardType, setNewCardType] = useState('paragraph');
   const blocks = documentTree?.blocks || [];
   const documentType = documentTree?.documentType || 'mixed';
   const segmentCount = useMemo(() => blocks.reduce((sum, block) => sum + (block.segments?.length || 0), 0), [blocks]);
+  const documentAudio = useMemo(() => summarizeTextStructuredAudioCoverage({ documentTree, coverageMap: audioCoverageMap }), [documentTree, audioCoverageMap]);
 
   useEffect(() => {
     setCreatingCard(false);
@@ -246,6 +271,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
               {!compact && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">DIRECT INDEXEDDB</span>}
             </div>
             <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • Text + Meaning{documentType !== 'paragraph' ? ' + Speaker' : ''}</p>
+            {documentAudio.total > 0 && <p className={`mt-1 text-[8px] font-bold ${documentAudio.needDownload ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>Audio coverage {documentAudio.covered}/{documentAudio.total}{documentAudio.needDownload ? ` • ${documentAudio.needDownload} need download` : ' • complete'}</p>}
           </div>
           <button type="button" disabled={isBusy} onClick={() => setCreatingCard(value => !value)} className="min-h-10 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[10px] font-black disabled:opacity-40 active:scale-95 transition"><Plus className="w-3 h-3 inline mr-1"/>Card</button>
         </div>
@@ -269,7 +295,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
         <FileText className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600"/>
         <p className="mt-2 text-xs font-bold text-slate-500">Belum ada Card</p>
         <p className="mt-1 text-[9px] text-slate-400">Buat Card pertama. Setelah itu tambahkan Segment Text/Meaning di dalam Card.</p>
-      </div> : <div className="space-y-3">{blocks.map((block, index) => <StructuredCard key={block.id} block={{ ...block, __siblings: siblings }} index={index} total={blocks.length} isBusy={isBusy} onCommand={onCommand} compact={compact} />)}</div>}
+      </div> : <div className="space-y-3">{blocks.map((block, index) => <StructuredCard key={block.id} block={{ ...block, __siblings: siblings }} index={index} total={blocks.length} isBusy={isBusy} onCommand={onCommand} compact={compact} documentTree={documentTree} audioCoverageMap={audioCoverageMap} />)}</div>}
     </section>
   );
 };

@@ -87,7 +87,8 @@ export const renderMobileToolsView = ({
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -212,6 +213,8 @@ export const renderMobileToolsView = ({
           handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
           handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
           handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
+          structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
+          structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
       />
 );
 

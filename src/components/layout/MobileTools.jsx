@@ -120,6 +120,7 @@ const MobileTools = ({
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
   handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap,
 }) => {
   const rootRef = useRef(null);
   const lastScrollTopRef = useRef(0);
@@ -286,6 +287,8 @@ const MobileTools = ({
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
+              structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
+              structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
           />}
 
           {sidebarSection === 'system' && <MobileSystemControls

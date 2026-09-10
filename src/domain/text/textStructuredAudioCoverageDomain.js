@@ -35,8 +35,17 @@ export const resolveTextStructuredAudioCoverageSlot = ({
   if (exactCompatible) {
     const runtime = runtimeAudioUrls?.[exactCompatible.id];
     const deliveryStatus = exactCompatible?.metadata?.deliveryStatus || 'metadata-history';
-    if (runtime?.url && (runtime?.folderBacked || deliveryStatus === 'folder-written')) {
-      return { status: TEXT_AUDIO_COVERAGE_STATUS.READY, requiredVoiceId, requiredVoiceSource, variantId: exactCompatible.id, filename: runtime.filename || exactCompatible.filename || null, verified: true, deliveryStatus };
+    if ((runtime?.url && (runtime?.folderBacked || deliveryStatus === 'folder-written')) || runtime?.zipBacked) {
+      return {
+        status: TEXT_AUDIO_COVERAGE_STATUS.READY,
+        requiredVoiceId,
+        requiredVoiceSource,
+        variantId: exactCompatible.id,
+        filename: runtime.filename || exactCompatible.filename || null,
+        verified: true,
+        deliveryStatus: runtime?.zipBacked ? 'zip-indexed' : deliveryStatus,
+        sourceType: runtime?.zipBacked ? 'zip' : (runtime?.folderBacked ? 'folder' : 'runtime')
+      };
     }
     if (deliveryStatus === 'pending-package') {
       return { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING, requiredVoiceId, requiredVoiceSource, variantId: exactCompatible.id, filename: exactCompatible.filename || null, verified: false, deliveryStatus };
