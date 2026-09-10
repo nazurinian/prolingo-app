@@ -2,6 +2,37 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
+
+export const SafetyConfirmDialog = ({
+  open,
+  title,
+  message,
+  confirmLabel = 'Continue',
+  cancelLabel = 'Cancel',
+  tone = 'red',
+  onCancel,
+  onConfirm
+}) => {
+  if (!open) return null;
+  const confirmClass = tone === 'indigo'
+    ? 'bg-indigo-600 hover:bg-indigo-700'
+    : tone === 'amber'
+      ? 'bg-amber-500 hover:bg-amber-600'
+      : 'bg-red-600 hover:bg-red-700';
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[190] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-150" role="dialog" aria-modal="true" aria-label={title || 'Confirm action'}>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-sm w-full p-5 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+        <h3 className="font-bold text-slate-800 dark:text-white text-center">{title}</h3>
+        {message && <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400 text-center mt-2 whitespace-pre-line">{message}</p>}
+        <div className="flex gap-2 mt-5">
+          <button type="button" onClick={onCancel} className="flex-1 py-2 rounded border border-slate-200 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300">{cancelLabel}</button>
+          <button type="button" onClick={onConfirm} className={`flex-1 py-2 rounded text-white text-sm font-bold ${confirmClass}`}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const RevertAllConfirmModal = ({ isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, revertAllChanges }) => {
   if (!isRevertAllConfirmOpen) return null;
   return (

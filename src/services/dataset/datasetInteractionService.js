@@ -3,6 +3,7 @@ import { resolveSingleChangeRevertState } from '../../domain/dataset/changeRever
 import { filterStudyQueueByValidIds, resolveSnapshotValidIds } from '../../domain/dataset/datasetSnapshotRestoreDomain';
 import { resolveManualVocabularySaveState } from '../../domain/dataset/manualVocabularySaveDomain';
 import { resolveStructuredDeleteRecords, resolveStructuredDeleteStudyQueue, shouldClearStructuredDeleteReference } from '../../domain/dataset/structuredDeleteDomain';
+import { resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
 
 export const executeUndoLastDataChange = ({
   undoStack, forceStopAll, setTableContent, setStudyQueue, setUndoStack, addLog
@@ -129,27 +130,20 @@ export const executeConfirmDeleteStructuredItem = ({
       addLog("Data", `Deleted ${item.vocabId || item.id} (${item.word}). CSV now has unsaved changes.`);
 };
 
+export const resolveBatchRangeMax = ({ mode, playlist }) => mode === 'table'
+  ? Math.max(1, getMaxAssignedNoFromRecords(Array.isArray(playlist) ? playlist : []))
+  : Math.max(1, Array.isArray(playlist) ? playlist.length : 0);
+
 export const executeBatchRangeBlur = ({
-  field, batchConfig, mode, sequenceHighWater, playlist, setBatchConfig
+  field, batchConfig, mode, playlist, setBatchConfig
 }) => {
-      let val = parseInt(batchConfig[field]);
-      const max = mode === 'table'
-          ? Math.max(1, sequenceHighWater, getMaxAssignedNoFromRecords(playlist))
-          : (playlist.length || 1);
-      
-      if (isNaN(val)) val = 1;
-
-      if (field === 'start') {
-          if (val < 1) val = 1;
-          if (val > max) val = max;
-          if (val > parseInt(batchConfig.end)) val = parseInt(batchConfig.end);
-      } else if (field === 'end') {
-          if (val < 1) val = 1;
-          if (val > max) val = max;
-          if (val < parseInt(batchConfig.start)) val = parseInt(batchConfig.start);
-      }
-
-      setBatchConfig(prev => ({ ...prev, [field]: val }));
+      const max = resolveBatchRangeMax({ mode, playlist });
+      setBatchConfig(prev => resolveBatchRangeConfig({
+        batchConfig: prev || batchConfig,
+        field,
+        value: (prev || batchConfig)?.[field],
+        max
+      }));
 };
 
 export const executeStudyRangeAdd = ({

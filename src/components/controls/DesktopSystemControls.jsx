@@ -2,6 +2,7 @@ import React from 'react';
 import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 
 export default function DesktopSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -15,6 +16,7 @@ export default function DesktopSystemControls({
   onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
+  const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
   return (
     <>
               {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
@@ -106,7 +108,7 @@ export default function DesktopSystemControls({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border bg-indigo-600 text-white border-indigo-700 disabled:opacity-50"><FileArchive className="w-3.5 h-3.5"/> Add ZIP</button>
-                    <button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => folderInputRef.clearAudioZip?.()} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="w-3.5 h-3.5"/> Clear ZIP</button>
+                    <button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => setClearZipConfirmOpen(true)} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="w-3.5 h-3.5"/> Clear ZIP</button>
                   </div>
                   <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
                 </div>}
@@ -146,6 +148,14 @@ export default function DesktopSystemControls({
                 onProgressRestored={onProgressRestored}
               />
 
+      <SafetyConfirmDialog
+        open={clearZipConfirmOpen}
+        title="Clear loaded ZIP archives?"
+        message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus dan Audio Folder tetap aktif.`}
+        confirmLabel="Clear ZIP"
+        onCancel={() => setClearZipConfirmOpen(false)}
+        onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
+      />
     </>
   );
 }

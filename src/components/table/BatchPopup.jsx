@@ -1,5 +1,7 @@
 import React from 'react';
 import { X, CheckSquare, Square, XCircle, Loader2, Lock } from 'lucide-react';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
+import { clampBatchRangeNumber, resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
 
 const getExpressionSelection = (batchConfig, lang) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
@@ -62,11 +64,26 @@ export const BatchPopup = ({
   inline = false,
   showClose = true
 }) => {
+  const [redownloadConfirmOpen, setRedownloadConfirmOpen] = React.useState(false);
   const expEn = getExpressionSelection(batchConfig, 'en');
   const expIdn = getExpressionSelection(batchConfig, 'idn');
   const isStructuredTextBatch = mode === 'text' && Boolean(structuredTextBatch);
   const isGemini = !isStructuredTextBatch && generatorEngine === 'gemini';
   const coverage = isStructuredTextBatch ? structuredTextBatch?.coverage : tableCoverage?.counts;
+  const rangeMax = Math.max(1, Number(advancedDatasetStats?.maxAudioNo || 1));
+  const clampRangeValue = value => clampBatchRangeNumber(value, rangeMax);
+  const updateTableRange = (field, rawValue, commit = false) => {
+    if (!commit && rawValue === '') {
+      setBatchConfig(prev => ({ ...prev, [field]: '' }));
+      return;
+    }
+    setBatchConfig(prev => resolveBatchRangeConfig({
+      batchConfig: prev,
+      field,
+      value: rawValue === '' ? prev?.[field] : rawValue,
+      max: rangeMax
+    }));
+  };
   const panelClass = inline
     ? 'w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col animate-in fade-in duration-150'
     : 'absolute top-full left-0 mt-2 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl z-[100] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200';
@@ -157,29 +174,42 @@ export const BatchPopup = ({
           <input
             type="number"
             className="w-14 border rounded p-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            min={1}
+            max={rangeMax}
+            step={1}
+            inputMode="numeric"
             value={batchConfig.start}
-            onChange={e => setBatchConfig(p => ({ ...p, start: e.target.value }))}
-            onBlur={() => handleBatchRangeBlur?.('start')}
+            onChange={e => updateTableRange('start', e.target.value)}
+            onBlur={e => updateTableRange('start', e.target.value, true)}
+            onWheel={e => e.currentTarget.blur()}
             disabled={isBatchDownloading}
           />
           <span className="dark:text-slate-400">-</span>
           <input
             type="number"
             className="w-14 border rounded p-1 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            min={1}
+            max={rangeMax}
+            step={1}
+            inputMode="numeric"
             value={batchConfig.end}
-            onChange={e => setBatchConfig(p => ({ ...p, end: e.target.value }))}
-            onBlur={() => handleBatchRangeBlur?.('end')}
+            onChange={e => updateTableRange('end', e.target.value)}
+            onBlur={e => updateTableRange('end', e.target.value, true)}
+            onWheel={e => e.currentTarget.blur()}
             disabled={isBatchDownloading}
           />
+          {mode === 'table' && <span className="ml-auto text-[9px] font-bold text-slate-400">1–{rangeMax}</span>}
         </div>}
 
         {!isStructuredTextBatch && <button
           type="button"
+          disabled={!isBatchDownloading && !(coverage?.needDownload || 0)}
           onClick={isBatchDownloading ? runBatchDownload : () => runBatchDownload?.({ missingOnly: true })}
           className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 text-white transition-colors
             ${isBatchStopping ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : ''}
             ${isBatchDownloading && !isBatchStopping ? 'bg-red-500 hover:bg-red-600' : ''}
-            ${!isBatchDownloading && !isBatchStopping ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+            ${!isBatchDownloading && !isBatchStopping && (coverage?.needDownload || 0) ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+            ${!isBatchDownloading && !(coverage?.needDownload || 0) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60' : ''}
           `}
         >
           {isBatchDownloading ? (
@@ -191,7 +221,15 @@ export const BatchPopup = ({
             <><DownloadCloudIcon className="w-3 h-3"/>DOWNLOAD MISSING ({coverage?.needDownload ?? '—'})</>
           )}
         </button>}
-        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={!(coverage?.total || 0)} onClick={() => runBatchDownload?.({ missingOnly: false })} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD ALL ({coverage?.total || 0})</button>}
+        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={!(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
+        <SafetyConfirmDialog
+          open={!isStructuredTextBatch && mode === 'table' && redownloadConfirmOpen}
+          title="Redownload selected audio?"
+          message={`Range ${clampRangeValue(batchConfig?.start)}–${clampRangeValue(batchConfig?.end)} akan dibuat ulang untuk ${coverage?.total || 0} slot audio yang dipilih. File lama di folder/ZIP tidak dihapus; hasil baru dikirim sebagai batch baru.`}
+          confirmLabel="Redownload"
+          onCancel={() => setRedownloadConfirmOpen(false)}
+          onConfirm={() => { setRedownloadConfirmOpen(false); runBatchDownload?.({ missingOnly: false }); }}
+        />
       </div>
     </div>
   );

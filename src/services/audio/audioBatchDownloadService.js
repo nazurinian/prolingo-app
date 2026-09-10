@@ -63,7 +63,7 @@ export const executeAudioBatchDownloadService = async ({
   const startIdx = parseInt(batchConfig.start, 10);
   const endIdx = parseInt(batchConfig.end, 10);
   const maxRangeNo = mode === 'table'
-    ? Math.max(1, sequenceHighWater, getMaxAssignedNoFromRecords(playlist))
+    ? Math.max(1, getMaxAssignedNoFromRecords(playlist))
     : Math.max(1, playlist.length);
 
   if (Number.isNaN(startIdx) || Number.isNaN(endIdx) || startIdx < 1 || endIdx > maxRangeNo || startIdx > endIdx) {

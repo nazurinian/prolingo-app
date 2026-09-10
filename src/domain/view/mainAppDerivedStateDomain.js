@@ -1,6 +1,6 @@
 import { V510_SOURCE_KEYS } from '../../constants/datasetConstants';
 import { getAdvancedExpressionPairs } from '../../utils/audioUtils';
-import { parseTableRecords } from '../../utils/csvUtils';
+import { getMaxAssignedNoFromRecords, parseTableRecords } from '../../utils/csvUtils';
 import { getSourceChangeSummary } from '../../utils/multiSourceUtils';
 import { getPlaybackListSignature, reorderPlaybackListByIds } from '../../utils/playbackSequenceUtils';
 import { resolveMasteryFilteredItems } from '../progress/masteryFilterDomain.js';
@@ -27,6 +27,8 @@ export const resolveAdvancedDatasetStats = ({ playlist }) => {
           });
       });
       return {
+          structuredCount: structured.length,
+          maxAudioNo: Math.max(1, getMaxAssignedNoFromRecords(structured)),
           withInfo,
           expCounts,
           totalExpressions: Object.values(expCounts).reduce((sum, count) => sum + count, 0),

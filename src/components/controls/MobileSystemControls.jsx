@@ -3,6 +3,7 @@ import { Settings, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } fro
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import BatchPopup from '../table/BatchPopup';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 
 export default function MobileSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -15,6 +16,7 @@ export default function MobileSystemControls({
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
+  const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
   return (
     <>
               <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
@@ -31,7 +33,7 @@ export default function MobileSystemControls({
                   )}
                   {mode === 'table' && <div className="mt-2 rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2">
                     <div className="flex items-center justify-between gap-2 mb-1.5"><span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-300">Audio ZIP</span>{(folderInputRef?.tableAudioZipSummary?.archiveCount || 0) > 0 && <span className="text-[8px] text-slate-400">{folderInputRef.tableAudioZipSummary.archiveCount} ZIP • {folderInputRef.tableAudioZipSummary.matchedCount} matched</span>}</div>
-                    <div className="grid grid-cols-2 gap-2"><button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded bg-indigo-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-50"><FileArchive className="h-3.5 w-3.5"/> Add ZIP</button><button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => folderInputRef.clearAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded border border-slate-200 dark:border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="h-3.5 w-3.5"/> Clear ZIP</button></div>
+                    <div className="grid grid-cols-2 gap-2"><button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded bg-indigo-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-50"><FileArchive className="h-3.5 w-3.5"/> Add ZIP</button><button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => setClearZipConfirmOpen(true)} className="flex items-center justify-center gap-1.5 rounded border border-slate-200 dark:border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="h-3.5 w-3.5"/> Clear ZIP</button></div>
                     <p className="mt-1.5 text-[8px] text-slate-400">Folder stays active; ZIP is indexed and read lazily per audio.</p>
                   </div>}
               </div>
@@ -93,6 +95,14 @@ export default function MobileSystemControls({
                       </div>
                   )}
               </div>
+      <SafetyConfirmDialog
+        open={clearZipConfirmOpen}
+        title="Clear loaded ZIP archives?"
+        message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus dan Audio Folder tetap aktif.`}
+        confirmLabel="Clear ZIP"
+        onCancel={() => setClearZipConfirmOpen(false)}
+        onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
+      />
     </>
   );
 }
