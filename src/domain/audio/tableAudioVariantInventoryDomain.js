@@ -19,6 +19,18 @@ const variantIdentity = variant => [
   clean(variant?.entryId)
 ].join('|');
 
+// C3.4.4: several ZIP archives may contain the same logical Table audio.
+// Keep only one effective ZIP copy per stable slot + voice; the first loaded
+// archive wins deterministically. Unknown-voice legacy ZIP entries are kept
+// separate by filename because we cannot safely prove that they are the same voice.
+const effectiveMergeIdentity = variant => {
+  if (variant?.sourceType !== 'zip') return variantIdentity(variant);
+  const mapKey = clean(variant?.mapKey);
+  const voiceId = lower(variant?.voiceId);
+  if (mapKey && voiceId) return `zip-effective|${mapKey}|${voiceId}`;
+  return `zip-unknown|${mapKey}|${lower(variant?.filename)}|${clean(variant?.entryId)}`;
+};
+
 export const mergeTableAudioVariantInventories = (...inventories) => {
   const merged = {};
   inventories.forEach(inventory => {
@@ -26,10 +38,10 @@ export const mergeTableAudioVariantInventories = (...inventories) => {
       const list = Array.isArray(variants) ? variants : [];
       if (!list.length) return;
       if (!merged[mapKey]) merged[mapKey] = [];
-      const seen = new Set(merged[mapKey].map(variantIdentity));
+      const seen = new Set(merged[mapKey].map(effectiveMergeIdentity));
       list.forEach(variant => {
         const next = { ...variant, mapKey: variant?.mapKey || mapKey };
-        const id = variantIdentity(next);
+        const id = effectiveMergeIdentity(next);
         if (seen.has(id)) return;
         seen.add(id);
         merged[mapKey].push(next);
@@ -78,7 +90,7 @@ export const buildTableAudioGeneratedVariantInventory = ({ localAudioMapTable, g
 export const buildTableAudioVoiceOptions = ({ inventory, edgeVoices = [] }) => {
   const edgeById = new Map((Array.isArray(edgeVoices) ? edgeVoices : []).map(voice => [lower(voice?.id), voice]));
   const stats = new Map();
-  Object.values(inventory || {}).forEach(variants => {
+  Object.entries(inventory || {}).forEach(([mapKey, variants]) => {
     (Array.isArray(variants) ? variants : []).forEach(variant => {
       const voiceId = clean(variant?.voiceId);
       if (!voiceId) return;
@@ -87,10 +99,12 @@ export const buildTableAudioVoiceOptions = ({ inventory, edgeVoices = [] }) => {
       const current = stats.get(key) || {
         id: voiceId,
         label: clean(variant?.voiceLabel) || clean(edge?.label) || clean(edge?.name) || voiceId,
-        count: 0,
+        slotKeys: new Set(),
+        sourceCopies: 0,
         sourceTypes: new Set()
       };
-      current.count += 1;
+      current.slotKeys.add(clean(variant?.mapKey) || clean(mapKey));
+      current.sourceCopies += 1;
       if (variant?.sourceType) current.sourceTypes.add(variant.sourceType);
       stats.set(key, current);
     });
@@ -98,7 +112,10 @@ export const buildTableAudioVoiceOptions = ({ inventory, edgeVoices = [] }) => {
   return [...stats.values()].map(value => ({
     id: value.id,
     label: value.label,
-    count: value.count,
+    // `count` intentionally means unique playable Table slots for this voice,
+    // not raw source copies. The same Sonia file in two ZIPs must count once.
+    count: value.slotKeys.size,
+    sourceCopies: value.sourceCopies,
     sourceTypes: [...value.sourceTypes]
   }));
 };
@@ -158,17 +175,22 @@ export const buildTableAudioPresenceMap = ({ inventory, legacyMap = {} }) => {
 
 export const summarizeTableAudioVariantInventory = inventory => {
   const mapKeys = Object.keys(inventory || {});
-  let variants = 0;
+  const effectiveAudio = new Set();
+  let sourceCopies = 0;
   let folderVariants = 0;
   let zipVariants = 0;
   let generatedVariants = 0;
   mapKeys.forEach(mapKey => {
     (inventory?.[mapKey] || []).forEach(variant => {
-      variants += 1;
+      sourceCopies += 1;
+      // Logical audio count: one slot + one known voice = one playable audio
+      // even if that same variant is available from Folder and one/many ZIPs.
+      const voiceKey = lower(variant?.voiceId) || `unknown:${lower(variant?.filename)}`;
+      effectiveAudio.add(`${mapKey}|${voiceKey}`);
       if (variant?.sourceType === 'folder') folderVariants += 1;
       else if (variant?.sourceType === 'zip') zipVariants += 1;
       else if (variant?.sourceType === 'generated') generatedVariants += 1;
     });
   });
-  return { slots: mapKeys.length, variants, folderVariants, zipVariants, generatedVariants };
+  return { slots: mapKeys.length, variants: effectiveAudio.size, sourceCopies, folderVariants, zipVariants, generatedVariants };
 };

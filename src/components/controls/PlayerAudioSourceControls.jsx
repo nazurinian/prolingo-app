@@ -32,6 +32,7 @@ export default function PlayerAudioSourceControls({
                   onVoiceModeChange={setTableLocalAudioVoiceMode}
                   voicePriority={tableAudioVoicePriority}
                   onMovePriority={moveTableLocalAudioVoicePriority}
+                  slotCount={currentMapCount}
                   disabled={isSystemBusy}
                 />
               </div>

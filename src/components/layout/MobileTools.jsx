@@ -218,6 +218,7 @@ const MobileTools = ({
                           onVoiceModeChange={setTableLocalAudioVoiceMode}
                           voicePriority={tableAudioVoicePriority}
                           onMovePriority={moveTableLocalAudioVoicePriority}
+                          slotCount={currentMapCount}
                           disabled={isSystemBusy}
                       />
                   </div>
