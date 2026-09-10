@@ -66,6 +66,7 @@ export const renderControlSectionTabsView = ({ compact = false, sidebarSection, 
 
 export const renderMobileToolsView = ({
   sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
+  tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
   setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
   rate, setRate, showIndonesianBrowserVoice, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
@@ -94,6 +95,11 @@ export const renderMobileToolsView = ({
           currentMapCount={currentMapCount}
           mode={mode}
           renderStatusBadge={renderStatusBadge}
+          tableAudioVoiceOptions={tableAudioVoiceOptions}
+          tableLocalAudioVoiceMode={tableLocalAudioVoiceMode}
+          setTableLocalAudioVoiceMode={setTableLocalAudioVoiceMode}
+          tableAudioVoicePriority={tableAudioVoicePriority}
+          moveTableLocalAudioVoicePriority={moveTableLocalAudioVoicePriority}
           preferLocalAudio={preferLocalAudio}
           setPreferLocalAudio={setPreferLocalAudio}
           isSystemBusy={isSystemBusy}

@@ -29,6 +29,7 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
 
   const synth = window.speechSynthesis;
   const folderInputRef = useRef(null);
+  const audioZipInputRef = useRef(null);
   const csvInputRef = useRef(null);
   const sourceInputRef = useRef(null);
   const fullPackInputRef = useRef(null);
@@ -44,7 +45,7 @@ export const useMainAppRuntimeRefs = ({ playbackMode, playbackSequence, playback
   return {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, generatedAudioMetaRef, edgeTestAbortControllerRef, playbackModeRef, rateRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, audioZipInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   };

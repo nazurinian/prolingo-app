@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, FolderOpen, RotateCcw, Layers, Terminal } from 'lucide-react';
+import { Settings, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import BatchPopup from '../table/BatchPopup';
@@ -29,6 +29,11 @@ export default function MobileSystemControls({
                   ) : (
                     <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition border bg-slate-800 dark:bg-slate-700 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
                   )}
+                  {mode === 'table' && <div className="mt-2 rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2">
+                    <div className="flex items-center justify-between gap-2 mb-1.5"><span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-300">Audio ZIP</span>{(folderInputRef?.tableAudioZipSummary?.archiveCount || 0) > 0 && <span className="text-[8px] text-slate-400">{folderInputRef.tableAudioZipSummary.archiveCount} ZIP • {folderInputRef.tableAudioZipSummary.matchedCount} matched</span>}</div>
+                    <div className="grid grid-cols-2 gap-2"><button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded bg-indigo-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-50"><FileArchive className="h-3.5 w-3.5"/> Add ZIP</button><button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => folderInputRef.clearAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded border border-slate-200 dark:border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="h-3.5 w-3.5"/> Clear ZIP</button></div>
+                    <p className="mt-1.5 text-[8px] text-slate-400">Folder stays active; ZIP is indexed and read lazily per audio.</p>
+                  </div>}
               </div>
 
               <StorageManagerPanel

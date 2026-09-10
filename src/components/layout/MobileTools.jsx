@@ -4,6 +4,7 @@ import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import MobileLearnControls from '../controls/MobileLearnControls';
 import MobileDataControls from '../controls/MobileDataControls';
 import MobileSystemControls from '../controls/MobileSystemControls';
+import TableLocalAudioVoiceControls from '../controls/TableLocalAudioVoiceControls';
 
 const MobileTools = ({
   sidebarSection,
@@ -11,6 +12,11 @@ const MobileTools = ({
   currentMapCount,
   mode,
   renderStatusBadge,
+  tableAudioVoiceOptions = [],
+  tableLocalAudioVoiceMode = 'auto',
+  setTableLocalAudioVoiceMode,
+  tableAudioVoicePriority = [],
+  moveTableLocalAudioVoicePriority,
   preferLocalAudio,
   setPreferLocalAudio,
   isSystemBusy,
@@ -204,6 +210,15 @@ const MobileTools = ({
                           <span className={preferLocalAudio ? "text-indigo-700 dark:text-indigo-300" : "text-slate-500 dark:text-slate-400"}>{preferLocalAudio ? "Source: Local/Generated" : "Source: Browser TTS"}</span>
                           {preferLocalAudio ? <ToggleRight className="w-5 h-5 text-indigo-600 dark:text-indigo-400"/> : <ToggleLeft className="w-5 h-5 text-slate-400"/>}
                       </button>
+                      <TableLocalAudioVoiceControls
+                          mode={mode}
+                          voiceOptions={tableAudioVoiceOptions}
+                          voiceMode={tableLocalAudioVoiceMode}
+                          onVoiceModeChange={setTableLocalAudioVoiceMode}
+                          voicePriority={tableAudioVoicePriority}
+                          onMovePriority={moveTableLocalAudioVoicePriority}
+                          disabled={isSystemBusy}
+                      />
                   </div>
                   <div className="space-y-2">
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS</p>

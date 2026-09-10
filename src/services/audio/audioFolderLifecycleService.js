@@ -1,4 +1,4 @@
-import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils';
+import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils.js';
 
 export const buildTableAudioVocabIdentityIndex = ({ playlist, getVocabIdentity }) => {
   const index = new Map();
@@ -46,6 +46,22 @@ export const resolveTableAudioVoiceFromFilename = ({ fileName, part, edgeVoices 
   return matched?.id || null;
 };
 
+export const resolveTableAudioPartFromFilename = (fileName) => {
+  const lowerName = String(fileName || '').toLowerCase();
+  let type = null;
+  const expTypeMatch = lowerName.match(/(?:_|-)(exp[1-5]_(?:en|idn))\.(wav|mp3|ogg|webm)$/i);
+  if (expTypeMatch) type = expTypeMatch[1].toLowerCase();
+  else if (/(?:_|-)(word_idn|word-?idn|word_meaning|arti_kata)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'word_idn';
+  else if (/(?:_|-)(word|kata)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'word';
+  else if (/(?:_|-)(sentence|sent|kalimat)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'sentence';
+  else if (/(?:_|-)(meaning|mean|arti)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'meaning';
+  else if (lowerName.includes('_word_idn.') || lowerName.includes('_arti_kata.')) type = 'word_idn';
+  else if (lowerName.includes('_word.') || lowerName.includes('_kata.')) type = 'word';
+  else if (lowerName.includes('_sentence.') || lowerName.includes('_kalimat.')) type = 'sentence';
+  else if (lowerName.includes('_meaning.') || lowerName.includes('_arti.')) type = 'meaning';
+  return type;
+};
+
 export const executeAudioFolderSelectService = ({
   e,
   mode,
@@ -60,7 +76,8 @@ export const executeAudioFolderSelectService = ({
   setLocalAudioMapText,
   setAudioStatusText,
   silent = false,
-  onMatchedAudio = null
+  onMatchedAudio = null,
+  edgeVoices = []
 }) => {
     const files = e.target.files;
     if (!files) return;
@@ -72,6 +89,7 @@ export const executeAudioFolderSelectService = ({
         });
 
         const newMap = {};
+        const variantRecords = [];
         const tableAudioIdentityIndex = buildTableAudioVocabIdentityIndex({ playlist, getVocabIdentity });
         let orphanCount = 0;
         let audioFileCount = 0;
@@ -81,17 +99,7 @@ export const executeAudioFolderSelectService = ({
             if (!(file.type.startsWith('audio/') || lowerName.endsWith('.wav') || lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg') || lowerName.endsWith('.webm'))) continue;
             audioFileCount++;
 
-            let type = null;
-            const expTypeMatch = lowerName.match(/(?:_|-)(exp[1-5]_(?:en|idn))\.(wav|mp3|ogg|webm)$/i);
-            if (expTypeMatch) type = expTypeMatch[1].toLowerCase();
-            else if (/(?:_|-)(word_idn|word-?idn|word_meaning|arti_kata)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'word_idn';
-            else if (/(?:_|-)(word|kata)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'word';
-            else if (/(?:_|-)(sentence|sent|kalimat)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'sentence';
-            else if (/(?:_|-)(meaning|mean|arti)\.(wav|mp3|ogg|webm)$/i.test(lowerName)) type = 'meaning';
-            else if (lowerName.includes('_word_idn.') || lowerName.includes('_arti_kata.')) type = 'word_idn';
-            else if (lowerName.includes('_word.') || lowerName.includes('_kata.')) type = 'word';
-            else if (lowerName.includes('_sentence.') || lowerName.includes('_kalimat.')) type = 'sentence';
-            else if (lowerName.includes('_meaning.') || lowerName.includes('_arti.')) type = 'meaning';
+            const type = resolveTableAudioPartFromFilename(file.name);
             if (!type) continue;
 
             const numericMatch = file.name.match(/^(\d+)_/);
@@ -114,7 +122,23 @@ export const executeAudioFolderSelectService = ({
                 const identity = getStableAudioIdentity(matchedItem);
                 const mapKey = `${identity}_${type}`;
                 const voice = resolveTableAudioVoiceFromFilename({ fileName: file.name, part: type, edgeVoices });
-                newMap[mapKey] = URL.createObjectURL(file);
+                const url = URL.createObjectURL(file);
+                // Preserve the legacy one-URL-per-slot map for old UI/regression paths.
+                // C3.4.1 keeps every voice variant separately in variantRecords.
+                if (!newMap[mapKey]) newMap[mapKey] = url;
+                variantRecords.push({
+                    sourceType: 'folder',
+                    sourceId: 'active-folder',
+                    mapKey,
+                    part: type,
+                    engine: voice ? 'edge' : null,
+                    voiceId: voice,
+                    voiceLabel: voice ? getAudioVoiceFilenameLabel(voice) : null,
+                    filename: file.name,
+                    verified: true,
+                    deliveryStatus: 'folder-verified',
+                    url
+                });
                 onMatchedAudio?.({
                     mode: 'table',
                     mapKey,
@@ -135,7 +159,7 @@ export const executeAudioFolderSelectService = ({
         setAudioStatusTable(count > 0 ? 'success' : 'empty');
         if (!silent) alert(`[Table] Audio scan: ${audioFileCount} file. Matched: ${count}. Orphan/unmatched: ${orphanCount}.\nVOCAB_ID adalah pengenal filename utama; prefix NO lama tetap didukung.`);
         e.target.value = '';
-        return { mode: 'table', matchedCount: count, audioFileCount, orphanCount };
+        return { mode: 'table', matchedCount: count, audioFileCount, orphanCount, variants: variantRecords };
     } else {
         Object.values(localAudioMapText).forEach(url => {
             try { URL.revokeObjectURL(url); } catch (err) { console.warn("Failed to revoke URL:", err); }

@@ -78,7 +78,9 @@ import { resolveGeneratedAudioMapKey, shouldIgnoreLocalAudioFailure, shouldResol
 import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
+import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, buildTableAudioVoiceOptions, mergeTableAudioVariantInventories, reconcileTableAudioVoicePriority, resolveTableAudioPlaybackVariant, summarizeTableAudioVariantInventory, tableAudioVariantsFromRecords } from './domain/audio/tableAudioVariantInventoryDomain.js';
 import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
+import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
@@ -129,6 +131,20 @@ import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStruc
 import { executeTextStructuredAudioFolderChoose, executeTextStructuredAudioFolderReconnect, executeTextStructuredAudioFolderRestore, readTextStructuredAudioFolderFiles, scanTextStructuredAudioFolderFiles, writeTextStructuredAudioFile } from './services/audio/textStructuredAudioFolderService.js';
 
 
+const TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY = 'prolingo_table_local_audio_playback_v1';
+
+const loadTableLocalAudioPlaybackPreference = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY) || '{}');
+    return {
+      voiceMode: String(parsed?.voiceMode || 'auto'),
+      voicePriority: Array.isArray(parsed?.voicePriority) ? parsed.voicePriority.map(String).filter(Boolean) : []
+    };
+  } catch {
+    return { voiceMode: 'auto', voicePriority: [] };
+  }
+};
+
 // --- MAIN COMPONENT ---
 const MainApp = ({ goHome, theme, setTheme }) => {
   const {
@@ -174,6 +190,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
   // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
   const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
+  // C3.4.1 Table-only: Folder remains the stable source; ZIP archives are an
+  // additive lazy source. Voice variants are tracked independently per audio slot.
+  const [tableAudioFolderVariantInventory, setTableAudioFolderVariantInventory] = useState({});
+  const [tableAudioZipVariantInventory, setTableAudioZipVariantInventory] = useState({});
+  const [tableAudioZipSources, setTableAudioZipSources] = useState([]);
+  const [tableLocalAudioPlaybackPreference, setTableLocalAudioPlaybackPreference] = useState(loadTableLocalAudioPlaybackPreference);
   // C3.4: delivery history persists the fact that a browser download/package was
   // triggered even when mobile Chrome cannot re-open Downloads for verification.
   const [audioDownloadHistory, setAudioDownloadHistory] = useState(loadAudioDownloadHistory);
@@ -257,7 +279,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const {
     stopSignalRef, pauseStateRef, playbackSessionRef, playbackResolveRef, batchStopSignalRef, currentAudioObjRef,
     generationAbortControllerRef, generatedAudioMetaRef, edgeTestAbortControllerRef, playbackModeRef, rateRef, playbackSequenceRef, playbackDelaysRef, vocabularyPlayOrderRef,
-    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, csvInputRef, sourceInputRef,
+    activeVocabularyOrderRef, playbackContextRef, currentUtteranceRef, ttsReplayRef, synth, folderInputRef, audioZipInputRef, csvInputRef, sourceInputRef,
     fullPackInputRef, sourceUploadKeyRef, logContainerRef, debugButtonRef, debugPanelRef, batchPanelRef,
     batchButtonRef, textareaRef, newItemTextareaRef,
   } = useMainAppRuntimeRefs({ playbackMode, playbackSequence, playbackDelays, vocabularyPlayOrder, activeVocabularyOrder, rate });
@@ -611,6 +633,61 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channels
     });
   }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
+  const tableAudioGeneratedVariantInventory = useMemo(() => buildTableAudioGeneratedVariantInventory({
+    localAudioMapTable,
+    generatedAudioMeta
+  }), [localAudioMapTable, generatedAudioMeta]);
+  const tableAudioVariantInventory = useMemo(() => mergeTableAudioVariantInventories(
+    tableAudioGeneratedVariantInventory,
+    tableAudioFolderVariantInventory,
+    tableAudioZipVariantInventory
+  ), [tableAudioGeneratedVariantInventory, tableAudioFolderVariantInventory, tableAudioZipVariantInventory]);
+  const tableAudioVoiceOptions = useMemo(() => buildTableAudioVoiceOptions({
+    inventory: tableAudioVariantInventory,
+    edgeVoices: initialEdgeVoices
+  }), [tableAudioVariantInventory]);
+  const tableAudioVoicePriority = tableLocalAudioPlaybackPreference.voicePriority;
+  const tableLocalAudioVoiceMode = tableLocalAudioPlaybackPreference.voiceMode || 'auto';
+  useEffect(() => {
+    const reconciled = reconcileTableAudioVoicePriority({ currentPriority: tableAudioVoicePriority, voiceOptions: tableAudioVoiceOptions });
+    const available = new Set(tableAudioVoiceOptions.map(option => String(option.id || '').toLowerCase()));
+    const nextMode = tableLocalAudioVoiceMode === 'auto' || available.has(String(tableLocalAudioVoiceMode || '').toLowerCase())
+      ? tableLocalAudioVoiceMode
+      : 'auto';
+    const samePriority = reconciled.length === tableAudioVoicePriority.length && reconciled.every((id, index) => id === tableAudioVoicePriority[index]);
+    if (!samePriority || nextMode !== tableLocalAudioVoiceMode) {
+      setTableLocalAudioPlaybackPreference(prev => ({ ...prev, voiceMode: nextMode, voicePriority: reconciled }));
+    }
+  }, [tableAudioVoiceOptions, tableAudioVoicePriority, tableLocalAudioVoiceMode]);
+  useEffect(() => {
+    try { localStorage.setItem(TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY, JSON.stringify(tableLocalAudioPlaybackPreference)); } catch { /* best effort */ }
+  }, [tableLocalAudioPlaybackPreference]);
+  const tableAudioInventorySummary = useMemo(() => summarizeTableAudioVariantInventory(tableAudioVariantInventory), [tableAudioVariantInventory]);
+  const tableAudioUiMap = useMemo(() => buildTableAudioPresenceMap({
+    inventory: tableAudioVariantInventory,
+    legacyMap: localAudioMapTable
+  }), [tableAudioVariantInventory, localAudioMapTable]);
+  const tableAudioZipSummary = useMemo(() => ({
+    archiveCount: tableAudioZipSources.length,
+    matchedCount: tableAudioZipSources.reduce((sum, archive) => sum + Number(archive?.matchedCount || 0), 0),
+    audioFileCount: tableAudioZipSources.reduce((sum, archive) => sum + Number(archive?.audioFileCount || 0), 0),
+    unsupportedCount: tableAudioZipSources.reduce((sum, archive) => sum + Number(archive?.unsupportedCount || 0), 0),
+    names: tableAudioZipSources.map(archive => archive.name)
+  }), [tableAudioZipSources]);
+  const setTableLocalAudioVoiceMode = useCallback((voiceMode) => {
+    setTableLocalAudioPlaybackPreference(prev => ({ ...prev, voiceMode: voiceMode || 'auto' }));
+  }, []);
+  const moveTableLocalAudioVoicePriority = useCallback((voiceId, direction) => {
+    setTableLocalAudioPlaybackPreference(prev => {
+      const list = [...(prev.voicePriority || [])];
+      const index = list.findIndex(id => String(id).toLowerCase() === String(voiceId || '').toLowerCase());
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= list.length) return prev;
+      [list[index], list[nextIndex]] = [list[nextIndex], list[index]];
+      return { ...prev, voicePriority: list };
+    });
+  }, []);
+
   const tableAudioBatchCoverage = useMemo(() => buildTableAudioBatchCoverage({
     playlist,
     batchConfig,
@@ -619,8 +696,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     edgeIndonesianVoice,
     localAudioMapTable,
     generatedAudioMeta,
+    tableAudioVariantInventory,
     downloadHistory: audioDownloadHistory
-  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, audioDownloadHistory]);
+  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
   const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
@@ -666,11 +744,27 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setSequenceHighWater, setManualIdHighWater, addLog
   }), [tableContent, textIdentityState, textDatabaseStatus, mode, sequenceHighWater, setTextDatabaseStatus]);
 
-  const resetFullState = () => executeResetFullState({
-    localAudioMapTable, localAudioMapText, setLocalAudioMapTable, setLocalAudioMapText,
-    setAudioStatusTable, setAudioStatusText, setCurrentIndex, setMasterIndex, setStudyIndex,
-    setPlayingIndex, setPlayingContext, setStudyQueue, setTableViewMode, forceStopAll, addLog
-  });
+  const resetFullState = () => {
+    // C3.4.1 Table archive/variant state is session runtime state and must leave
+    // together with the legacy local-audio maps on a full reset.
+    clearTableAudioZipRuntimeCache();
+    setTableAudioZipVariantInventory({});
+    setTableAudioZipSources([]);
+    setTableAudioFolderVariantInventory(prev => {
+      Object.values(prev || {}).forEach(variants => {
+        (variants || []).forEach(variant => {
+          if (!variant?.url) return;
+          try { URL.revokeObjectURL(variant.url); } catch { /* noop */ }
+        });
+      });
+      return {};
+    });
+    return executeResetFullState({
+      localAudioMapTable, localAudioMapText, setLocalAudioMapTable, setLocalAudioMapText,
+      setAudioStatusTable, setAudioStatusText, setCurrentIndex, setMasterIndex, setStudyIndex,
+      setPlayingIndex, setPlayingContext, setStudyQueue, setTableViewMode, forceStopAll, addLog
+    });
+  };
 
   const resetTextState = () => executeResetTextState({
     localAudioMapText, setLocalAudioMapText, setAudioStatusText,
@@ -787,13 +881,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleMenuToggle = (rowId) => executeMenuToggle({ rowId, setActiveMenuId });
 
   // --- AUDIO ENGINE v5.8 ---
-  const getLocalAudioUrl = (item, part) => resolveLocalAudioUrl({
-      mode,
-      item,
-      part,
-      localAudioMapTable,
-      localAudioMapText
-  });
+  const getLocalAudioUrl = async (item, part) => {
+    if (mode !== 'table') return resolveLocalAudioUrl({ mode, item, part, localAudioMapTable, localAudioMapText });
+    const mapKey = `${getStableAudioIdentity(item)}_${part}`;
+    const variants = tableAudioVariantInventory?.[mapKey] || [];
+    const selectedVariant = resolveTableAudioPlaybackVariant({
+      variants,
+      voiceMode: tableLocalAudioVoiceMode,
+      voicePriority: tableAudioVoicePriority
+    });
+    if (selectedVariant?.url) return selectedVariant.url;
+    if (selectedVariant?.sourceType === 'zip') return getTableAudioZipVariantObjectUrl(selectedVariant);
+    // Legacy unknown-voice maps remain available only in Auto mode. A specific
+    // voice selection intentionally falls through to Browser TTS when missing.
+    if (tableLocalAudioVoiceMode === 'auto') return localAudioMapTable?.[mapKey] || null;
+    return null;
+  };
 
   const settlePlaybackPromise = () => executeSettlePlaybackPromise({ playbackResolveRef });
 
@@ -2299,26 +2402,82 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
   };
 
-  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
-    clearGeneratedAudioMetaForMode(mode);
-    return executeAudioFolderSelectService({
-    e: { target: { files, value: '' } },
-    mode,
-    localAudioMapTable,
-    localAudioMapText,
-    playlist,
-    getRecordAudioNo,
-    getVocabIdentity,
-    getStableAudioIdentity,
-    setLocalAudioMapTable,
-    setAudioStatusTable,
-    setLocalAudioMapText,
-    setAudioStatusText,
-    silent: !!options.automatic,
-    onMatchedAudio: handleMatchedAudioInventory,
-    edgeVoices: initialEdgeVoices
+  const revokeTableFolderVariantUrls = () => {
+    Object.values(tableAudioFolderVariantInventory || {}).forEach(variants => {
+      (variants || []).forEach(variant => {
+        if (!variant?.url) return;
+        try { URL.revokeObjectURL(variant.url); } catch { /* noop */ }
+      });
     });
   };
+
+  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
+    clearGeneratedAudioMetaForMode(mode);
+    if (mode === 'table') revokeTableFolderVariantUrls();
+    const result = executeAudioFolderSelectService({
+      e: { target: { files, value: '' } },
+      mode,
+      localAudioMapTable,
+      localAudioMapText,
+      playlist,
+      getRecordAudioNo,
+      getVocabIdentity,
+      getStableAudioIdentity,
+      setLocalAudioMapTable,
+      setAudioStatusTable,
+      setLocalAudioMapText,
+      setAudioStatusText,
+      silent: !!options.automatic,
+      onMatchedAudio: handleMatchedAudioInventory,
+      edgeVoices: initialEdgeVoices
+    });
+    if (mode === 'table') setTableAudioFolderVariantInventory(tableAudioVariantsFromRecords(result?.variants || []));
+    return result;
+  };
+
+  const handleAudioZipSelect = async (event) => {
+    const selectedFiles = [...(event?.target?.files || [])];
+    if (event?.target) event.target.value = '';
+    if (!selectedFiles.length) return;
+    if (mode !== 'table') {
+      alert('Audio ZIP C3.4.1 saat ini difokuskan untuk Table. Text belum diubah.');
+      return;
+    }
+    try {
+      const scan = await scanTableAudioZipFiles({
+        files: selectedFiles,
+        playlist,
+        getRecordAudioNo,
+        getVocabIdentity,
+        getStableAudioIdentity,
+        edgeVoices: initialEdgeVoices
+      });
+      setTableAudioZipVariantInventory(prev => mergeTableAudioVariantInventories(prev, scan.inventory));
+      setTableAudioZipSources(prev => {
+        const byIdentity = new Map((prev || []).map(item => [item.id, item]));
+        scan.archives.forEach(item => byIdentity.set(item.id, item));
+        return [...byIdentity.values()];
+      });
+      setAudioStatusTable(scan.matchedCount > 0 ? 'success' : (Object.keys(tableAudioFolderVariantInventory || {}).length ? 'success' : 'empty'));
+      addLog('System', `Table Audio ZIP: ${scan.archiveCount} archive, ${scan.matchedCount} matched audio, ${scan.orphanCount} orphan, ${scan.unsupportedCount} unsupported.`);
+      alert(`[Table] Audio ZIP scan: ${scan.archiveCount} archive. Matched: ${scan.matchedCount}. Orphan: ${scan.orphanCount}. Unsupported: ${scan.unsupportedCount}.\nZIP dibaca sebagai archive index; audio diekstrak hanya saat diputar.`);
+      return scan;
+    } catch (error) {
+      console.error(error);
+      addLog('Error', `Table Audio ZIP gagal: ${error?.message || error}`);
+      alert(`Audio ZIP gagal dibaca: ${error?.message || error}`);
+      return { status: 'error', error };
+    }
+  };
+
+  const clearTableAudioZipSources = () => {
+    clearTableAudioZipRuntimeCache();
+    setTableAudioZipVariantInventory({});
+    setTableAudioZipSources([]);
+    if (!Object.keys(tableAudioFolderVariantInventory || {}).length && !Object.keys(localAudioMapTable || {}).length) setAudioStatusTable('idle');
+    addLog('System', 'Table Audio ZIP sources cleared. Audio Folder remains unchanged.');
+  };
+
 
 
   // Remembered folders are matched against the ACTIVE dataset, not against the
@@ -2343,23 +2502,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleFolderSelect = (e) => {
-    clearGeneratedAudioMetaForMode(mode);
-    return executeAudioFolderSelectService({
-      e,
-      mode,
-      localAudioMapTable,
-      localAudioMapText,
-      playlist,
-      getRecordAudioNo,
-      getVocabIdentity,
-      getStableAudioIdentity,
-      setLocalAudioMapTable,
-      setAudioStatusTable,
-      setLocalAudioMapText,
-      setAudioStatusText,
-      onMatchedAudio: handleMatchedAudioInventory,
-      edgeVoices: initialEdgeVoices
-    });
+    const files = e?.target?.files;
+    if (!files) return;
+    const result = loadAudioFolderFiles(files, '', { automatic: false });
+    if (e?.target) e.target.value = '';
+    return result;
   };
 
   const handleRememberedAudioFolderOpen = ({ forcePicker = false } = {}) => {
@@ -2399,6 +2546,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // The ref exposes remembered-folder open/change plus an explicit re-scan action.
   folderInputRef.openAudioFolder = handleRememberedAudioFolderOpen;
   folderInputRef.refreshAudioFolder = handleRememberedAudioFolderRefresh;
+  folderInputRef.openAudioZip = () => audioZipInputRef.current?.click();
+  folderInputRef.clearAudioZip = clearTableAudioZipSources;
+  folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 
   useEffect(() => {
     if (!playlist.length || !audioDatasetIdentitySignature) return;
@@ -2432,7 +2582,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     : (mode === 'table' ? audioStatusTable : audioStatusText);
   const currentMapCount = structuredTextModeActive
     ? structuredTextRuntimeAudioCount
-    : (mode === 'table' ? Object.keys(localAudioMapTable).length : Object.keys(localAudioMapText).length);
+    : (mode === 'table' ? Object.keys(tableAudioUiMap).length : Object.keys(localAudioMapText).length);
   const activePreferLocalAudio = structuredTextModeActive
     ? textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
     : preferLocalAudio;
@@ -2449,7 +2599,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderStatusBadge = () => {
       if (currentAudioStatus === 'idle' && currentMapCount === 0) return <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded">Belum Load</span>;
-      if (currentMapCount > 0) return <span className="text-[10px] bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> {currentMapCount} File Aktif</span>;
+      if (currentMapCount > 0) return <span className="text-[10px] bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> {mode === 'table' ? `${currentMapCount} Slot • ${tableAudioInventorySummary.variants || currentMapCount} Audio` : `${currentMapCount} File Aktif`}</span>;
       return <span className="text-[10px] bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> 0 File</span>;
   };
 
@@ -2548,6 +2698,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderMobileTools = () => renderMobileToolsView({
     sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
+    tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
     preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange, isSystemBusy, voices, selectedVoice: activeBrowserTtsVoice,
     setSelectedVoice: handleActiveBrowserTtsVoiceChange, indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
     setSelectedIndonesianVoice: handleActiveBrowserTtsIndonesianVoiceChange, rate: activeBrowserTtsRate,
@@ -2670,7 +2821,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     independentPlayingId,
     playingContext,
     studyQueueSet,
-    localAudioMapTable,
+    localAudioMapTable: tableAudioUiMap,
     toggleStudyItem,
     handleIndependentPlay,
     handleManualRowClick,
@@ -2703,10 +2854,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
     isSystemBusy, savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit,
     currentDeckName, setCurrentDeckName, handleSaveDeck, mode, isCsvDirty,
-    csvChangeSummary, saveUpdatedCSV, folderInputRef, sourceInputRef, fullPackInputRef,
-    handleFolderSelect, handleSourceUpload, handleFullPackUpload, mobileTab, handleMobileTabSwitch,
+    csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef, sourceInputRef, fullPackInputRef,
+    handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab, handleMobileTabSwitch,
     renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection,
-    renderControlSectionTabs, currentMapCount, renderStatusBadge, preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange,
+    renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange,
     generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
     edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice,
     edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth,

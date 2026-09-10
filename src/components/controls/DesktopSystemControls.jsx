@@ -1,5 +1,5 @@
 import React from 'react';
-import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal } from 'lucide-react';
+import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 
@@ -9,7 +9,7 @@ export default function DesktopSystemControls({
   edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth, testEdgeBackend,
   userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock,
   geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
-  folderInputRef, currentMapCount, batchButtonRef,
+  folderInputRef, currentMapCount, mode, batchButtonRef,
   isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
   setShowLogs, showLogs, logContainerRef, systemLogs, storageRefreshToken,
   onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
@@ -99,6 +99,17 @@ export default function DesktopSystemControls({
                 ) : (
                   <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
                 )}
+                {mode === 'table' && <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Audio ZIP Archive</span>
+                    {(folderInputRef?.tableAudioZipSummary?.archiveCount || 0) > 0 && <span className="text-[8px] text-slate-400">{folderInputRef.tableAudioZipSummary.archiveCount} ZIP • {folderInputRef.tableAudioZipSummary.matchedCount} matched</span>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border bg-indigo-600 text-white border-indigo-700 disabled:opacity-50"><FileArchive className="w-3.5 h-3.5"/> Add ZIP</button>
+                    <button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => folderInputRef.clearAudioZip?.()} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="w-3.5 h-3.5"/> Clear ZIP</button>
+                  </div>
+                  <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
+                </div>}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     ref={batchButtonRef}

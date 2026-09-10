@@ -19,10 +19,10 @@ export const renderMainAppShellView = (props) => {
   const {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome, isSystemBusy,
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
-    handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef,
-    sourceInputRef, fullPackInputRef, handleFolderSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
+    handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
+    sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
     handleMobileTabSwitch, renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection,
-    renderControlSectionTabs, currentMapCount, renderStatusBadge, preferLocalAudio, setPreferLocalAudio, generatorEngine,
+    renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio, setPreferLocalAudio, generatorEngine,
     setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, edgeVoices, edgeVoice,
     setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, edgeHealth, testEdgeBackend, userApiKey, onUserApiKeyChange,
@@ -74,9 +74,11 @@ export const renderMainAppShellView = (props) => {
         csvChangeSummary={csvChangeSummary}
         saveUpdatedCSV={saveUpdatedCSV}
         folderInputRef={folderInputRef}
+        audioZipInputRef={audioZipInputRef}
         sourceInputRef={sourceInputRef}
         fullPackInputRef={fullPackInputRef}
         handleFolderSelect={handleFolderSelect}
+        handleAudioZipSelect={handleAudioZipSelect}
         handleSourceUpload={handleSourceUpload}
         handleFullPackUpload={handleFullPackUpload}
         mobileTab={mobileTab}
@@ -120,6 +122,11 @@ export const renderMainAppShellView = (props) => {
                 preferLocalAudio={preferLocalAudio}
                 setPreferLocalAudio={setPreferLocalAudio}
                 isSystemBusy={isSystemBusy}
+                tableAudioVoiceOptions={tableAudioVoiceOptions}
+                tableLocalAudioVoiceMode={tableLocalAudioVoiceMode}
+                setTableLocalAudioVoiceMode={setTableLocalAudioVoiceMode}
+                tableAudioVoicePriority={tableAudioVoicePriority}
+                moveTableLocalAudioVoicePriority={moveTableLocalAudioVoicePriority}
               />
 
               </>}
@@ -154,6 +161,7 @@ export const renderMainAppShellView = (props) => {
                 onGeminiByokClear={onGeminiByokClear}
                 folderInputRef={folderInputRef}
                 currentMapCount={currentMapCount}
+                mode={mode}
                 batchButtonRef={batchButtonRef}
                 isBatchDownloading={isBatchDownloading}
                 setIsBatchOpen={setIsBatchOpen}

@@ -28,9 +28,11 @@ const Header = ({
   csvChangeSummary,
   saveUpdatedCSV,
   folderInputRef,
+  audioZipInputRef,
   sourceInputRef,
   fullPackInputRef,
   handleFolderSelect,
+  handleAudioZipSelect,
   handleSourceUpload,
   handleFullPackUpload,
   mobileTab,
@@ -95,6 +97,7 @@ const Header = ({
           {/* v5.11.6: technical controls moved to SYSTEM. Keep file pickers mounted for all layouts. */}
           <div className="hidden">
               <input type="file" ref={folderInputRef} webkitdirectory="" directory="" multiple onChange={handleFolderSelect} />
+              <input type="file" ref={audioZipInputRef} accept=".zip,application/zip,application/x-zip-compressed" multiple onChange={handleAudioZipSelect} />
               <input type="file" ref={sourceInputRef} accept=".csv,.tsv,.txt" onChange={handleSourceUpload} />
               <input type="file" ref={fullPackInputRef} accept=".csv,.tsv,.txt" multiple onChange={handleFullPackUpload} />
           </div>

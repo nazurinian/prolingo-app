@@ -58,7 +58,36 @@ export const buildTableAudioBatchSlots = ({ playlist, batchConfig, generatorEngi
   return slots;
 };
 
-export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, generatedAudioMeta, downloadHistory }) => {
+export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, downloadHistory }) => {
+  const variants = (tableAudioVariantInventory?.[slot.mapKey] || []).filter(Boolean);
+  const verifiedVariants = variants.filter(variant => variant?.verified !== false || ['folder', 'zip'].includes(variant?.sourceType));
+  const matchingVerified = slot.requiredVoiceId
+    ? verifiedVariants.find(variant => variant?.voiceId && same(variant.voiceId, slot.requiredVoiceId))
+    : verifiedVariants[0];
+  if (matchingVerified) {
+    return {
+      ...slot,
+      status: AUDIO_DOWNLOAD_COVERAGE_STATUS.READY,
+      verified: true,
+      filename: matchingVerified.filename || null,
+      voiceId: matchingVerified.voiceId || null,
+      sourceType: matchingVerified.sourceType || null
+    };
+  }
+  if (verifiedVariants.length) {
+    const other = verifiedVariants.find(variant => variant?.voiceId) || verifiedVariants[0];
+    return {
+      ...slot,
+      status: AUDIO_DOWNLOAD_COVERAGE_STATUS.OTHER_VOICE,
+      verified: true,
+      filename: other?.filename || null,
+      voiceId: other?.voiceId || null,
+      sourceType: other?.sourceType || null
+    };
+  }
+
+  // Legacy compatibility for old one-URL-per-slot state when no C3.4.1
+  // variant metadata exists yet.
   const meta = generatedAudioMeta?.[`table:${slot.mapKey}`] || null;
   const loaded = Boolean(localAudioMapTable?.[slot.mapKey]);
   const history = downloadHistory?.[`table:${slot.mapKey}`] || null;

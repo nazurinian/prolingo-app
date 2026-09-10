@@ -123,57 +123,65 @@ export const executeAudioSourcePlaybackService = ({
   playTTS,
   addLog
 }) => {
-    return new Promise((resolve) => {
-      if (stopSignalRef.current || !String(textToRead || '').trim()) {
-          resolve();
-          return;
-      }
-
-      const audioUrl = preferLocalAudio ? getLocalAudioUrl(item, part) : null;
-      if (audioUrl) {
-        const audio = new Audio(audioUrl);
-        currentAudioObjRef.current = audio;
-        audio.playbackRate = Number(rateRef?.current ?? rate) || 1;
-        let settled = false;
-
-        const cleanupAudio = () => {
-            if (currentAudioObjRef.current === audio) currentAudioObjRef.current = null;
-            audio.onended = null;
-            audio.onerror = null;
-            if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
-        };
-
-        const finish = () => {
-            if (settled) return;
-            settled = true;
-            cleanupAudio();
-            resolve();
-        };
-
-        const fallbackToTTS = () => {
-            if (shouldIgnoreLocalAudioFailure(settled)) return;
-            settled = true;
-            cleanupAudio();
-            if (shouldResolveLocalAudioFailure(stopSignalRef.current)) {
-                resolve();
-                return;
-            }
-            const fallbackVoice = resolveAudioFallbackVoice(part, selectedIndonesianVoiceRef.current);
-            playTTS(textToRead, fallbackVoice).then(resolve);
-        };
-
-        playbackResolveRef.current = finish;
-        audio.onended = finish;
-        audio.onerror = () => {
-          addLog("Warn", `Audio fail ${item.vocabId || item.displayId}/${part}. Fallback TTS.`);
-          fallbackToTTS();
-        };
-
-        audio.play().catch(() => fallbackToTTS());
-        return;
-      }
-
+    const fallbackToBrowserTts = () => {
+      if (stopSignalRef.current) return Promise.resolve();
       const fallbackVoice = resolveAudioFallbackVoice(part, selectedIndonesianVoiceRef.current);
-      playTTS(textToRead, fallbackVoice).then(resolve);
-    });
+      return playTTS(textToRead, fallbackVoice);
+    };
+
+    if (stopSignalRef.current || !String(textToRead || '').trim()) return Promise.resolve();
+
+    // C3.4.1: a local source can now be a lazy ZIP entry. Folder URLs remain
+    // synchronous, while ZIP URLs resolve only when the requested audio is played.
+    const localSource = preferLocalAudio ? getLocalAudioUrl(item, part) : null;
+    return Promise.resolve(localSource)
+      .catch(error => {
+        addLog?.('Warn', `Audio source resolve fail ${item?.vocabId || item?.displayId}/${part}: ${error?.message || error}. Fallback TTS.`);
+        return null;
+      })
+      .then(audioUrl => {
+        if (stopSignalRef.current) return undefined;
+        if (!audioUrl) return fallbackToBrowserTts();
+
+        return new Promise((resolve) => {
+          const audio = new Audio(audioUrl);
+          currentAudioObjRef.current = audio;
+          audio.playbackRate = Number(rateRef?.current ?? rate) || 1;
+          let settled = false;
+
+          const cleanupAudio = () => {
+              if (currentAudioObjRef.current === audio) currentAudioObjRef.current = null;
+              audio.onended = null;
+              audio.onerror = null;
+              if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
+          };
+
+          const finish = () => {
+              if (settled) return;
+              settled = true;
+              cleanupAudio();
+              resolve();
+          };
+
+          const fallbackFromLocalFailure = () => {
+              if (shouldIgnoreLocalAudioFailure(settled)) return;
+              settled = true;
+              cleanupAudio();
+              if (shouldResolveLocalAudioFailure(stopSignalRef.current)) {
+                  resolve();
+                  return;
+              }
+              fallbackToBrowserTts().then(resolve);
+          };
+
+          playbackResolveRef.current = finish;
+          audio.onended = finish;
+          audio.onerror = () => {
+            addLog("Warn", `Audio fail ${item.vocabId || item.displayId}/${part}. Fallback TTS.`);
+            fallbackFromLocalFailure();
+          };
+
+          audio.play().catch(() => fallbackFromLocalFailure());
+        });
+      });
 };
