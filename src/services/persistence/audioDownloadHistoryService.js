@@ -43,3 +43,15 @@ export const clearAudioDownloadHistoryForMode = (history, mode = 'table') => {
   const prefix = `${mode}:`;
   return Object.fromEntries(Object.entries(history || {}).filter(([key]) => !String(key).startsWith(prefix)));
 };
+
+// C3.4.6: source detach / manual coverage reset must be durable immediately.
+// Do not rely only on React's later persistence effect because a refresh/navigation
+// can happen before that effect commits. This helper touches only ProLingo's audio
+// delivery-history key; cookies, login state, datasets and other localStorage keys
+// are intentionally untouched.
+export const clearPersistedAudioDownloadHistoryForMode = (mode = 'table') => {
+  const current = loadAudioDownloadHistory();
+  const next = clearAudioDownloadHistoryForMode(current, mode);
+  persistAudioDownloadHistory(next);
+  return next;
+};

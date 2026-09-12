@@ -18,6 +18,7 @@ export default function DesktopSystemControls({
 }) {
   const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
+  const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
@@ -115,6 +116,11 @@ export default function DesktopSystemControls({
                   </div>
                   <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
                 </div>}
+                {mode === 'table' && <button
+                  disabled={isSystemBusy}
+                  onClick={() => setResetCoverageConfirmOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"
+                ><RotateCcw className="w-3.5 h-3.5"/> Reset Audio Coverage Memory</button>}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     ref={batchButtonRef}
@@ -166,6 +172,14 @@ export default function DesktopSystemControls({
         confirmLabel="Clear ZIP"
         onCancel={() => setClearZipConfirmOpen(false)}
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
+      />
+      <SafetyConfirmDialog
+        open={resetCoverageConfirmOpen}
+        title="Reset Table audio coverage memory?"
+        message="Menghapus hanya riwayat Downloaded* Table yang tersimpan di ProLingo dan metadata generation sementara. Audio Folder/ZIP yang masih terhubung tetap dipindai sebagai Ready. File audio, data CSV, progress belajar, login browser, cookie, dan cache situs lain tidak dihapus."
+        confirmLabel="Reset Coverage"
+        onCancel={() => setResetCoverageConfirmOpen(false)}
+        onConfirm={() => { setResetCoverageConfirmOpen(false); folderInputRef.resetAudioCoverageMemory?.(); }}
       />
     </>
   );

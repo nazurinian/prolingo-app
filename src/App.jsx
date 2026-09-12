@@ -125,7 +125,7 @@ import { executeStructuredTextPlaybackSessionService } from './services/playback
 import { executeStructuredTextRuntimeAudioPlaybackService } from './services/playback/textStructuredAudioRuntimeService.js';
 import { executeTextStructuredPreferencePersistenceEffect } from './services/persistence/textStructuredPreferenceService.js';
 import { executeTextStructuredAudioGenerationPreferencePersistenceEffect, loadTextStructuredAudioGenerationPreferences } from './services/persistence/textStructuredAudioGenerationPreferenceService.js';
-import { clearAudioDownloadHistoryForMode, loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
+import { clearAudioDownloadHistoryForMode, clearPersistedAudioDownloadHistoryForMode, loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
 import { executeTextStructuredAudioGenerationRequest } from './services/audio/textStructuredAudioGenerationService.js';
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
@@ -2552,7 +2552,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const clearTableAudioCoverageHistory = () => {
-    setAudioDownloadHistory(prev => clearAudioDownloadHistoryForMode(prev, 'table'));
+    // Persist synchronously as well as updating React state. This prevents stale
+    // Downloaded* records from resurrecting after an immediate browser refresh.
+    const persisted = clearPersistedAudioDownloadHistoryForMode('table');
+    setAudioDownloadHistory(prev => {
+      const next = clearAudioDownloadHistoryForMode(prev, 'table');
+      // Preserve any newer non-Table records already present in state while using
+      // the persisted snapshot as a safety floor for older sessions.
+      return { ...persisted, ...next };
+    });
+  };
+
+  const resetTableAudioCoverageMemory = () => {
+    clearGeneratedAudioMetaForMode('table');
+    clearTableAudioCoverageHistory();
+    addLog('System', 'Table Audio coverage memory reset. Downloaded* delivery history cleared; attached Folder/ZIP verified inventory remains active.');
   };
 
   const resetTableAudioTransientCoverageStatePreservingFolder = () => {
@@ -2675,6 +2689,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.openAudioZip = () => audioZipInputRef.current?.click();
   folderInputRef.clearAudioZip = clearTableAudioZipSources;
   folderInputRef.detachAudioFolder = detachTableAudioFolderSource;
+  folderInputRef.resetAudioCoverageMemory = resetTableAudioCoverageMemory;
   folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 

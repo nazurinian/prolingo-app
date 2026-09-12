@@ -18,6 +18,7 @@ export default function MobileSystemControls({
 }) {
   const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
+  const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
@@ -39,6 +40,7 @@ export default function MobileSystemControls({
                     <div className="grid grid-cols-2 gap-2"><button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioZip?.()} className="flex items-center justify-center gap-1.5 rounded bg-indigo-600 px-2 py-2 text-[10px] font-bold text-white disabled:opacity-50"><FileArchive className="h-3.5 w-3.5"/> Add ZIP</button><button disabled={isSystemBusy || !(folderInputRef?.tableAudioZipSummary?.archiveCount > 0)} onClick={() => setClearZipConfirmOpen(true)} className="flex items-center justify-center gap-1.5 rounded border border-slate-200 dark:border-slate-700 px-2 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35"><X className="h-3.5 w-3.5"/> Clear ZIP</button></div>
                     <p className="mt-1.5 text-[8px] text-slate-400">Folder stays active; ZIP is indexed and read lazily per audio.</p>
                   </div>}
+                  {mode === 'table' && <button disabled={isSystemBusy} onClick={() => setResetCoverageConfirmOpen(true)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded border border-sky-200 dark:border-sky-800 px-2 py-2 text-[10px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><RotateCcw className="h-3.5 w-3.5"/> Reset Audio Coverage Memory</button>}
               </div>
 
               <StorageManagerPanel
@@ -113,6 +115,14 @@ export default function MobileSystemControls({
         confirmLabel="Clear ZIP"
         onCancel={() => setClearZipConfirmOpen(false)}
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
+      />
+      <SafetyConfirmDialog
+        open={resetCoverageConfirmOpen}
+        title="Reset Table audio coverage memory?"
+        message="Menghapus hanya riwayat Downloaded* Table yang tersimpan di ProLingo dan metadata generation sementara. Audio Folder/ZIP yang masih terhubung tetap dipindai sebagai Ready. File audio, CSV, progress belajar, login browser, cookie, dan data situs lain tidak dihapus."
+        confirmLabel="Reset Coverage"
+        onCancel={() => setResetCoverageConfirmOpen(false)}
+        onConfirm={() => { setResetCoverageConfirmOpen(false); folderInputRef.resetAudioCoverageMemory?.(); }}
       />
     </>
   );
