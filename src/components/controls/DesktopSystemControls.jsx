@@ -17,6 +17,8 @@ export default function DesktopSystemControls({
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
 }) {
   const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
+  const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
+  const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
               {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
@@ -93,7 +95,7 @@ export default function DesktopSystemControls({
                 {!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full px-2 py-1.5 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50">Owner Unlock</button>}
                 {geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Owner Lock</button>}
                 {!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600 dark:text-amber-400">BYOK vault belum dikonfigurasi di server.</p>}
-                {currentMapCount > 0 ? (
+                {hasActiveAudioFolder ? (
                   <div className="grid grid-cols-2 gap-2">
                     <button disabled={isSystemBusy} onClick={() => folderInputRef.refreshAudioFolder?.() ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/> Refresh Audio</button>
                     <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: true }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-600 text-white border-green-700 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Change Folder</button>
@@ -101,6 +103,7 @@ export default function DesktopSystemControls({
                 ) : (
                   <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
                 )}
+                {mode === 'table' && folderInputRef?.tableAudioFolderSummary?.active && <button disabled={isSystemBusy} onClick={() => setDetachFolderConfirmOpen(true)} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 disabled:opacity-35"><X className="w-3.5 h-3.5"/> Detach Audio Folder</button>}
                 {mode === 'table' && <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Audio ZIP Archive</span>
@@ -149,9 +152,17 @@ export default function DesktopSystemControls({
               />
 
       <SafetyConfirmDialog
+        open={detachFolderConfirmOpen}
+        title="Detach Table audio folder?"
+        message="Melepas Audio Folder Table dari ProLingo dan menghapus daftar audio/Downloaded* Table yang tersimpan. File audio asli di folder tidak dihapus. ZIP yang masih diload tetap aktif."
+        confirmLabel="Detach Folder"
+        onCancel={() => setDetachFolderConfirmOpen(false)}
+        onConfirm={() => { setDetachFolderConfirmOpen(false); folderInputRef.detachAudioFolder?.(); }}
+      />
+      <SafetyConfirmDialog
         open={clearZipConfirmOpen}
         title="Clear loaded ZIP archives?"
-        message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus dan Audio Folder tetap aktif.`}
+        message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus, Audio Folder tetap aktif, dan status Downloaded* Table lama di-reset agar coverage dihitung ulang dari source yang masih aktif.`}
         confirmLabel="Clear ZIP"
         onCancel={() => setClearZipConfirmOpen(false)}
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}

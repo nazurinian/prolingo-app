@@ -38,3 +38,8 @@ export const recordAudioDownloadHistory = (history, records) => {
   });
   return next;
 };
+
+export const clearAudioDownloadHistoryForMode = (history, mode = 'table') => {
+  const prefix = `${mode}:`;
+  return Object.fromEntries(Object.entries(history || {}).filter(([key]) => !String(key).startsWith(prefix)));
+};

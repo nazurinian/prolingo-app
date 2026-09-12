@@ -79,7 +79,7 @@ import { executeAudioGenerationService, executeEdgeBackendHealthService, execute
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
 import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, buildTableAudioVoiceOptions, mergeTableAudioVariantInventories, reconcileTableAudioVoicePriority, resolveTableAudioPlaybackVariant, summarizeTableAudioVariantInventory, tableAudioVariantsFromRecords } from './domain/audio/tableAudioVariantInventoryDomain.js';
-import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService } from './services/audio/audioFolderLifecycleService';
+import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle } from './services/audio/audioFolderLifecycleService';
 import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
@@ -125,7 +125,7 @@ import { executeStructuredTextPlaybackSessionService } from './services/playback
 import { executeStructuredTextRuntimeAudioPlaybackService } from './services/playback/textStructuredAudioRuntimeService.js';
 import { executeTextStructuredPreferencePersistenceEffect } from './services/persistence/textStructuredPreferenceService.js';
 import { executeTextStructuredAudioGenerationPreferencePersistenceEffect, loadTextStructuredAudioGenerationPreferences } from './services/persistence/textStructuredAudioGenerationPreferenceService.js';
-import { loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
+import { clearAudioDownloadHistoryForMode, loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
 import { executeTextStructuredAudioGenerationRequest } from './services/audio/textStructuredAudioGenerationService.js';
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
@@ -2551,12 +2551,57 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   };
 
+  const clearTableAudioCoverageHistory = () => {
+    setAudioDownloadHistory(prev => clearAudioDownloadHistoryForMode(prev, 'table'));
+  };
+
+  const resetTableAudioTransientCoverageStatePreservingFolder = () => {
+    const preservedFolderMap = {};
+    const preservedUrls = new Set();
+    Object.entries(tableAudioFolderVariantInventory || {}).forEach(([mapKey, variants]) => {
+      const folderVariant = (Array.isArray(variants) ? variants : []).find(variant => variant?.sourceType === 'folder' && variant?.url);
+      if (!folderVariant?.url) return;
+      preservedFolderMap[mapKey] = folderVariant.url;
+      preservedUrls.add(folderVariant.url);
+    });
+    Object.values(localAudioMapTable || {}).forEach(url => {
+      if (!url || preservedUrls.has(url)) return;
+      try { URL.revokeObjectURL(url); } catch { /* noop */ }
+    });
+    setLocalAudioMapTable(preservedFolderMap);
+    clearGeneratedAudioMetaForMode('table');
+  };
+
   const clearTableAudioZipSources = () => {
     clearTableAudioZipRuntimeCache();
     setTableAudioZipVariantInventory({});
     setTableAudioZipSources([]);
-    if (!Object.keys(tableAudioFolderVariantInventory || {}).length && !Object.keys(localAudioMapTable || {}).length) setAudioStatusTable('idle');
-    addLog('System', 'Table Audio ZIP sources cleared. Audio Folder remains unchanged.');
+    // Detach means the removed source must stop contributing to coverage.
+    // Downloaded* is intentionally reset so an old package/history cannot keep
+    // slots looking covered after the ZIP itself has been detached.
+    resetTableAudioTransientCoverageStatePreservingFolder();
+    clearTableAudioCoverageHistory();
+    if (!Object.keys(tableAudioFolderVariantInventory || {}).length) setAudioStatusTable('idle');
+    addLog('System', 'Table Audio ZIP sources detached. ZIP inventory + Table Downloaded* coverage history cleared. Audio Folder remains unchanged.');
+  };
+
+  const detachTableAudioFolderSource = async () => {
+    revokeTableFolderVariantUrls();
+    setTableAudioFolderVariantInventory({});
+    // Legacy Table folder scan still owns the one-URL-per-slot map. Clear it so
+    // detached folder files cannot survive through that compatibility path.
+    Object.values(localAudioMapTable || {}).forEach(url => {
+      try { if (url) URL.revokeObjectURL(url); } catch { /* noop */ }
+    });
+    setLocalAudioMapTable({});
+    clearGeneratedAudioMetaForMode('table');
+    clearTableAudioCoverageHistory();
+    try { await forgetRememberedAudioFolderHandle('table'); } catch (error) { console.warn('Unable to forget Table audio folder handle:', error); }
+    const restoreState = getAudioAutoRestoreState();
+    restoreState.generations.table = (restoreState.generations.table || 0) + 1;
+    delete restoreState.signatures.table;
+    setAudioStatusTable(Object.keys(tableAudioZipVariantInventory || {}).length ? 'success' : 'idle');
+    addLog('System', 'Table Audio Folder detached. Folder inventory, remembered handle, legacy local map, and Table Downloaded* coverage history cleared. ZIP sources remain unchanged.');
   };
 
 
@@ -2629,6 +2674,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.refreshAudioFolder = handleRememberedAudioFolderRefresh;
   folderInputRef.openAudioZip = () => audioZipInputRef.current?.click();
   folderInputRef.clearAudioZip = clearTableAudioZipSources;
+  folderInputRef.detachAudioFolder = detachTableAudioFolderSource;
+  folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 
   useEffect(() => {

@@ -233,6 +233,21 @@ const readRememberedAudioFolderHandle = async (mode) => {
     }
 };
 
+export const forgetRememberedAudioFolderHandle = async (mode) => {
+    const db = await openAudioFolderHandleDb();
+    try {
+        await new Promise((resolve, reject) => {
+            const tx = db.transaction(AUDIO_FOLDER_DB_STORE, 'readwrite');
+            tx.objectStore(AUDIO_FOLDER_DB_STORE).delete(getRememberedAudioFolderKey(mode));
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error || new Error('Failed to forget audio folder.'));
+            tx.onabort = () => reject(tx.error || new Error('Audio-folder detach was aborted.'));
+        });
+    } finally {
+        db.close();
+    }
+};
+
 const saveRememberedAudioFolderHandle = async (mode, handle) => {
     const db = await openAudioFolderHandleDb();
     try {
