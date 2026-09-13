@@ -97,6 +97,7 @@ export default function AudioDownloadPanel({
   const [bulkProgress, setBulkProgress] = React.useState(null);
   const bulkStopRef = React.useRef(false);
   const bulkRunningRef = React.useRef(false);
+  const ownedGenerationRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!open) {
@@ -106,11 +107,20 @@ export default function AudioDownloadPanel({
   }, [open]);
 
   React.useEffect(() => () => {
-    if (bulkRunningRef.current) {
+    if (bulkRunningRef.current || ownedGenerationRef.current) {
       bulkStopRef.current = true;
       cancelActiveGeneration?.();
     }
   }, [cancelActiveGeneration]);
+
+  const runOwnedGeneration = async (targetItem, part, options = {}) => {
+    ownedGenerationRef.current = true;
+    try {
+      return await generateAIAudio(targetItem, part, options);
+    } finally {
+      ownedGenerationRef.current = false;
+    }
+  };
 
   if (!open || !item || typeof document === 'undefined') return null;
 
@@ -150,7 +160,7 @@ export default function AudioDownloadPanel({
         if (bulkStopRef.current) break;
         const part = stageableMissingParts[index];
         setBulkProgress({ current: index + 1, total: stageableMissingParts.length, part });
-        const result = await generateAIAudio(item, part, {
+        const result = await runOwnedGeneration(item, part, {
           skipReplaceConfirm: true,
           deferBrowserDownload: true,
           suppressFailureAlert: true
@@ -203,7 +213,7 @@ export default function AudioDownloadPanel({
             </div>
             <div className={`mt-2 grid gap-2 ${selectedState?.sourceType === 'staging' ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('mp3', () => exportAudioMp3?.(item, actionPart))} className="rounded-lg bg-emerald-600 px-2 py-2 text-[9px] font-black text-white disabled:opacity-40">{actionBusy === 'mp3' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Download className="mr-1 inline h-3 w-3"/>}MP3</button>
-              <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('regen', async () => { await generateAIAudio(item, actionPart, { skipReplaceConfirm: true, deferBrowserDownload: true }); setActionPart(null); })} className="rounded-lg border border-indigo-200 dark:border-indigo-800 px-2 py-2 text-[9px] font-black text-indigo-700 dark:text-indigo-300 disabled:opacity-40">{actionBusy === 'regen' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <RefreshCw className="mr-1 inline h-3 w-3"/>}Regenerate</button>
+              <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('regen', async () => { await runOwnedGeneration(item, actionPart, { skipReplaceConfirm: true, deferBrowserDownload: true }); setActionPart(null); })} className="rounded-lg border border-indigo-200 dark:border-indigo-800 px-2 py-2 text-[9px] font-black text-indigo-700 dark:text-indigo-300 disabled:opacity-40">{actionBusy === 'regen' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <RefreshCw className="mr-1 inline h-3 w-3"/>}Regenerate</button>
               {selectedState?.sourceType === 'staging' && <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('release', async () => { await removeStagedAudio?.(item, actionPart); setActionPart(null); })} className="rounded-lg border border-rose-200 dark:border-rose-900 px-2 py-2 text-[9px] font-black text-rose-700 dark:text-rose-300 disabled:opacity-40">{actionBusy === 'release' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Trash2 className="mr-1 inline h-3 w-3"/>}Release</button>}
             </div>
             <p className="mt-2 text-[8px] leading-relaxed text-slate-400">Download MP3 reuses the current Staging / Folder / ZIP binary. Regenerate creates a new Staging variant and never overwrites the external Folder/ZIP file.</p>
@@ -238,8 +248,8 @@ export default function AudioDownloadPanel({
             {rows.map(row => (
               <React.Fragment key={row.key}>
                 <div className={`h-10 rounded-xl border px-2 flex items-center font-black ${row.key.startsWith('exp') ? 'border-violet-100 dark:border-violet-900 bg-violet-50/80 dark:bg-violet-950/25 text-violet-700 dark:text-violet-300' : 'border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 text-slate-700 dark:text-slate-200'}`}>{row.label}</div>
-                <AudioCellButton item={item} part={row.enPart} loaded={loadedSet.has(row.enPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} onRequestAction={setActionPart} learnEnabled={learnEnabledByKey[playbackKeyForAudioPart(row.enPart)] !== false} />
-                <AudioCellButton item={item} part={row.idnPart} loaded={loadedSet.has(row.idnPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} onRequestAction={setActionPart} learnEnabled={learnEnabledByKey[playbackKeyForAudioPart(row.idnPart)] !== false} />
+                <AudioCellButton item={item} part={row.enPart} loaded={loadedSet.has(row.enPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={runOwnedGeneration} onRequestAction={setActionPart} learnEnabled={learnEnabledByKey[playbackKeyForAudioPart(row.enPart)] !== false} />
+                <AudioCellButton item={item} part={row.idnPart} loaded={loadedSet.has(row.idnPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={runOwnedGeneration} onRequestAction={setActionPart} learnEnabled={learnEnabledByKey[playbackKeyForAudioPart(row.idnPart)] !== false} />
               </React.Fragment>
             ))}
           </div>

@@ -1,15 +1,17 @@
-export const APP_VERSION = '5.13.4';
+export const APP_VERSION = '5.13.5';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4 — Batch + Card Audio UX Polish';
-export const APP_RELEASE_NAME = 'R2.4 Batch + Card Audio UX Polish';
+export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.1 — Card Task Safety Hotfix';
+export const APP_RELEASE_NAME = 'R2.4.1 Card Task Safety Hotfix';
 export const APP_RELEASE_DATE = '2026-09-14';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4: compacts Batch Library into a history popup, moves Staging management into Batch, makes per-card generation re-enterable/stoppable, and makes Card Ready/Missing state follow the currently selected download voice.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.1: locks Card Edit/Delete during active audio work and aborts Card-owned single-part generation if virtualization unmounts the row.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.1`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Card Edit/Delete actions are locked while audio generation is active so destructive row changes cannot race an in-flight staged write',
+  'Card-owned single-part generation now aborts on row unmount/virtualization just like Download All, preventing hidden orphan generation',
   'Batch Library no longer expands as a long list inside System/Batch; one Batch Library button shows the current-book history count and opens a dedicated history popup',
   'Batch now owns active-book/all-book Staging information and Clear Staging management, reducing duplicate storage UI in System controls',
   'Desktop and mobile System Batch buttons show the current-book Batch history count',
