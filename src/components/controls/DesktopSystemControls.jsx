@@ -20,7 +20,6 @@ export default function DesktopSystemControls({
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
   const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const [clearGeneratedRamConfirmOpen, setClearGeneratedRamConfirmOpen] = React.useState(false);
-  const [clearStagingConfirmOpen, setClearStagingConfirmOpen] = React.useState(false);
   const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
@@ -119,14 +118,9 @@ export default function DesktopSystemControls({
                   <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
                 </div>}
                 {mode === 'table' && <div className="space-y-2">
-                  <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2 text-[9px]">
-                    <div className="flex items-center justify-between gap-2 font-black text-emerald-700 dark:text-emerald-300"><span>Audio Staging (IndexedDB • all books)</span><span>{folderInputRef?.tableAudioStagingSummary?.count || 0} audio</span></div>
-                    <div className="mt-1 text-slate-500 dark:text-slate-400">{((folderInputRef?.tableAudioStagingSummary?.bytes || 0) / (1024 * 1024)).toFixed(1)} MB • survives refresh until released/cleared</div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button disabled={isSystemBusy} onClick={() => setResetCoverageConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"><RotateCcw className="w-3 h-3"/> Reset Audio Coverage Memory</button>
                     <button disabled={isSystemBusy} onClick={() => setClearGeneratedRamConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-violet-200 dark:border-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-35"><X className="w-3 h-3"/> Clear RAM</button>
-                    <button disabled={isSystemBusy || !(folderInputRef?.tableAudioStagingSummary?.count > 0)} onClick={() => setClearStagingConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 disabled:opacity-35"><X className="w-3 h-3"/> Clear Staging</button>
                   </div>
                 </div>}
                 <div className="grid grid-cols-2 gap-2">
@@ -139,7 +133,7 @@ export default function DesktopSystemControls({
                       if (next) setShowLogs(false);
                     }}
                     className={`w-full px-2 py-2 rounded border text-[10px] font-bold disabled:opacity-50 transition-colors ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'}`}
-                  ><Layers className="w-3 h-3 inline mr-1"/>Batch</button>
+                  ><Layers className="w-3 h-3 inline mr-1"/>Batch{(folderInputRef?.tableAudioBatchHistoryCount || 0) > 0 && <span className="ml-1 inline-flex min-w-4 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/50 px-1 text-[8px] text-indigo-700 dark:text-indigo-200">{folderInputRef.tableAudioBatchHistoryCount}</span>}</button>
                   <button
                     ref={debugButtonRef}
                     onClick={() => {
@@ -188,14 +182,6 @@ export default function DesktopSystemControls({
         confirmLabel="Clear Audio RAM"
         onCancel={() => setClearGeneratedRamConfirmOpen(false)}
         onConfirm={() => { setClearGeneratedRamConfirmOpen(false); folderInputRef.clearGeneratedAudioRam?.(); }}
-      />
-      <SafetyConfirmDialog
-        open={clearStagingConfirmOpen}
-        title="Clear Table Audio Staging?"
-        message={`Menghapus ${folderInputRef?.tableAudioStagingSummary?.count || 0} binary audio (${((folderInputRef?.tableAudioStagingSummary?.bytes || 0) / (1024 * 1024)).toFixed(1)} MB) dari IndexedDB Staging. Batch/export metadata kecil tetap disimpan; Folder/ZIP dan file download tidak dihapus.`}
-        confirmLabel="Clear Staging"
-        onCancel={() => setClearStagingConfirmOpen(false)}
-        onConfirm={() => { setClearStagingConfirmOpen(false); folderInputRef.clearAudioStaging?.(); }}
       />
       <SafetyConfirmDialog
         open={resetCoverageConfirmOpen}

@@ -25,6 +25,13 @@ const playbackKeyForAudioPart = part => {
   return part;
 };
 
+const compactVoiceLabel = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  const tail = raw.split('-').pop() || raw;
+  return tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw;
+};
+
 const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, aiLoadingId, generateAIAudio, onRequestAction, learnEnabled = true }) => {
   const text = String(getItemPartText(item, part) || '').trim();
   const languageLocked = generatorEngine === 'gemini' && isIndonesianAudioPart(part);
@@ -72,27 +79,38 @@ export default function AudioDownloadPanel({
   item,
   generatorEngine,
   isSystemBusy,
+  isBatchDownloading = false,
   aiLoadingId,
   generateAIAudio,
   loadedAudioParts = '',
   audioActionParts = '',
   playbackSequence = [],
+  downloadVoiceEn = null,
+  downloadVoiceId = null,
   exportAudioMp3 = null,
-  removeStagedAudio = null
+  removeStagedAudio = null,
+  cancelActiveGeneration = null
 }) {
   const [actionPart, setActionPart] = React.useState(null);
   const [actionBusy, setActionBusy] = React.useState(null);
   const [bulkBusy, setBulkBusy] = React.useState(false);
   const [bulkProgress, setBulkProgress] = React.useState(null);
+  const bulkStopRef = React.useRef(false);
+  const bulkRunningRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!open) {
       setActionPart(null);
       setActionBusy(null);
-      setBulkBusy(false);
-      setBulkProgress(null);
     }
-  }, [open, item?.id]);
+  }, [open]);
+
+  React.useEffect(() => () => {
+    if (bulkRunningRef.current) {
+      bulkStopRef.current = true;
+      cancelActiveGeneration?.();
+    }
+  }, [cancelActiveGeneration]);
 
   if (!open || !item || typeof document === 'undefined') return null;
 
@@ -107,6 +125,7 @@ export default function AudioDownloadPanel({
     ...expressions.map(pair => ({ key: `exp${pair.number}`, label: `EXP${pair.number}`, enPart: `exp${pair.number}_en`, idnPart: `exp${pair.number}_idn` }))
   ];
   const engineLabel = generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini';
+  const currentCardGenerationActive = !isBatchDownloading && String(aiLoadingId || '').startsWith(`${item.id}-`);
   const allParts = rows.flatMap(row => [row.enPart, row.idnPart]).filter(Boolean);
   const stageableMissingParts = allParts.filter(part => {
     const text = String(getItemPartText(item, part) || '').trim();
@@ -123,21 +142,31 @@ export default function AudioDownloadPanel({
 
   const stageMissingAll = async () => {
     if (bulkBusy || isSystemBusy || !stageableMissingParts.length) return;
+    bulkStopRef.current = false;
+    bulkRunningRef.current = true;
     setBulkBusy(true);
     try {
       for (let index = 0; index < stageableMissingParts.length; index += 1) {
+        if (bulkStopRef.current) break;
         const part = stageableMissingParts[index];
         setBulkProgress({ current: index + 1, total: stageableMissingParts.length, part });
-        await generateAIAudio(item, part, {
+        const result = await generateAIAudio(item, part, {
           skipReplaceConfirm: true,
           deferBrowserDownload: true,
           suppressFailureAlert: true
         });
+        if (bulkStopRef.current || result?.status === 'cancelled') break;
       }
     } finally {
+      bulkRunningRef.current = false;
       setBulkBusy(false);
       setBulkProgress(null);
     }
+  };
+
+  const stopCardGeneration = () => {
+    bulkStopRef.current = true;
+    cancelActiveGeneration?.();
   };
 
   return createPortal(
@@ -156,10 +185,14 @@ export default function AudioDownloadPanel({
               <Download className="h-4 w-4" />
               <h3 className="text-sm font-black">Audio</h3>
               <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${generatorEngine === 'edge' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'}`}>{engineLabel}</span>
+              {currentCardGenerationActive && <span className="rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-[8px] font-black text-amber-700 dark:text-amber-300">RUNNING</span>}
             </div>
             <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{capitalizeDisplayText(item.word || item.text || 'Item')} • first click stages • loaded click opens actions</p>
           </div>
-          <button type="button" onClick={onClose} className="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"><X className="h-4 w-4" /></button>
+          <div className="flex items-center gap-2">
+            {currentCardGenerationActive && <button type="button" onClick={stopCardGeneration} className="h-9 rounded-full bg-red-500 px-3 text-[9px] font-black text-white hover:bg-red-600"><X className="mr-1 inline h-3 w-3"/>STOP</button>}
+            <button type="button" onClick={onClose} className="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"><X className="h-4 w-4" /></button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3 md:p-4">
@@ -178,15 +211,22 @@ export default function AudioDownloadPanel({
 
           {generatorEngine === 'gemini' && <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/15 px-2.5 py-2 text-[9px] font-bold text-amber-700 dark:text-amber-300">Gemini mode: English only. Indonesian audio is locked.</div>}
 
+          <div className="mb-3 rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 px-2.5 py-2 text-[9px] text-slate-500 dark:text-slate-400">
+            <span className="font-black text-cyan-700 dark:text-cyan-300">Current download voice</span>
+            <span className="ml-2">EN <strong className="text-slate-700 dark:text-slate-200">{compactVoiceLabel(downloadVoiceEn)}</strong></span>
+            <span className="ml-2">ID <strong className="text-slate-700 dark:text-slate-200">{generatorEngine === 'gemini' ? 'locked' : compactVoiceLabel(downloadVoiceId)}</strong></span>
+            <p className="mt-1 text-[8px] text-slate-400">If you change the System voice, these buttons re-check that exact voice. Existing variants from other voices stay stored and playable.</p>
+          </div>
+
           <div className="mb-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/20 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[10px] font-black text-blue-800 dark:text-blue-200">DOWNLOAD ALL → STAGING</div>
                 <div className="mt-0.5 text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Per-card only: stage missing audio in IndexedDB. Batch Auto Export ZIP is never used here.</div>
               </div>
-              <button type="button" disabled={isSystemBusy || bulkBusy || !stageableMissingParts.length} onClick={stageMissingAll} className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-[9px] font-black text-white disabled:opacity-40">
-                {bulkBusy ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Download className="mr-1 inline h-3 w-3"/>}
-                {bulkProgress ? `${bulkProgress.current}/${bulkProgress.total}` : stageableMissingParts.length ? `${stageableMissingParts.length} MISSING` : 'READY'}
+              <button type="button" disabled={!bulkBusy && (isSystemBusy || !stageableMissingParts.length)} onClick={bulkBusy ? stopCardGeneration : stageMissingAll} className={`shrink-0 rounded-lg px-3 py-2 text-[9px] font-black text-white disabled:opacity-40 ${bulkBusy ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600'}`}>
+                {bulkBusy ? <X className="mr-1 inline h-3 w-3"/> : <Download className="mr-1 inline h-3 w-3"/>}
+                {bulkBusy ? `STOP ${bulkProgress ? `${bulkProgress.current}/${bulkProgress.total}` : ''}` : stageableMissingParts.length ? `${stageableMissingParts.length} MISSING` : 'READY'}
               </button>
             </div>
           </div>

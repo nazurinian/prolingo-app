@@ -2,7 +2,7 @@ import React from 'react';
 import { FileText, ListPlus, Send, Table } from 'lucide-react';
 import { OVERSCAN } from '../../constants/datasetConstants';
 import { MOBILE_BOTTOM_PLAYER_RESERVE_CSS } from '../../constants/layoutConstants';
-import { getStableAudioIdentity, getVocabIdentity } from '../../utils/audioUtils';
+import { getStableAudioIdentity, getVocabIdentity, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { resolveMasteryState } from '../../domain/progress/masteryStateDomain.js';
 import { resolveTableAudioPlaybackVariant } from '../../domain/audio/tableAudioVariantInventoryDomain.js';
 import { isTableAudioScopeMatch, resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
@@ -19,6 +19,7 @@ export const renderPlaylistViewport = ({
   playlist,
   newItemTextareaRef,
   isSystemBusy,
+  isBatchDownloading = false,
   newTextItem,
   setNewTextItem,
   handleAddTextItem,
@@ -62,9 +63,13 @@ export const renderPlaylistViewport = ({
   tableAudioVariantInventory = {},
   tableLocalAudioVoiceMode = 'auto',
   tableAudioVoicePriority = [],
+  edgeVoice = null,
+  edgeIndonesianVoice = null,
+  aiVoiceName = null,
   audioDownloadHistory = {},
   exportTableAudioMp3 = null,
-  removeTableStagedAudio = null
+  removeTableStagedAudio = null,
+  cancelActiveAudioGeneration = null
 }) => {
     const rowHeight = rowHeights[mode];
     const totalCount = currentPlayerList.length;
@@ -213,37 +218,48 @@ export const renderPlaylistViewport = ({
                    ];
                    const resolvedAudioPartState = Object.fromEntries(audioParts.map(part => {
                        const mapKey = `${audioIdentity}_${part}`;
+                       const scopedVariants = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+                           isTableAudioScopeMatch(variant, rowScope)
+                       );
                        const selected = resolveTableAudioPlaybackVariant({
-                           variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
-                               isTableAudioScopeMatch(variant, rowScope)
-                           ),
+                           variants: scopedVariants,
                            voiceMode: tableLocalAudioVoiceMode,
                            voicePriority: tableAudioVoicePriority
                        });
+                       const requiredDownloadVoice = generatorEngine === 'edge'
+                         ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+                         : (isIndonesianAudioPart(part) ? null : aiVoiceName);
+                       const downloadSelected = requiredDownloadVoice ? resolveTableAudioPlaybackVariant({
+                         variants: scopedVariants.filter(variant => String(variant?.voiceId || '').toLowerCase() === String(requiredDownloadVoice).toLowerCase()),
+                         voiceMode: requiredDownloadVoice,
+                         voicePriority: [requiredDownloadVoice]
+                       }) : null;
                        const rawMeta = generatedAudioMeta?.[`table:${mapKey}`] || null;
                        const meta = rawMeta && isTableAudioScopeMatch(rawMeta, rowScope) ? rawMeta : null;
                        const rawHistory = getAudioDownloadHistoryRecord(audioDownloadHistory, { mode: 'table', mapKey, ...rowScope });
                        const history = rawHistory && isTableAudioScopeMatch(rawHistory, rowScope) ? rawHistory : {};
                        const sourceType = selected?.sourceType || ''; // R2.3: per-row scoped inventory only
+                       const downloadSourceType = downloadSelected?.sourceType || '';
                        const engine = String(selected?.engine || meta?.engine || '').toLowerCase();
                        const dotSource = ['folder', 'zip', 'legacy'].includes(sourceType) ? 'local' : engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : sourceType ? 'local' : '';
                        return [part, {
                          sourceType,
                          dotSource,
-                         mp3Exported: Boolean(selected?.mp3ExportedAt || history?.mp3ExportedAt),
-                         zipExported: Boolean(selected?.zipExportedAt || history?.zipExportedAt),
-                         voiceId: selected?.voiceId || history?.voice || null
+                         downloadSourceType,
+                         downloadMp3Exported: Boolean(downloadSelected?.mp3ExportedAt || (String(history?.voice || '').toLowerCase() === String(requiredDownloadVoice || '').toLowerCase() && history?.mp3ExportedAt)),
+                         downloadZipExported: Boolean(downloadSelected?.zipExportedAt || (String(history?.voice || '').toLowerCase() === String(requiredDownloadVoice || '').toLowerCase() && history?.zipExportedAt)),
+                         downloadVoiceId: downloadSelected?.voiceId || requiredDownloadVoice || null
                        }];
                    }));
                    const localWordUrl = resolvedAudioPartState.word?.sourceType ? `inventory://${audioIdentity}_word` : null;
                    const localWordIdnUrl = resolvedAudioPartState.word_idn?.sourceType ? `inventory://${audioIdentity}_word_idn` : null;
                    const localSentUrl = resolvedAudioPartState.sentence?.sourceType ? `inventory://${audioIdentity}_sentence` : null;
                    const localMeaningUrl = resolvedAudioPartState.meaning?.sourceType ? `inventory://${audioIdentity}_meaning` : null;
-                   const loadedAudioParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).join('|');
+                   const loadedAudioParts = audioParts.filter(part => resolvedAudioPartState[part]?.downloadSourceType).join('|');
                    const audioSourceParts = audioParts.filter(part => resolvedAudioPartState[part]?.dotSource).map(part => `${part}:${resolvedAudioPartState[part].dotSource}`).join('|');
-                   const audioActionParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).map(part => {
+                   const audioActionParts = audioParts.filter(part => resolvedAudioPartState[part]?.downloadSourceType).map(part => {
                        const state = resolvedAudioPartState[part];
-                       return `${part}:${state.sourceType}:${state.mp3Exported ? '1' : '0'}:${state.zipExported ? '1' : '0'}:${String(state.voiceId || '').replaceAll(':', '_')}`;
+                       return `${part}:${state.downloadSourceType}:${state.downloadMp3Exported ? '1' : '0'}:${state.downloadZipExported ? '1' : '0'}:${String(state.downloadVoiceId || '').replaceAll(':', '_')}`;
                    }).join('|');
                    const masteryVocabId = String(item.vocabId || '').trim();
                    const masteryTrackable = Boolean(masteryVocabId);
@@ -255,6 +271,7 @@ export const renderPlaylistViewport = ({
                            item={item}
                            isActive={isActive}
                            isSystemBusy={isSystemBusy}
+                           isBatchDownloading={isBatchDownloading}
                            toggleStudyItem={toggleStudyItem}
                            isInQueue={isInQueue}
                            handleIndependentPlay={handleIndependentPlay}
@@ -293,8 +310,11 @@ export const renderPlaylistViewport = ({
                            playbackSequence={playbackSequence}
                            audioSourceParts={audioSourceParts}
                            audioActionParts={audioActionParts}
+                           downloadVoiceEn={generatorEngine === 'edge' ? edgeVoice : aiVoiceName}
+                           downloadVoiceId={generatorEngine === 'edge' ? edgeIndonesianVoice : null}
                            exportTableAudioMp3={exportTableAudioMp3}
                            removeTableStagedAudio={removeTableStagedAudio}
+                           cancelActiveAudioGeneration={cancelActiveAudioGeneration}
                        />
                    );
                } 

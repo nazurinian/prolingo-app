@@ -23,6 +23,7 @@ export const MemoizedRow = memo(({
     item,
     isActive,
     isSystemBusy,
+    isBatchDownloading = false,
     toggleStudyItem,
     isInQueue,
     handleIndependentPlay,
@@ -58,8 +59,11 @@ export const MemoizedRow = memo(({
     playbackSequence,
     audioSourceParts = '',
     audioActionParts = '',
+    downloadVoiceEn = null,
+    downloadVoiceId = null,
     exportTableAudioMp3 = null,
-    removeTableStagedAudio = null
+    removeTableStagedAudio = null,
+    cancelActiveAudioGeneration = null
 }) => {
     const [audioPanelOpen, setAudioPanelOpen] = useState(false);
     const isMenuOpen = activeMenuId === rowId;
@@ -176,7 +180,7 @@ export const MemoizedRow = memo(({
                     <div className={`hidden md:flex md:flex-col md:ml-2 justify-center items-end w-[78px] gap-1.5 flex-shrink-0 md:border-l md:pl-2 ${isActive ? 'border-blue-500' : 'border-slate-100 dark:border-slate-700'}`}>
                         <button onClick={(e) => { e.stopPropagation(); toggleStudyItem(item.id); }} className={`w-full h-[24px] flex items-center justify-center gap-1 rounded border text-[9px] font-bold ${isInQueue ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'}`}>{isInQueue ? <CheckCircle className="w-3 h-3"/> : <Plus className="w-3 h-3"/>}<span>{isInQueue ? 'Added' : 'Add'}</span></button>
                         <div className="flex gap-1 w-full"><button onClick={(e) => { e.stopPropagation(); onEditItem(item); }} className="flex-1 h-[24px] flex items-center justify-center rounded border border-blue-100 dark:border-blue-900 text-blue-500" title="Edit vocabulary"><Edit3 className="w-3 h-3"/></button><button onClick={(e) => { e.stopPropagation(); onDeleteItem(item); }} className="flex-1 h-[24px] flex items-center justify-center rounded border border-red-100 dark:border-red-900 text-red-500" title="Delete vocabulary"><Trash2 className="w-3 h-3"/></button></div>
-                        <button disabled={isSystemBusy} onClick={openAudioPanel} className={`w-full min-h-[34px] px-1.5 rounded-lg border flex flex-col items-center justify-center leading-tight ${genColorClass} ${isSystemBusy ? 'opacity-45' : ''}`} title="Audio download / replace"><span className="flex items-center gap-1 text-[9px] font-black">{aiLoadingId?.startsWith(`${item.id}-`) ? <Loader2 className="w-3 h-3 animate-spin"/> : <Download className="w-3 h-3"/>} Audio</span><span className="text-[8px] font-bold opacity-70">{loadedAudioCount ? `${loadedAudioCount} loaded` : 'Download'}</span></button>
+                        <button onClick={openAudioPanel} className={`w-full min-h-[34px] px-1.5 rounded-lg border flex flex-col items-center justify-center leading-tight ${genColorClass}`} title="Audio download / replace"><span className="flex items-center gap-1 text-[9px] font-black">{aiLoadingId?.startsWith(`${item.id}-`) ? <Loader2 className="w-3 h-3 animate-spin"/> : <Download className="w-3 h-3"/>} Audio</span><span className="text-[8px] font-bold opacity-70">{isSystemBusy ? 'Open • running' : loadedAudioCount ? `${loadedAudioCount} loaded` : 'Download'}</span></button>
                     </div>
                 </div>
             </div>
@@ -198,7 +202,7 @@ export const MemoizedRow = memo(({
                             {masteryTrackable ? <MasteryStatusControl state={masteryState} onCycle={() => { onCycleMastery(); onMenuToggle(null); }} className="w-full min-h-10" /> : <div />}
                             <button onClick={(e) => { e.stopPropagation(); onEditItem(item); onMenuToggle(null); }} className="min-h-10 px-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold border border-blue-100 dark:border-blue-900 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"><Edit3 className="w-3.5 h-3.5"/> Edit</button>
                             <button onClick={(e) => { e.stopPropagation(); onDeleteItem(item); onMenuToggle(null); }} className="min-h-10 px-3 rounded-xl flex items-center justify-center gap-2 text-[10px] font-bold border border-red-100 dark:border-red-900 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20"><Trash2 className="w-3.5 h-3.5"/> Delete</button>
-                            <button disabled={isSystemBusy} onClick={openAudioPanel} className={`col-span-2 min-h-11 px-3 rounded-xl flex items-center justify-between gap-2 text-[10px] font-black border ${genColorClass} ${isSystemBusy ? 'opacity-45' : ''}`}><span className="flex items-center gap-2"><Download className="w-3.5 h-3.5"/> Audio</span><span className="text-[9px] opacity-70">{loadedAudioCount ? `${loadedAudioCount} loaded` : generatorEngine.toUpperCase()}</span></button>
+                            <button onClick={openAudioPanel} className={`col-span-2 min-h-11 px-3 rounded-xl flex items-center justify-between gap-2 text-[10px] font-black border ${genColorClass}`}><span className="flex items-center gap-2"><Download className="w-3.5 h-3.5"/> Audio</span><span className="text-[9px] opacity-70">{isSystemBusy ? 'OPEN • RUNNING' : loadedAudioCount ? `${loadedAudioCount} loaded` : generatorEngine.toUpperCase()}</span></button>
                         </div>
                     </section>
                     </div>
@@ -230,13 +234,17 @@ export const MemoizedRow = memo(({
                 item={item}
                 generatorEngine={generatorEngine}
                 isSystemBusy={isSystemBusy}
+                isBatchDownloading={isBatchDownloading}
                 aiLoadingId={aiLoadingId}
                 generateAIAudio={generateAIAudio}
                 loadedAudioParts={loadedAudioParts}
                 audioActionParts={audioActionParts}
                 playbackSequence={playbackSequence}
+                downloadVoiceEn={downloadVoiceEn}
+                downloadVoiceId={downloadVoiceId}
                 exportAudioMp3={exportTableAudioMp3}
                 removeStagedAudio={removeTableStagedAudio}
+                cancelActiveGeneration={cancelActiveAudioGeneration}
             />
         </div>
     );
@@ -244,6 +252,7 @@ export const MemoizedRow = memo(({
     prev.item === next.item &&
     prev.isActive === next.isActive &&
     prev.isSystemBusy === next.isSystemBusy &&
+    prev.isBatchDownloading === next.isBatchDownloading &&
     prev.isInQueue === next.isInQueue &&
     prev.independentPlayingId === next.independentPlayingId &&
     prev.speakingPart === next.speakingPart &&
@@ -266,7 +275,9 @@ export const MemoizedRow = memo(({
     prev.masteryState === next.masteryState &&
     prev.masteryTrackable === next.masteryTrackable &&
     prev.playbackSequence === next.playbackSequence &&
-    prev.audioSourceParts === next.audioSourceParts
+    prev.audioSourceParts === next.audioSourceParts &&
+    prev.downloadVoiceEn === next.downloadVoiceEn &&
+    prev.downloadVoiceId === next.downloadVoiceId
 ));
 
 // --- OPTIMIZED ROW COMPONENT (TEXT MODE) ---

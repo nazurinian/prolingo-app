@@ -10,10 +10,10 @@ const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="htt
 
 export const renderBatchPopupView = ({
   batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
-  generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
+  generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
   isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
-  batchSessions = [], stagingRecords = [], stagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportBatchSessions = null,
-  onClearBatchStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
+  batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportBatchSessions = null,
+  onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
 }) => (
     <BatchPopup
       batchPanelRef={batchPanelRef}
@@ -23,6 +23,9 @@ export const renderBatchPopupView = ({
       batchConfig={batchConfig}
       setBatchConfig={setBatchConfig}
       generatorEngine={generatorEngine}
+      edgeVoice={edgeVoice}
+      edgeIndonesianVoice={edgeIndonesianVoice}
+      aiVoiceName={aiVoiceName}
       advancedDatasetStats={advancedDatasetStats}
       handleBatchRangeBlur={handleBatchRangeBlur}
       runBatchDownload={runBatchDownload}
@@ -36,10 +39,12 @@ export const renderBatchPopupView = ({
       batchSessions={batchSessions}
       stagingRecords={stagingRecords}
       stagingSummary={stagingSummary}
+      allStagingSummary={allStagingSummary}
       batchAvailabilityById={batchAvailabilityById}
       onExportCurrentMp3={onExportCurrentMp3}
       onExportBatchSessions={onExportBatchSessions}
       onClearBatchStaging={onClearBatchStaging}
+      onClearAllStaging={onClearAllStaging}
       onDeleteBatchHistory={onDeleteBatchHistory}
       directMp3Limit={directMp3Limit}
     />

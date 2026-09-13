@@ -2474,11 +2474,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const generationScope = mode === 'table'
       ? { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) }
       : null;
+    const requestedDownloadVoice = generatorEngine === 'edge'
+      ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+      : aiVoiceName;
     const selectedExistingVariant = mode === 'table'
       ? resolveTableAudioPlaybackVariant({
-          variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant => isTableAudioScopeMatch(variant, generationScope)),
-          voiceMode: tableLocalAudioVoiceMode,
-          voicePriority: tableAudioVoicePriority
+          variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+            isTableAudioScopeMatch(variant, generationScope)
+            && String(variant?.voiceId || '').toLowerCase() === String(requestedDownloadVoice || '').toLowerCase()
+          ),
+          voiceMode: requestedDownloadVoice || 'auto',
+          voicePriority: requestedDownloadVoice ? [requestedDownloadVoice] : tableAudioVoicePriority
         })
       : null;
     // R2.3: raw Table runtime maps are NO-only legacy state and cannot prove
@@ -2574,6 +2580,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   };
 
+  const cancelActiveAudioGeneration = useCallback(() => {
+    generationAbortControllerRef.current?.abort();
+  }, []);
+
   const runBatchDownload = async (options = {}) => {
     if (generatorEngine === 'gemini' && !geminiOwnerState.unlocked && !geminiOwnerState.byokRegistered) {
       alert('Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.');
@@ -2615,13 +2625,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const resolveSelectedTableAudioVariant = useCallback((item, part) => {
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
-    const scoped = (tableAudioVariantInventory?.[mapKey] || []).filter(variant => isTableAudioScopeMatch(variant, wanted));
+    const requiredVoiceId = generatorEngine === 'edge'
+      ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+      : aiVoiceName;
+    const scoped = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+      isTableAudioScopeMatch(variant, wanted)
+      && String(variant?.voiceId || '').toLowerCase() === String(requiredVoiceId || '').toLowerCase()
+    );
     return resolveTableAudioPlaybackVariant({
       variants: scoped,
-      voiceMode: tableLocalAudioVoiceMode,
-      voicePriority: tableAudioVoicePriority
+      voiceMode: requiredVoiceId || 'auto',
+      voicePriority: requiredVoiceId ? [requiredVoiceId] : tableAudioVoicePriority
     });
-  }, [tableAudioVariantInventory, tableLocalAudioVoiceMode, tableAudioVoicePriority]);
+  }, [tableAudioVariantInventory, generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, tableAudioVoicePriority]);
 
   const readTableAudioVariantBlob = useCallback(async variant => {
     if (!variant) return null;
@@ -2671,16 +2687,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const removeTableStagedAudio = useCallback(async (item, part) => {
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
+    const requiredVoiceId = generatorEngine === 'edge'
+      ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
+      : aiVoiceName;
     const candidates = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
-      variant?.sourceType === 'staging' && isTableAudioScopeMatch(variant, wanted)
+      variant?.sourceType === 'staging'
+      && isTableAudioScopeMatch(variant, wanted)
+      && String(variant?.voiceId || '').toLowerCase() === String(requiredVoiceId || '').toLowerCase()
     );
-    const selected = resolveTableAudioPlaybackVariant({ variants: candidates, voiceMode: tableLocalAudioVoiceMode, voicePriority: tableAudioVoicePriority });
+    const selected = resolveTableAudioPlaybackVariant({ variants: candidates, voiceMode: requiredVoiceId || 'auto', voicePriority: requiredVoiceId ? [requiredVoiceId] : tableAudioVoicePriority });
     if (!selected?.stagingId) return { status: 'not-staged' };
     await releaseAudioStagingBlobs([selected.stagingId], { reason: 'per-card-manual-release' });
     await refreshTableAudioStaging();
     addLog('Audio', `Staged audio released: ${mapKey}.`);
     return { status: 'released', id: selected.stagingId };
-  }, [tableAudioVariantInventory, tableLocalAudioVoiceMode, tableAudioVoicePriority, refreshTableAudioStaging, addLog]);
+  }, [tableAudioVariantInventory, generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, tableAudioVoicePriority, refreshTableAudioStaging, addLog]);
 
   const resolveTableAudioVariantForSpec = useCallback((spec) => {
     if (!spec?.mapKey) return null;
@@ -3132,6 +3153,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.clearAudioStaging = clearTableAudioStaging;
   folderInputRef.tableGeneratedAudioSummary = { count: tableGeneratedSessionAudioCount };
   folderInputRef.tableAudioStagingSummary = tableAudioStagingSummary;
+  folderInputRef.tableAudioBatchHistoryCount = activeTableAudioBatchSessions.length;
   folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 
@@ -3237,12 +3259,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderBatchPopup = (options = {}) => renderBatchPopupView({
     batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
-    generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
+    generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
     tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
-    batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
+    batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, allStagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
     onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions,
-    onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
+    onClearBatchStaging: clearBatchSessionStaging, onClearAllStaging: clearTableAudioStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     inline: Boolean(options.inline),
     showClose: options.showClose !== false
   });
@@ -3425,6 +3447,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     playlist,
     newItemTextareaRef,
     isSystemBusy,
+    isBatchDownloading,
     newTextItem,
     setNewTextItem,
     handleAddTextItem,
@@ -3468,9 +3491,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     tableAudioVariantInventory,
     tableLocalAudioVoiceMode,
     tableAudioVoicePriority,
+    edgeVoice,
+    edgeIndonesianVoice,
+    aiVoiceName,
     audioDownloadHistory,
     exportTableAudioMp3,
-    removeTableStagedAudio
+    removeTableStagedAudio,
+    cancelActiveAudioGeneration
     });
   };
 
