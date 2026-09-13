@@ -19,13 +19,42 @@ export const persistAudioDownloadHistory = history => {
   }
 };
 
+const clean = value => String(value ?? '').trim();
+const upper = value => clean(value).toUpperCase();
+
+const scopedHistoryKey = record => {
+  const mode = record?.mode || 'table';
+  const mapKey = clean(record?.mapKey);
+  if (!mapKey) return null;
+  const vocabId = upper(record?.vocabId);
+  const bookId = upper(record?.bookId);
+  if (mode === 'table' && (vocabId || bookId)) return `${mode}:${bookId || '_'}:${vocabId || '_'}:${mapKey}`;
+  return `${mode}:${mapKey}`;
+};
+
+export const getAudioDownloadHistoryRecord = (history, reference) => {
+  const exactKey = scopedHistoryKey(reference);
+  if (exactKey && history?.[exactKey]) return history[exactKey];
+  const legacyKey = `${reference?.mode || 'table'}:${clean(reference?.mapKey)}`;
+  const legacy = history?.[legacyKey] || null;
+  if (!legacy) return null;
+  // Legacy/unscoped Table history is ambiguous because mapKey is NO-based.
+  if ((reference?.mode || 'table') === 'table' && (reference?.vocabId || reference?.bookId)) {
+    const sameVocab = upper(legacy?.vocabId) && upper(legacy?.vocabId) === upper(reference?.vocabId);
+    const sameBook = upper(legacy?.bookId) && upper(legacy?.bookId) === upper(reference?.bookId);
+    return sameVocab || sameBook ? legacy : null;
+  }
+  return legacy;
+};
+
 export const recordAudioDownloadHistory = (history, records) => {
   const next = { ...(history || {}) };
   (Array.isArray(records) ? records : [records]).filter(Boolean).forEach(record => {
     const mode = record.mode || 'table';
     const mapKey = record.mapKey;
     if (!mapKey) return;
-    const key = `${mode}:${mapKey}`;
+    const key = scopedHistoryKey({ ...record, mode, mapKey });
+    if (!key) return;
     const previous = next[key] || {};
     const deliveredAt = record.deliveredAt || Date.now();
     const delivery = record.delivery || 'browser-download';
@@ -34,6 +63,9 @@ export const recordAudioDownloadHistory = (history, records) => {
       ...previous,
       mode,
       mapKey,
+      vocabId: record.vocabId || previous.vocabId || null,
+      bookId: record.bookId || previous.bookId || null,
+      displayId: record.displayId ?? previous.displayId ?? null,
       part: record.part || previous.part || null,
       engine: record.engine || previous.engine || null,
       voice: record.voice || previous.voice || null,

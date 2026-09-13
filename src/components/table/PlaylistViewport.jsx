@@ -2,9 +2,11 @@ import React from 'react';
 import { FileText, ListPlus, Send, Table } from 'lucide-react';
 import { OVERSCAN } from '../../constants/datasetConstants';
 import { MOBILE_BOTTOM_PLAYER_RESERVE_CSS } from '../../constants/layoutConstants';
-import { getStableAudioIdentity } from '../../utils/audioUtils';
+import { getStableAudioIdentity, getVocabIdentity } from '../../utils/audioUtils';
 import { resolveMasteryState } from '../../domain/progress/masteryStateDomain.js';
 import { resolveTableAudioPlaybackVariant } from '../../domain/audio/tableAudioVariantInventoryDomain.js';
+import { isTableAudioScopeMatch, resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
+import { getAudioDownloadHistoryRecord } from '../../services/persistence/audioDownloadHistoryService.js';
 import { MemoizedRow } from './MemoizedRow';
 import { MemoizedTextRow } from './MemoizedTextRow';
 
@@ -219,8 +221,11 @@ export const renderPlaylistViewport = ({
                            voiceMode: tableLocalAudioVoiceMode,
                            voicePriority: tableAudioVoicePriority
                        });
-                       const meta = generatedAudioMeta?.[`table:${mapKey}`];
-                       const history = audioDownloadHistory?.[`table:${mapKey}`] || {};
+                       const rowScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
+                       const rawMeta = generatedAudioMeta?.[`table:${mapKey}`] || null;
+                       const meta = rawMeta && isTableAudioScopeMatch(rawMeta, rowScope) ? rawMeta : null;
+                       const rawHistory = getAudioDownloadHistoryRecord(audioDownloadHistory, { mode: 'table', mapKey, ...rowScope });
+                       const history = rawHistory && isTableAudioScopeMatch(rawHistory, rowScope) ? rawHistory : {};
                        const sourceType = selected?.sourceType || (localAudioMapTable[mapKey] ? 'legacy' : '');
                        const engine = String(selected?.engine || meta?.engine || '').toLowerCase();
                        const dotSource = ['folder', 'zip', 'legacy'].includes(sourceType) ? 'local' : engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : sourceType ? 'local' : '';

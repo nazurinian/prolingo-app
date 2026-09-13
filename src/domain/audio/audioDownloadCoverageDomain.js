@@ -1,4 +1,6 @@
-import { getAdvancedExpressionPairs, getStableAudioIdentity, isIndonesianAudioPart } from '../../utils/audioUtils.js';
+import { getAdvancedExpressionPairs, getStableAudioIdentity, getVocabIdentity, isIndonesianAudioPart } from '../../utils/audioUtils.js';
+import { isTableAudioScopeMatch, resolveTableAudioBookId } from './audioStagingDomain.js';
+import { getAudioDownloadHistoryRecord } from '../../services/persistence/audioDownloadHistoryService.js';
 
 export const AUDIO_DOWNLOAD_COVERAGE_STATUS = Object.freeze({
   READY: 'ready',
@@ -39,6 +41,8 @@ export const buildTableAudioBatchSlots = ({ playlist, batchConfig, generatorEngi
       mapKey: `${stableId}_${part}`,
       itemId: item.id,
       displayId: item.displayId,
+      vocabId: getVocabIdentity(item),
+      bookId: resolveTableAudioBookId(item),
       part,
       engine: generatorEngine,
       requiredVoiceId: generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : null
@@ -88,8 +92,11 @@ export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, genera
 
   // R2 durable export ledger: released staging metadata survives refresh/OOM and
   // is voice-specific. This is completion history only; it never makes playback Ready.
+  const slotHasScope = Boolean(slot?.vocabId || slot?.bookId);
   const stagedExportHistory = (Array.isArray(stagingRecords) ? stagingRecords : []).filter(record =>
-    record?.mapKey === slot.mapKey && (record?.mp3ExportedAt || record?.zipExportedAt)
+    record?.mapKey === slot.mapKey &&
+    (!slotHasScope || isTableAudioScopeMatch(record, slot)) &&
+    (record?.mp3ExportedAt || record?.zipExportedAt)
   );
   const matchingExported = slot.requiredVoiceId
     ? stagedExportHistory.find(record => record?.voiceId && same(record.voiceId, slot.requiredVoiceId))
@@ -118,9 +125,14 @@ export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, genera
 
   // Legacy compatibility for old one-URL-per-slot state when no C3.4.1
   // variant metadata exists yet.
-  const meta = generatedAudioMeta?.[`table:${slot.mapKey}`] || null;
-  const loaded = Boolean(localAudioMapTable?.[slot.mapKey]);
-  const history = downloadHistory?.[`table:${slot.mapKey}`] || null;
+  const rawMeta = generatedAudioMeta?.[`table:${slot.mapKey}`] || null;
+  const rawHistory = getAudioDownloadHistoryRecord(downloadHistory, { mode: 'table', ...slot });
+  // Table mapKey intentionally remains NO-based. Old unscoped runtime/history
+  // data therefore cannot be trusted after a deck switch. R2.2 fails closed
+  // unless the record proves the same VOCAB_ID / book scope as the active slot.
+  const meta = rawMeta && isTableAudioScopeMatch(rawMeta, slot) ? rawMeta : null;
+  const history = rawHistory && isTableAudioScopeMatch(rawHistory, slot) ? rawHistory : null;
+  const loaded = Boolean(localAudioMapTable?.[slot.mapKey]) && Boolean(meta);
   if (loaded && meta?.verified) {
     if (!slot.requiredVoiceId || !meta?.voice || same(meta.voice, slot.requiredVoiceId)) return { ...slot, status: AUDIO_DOWNLOAD_COVERAGE_STATUS.READY, verified: true, filename: meta?.filename || null, voiceId: meta?.voice || null };
     return { ...slot, status: AUDIO_DOWNLOAD_COVERAGE_STATUS.OTHER_VOICE, verified: true, filename: meta?.filename || null, voiceId: meta.voice };

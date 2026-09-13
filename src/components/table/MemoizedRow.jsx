@@ -234,6 +234,7 @@ export const MemoizedRow = memo(({
                 generateAIAudio={generateAIAudio}
                 loadedAudioParts={loadedAudioParts}
                 audioActionParts={audioActionParts}
+                playbackSequence={playbackSequence}
                 exportAudioMp3={exportTableAudioMp3}
                 removeStagedAudio={removeTableStagedAudio}
             />

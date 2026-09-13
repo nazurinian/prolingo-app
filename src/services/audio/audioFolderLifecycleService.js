@@ -1,4 +1,5 @@
 import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils.js';
+import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
 
 const FOLDER_OBJECT_URL_CACHE_LIMIT = 12;
 const tableFolderObjectUrlCache = new Map();
@@ -188,6 +189,9 @@ export const executeAudioFolderSelectService = ({
                     voiceId: voice,
                     voiceLabel: voice ? getAudioVoiceFilenameLabel(voice) : null,
                     filename: file.name,
+                    vocabId: getVocabIdentity(matchedItem),
+                    bookId: resolveTableAudioBookId(matchedItem),
+                    displayId: matchedItem.displayId ?? null,
                     file,
                     size: Number(file.size || 0),
                     verified: true,
@@ -200,6 +204,9 @@ export const executeAudioFolderSelectService = ({
                     engine: voice ? 'edge' : null,
                     voice,
                     filename: file.name,
+                    vocabId: getVocabIdentity(matchedItem),
+                    bookId: resolveTableAudioBookId(matchedItem),
+                    displayId: matchedItem.displayId ?? null,
                     verified: true,
                     deliveryStatus: 'folder-verified'
                 });

@@ -79,7 +79,7 @@ import { executeAudioGenerationService, executeEdgeBackendHealthService, execute
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
 import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, buildTableAudioVoiceOptions, mergeTableAudioVariantInventories, reconcileTableAudioVoicePriority, resolveTableAudioPlaybackVariant, summarizeTableAudioVariantInventory, tableAudioVariantsFromRecords } from './domain/audio/tableAudioVariantInventoryDomain.js';
-import { buildTableAudioStagingVariantInventory, isSameLogicalAudioVoice, resolveBatchSessionAvailability, resolveTableAudioBookId, summarizeAudioStagingRecords } from './domain/audio/audioStagingDomain.js';
+import { buildTableAudioStagingVariantInventory, filterTableAudioBatchSessionsForPlaylist, filterTableAudioStagingRecordsForPlaylist, filterTableAudioVariantInventoryForPlaylist, isSameLogicalAudioVoice, isTableAudioScopeMatch, resolveBatchSessionAvailability, resolveTableAudioBookId, summarizeAudioStagingRecords } from './domain/audio/audioStagingDomain.js';
 import { clearTableAudioFolderRuntimeCache, executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle, getTableAudioFolderVariantObjectUrl } from './services/audio/audioFolderLifecycleService';
 import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readTableAudioZipVariantBlob, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
@@ -702,18 +702,36 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channels
     });
   }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
-  const tableAudioStagingVariantInventory = useMemo(
-    () => buildTableAudioStagingVariantInventory(tableAudioStagingRecords),
-    [tableAudioStagingRecords]
+  const activeTableAudioStagingRecords = useMemo(
+    () => filterTableAudioStagingRecordsForPlaylist(tableAudioStagingRecords, playlist),
+    [tableAudioStagingRecords, playlist]
   );
+  const tableAudioStagingVariantInventory = useMemo(
+    () => buildTableAudioStagingVariantInventory(tableAudioStagingRecords, { playlist }),
+    [tableAudioStagingRecords, playlist]
+  );
+  // System controls report total origin staging usage; the Batch panel below uses
+  // active-deck staging only so Book A never appears as loaded inside Book B.
   const tableAudioStagingSummary = useMemo(
     () => summarizeAudioStagingRecords(tableAudioStagingRecords),
     [tableAudioStagingRecords]
   );
-  const tableAudioGeneratedVariantInventory = useMemo(() => buildTableAudioGeneratedVariantInventory({
+  const activeTableAudioStagingSummary = useMemo(
+    () => summarizeAudioStagingRecords(activeTableAudioStagingRecords),
+    [activeTableAudioStagingRecords]
+  );
+  const tableAudioGeneratedVariantInventory = useMemo(() => filterTableAudioVariantInventoryForPlaylist(buildTableAudioGeneratedVariantInventory({
     localAudioMapTable,
     generatedAudioMeta
-  }), [localAudioMapTable, generatedAudioMeta]);
+  }), playlist), [localAudioMapTable, generatedAudioMeta, playlist]);
+  const activeTableAudioFolderVariantInventory = useMemo(
+    () => filterTableAudioVariantInventoryForPlaylist(tableAudioFolderVariantInventory, playlist),
+    [tableAudioFolderVariantInventory, playlist]
+  );
+  const activeTableAudioZipVariantInventory = useMemo(
+    () => filterTableAudioVariantInventoryForPlaylist(tableAudioZipVariantInventory, playlist),
+    [tableAudioZipVariantInventory, playlist]
+  );
   const tableGeneratedSessionAudioCount = useMemo(() => {
     const folderUrls = new Set();
     Object.values(tableAudioFolderVariantInventory || {}).forEach(variants => {
@@ -726,16 +744,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const tableAudioVariantInventory = useMemo(() => mergeTableAudioVariantInventories(
     tableAudioStagingVariantInventory,
     tableAudioGeneratedVariantInventory,
-    tableAudioFolderVariantInventory,
-    tableAudioZipVariantInventory
-  ), [tableAudioStagingVariantInventory, tableAudioGeneratedVariantInventory, tableAudioFolderVariantInventory, tableAudioZipVariantInventory]);
+    activeTableAudioFolderVariantInventory,
+    activeTableAudioZipVariantInventory
+  ), [tableAudioStagingVariantInventory, tableAudioGeneratedVariantInventory, activeTableAudioFolderVariantInventory, activeTableAudioZipVariantInventory]);
   const tableAudioVoiceOptions = useMemo(() => buildTableAudioVoiceOptions({
     inventory: tableAudioVariantInventory,
     edgeVoices: initialEdgeVoices
   }), [tableAudioVariantInventory]);
+  const activeTableAudioBatchSessions = useMemo(
+    () => filterTableAudioBatchSessionsForPlaylist(tableAudioBatchSessions, playlist),
+    [tableAudioBatchSessions, playlist]
+  );
   const tableAudioBatchAvailabilityById = useMemo(() => Object.fromEntries(
-    (tableAudioBatchSessions || []).map(session => [session.id, resolveBatchSessionAvailability({ session, inventory: tableAudioVariantInventory })])
-  ), [tableAudioBatchSessions, tableAudioVariantInventory]);
+    (activeTableAudioBatchSessions || []).map(session => [session.id, resolveBatchSessionAvailability({ session, inventory: tableAudioVariantInventory })])
+  ), [activeTableAudioBatchSessions, tableAudioVariantInventory]);
   const tableAudioVoicePriority = tableLocalAudioPlaybackPreference.voicePriority;
   const tableLocalAudioVoiceMode = tableLocalAudioPlaybackPreference.voiceMode || 'auto';
   useEffect(() => {
@@ -755,8 +777,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const tableAudioInventorySummary = useMemo(() => summarizeTableAudioVariantInventory(tableAudioVariantInventory), [tableAudioVariantInventory]);
   const tableAudioUiMap = useMemo(() => buildTableAudioPresenceMap({
     inventory: tableAudioVariantInventory,
-    legacyMap: localAudioMapTable
-  }), [tableAudioVariantInventory, localAudioMapTable]);
+    // R2.2: unscoped legacy NO-only runtime maps must not make a new deck look
+    // loaded. Scoped generated audio is already represented in the inventory.
+    legacyMap: {}
+  }), [tableAudioVariantInventory]);
   const tableAudioZipSummary = useMemo(() => ({
     archiveCount: tableAudioZipSources.length,
     matchedCount: tableAudioZipSources.reduce((sum, archive) => sum + Number(archive?.matchedCount || 0), 0),
@@ -788,8 +812,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generatedAudioMeta,
     tableAudioVariantInventory,
     downloadHistory: audioDownloadHistory,
-    stagingRecords: tableAudioStagingRecords
-  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory, tableAudioStagingRecords]);
+    stagingRecords: activeTableAudioStagingRecords
+  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory, activeTableAudioStagingRecords]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
   const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
@@ -985,9 +1009,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (selectedVariant?.sourceType === 'staging') return getAudioStagingObjectUrl(selectedVariant.stagingId);
     if (selectedVariant?.sourceType === 'folder') return getTableAudioFolderVariantObjectUrl(selectedVariant);
     if (selectedVariant?.sourceType === 'zip') return getTableAudioZipVariantObjectUrl(selectedVariant);
-    // Legacy unknown-voice maps remain available only in Auto mode. A specific
-    // voice selection intentionally falls through to Browser TTS when missing.
-    if (tableLocalAudioVoiceMode === 'auto') return localAudioMapTable?.[mapKey] || null;
+    // R2.2: raw legacy Table maps are NO-based and cannot prove deck scope.
+    // Scoped generated audio is already represented in tableAudioVariantInventory;
+    // ambiguous raw maps fail closed instead of leaking Book A into Book B.
     return null;
   };
 
@@ -2485,12 +2509,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setLocalAudioMapTable,
       setLocalAudioMapText,
       onGeneratedAudio: (meta) => {
-        const metaKey = `${meta.mode}:${meta.mapKey}`;
+        const scopedMeta = mode === 'table' ? {
+          ...meta,
+          vocabId: getVocabIdentity(item),
+          bookId: resolveTableAudioBookId(item),
+          displayId: item.displayId ?? null
+        } : meta;
+        const metaKey = `${scopedMeta.mode}:${scopedMeta.mapKey}`;
         generatedAudioMetaRef.current = {
           ...generatedAudioMetaRef.current,
-          [metaKey]: meta
+          [metaKey]: scopedMeta
         };
-        setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
+        setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: scopedMeta }));
       },
       persistGeneratedAudio: mode === 'table' ? async ({ mapKey: generatedMapKey, stableId: generatedStableId, part: generatedPart, engine, voice, filename, blob }) => {
         const stagingRecord = await putAudioStagingBlob({
@@ -2520,6 +2550,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       recordAudioDownloadHistoryDurably({
         mode,
         mapKey: result.mapKey,
+        vocabId: mode === 'table' ? getVocabIdentity(item) : null,
+        bookId: mode === 'table' ? resolveTableAudioBookId(item) : null,
+        displayId: mode === 'table' ? (item.displayId ?? null) : null,
         part: result.part || part,
         engine: result.engine || generatorEngine,
         voice: result.voice || (generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : aiVoiceName),
@@ -2569,8 +2602,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const resolveSelectedTableAudioVariant = useCallback((item, part) => {
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
+    const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
+    const scoped = (tableAudioVariantInventory?.[mapKey] || []).filter(variant => isTableAudioScopeMatch(variant, wanted));
     return resolveTableAudioPlaybackVariant({
-      variants: tableAudioVariantInventory?.[mapKey] || [],
+      variants: scoped,
       voiceMode: tableLocalAudioVoiceMode,
       voicePriority: tableAudioVoicePriority
     });
@@ -2608,7 +2643,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         await refreshTableAudioStaging();
       }
       recordAudioDownloadHistoryDurably({
-        mode: 'table', mapKey, part, engine: variant.engine || null, voice: variant.voiceId || null, filename, delivery: 'browser-mp3'
+        mode: 'table', mapKey, part, engine: variant.engine || null, voice: variant.voiceId || null,
+        vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item), displayId: item.displayId ?? null,
+        filename, delivery: 'browser-mp3'
       });
       addLog('Audio', `MP3 export: ${filename} (${variant.sourceType || 'local'} source).`);
       return { status: 'download-triggered', filename, sourceType: variant.sourceType };
@@ -2632,7 +2669,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const resolveTableAudioVariantForSpec = useCallback((spec) => {
     if (!spec?.mapKey) return null;
-    const variants = tableAudioVariantInventory?.[spec.mapKey] || [];
+    const variants = (tableAudioVariantInventory?.[spec.mapKey] || []).filter(variant => {
+      if (spec?.vocabId || spec?.bookId) return isTableAudioScopeMatch(variant, spec);
+      return true;
+    });
     const requiredVoiceId = String(spec.requiredVoiceId || spec.voiceId || '').trim();
     if (requiredVoiceId) {
       const exact = variants.filter(variant => String(variant?.voiceId || '').toLowerCase() === requiredVoiceId.toLowerCase());
@@ -2647,6 +2687,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       id: variant.stagingId || `${variant.sourceType || 'local'}:${variant.sourceId || 'source'}:${spec.mapKey}:${variant.voiceId || 'unknown'}`,
       mapKey: spec.mapKey,
       part: spec.part || variant.part || null,
+      vocabId: spec.vocabId || variant.vocabId || null,
       bookId: spec.bookId || resolveTableAudioBookId(spec.stableId || spec.mapKey),
       displayId: Number.isFinite(Number(spec.displayId)) ? Number(spec.displayId) : null,
       voiceId: variant.voiceId || spec.requiredVoiceId || spec.voiceId || null,
@@ -2668,7 +2709,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       const spec = {
         ...slot,
         voiceId: slot.requiredVoiceId || null,
-        bookId: resolveTableAudioBookId(slot.stableId || slot.mapKey)
+        vocabId: slot.vocabId || null,
+        bookId: slot.bookId || resolveTableAudioBookId(slot.vocabId || slot.stableId || slot.mapKey)
       };
       const variant = resolveTableAudioVariantForSpec(spec);
       if (!variant) continue;
@@ -2699,7 +2741,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
       historyRecords.push({
         mode: 'table', mapKey: spec.mapKey, part: spec.part, engine: variant.engine || null,
-        voice: variant.voiceId || null, filename, delivery: 'browser-mp3'
+        voice: variant.voiceId || null, vocabId: spec.vocabId || variant.vocabId || null,
+        bookId: spec.bookId || variant.bookId || null, displayId: spec.displayId ?? variant.displayId ?? null,
+        filename, delivery: 'browser-mp3'
       });
       results.push({ status: 'download-triggered', filename, sourceType: variant.sourceType, size: blob.size });
     }
@@ -2720,7 +2764,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     sessions.flatMap(session => session.requestedSpecs || []).forEach(spec => {
       if (!spec?.mapKey) return;
       const voiceKey = String(spec.voiceId || spec.requiredVoiceId || '').toLowerCase();
-      specMap.set(`${spec.mapKey}|${voiceKey}`, spec);
+      specMap.set(`${spec.mapKey}|${voiceKey}|${String(spec.vocabId || spec.bookId || '').toUpperCase()}`, spec);
     });
 
     const exportRecords = [];
@@ -2766,7 +2810,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     recordAudioDownloadHistoryDurably(exportRecords.map(record => ({
       mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine,
-      voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+      voice: record.voiceId, vocabId: record.vocabId || null, bookId: record.bookId || null,
+      displayId: record.displayId ?? null, filename: record.filename, delivery: 'browser-zip'
     })));
     setBatchStatusText('');
     await refreshTableAudioStaging();
@@ -3180,7 +3225,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
     tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
-    batchSessions: tableAudioBatchSessions, stagingRecords: tableAudioStagingRecords, stagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
+    batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
     onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions,
     onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     inline: Boolean(options.inline),
@@ -3274,7 +3319,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
     batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
-    batchSessions: tableAudioBatchSessions, stagingRecords: tableAudioStagingRecords, stagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
+    batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
     onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions, onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
     systemLogs, logContainerRef, storageRefreshToken,

@@ -120,7 +120,7 @@ export default function DesktopSystemControls({
                 </div>}
                 {mode === 'table' && <div className="space-y-2">
                   <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2 text-[9px]">
-                    <div className="flex items-center justify-between gap-2 font-black text-emerald-700 dark:text-emerald-300"><span>Audio Staging (IndexedDB)</span><span>{folderInputRef?.tableAudioStagingSummary?.count || 0} audio</span></div>
+                    <div className="flex items-center justify-between gap-2 font-black text-emerald-700 dark:text-emerald-300"><span>Audio Staging (IndexedDB • all books)</span><span>{folderInputRef?.tableAudioStagingSummary?.count || 0} audio</span></div>
                     <div className="mt-1 text-slate-500 dark:text-slate-400">{((folderInputRef?.tableAudioStagingSummary?.bytes || 0) / (1024 * 1024)).toFixed(1)} MB • survives refresh until released/cleared</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2">

@@ -82,7 +82,10 @@ export const buildTableAudioGeneratedVariantInventory = ({ localAudioMapTable, g
       filename: meta?.filename || null,
       verified: false,
       url,
-      deliveryStatus: meta?.deliveryStatus || 'session-generated'
+      deliveryStatus: meta?.deliveryStatus || 'session-generated',
+      vocabId: meta?.vocabId || null,
+      bookId: meta?.bookId || null,
+      displayId: meta?.displayId ?? null
     }];
   });
   return inventory;

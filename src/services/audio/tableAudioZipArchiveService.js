@@ -6,6 +6,7 @@ import {
   resolveTableAudioVoiceFromFilename
 } from './audioFolderLifecycleService.js';
 import { tableAudioVariantsFromRecords } from '../../domain/audio/tableAudioVariantInventoryDomain.js';
+import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
 
 const decoder = new TextDecoder('utf-8');
 const EOCD_SIGNATURE = 0x06054b50;
@@ -155,6 +156,9 @@ export const scanTableAudioZipFiles = async ({
         voiceLabel: voiceId ? getAudioVoiceFilenameLabel(voiceId) : null,
         engine: voiceId ? 'edge' : null,
         filename,
+        vocabId: getVocabIdentity(matchedItem),
+        bookId: resolveTableAudioBookId(matchedItem),
+        displayId: matchedItem.displayId ?? null,
         entryFilename: entry.filename,
         verified: true,
         deliveryStatus: 'zip-indexed',

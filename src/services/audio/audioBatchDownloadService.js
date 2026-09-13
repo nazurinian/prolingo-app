@@ -1,4 +1,4 @@
-import { getAdvancedExpressionPairs, getStableAudioIdentity, isIndonesianAudioPart } from '../../utils/audioUtils';
+import { getAdvancedExpressionPairs, getStableAudioIdentity, getVocabIdentity, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { getMaxAssignedNoFromRecords } from '../../utils/csvUtils';
 import { shouldDownloadTableCoverageSlot } from '../../domain/audio/audioDownloadCoverageDomain.js';
 import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
@@ -48,6 +48,7 @@ const collectRequestedSlotSpecs = ({ targets, batchConfig, generatorEngine, edge
       specs.push({
         mapKey: `${getStableAudioIdentity(item)}_${part}`,
         displayId: item.displayId,
+        vocabId: getVocabIdentity(item),
         part,
         bookId: resolveTableAudioBookId(item),
         voiceId: generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : null
@@ -59,6 +60,12 @@ const collectRequestedSlotSpecs = ({ targets, batchConfig, generatorEngine, edge
 
 const matchesRequestedSpec = (record, specs) => specs.some(spec => {
   if (record?.mapKey !== spec.mapKey) return false;
+  const recordVocab = String(record?.vocabId || '').trim().toUpperCase();
+  const specVocab = String(spec?.vocabId || '').trim().toUpperCase();
+  if (recordVocab && specVocab && recordVocab !== specVocab) return false;
+  const recordBook = String(record?.bookId || '').trim().toUpperCase();
+  const specBook = String(spec?.bookId || '').trim().toUpperCase();
+  if (!recordVocab && !specVocab && recordBook && specBook && recordBook !== specBook) return false;
   if (!spec.voiceId) return true;
   return String(record?.voiceId || '').toLowerCase() === String(spec.voiceId).toLowerCase();
 });
@@ -206,7 +213,9 @@ export const executeAudioBatchDownloadService = async ({
     const exportedIds = [...new Set(exportResults.flatMap(result => result.ids || []))];
     exportedIds.forEach(id => safetyFlushedIds.add(id));
     deliveredRecords.push(...relevant.filter(record => exportedIds.includes(record.id)).map(record => ({
-      mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+      mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId,
+      vocabId: record.vocabId || null, bookId: record.bookId || null, displayId: record.displayId ?? null,
+      filename: record.filename, delivery: 'browser-zip'
     })));
     await releaseAudioStagingBlobs(exportedIds, { reason: 'storage-pressure-exported' });
     session = await saveAudioBatchSession({
@@ -268,7 +277,9 @@ export const executeAudioBatchDownloadService = async ({
         });
         const exportedIds = [...new Set(exportResults.flatMap(result => result.ids || []))];
         deliveredRecords.push(...exportable.filter(record => exportedIds.includes(record.id)).map(record => ({
-          mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+          mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId,
+          vocabId: record.vocabId || null, bookId: record.bookId || null, displayId: record.displayId ?? null,
+          filename: record.filename, delivery: 'browser-zip'
         })));
         if (deliveredRecords.length) await onBatchDelivered?.(deliveredRecords, { status: 'batch-export', exports: exportResults });
       }
