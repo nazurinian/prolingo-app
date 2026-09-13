@@ -1,5 +1,5 @@
-import { executeActiveRowAutoFollow, executeMobileHeaderScroll } from './scrollViewportService';
-import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC } from '../../constants/datasetConstants';
+import { cancelActiveRowVisualFollow, executeActiveRowAutoFollow, executeForegroundPlaybackResync, executeMobileHeaderScroll } from './scrollViewportService.js';
+import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC } from '../../constants/datasetConstants.js';
 
 export const executeBodyScrollLockEffect = ({ isMobile, isSidebarOpen }) => {
       if (isMobile && isSidebarOpen) {
@@ -101,35 +101,85 @@ export const executeResponsiveViewportLifecycleEffect = ({ isMobile, listContain
       };
 };
 
-export const executeActiveRowAutoFollowEffect = ({ currentIndex, currentPlayerList, isPlaying, independentPlayingId, playingContext, mode, tableViewMode, prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling, isSidebarOpen, mobileTab, setShowAppBar, listContainerRef }) => {
-      if (currentIndex !== null) {
-          const scrollAction = () => executeActiveRowAutoFollow({
-              currentPlayerList, currentIndex, isPlaying, independentPlayingId, playingContext, mode,
-              tableViewMode, prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling,
-              isSidebarOpen, mobileTab, setShowAppBar, listContainerRef
-          });
-
-          const timer = setTimeout(scrollAction, 100);
-          return () => clearTimeout(timer);
+export const executeActiveRowAutoFollowEffect = ({ currentIndex, currentPlayerList, isPlaying, independentPlayingId, playingContext, mode, tableViewMode, prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling, isSidebarOpen, mobileTab, setShowAppBar, listContainerRef, followRuntimeRef = null, setScrollTop = null }) => {
+      if (currentIndex === null) return undefined;
+      if (typeof document !== 'undefined' && document.hidden) {
+          if (followRuntimeRef?.current) followRuntimeRef.current.resumePending = true;
+          return undefined;
       }
+      const scrollAction = () => executeActiveRowAutoFollow({
+          currentPlayerList, currentIndex, isPlaying, independentPlayingId, playingContext, mode,
+          tableViewMode, prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling,
+          isSidebarOpen, mobileTab, setShowAppBar, listContainerRef, followRuntimeRef, setScrollTop, behavior: 'smooth'
+      });
+
+      const timer = setTimeout(scrollAction, 100);
+      return () => clearTimeout(timer);
+};
+
+export const executeForegroundPlaybackVisibilityEffect = ({
+  currentPlayerList, playingIndex, isPlaying, independentPlayingId, playingContext, mode, tableViewMode,
+  prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling, isSidebarOpen, mobileTab,
+  setShowAppBar, listContainerRef, followRuntimeRef, setScrollTop
+}) => {
+      if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+
+      const handleHidden = () => {
+          if (followRuntimeRef?.current) {
+              followRuntimeRef.current.hidden = true;
+              followRuntimeRef.current.resumePending = true;
+          }
+          cancelActiveRowVisualFollow({ isAutoScrolling, followRuntimeRef, markResumePending: true });
+      };
+
+      const handleVisible = () => {
+          if (document.hidden) return;
+          const runtime = followRuntimeRef?.current;
+          const shouldResync = Boolean(runtime?.hidden || runtime?.resumePending);
+          if (runtime) runtime.hidden = false;
+          if (!shouldResync) return;
+          executeForegroundPlaybackResync({
+              currentPlayerList, playingIndex, isPlaying, independentPlayingId, playingContext, mode, tableViewMode,
+              prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling, isSidebarOpen, mobileTab,
+              setShowAppBar, listContainerRef, followRuntimeRef, setScrollTop
+          });
+      };
+
+      const handleVisibility = () => {
+          if (document.hidden) handleHidden();
+          else handleVisible();
+      };
+      const handlePageShow = () => handleVisible();
+
+      document.addEventListener('visibilitychange', handleVisibility);
+      window.addEventListener('pageshow', handlePageShow);
+      return () => {
+          document.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('pageshow', handlePageShow);
+      };
 };
 
 export const executeMobileWindowScrollEffect = ({ isMobile, setScrollTop, setContainerHeight }) => {
+      let frameId = null;
+      const applyWindowScroll = () => {
+          frameId = null;
+          setScrollTop(window.scrollY);
+          setContainerHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+      };
       const handleWindowScroll = () => {
-          if (isMobile) {
-              setScrollTop(window.scrollY);
-              setContainerHeight(Math.round(window.visualViewport?.height || window.innerHeight)); 
-          }
+          if (!isMobile || frameId !== null) return;
+          frameId = requestAnimationFrame(applyWindowScroll);
       };
 
       if (isMobile) {
           window.addEventListener('scroll', handleWindowScroll, { passive: true });
-          handleWindowScroll(); 
-      } else {
-          window.removeEventListener('scroll', handleWindowScroll);
+          applyWindowScroll();
       }
 
-      return () => window.removeEventListener('scroll', handleWindowScroll);
+      return () => {
+          window.removeEventListener('scroll', handleWindowScroll);
+          if (frameId !== null) cancelAnimationFrame(frameId);
+      };
 };
 
 export const executeLogAutoScrollEffect = ({ logContainerRef }) => {

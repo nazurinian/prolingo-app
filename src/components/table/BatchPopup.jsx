@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CheckSquare, Square, XCircle, Loader2, Lock } from 'lucide-react';
+import { X, CheckSquare, Square, XCircle, Loader2, Lock, FileArchive, Music, Trash2, Database } from 'lucide-react';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 import { clampBatchRangeNumber, resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
 
@@ -24,6 +24,18 @@ const toggleExpression = (setBatchConfig, lang, index) => {
 const setAllExpressions = (setBatchConfig, lang, enabled) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
   setBatchConfig(prev => ({ ...prev, [key]: Array(5).fill(enabled) }));
+};
+
+const formatBytes = value => {
+  const bytes = Number(value || 0);
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const sessionRangeLabel = session => {
+  const start = Number(session?.start);
+  const end = Number(session?.end);
+  return Number.isFinite(start) && Number.isFinite(end) ? `${start}–${end}` : 'mixed';
 };
 
 const ToggleRow = ({ checked, disabled = false, onClick, children, tone = 'indigo' }) => {
@@ -62,14 +74,27 @@ export const BatchPopup = ({
   structuredTextBatch = null,
   DownloadCloudIcon,
   inline = false,
-  showClose = true
+  showClose = true,
+  batchSessions = [],
+  stagingRecords = [],
+  stagingSummary = null,
+  batchAvailabilityById = {},
+  onExportCurrentMp3 = null,
+  onExportBatchSessions = null,
+  onClearBatchStaging = null,
+  onDeleteBatchHistory = null,
+  directMp3Limit = 10
 }) => {
   const [redownloadConfirmOpen, setRedownloadConfirmOpen] = React.useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = React.useState([]);
+  const [sessionConfirm, setSessionConfirm] = React.useState(null);
   const expEn = getExpressionSelection(batchConfig, 'en');
   const expIdn = getExpressionSelection(batchConfig, 'idn');
   const isStructuredTextBatch = mode === 'text' && Boolean(structuredTextBatch);
   const isGemini = !isStructuredTextBatch && generatorEngine === 'gemini';
   const coverage = isStructuredTextBatch ? structuredTextBatch?.coverage : tableCoverage?.counts;
+  const activeStagingById = React.useMemo(() => new Map((stagingRecords || []).filter(record => record?.hasBlob).map(record => [record.id, record])), [stagingRecords]);
+  const toggleSessionSelection = id => setSelectedSessionIds(prev => prev.includes(id) ? prev.filter(value => value !== id) : [...prev, id]);
   const rangeMax = Math.max(1, Number(advancedDatasetStats?.maxAudioNo || 1));
   const clampRangeValue = value => clampBatchRangeNumber(value, rangeMax);
   const updateTableRange = (field, rawValue, commit = false) => {
@@ -201,6 +226,15 @@ export const BatchPopup = ({
           {mode === 'table' && <span className="ml-auto text-[9px] font-bold text-slate-400">1–{rangeMax}</span>}
         </div>}
 
+        {!isStructuredTextBatch && mode === 'table' && <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2.5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <ToggleRow checked={batchConfig?.autoExportZip !== false} disabled={isBatchDownloading} onClick={() => setBatchConfig(prev => ({ ...prev, autoExportZip: prev?.autoExportZip === false }))}>Auto Export ZIP</ToggleRow>
+            <span className="text-[8px] font-bold text-slate-400">Staged {stagingSummary?.count || 0} • {formatBytes(stagingSummary?.bytes || 0)}</span>
+          </div>
+          <p className="text-[8px] leading-relaxed text-slate-400">OFF = hasil batch tetap di IndexedDB untuk testing. Jika storage pressure terjadi, batch berhenti aman; ON dapat safety-export range aktif lalu melepas binary yang sudah diexport.</p>
+          <button type="button" disabled={isBatchDownloading || !onExportCurrentMp3 || !(coverage?.ready > 0)} onClick={() => onExportCurrentMp3?.()} className="w-full rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>EXPORT READY MP3 • max {directMp3Limit}</button>
+        </div>}
+
         {!isStructuredTextBatch && <button
           type="button"
           disabled={!isBatchDownloading && !(coverage?.needDownload || 0)}
@@ -222,6 +256,28 @@ export const BatchPopup = ({
           )}
         </button>}
         {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={!(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
+
+        {!isStructuredTextBatch && mode === 'table' && <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/40 px-2.5 py-2"><span className="text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300"><Database className="mr-1 inline h-3 w-3"/>Batch Library</span><span className="text-[8px] text-slate-400">{batchSessions?.length || 0} session</span></div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar">
+            {(batchSessions || []).length ? (batchSessions || []).slice(0, 12).map(session => {
+              const audioIds = Array.isArray(session?.audioIds) ? session.audioIds : [];
+              const available = audioIds.filter(id => activeStagingById.has(id));
+              const bytes = available.reduce((sum, id) => sum + Number(activeStagingById.get(id)?.size || 0), 0);
+              const availability = batchAvailabilityById?.[session.id] || null;
+              const selected = selectedSessionIds.includes(session.id);
+              return <div key={session.id} className="border-t border-slate-100 dark:border-slate-700 px-2.5 py-2 text-[8px]">
+                <div className="flex items-start gap-2">
+                  <button type="button" disabled={isBatchDownloading} onClick={() => toggleSessionSelection(session.id)} className="mt-0.5 text-indigo-600 disabled:opacity-40">{selected ? <CheckSquare className="h-3.5 w-3.5"/> : <Square className="h-3.5 w-3.5"/>}</button>
+                  <div className="min-w-0 flex-1"><div className="truncate font-black text-slate-700 dark:text-slate-200">{sessionRangeLabel(session)} • {session.generatorEngine || 'audio'} • {session.status || 'saved'}</div><div className="mt-0.5 text-slate-400">Staged {availability?.staged ?? available.length}/{availability?.total ?? audioIds.length ?? session.requestedCount ?? 0} • External {availability?.external ?? 0} • Unavailable {availability?.unavailable ?? 0} • {formatBytes(bytes)} • Failed {session.failedCount || 0} • ZIP* {session.exportedZipCount || session.manualZipExportCount || 0}</div></div>
+                </div>
+                <div className="mt-1.5 grid grid-cols-3 gap-1"><button type="button" disabled={isBatchDownloading} onClick={() => onExportBatchSessions?.([session.id])} className="rounded border border-indigo-200 dark:border-indigo-800 px-1 py-1.5 font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-30"><FileArchive className="mr-0.5 inline h-3 w-3"/>ZIP</button><button type="button" disabled={isBatchDownloading || !available.length} onClick={() => setSessionConfirm({ type: 'release', id: session.id, available: available.length })} className="rounded border border-amber-200 dark:border-amber-800 px-1 py-1.5 font-bold text-amber-700 dark:text-amber-300 disabled:opacity-30">Release</button><button type="button" disabled={isBatchDownloading} onClick={() => setSessionConfirm({ type: 'delete', id: session.id })} className="rounded border border-rose-200 dark:border-rose-900 px-1 py-1.5 font-bold text-rose-700 dark:text-rose-300 disabled:opacity-30"><Trash2 className="mr-0.5 inline h-3 w-3"/>History</button></div>
+              </div>;
+            }) : <div className="px-3 py-4 text-center text-[9px] italic text-slate-400">No batch session yet.</div>}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 border-t border-slate-100 dark:border-slate-700 p-2"><button type="button" disabled={isBatchDownloading || !selectedSessionIds.length} onClick={() => onExportBatchSessions?.(selectedSessionIds)} className="rounded bg-indigo-600 py-1.5 text-[9px] font-black text-white disabled:opacity-35">EXPORT SELECTED ZIP</button><button type="button" disabled={isBatchDownloading || !selectedSessionIds.length} onClick={() => setSelectedSessionIds([])} className="rounded border border-slate-200 dark:border-slate-700 py-1.5 text-[9px] font-bold text-slate-500 dark:text-slate-300 disabled:opacity-35">CLEAR SELECT</button></div>
+        </div>}
+
         <SafetyConfirmDialog
           open={!isStructuredTextBatch && mode === 'table' && redownloadConfirmOpen}
           title="Redownload selected audio?"
@@ -229,6 +285,22 @@ export const BatchPopup = ({
           confirmLabel="Redownload"
           onCancel={() => setRedownloadConfirmOpen(false)}
           onConfirm={() => { setRedownloadConfirmOpen(false); runBatchDownload?.({ missingOnly: false }); }}
+        />
+        <SafetyConfirmDialog
+          open={sessionConfirm?.type === 'release'}
+          title="Release staged audio for this batch?"
+          message={`Menghapus ${sessionConfirm?.available || 0} binary audio yang masih Staged dari IndexedDB untuk session ini. Metadata Batch/Export tetap disimpan; Folder/ZIP dan file download tidak dihapus.`}
+          confirmLabel="Release Staging"
+          onCancel={() => setSessionConfirm(null)}
+          onConfirm={() => { const id = sessionConfirm?.id; setSessionConfirm(null); onClearBatchStaging?.(id); }}
+        />
+        <SafetyConfirmDialog
+          open={sessionConfirm?.type === 'delete'}
+          title="Delete Batch history?"
+          message="Hanya catatan Batch Session ini yang dihapus. Binary Staging tidak ikut dihapus supaya audio yang masih Ready tidak hilang tanpa sengaja."
+          confirmLabel="Delete History"
+          onCancel={() => setSessionConfirm(null)}
+          onConfirm={() => { const id = sessionConfirm?.id; setSessionConfirm(null); setSelectedSessionIds(prev => prev.filter(value => value !== id)); onDeleteBatchHistory?.(id); }}
         />
       </div>
     </div>

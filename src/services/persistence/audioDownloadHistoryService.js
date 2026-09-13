@@ -25,15 +25,23 @@ export const recordAudioDownloadHistory = (history, records) => {
     const mode = record.mode || 'table';
     const mapKey = record.mapKey;
     if (!mapKey) return;
-    next[`${mode}:${mapKey}`] = {
+    const key = `${mode}:${mapKey}`;
+    const previous = next[key] || {};
+    const deliveredAt = record.deliveredAt || Date.now();
+    const delivery = record.delivery || 'browser-download';
+    const lowerDelivery = String(delivery).toLowerCase();
+    next[key] = {
+      ...previous,
       mode,
       mapKey,
-      part: record.part || null,
-      engine: record.engine || null,
-      voice: record.voice || null,
-      filename: record.filename || null,
-      delivery: record.delivery || 'browser-download',
-      deliveredAt: record.deliveredAt || Date.now()
+      part: record.part || previous.part || null,
+      engine: record.engine || previous.engine || null,
+      voice: record.voice || previous.voice || null,
+      filename: record.filename || previous.filename || null,
+      delivery,
+      deliveredAt,
+      mp3ExportedAt: lowerDelivery.includes('mp3') ? deliveredAt : (previous.mp3ExportedAt || null),
+      zipExportedAt: (lowerDelivery.includes('zip') || lowerDelivery.includes('package')) ? deliveredAt : (previous.zipExportedAt || null)
     };
   });
   return next;

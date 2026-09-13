@@ -4,6 +4,7 @@ import { OVERSCAN } from '../../constants/datasetConstants';
 import { MOBILE_BOTTOM_PLAYER_RESERVE_CSS } from '../../constants/layoutConstants';
 import { getStableAudioIdentity } from '../../utils/audioUtils';
 import { resolveMasteryState } from '../../domain/progress/masteryStateDomain.js';
+import { resolveTableAudioPlaybackVariant } from '../../domain/audio/tableAudioVariantInventoryDomain.js';
 import { MemoizedRow } from './MemoizedRow';
 import { MemoizedTextRow } from './MemoizedTextRow';
 
@@ -55,7 +56,13 @@ export const renderPlaylistViewport = ({
   masteryByVocabId,
   cycleMasteryState,
   playbackSequence,
-  generatedAudioMeta = {}
+  generatedAudioMeta = {},
+  tableAudioVariantInventory = {},
+  tableLocalAudioVoiceMode = 'auto',
+  tableAudioVoicePriority = [],
+  audioDownloadHistory = {},
+  exportTableAudioMp3 = null,
+  removeTableStagedAudio = null
 }) => {
     const rowHeight = rowHeights[mode];
     const totalCount = currentPlayerList.length;
@@ -200,20 +207,37 @@ export const renderPlaylistViewport = ({
                    const localWordIdnUrl = localAudioMapTable[`${audioIdentity}_word_idn`] || null;
                    const localSentUrl = localAudioMapTable[`${audioIdentity}_sentence`] || null;
                    const localMeaningUrl = localAudioMapTable[`${audioIdentity}_meaning`] || null;
-                   const loadedAudioParts = [
+                   const audioParts = [
                        'word', 'word_idn', 'sentence', 'meaning',
                        'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn',
                        'exp4_en', 'exp4_idn', 'exp5_en', 'exp5_idn'
-                   ].filter(part => Boolean(localAudioMapTable[`${audioIdentity}_${part}`])).join('|');
-                   const audioSourceParts = ['word', 'word_idn', 'sentence', 'meaning', 'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn', 'exp4_en', 'exp4_idn', 'exp5_en', 'exp5_idn']
-                       .filter(part => Boolean(localAudioMapTable[`${audioIdentity}_${part}`]))
-                       .map(part => {
-                           const meta = generatedAudioMeta?.[`table:${audioIdentity}_${part}`];
-                           const engine = String(meta?.engine || '').toLowerCase();
-                           const source = engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : 'local';
-                           return `${part}:${source}`;
-                       })
-                       .join('|');
+                   ];
+                   const resolvedAudioPartState = Object.fromEntries(audioParts.map(part => {
+                       const mapKey = `${audioIdentity}_${part}`;
+                       const selected = resolveTableAudioPlaybackVariant({
+                           variants: tableAudioVariantInventory?.[mapKey] || [],
+                           voiceMode: tableLocalAudioVoiceMode,
+                           voicePriority: tableAudioVoicePriority
+                       });
+                       const meta = generatedAudioMeta?.[`table:${mapKey}`];
+                       const history = audioDownloadHistory?.[`table:${mapKey}`] || {};
+                       const sourceType = selected?.sourceType || (localAudioMapTable[mapKey] ? 'legacy' : '');
+                       const engine = String(selected?.engine || meta?.engine || '').toLowerCase();
+                       const dotSource = ['folder', 'zip', 'legacy'].includes(sourceType) ? 'local' : engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : sourceType ? 'local' : '';
+                       return [part, {
+                         sourceType,
+                         dotSource,
+                         mp3Exported: Boolean(selected?.mp3ExportedAt || history?.mp3ExportedAt),
+                         zipExported: Boolean(selected?.zipExportedAt || history?.zipExportedAt),
+                         voiceId: selected?.voiceId || history?.voice || null
+                       }];
+                   }));
+                   const loadedAudioParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).join('|');
+                   const audioSourceParts = audioParts.filter(part => resolvedAudioPartState[part]?.dotSource).map(part => `${part}:${resolvedAudioPartState[part].dotSource}`).join('|');
+                   const audioActionParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).map(part => {
+                       const state = resolvedAudioPartState[part];
+                       return `${part}:${state.sourceType}:${state.mp3Exported ? '1' : '0'}:${state.zipExported ? '1' : '0'}:${String(state.voiceId || '').replaceAll(':', '_')}`;
+                   }).join('|');
                    const masteryVocabId = String(item.vocabId || '').trim();
                    const masteryTrackable = Boolean(masteryVocabId);
                    const masteryState = resolveMasteryState(masteryByVocabId, masteryVocabId);
@@ -261,6 +285,9 @@ export const renderPlaylistViewport = ({
                            onCycleMastery={() => cycleMasteryState(masteryVocabId)}
                            playbackSequence={playbackSequence}
                            audioSourceParts={audioSourceParts}
+                           audioActionParts={audioActionParts}
+                           exportTableAudioMp3={exportTableAudioMp3}
+                           removeTableStagedAudio={removeTableStagedAudio}
                        />
                    );
                } 

@@ -79,16 +79,17 @@ import { executeAudioGenerationService, executeEdgeBackendHealthService, execute
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
 import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
 import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, buildTableAudioVoiceOptions, mergeTableAudioVariantInventories, reconcileTableAudioVoicePriority, resolveTableAudioPlaybackVariant, summarizeTableAudioVariantInventory, tableAudioVariantsFromRecords } from './domain/audio/tableAudioVariantInventoryDomain.js';
-import { executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle } from './services/audio/audioFolderLifecycleService';
-import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
+import { buildTableAudioStagingVariantInventory, isSameLogicalAudioVoice, resolveBatchSessionAvailability, resolveTableAudioBookId, summarizeAudioStagingRecords } from './domain/audio/audioStagingDomain.js';
+import { clearTableAudioFolderRuntimeCache, executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle, getTableAudioFolderVariantObjectUrl } from './services/audio/audioFolderLifecycleService';
+import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readTableAudioZipVariantBlob, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
-import { executeActiveRowAutoFollow, executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
-import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
+import { executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
+import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeForegroundPlaybackVisibilityEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
 import { executePlaylistContentSyncEffect, executeResetFullState, executeResetTextState, executeSystemLogAppend } from './services/app/mainAppStateLifecycleService';
 import { executeAddTextItem, executeClearStudyQueue, executeCloseManualEditor, executeDeleteStructuredItemPrompt, executeDeleteTextItem, executeInsertTab, executeMenuToggle, executeOpenManualAdd, executeOpenManualEdit, executeToggleStudyItem } from './services/dataset/manualTextStudyInteractionService';
@@ -128,6 +129,8 @@ import { executeTextStructuredAudioGenerationPreferencePersistenceEffect, loadTe
 import { clearAudioDownloadHistoryForMode, clearPersistedAudioDownloadHistoryForMode, loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
 import { executeTextStructuredAudioGenerationRequest } from './services/audio/textStructuredAudioGenerationService.js';
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
+import { exportStagedAudioZipGroups, exportTableAudioRecordZipGroups, DIRECT_MP3_BATCH_LIMIT } from './services/audio/audioBatchExportService.js';
+import { clearAudioStagingExportHistoryForMode, clearAudioStagingForMode, clearAudioStagingRuntimeCache, deleteAudioBatchSession, getAudioStagingBlob, getAudioStagingObjectUrl, listAudioBatchSessions, listAudioStagingMetadata, markAudioStagingExported, putAudioStagingBlob, recoverInterruptedAudioBatchSessions, releaseAudioStagingBlobs, requestPersistentAudioStorage, saveAudioBatchSession } from './services/persistence/audioStagingIndexedDbService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
 import { executeTextStructuredAudioFolderChoose, executeTextStructuredAudioFolderReconnect, executeTextStructuredAudioFolderRestore, readTextStructuredAudioFolderFiles, scanTextStructuredAudioFolderFiles, writeTextStructuredAudioFile } from './services/audio/textStructuredAudioFolderService.js';
 import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRuntimeObjectUrl, scanTextStructuredAudioZipFiles } from './services/audio/textStructuredAudioZipArchiveService.js';
@@ -201,6 +204,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // C3.4: delivery history persists the fact that a browser download/package was
   // triggered even when mobile Chrome cannot re-open Downloads for verification.
   const [audioDownloadHistory, setAudioDownloadHistory] = useState(loadAudioDownloadHistory);
+  const audioDownloadHistoryRef = useRef(audioDownloadHistory);
+  const recordAudioDownloadHistoryDurably = useCallback((records) => {
+    const next = recordAudioDownloadHistory(audioDownloadHistoryRef.current || {}, records);
+    audioDownloadHistoryRef.current = next;
+    persistAudioDownloadHistory(next);
+    setAudioDownloadHistory(next);
+    return next;
+  }, []);
+  // v5.13.0 / R2: generated Table audio lives in a separate IndexedDB staging
+  // database. React keeps metadata only; binary Blobs are resolved lazily.
+  const [tableAudioStagingRecords, setTableAudioStagingRecords] = useState([]);
+  const [tableAudioBatchSessions, setTableAudioBatchSessions] = useState([]);
+  const tableAudioScrollFrameRef = useRef(null);
+  const tableAudioPendingScrollTopRef = useRef(0);
+  const activeRowFollowRuntimeRef = useRef({ rafId: null, startTimerId: null, unlockTimerId: null, hidden: false, resumePending: false });
   // P4-A4: Text Library UI command state belongs to Text only and never participates in Table busy state.
   const [textLibraryCommandBusy, setTextLibraryCommandBusy] = useState(false);
   const [textLibraryCommandError, setTextLibraryCommandError] = useState(null);
@@ -235,6 +253,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [structuredTextAudioGenerationPreferences]);
 
   useEffect(() => {
+    audioDownloadHistoryRef.current = audioDownloadHistory;
     persistAudioDownloadHistory(audioDownloadHistory);
   }, [audioDownloadHistory]);
 
@@ -478,8 +497,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   useEffect(() => executeActiveRowAutoFollowEffect({
       currentIndex, currentPlayerList, isPlaying, independentPlayingId, playingContext, mode,
       tableViewMode, prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling,
-      isSidebarOpen, mobileTab, setShowAppBar, listContainerRef
-  }), [currentIndex, mode, currentPlayerList, isPlaying, playingContext, tableViewMode, independentPlayingId, rowHeights, isMobile, showAppBar, isSidebarOpen, mobileTab]); 
+      isSidebarOpen, mobileTab, setShowAppBar, listContainerRef, followRuntimeRef: activeRowFollowRuntimeRef, setScrollTop
+  }), [currentIndex, mode, currentPlayerList, isPlaying, playingContext, tableViewMode, independentPlayingId, rowHeights, isMobile, isSidebarOpen, mobileTab, setScrollTop]);
+
+  useEffect(() => executeForegroundPlaybackVisibilityEffect({
+      currentPlayerList, playingIndex, isPlaying, independentPlayingId, playingContext, mode, tableViewMode,
+      prevCurrentIndex, justSwitchedTab, rowHeights, isMobile, isAutoScrolling, isSidebarOpen, mobileTab,
+      setShowAppBar, listContainerRef, followRuntimeRef: activeRowFollowRuntimeRef, setScrollTop
+  }), [currentPlayerList, playingIndex, isPlaying, independentPlayingId, playingContext, mode, tableViewMode, rowHeights, isMobile, isSidebarOpen, mobileTab, setScrollTop]);
 
   // --- MODIFIED SCROLL LISTENER FOR MOBILE (BLOCKER ADDED) ---
   useEffect(() => executeMobileWindowScrollEffect({
@@ -489,6 +514,44 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   useEffect(() => executeLogAutoScrollEffect({ logContainerRef }), [systemLogs, showLogs, mobileTab]);
 
   const addLog = useCallback((type, message) => executeSystemLogAppend({ type, message, setSystemLogs }), [setSystemLogs]);
+
+  const refreshTableAudioStaging = useCallback(async () => {
+    try {
+      const rows = await listAudioStagingMetadata({ mode: 'table', includeReleased: true });
+      setTableAudioStagingRecords(rows);
+      return rows;
+    } catch (error) {
+      addLog('Warn', `Audio Staging metadata refresh failed: ${error?.message || error}`);
+      return [];
+    }
+  }, [addLog]);
+
+  const refreshTableAudioBatchSessions = useCallback(async () => {
+    try {
+      const rows = await listAudioBatchSessions({ mode: 'table' });
+      setTableAudioBatchSessions(rows);
+      return rows;
+    } catch (error) {
+      addLog('Warn', `Batch Session refresh failed: ${error?.message || error}`);
+      return [];
+    }
+  }, [addLog]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      listAudioStagingMetadata({ mode: 'table', includeReleased: true }),
+      recoverInterruptedAudioBatchSessions({ mode: 'table' }),
+      requestPersistentAudioStorage()
+    ]).then(([staging, sessions]) => {
+      if (cancelled) return;
+      setTableAudioStagingRecords(staging || []);
+      setTableAudioBatchSessions(sessions || []);
+    }).catch(error => {
+      if (!cancelled) addLog('Warn', `R2 Audio Staging restore: ${error?.message || error}`);
+    });
+    return () => { cancelled = true; };
+  }, [addLog]);
 
   // E: Gemini access is resolved by server-side OWNER/BYOK sessions.
   useEffect(() => {
@@ -639,6 +702,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channels
     });
   }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
+  const tableAudioStagingVariantInventory = useMemo(
+    () => buildTableAudioStagingVariantInventory(tableAudioStagingRecords),
+    [tableAudioStagingRecords]
+  );
+  const tableAudioStagingSummary = useMemo(
+    () => summarizeAudioStagingRecords(tableAudioStagingRecords),
+    [tableAudioStagingRecords]
+  );
   const tableAudioGeneratedVariantInventory = useMemo(() => buildTableAudioGeneratedVariantInventory({
     localAudioMapTable,
     generatedAudioMeta
@@ -653,14 +724,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return Object.values(localAudioMapTable || {}).reduce((count, url) => count + (url && !folderUrls.has(url) ? 1 : 0), 0);
   }, [localAudioMapTable, tableAudioFolderVariantInventory]);
   const tableAudioVariantInventory = useMemo(() => mergeTableAudioVariantInventories(
+    tableAudioStagingVariantInventory,
     tableAudioGeneratedVariantInventory,
     tableAudioFolderVariantInventory,
     tableAudioZipVariantInventory
-  ), [tableAudioGeneratedVariantInventory, tableAudioFolderVariantInventory, tableAudioZipVariantInventory]);
+  ), [tableAudioStagingVariantInventory, tableAudioGeneratedVariantInventory, tableAudioFolderVariantInventory, tableAudioZipVariantInventory]);
   const tableAudioVoiceOptions = useMemo(() => buildTableAudioVoiceOptions({
     inventory: tableAudioVariantInventory,
     edgeVoices: initialEdgeVoices
   }), [tableAudioVariantInventory]);
+  const tableAudioBatchAvailabilityById = useMemo(() => Object.fromEntries(
+    (tableAudioBatchSessions || []).map(session => [session.id, resolveBatchSessionAvailability({ session, inventory: tableAudioVariantInventory })])
+  ), [tableAudioBatchSessions, tableAudioVariantInventory]);
   const tableAudioVoicePriority = tableLocalAudioPlaybackPreference.voicePriority;
   const tableLocalAudioVoiceMode = tableLocalAudioPlaybackPreference.voiceMode || 'auto';
   useEffect(() => {
@@ -712,8 +787,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     localAudioMapTable,
     generatedAudioMeta,
     tableAudioVariantInventory,
-    downloadHistory: audioDownloadHistory
-  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory]);
+    downloadHistory: audioDownloadHistory,
+    stagingRecords: tableAudioStagingRecords
+  }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory, tableAudioStagingRecords]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
   const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
@@ -906,6 +982,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       voicePriority: tableAudioVoicePriority
     });
     if (selectedVariant?.url) return selectedVariant.url;
+    if (selectedVariant?.sourceType === 'staging') return getAudioStagingObjectUrl(selectedVariant.stagingId);
+    if (selectedVariant?.sourceType === 'folder') return getTableAudioFolderVariantObjectUrl(selectedVariant);
     if (selectedVariant?.sourceType === 'zip') return getTableAudioZipVariantObjectUrl(selectedVariant);
     // Legacy unknown-voice maps remain available only in Auto mode. A specific
     // voice selection intentionally falls through to Browser TTS when missing.
@@ -2363,19 +2441,29 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const stableId = getStableAudioIdentity(item);
     const mapKey = resolveGeneratedAudioMapKey({ mode, stableId, part });
     const activeMap = mode === 'table' ? localAudioMapTable : localAudioMapText;
+    const selectedExistingVariant = mode === 'table'
+      ? resolveTableAudioPlaybackVariant({
+          variants: tableAudioVariantInventory?.[mapKey] || [],
+          voiceMode: tableLocalAudioVoiceMode,
+          voicePriority: tableAudioVoicePriority
+        })
+      : null;
     const existingUrl = activeMap?.[mapKey];
+    const hasExistingAudio = Boolean(selectedExistingVariant || existingUrl);
 
-    if (existingUrl && !options.skipReplaceConfirm) {
+    if (hasExistingAudio && !options.skipReplaceConfirm) {
       const metaKey = `${mode}:${mapKey}`;
       const existingMeta = generatedAudioMetaRef.current?.[metaKey];
-      const currentSource = existingMeta
-        ? `${String(existingMeta.engine || '').toUpperCase()} • ${existingMeta.voice || 'voice'}${existingMeta.filename ? ` • ${existingMeta.filename}` : ''}`
-        : 'Audio Folder / local audio yang sedang ter-load';
+      const currentSource = selectedExistingVariant
+        ? `${String(selectedExistingVariant.sourceType || 'local').toUpperCase()} • ${selectedExistingVariant.voiceId || 'voice'}${selectedExistingVariant.filename ? ` • ${selectedExistingVariant.filename}` : ''}`
+        : existingMeta
+          ? `${String(existingMeta.engine || '').toUpperCase()} • ${existingMeta.voice || 'voice'}${existingMeta.filename ? ` • ${existingMeta.filename}` : ''}`
+          : 'Audio Folder / local audio yang sedang ter-load';
       const nextVoice = generatorEngine === 'edge'
         ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
         : aiVoiceName;
       const ok = window.confirm(
-        `Audio untuk ${part} sudah ada.\n\nSaat ini: ${currentSource}\nAudio baru: ${generatorEngine.toUpperCase()} • ${nextVoice || 'voice'}\n\nLanjut download ulang? Audio baru hanya mengganti path audio di sesi ProLingo saat ini. File lama di folder utama TIDAK dihapus/ditimpa. Refresh Audio Folder akan membaca audio dari folder utama lagi.`
+        `Audio untuk ${part} sudah ada.\n\nSaat ini: ${currentSource}\nAudio baru: ${generatorEngine.toUpperCase()} • ${nextVoice || 'voice'}\n\nLanjut generate ulang? Audio baru akan disimpan ke Audio Staging IndexedDB. File lama di Folder/ZIP TIDAK dihapus atau ditimpa.`
       );
       if (!ok) return { status: 'replace-cancelled', mapKey };
     }
@@ -2404,12 +2492,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         };
         setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
       },
+      persistGeneratedAudio: mode === 'table' ? async ({ mapKey: generatedMapKey, stableId: generatedStableId, part: generatedPart, engine, voice, filename, blob }) => {
+        const stagingRecord = await putAudioStagingBlob({
+          mode: 'table',
+          mapKey: generatedMapKey,
+          stableId: generatedStableId,
+          part: generatedPart,
+          engine,
+          voiceId: voice,
+          filename,
+          mimeType: blob.type || null,
+          blob,
+          vocabId: getVocabIdentity(item),
+          displayId: item.displayId,
+          bookId: resolveTableAudioBookId(item),
+          batchSessionId: options.batchSessionId || null,
+          metadata: { generatedAt: Date.now(), source: 'tts-r2-staging' }
+        });
+        setTableAudioStagingRecords(prev => [...(prev || []).filter(record => record.id !== stagingRecord.id), stagingRecord]);
+        return stagingRecord;
+      } : null,
       addLog,
       deferBrowserDownload: Boolean(options.deferBrowserDownload),
       suppressFailureAlert: Boolean(options.suppressFailureAlert)
     });
-    if (result?.status === 'success' && !options.deferBrowserDownload) {
-      setAudioDownloadHistory(prev => recordAudioDownloadHistory(prev, {
+    if (result?.status === 'success' && result?.deliveryStatus === 'browser-direct-triggered') {
+      recordAudioDownloadHistoryDurably({
         mode,
         mapKey: result.mapKey,
         part: result.part || part,
@@ -2417,7 +2525,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         voice: result.voice || (generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : aiVoiceName),
         filename: result.filename,
         delivery: 'browser-direct'
-      }));
+      });
     }
     return result;
   };
@@ -2436,15 +2544,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog,
       batchConfig,
       mode,
-      sequenceHighWater,
       playlist,
       generatorEngine,
+      edgeVoice,
+      edgeIndonesianVoice,
       setIsBatchDownloading,
       generateAIAudio,
       coverageByMapKey: tableAudioBatchCoverage?.byMapKey || null,
       missingOnly: options.missingOnly !== false,
+      onBatchSessionsChanged: refreshTableAudioBatchSessions,
+      onStagingChanged: refreshTableAudioStaging,
       onBatchDelivered: (records) => {
-        setAudioDownloadHistory(prev => recordAudioDownloadHistory(prev, records));
+        recordAudioDownloadHistoryDurably(records);
         records.forEach(record => {
           const metaKey = `${record.mode || 'table'}:${record.mapKey}`;
           const current = generatedAudioMetaRef.current?.[metaKey] || {};
@@ -2455,6 +2566,231 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
     });
   };
+
+  const resolveSelectedTableAudioVariant = useCallback((item, part) => {
+    const mapKey = `${getStableAudioIdentity(item)}_${part}`;
+    return resolveTableAudioPlaybackVariant({
+      variants: tableAudioVariantInventory?.[mapKey] || [],
+      voiceMode: tableLocalAudioVoiceMode,
+      voicePriority: tableAudioVoicePriority
+    });
+  }, [tableAudioVariantInventory, tableLocalAudioVoiceMode, tableAudioVoicePriority]);
+
+  const readTableAudioVariantBlob = useCallback(async variant => {
+    if (!variant) return null;
+    if (variant.sourceType === 'staging') return getAudioStagingBlob(variant.stagingId);
+    if (variant.sourceType === 'zip') return readTableAudioZipVariantBlob(variant);
+    if (variant.file instanceof Blob) return variant.file;
+    if (variant.url) {
+      const response = await fetch(variant.url);
+      if (!response.ok) throw new Error(`Unable to read local audio (${response.status}).`);
+      return response.blob();
+    }
+    return null;
+  }, []);
+
+  const exportTableAudioMp3 = useCallback(async (item, part) => {
+    const mapKey = `${getStableAudioIdentity(item)}_${part}`;
+    const variant = resolveSelectedTableAudioVariant(item, part);
+    if (!variant) {
+      alert('Audio belum tersedia. Generate atau load Folder/ZIP terlebih dahulu.');
+      return { status: 'missing' };
+    }
+    try {
+      const blob = await readTableAudioVariantBlob(variant);
+      if (!blob) throw new Error('Audio binary tidak tersedia.');
+      const filename = variant.filename || `${sanitizeFilename(getAudioFilenameIdentity(item))}_${sanitizeFilename(part)}.mp3`;
+      const url = URL.createObjectURL(blob);
+      triggerBrowserDownload(url, filename);
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      if (variant.sourceType === 'staging' && variant.stagingId) {
+        await markAudioStagingExported(variant.stagingId, { kind: 'mp3', filename });
+        await refreshTableAudioStaging();
+      }
+      recordAudioDownloadHistoryDurably({
+        mode: 'table', mapKey, part, engine: variant.engine || null, voice: variant.voiceId || null, filename, delivery: 'browser-mp3'
+      });
+      addLog('Audio', `MP3 export: ${filename} (${variant.sourceType || 'local'} source).`);
+      return { status: 'download-triggered', filename, sourceType: variant.sourceType };
+    } catch (error) {
+      addLog('Error', `MP3 export failed: ${error?.message || error}`);
+      alert(`MP3 export gagal: ${error?.message || error}`);
+      return { status: 'error', error };
+    }
+  }, [resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, recordAudioDownloadHistoryDurably]);
+
+  const removeTableStagedAudio = useCallback(async (item, part) => {
+    const mapKey = `${getStableAudioIdentity(item)}_${part}`;
+    const candidates = (tableAudioVariantInventory?.[mapKey] || []).filter(variant => variant?.sourceType === 'staging');
+    const selected = resolveTableAudioPlaybackVariant({ variants: candidates, voiceMode: tableLocalAudioVoiceMode, voicePriority: tableAudioVoicePriority });
+    if (!selected?.stagingId) return { status: 'not-staged' };
+    await releaseAudioStagingBlobs([selected.stagingId], { reason: 'per-card-manual-release' });
+    await refreshTableAudioStaging();
+    addLog('Audio', `Staged audio released: ${mapKey}.`);
+    return { status: 'released', id: selected.stagingId };
+  }, [tableAudioVariantInventory, tableLocalAudioVoiceMode, tableAudioVoicePriority, refreshTableAudioStaging, addLog]);
+
+  const resolveTableAudioVariantForSpec = useCallback((spec) => {
+    if (!spec?.mapKey) return null;
+    const variants = tableAudioVariantInventory?.[spec.mapKey] || [];
+    const requiredVoiceId = String(spec.requiredVoiceId || spec.voiceId || '').trim();
+    if (requiredVoiceId) {
+      const exact = variants.filter(variant => String(variant?.voiceId || '').toLowerCase() === requiredVoiceId.toLowerCase());
+      return resolveTableAudioPlaybackVariant({ variants: exact, voiceMode: requiredVoiceId, voicePriority: [requiredVoiceId] });
+    }
+    return resolveTableAudioPlaybackVariant({ variants, voiceMode: 'auto', voicePriority: tableAudioVoicePriority });
+  }, [tableAudioVariantInventory, tableAudioVoicePriority]);
+
+  const buildExportRecordFromSpec = useCallback((spec, variant) => {
+    if (!spec?.mapKey || !variant) return null;
+    return {
+      id: variant.stagingId || `${variant.sourceType || 'local'}:${variant.sourceId || 'source'}:${spec.mapKey}:${variant.voiceId || 'unknown'}`,
+      mapKey: spec.mapKey,
+      part: spec.part || variant.part || null,
+      bookId: spec.bookId || resolveTableAudioBookId(spec.stableId || spec.mapKey),
+      displayId: Number.isFinite(Number(spec.displayId)) ? Number(spec.displayId) : null,
+      voiceId: variant.voiceId || spec.requiredVoiceId || spec.voiceId || null,
+      engine: variant.engine || spec.engine || null,
+      filename: variant.filename || `${sanitizeFilename(spec.mapKey)}.mp3`,
+      size: Number(variant.size || variant.file?.size || variant.zipEntry?.uncompressedSize || 0),
+      hasBlob: true,
+      sourceType: variant.sourceType || 'local',
+      variant
+    };
+  }, []);
+
+  const exportCurrentSelectionMp3 = useCallback(async () => {
+    const slots = tableAudioBatchCoverage?.slots || [];
+    const logicalSeen = new Set();
+    const selected = [];
+    let availableCount = 0;
+    for (const slot of slots) {
+      const spec = {
+        ...slot,
+        voiceId: slot.requiredVoiceId || null,
+        bookId: resolveTableAudioBookId(slot.stableId || slot.mapKey)
+      };
+      const variant = resolveTableAudioVariantForSpec(spec);
+      if (!variant) continue;
+      const key = `${slot.mapKey}|${String(variant.voiceId || '').toLowerCase()}`;
+      if (logicalSeen.has(key)) continue;
+      logicalSeen.add(key);
+      availableCount += 1;
+      if (selected.length < DIRECT_MP3_BATCH_LIMIT) selected.push({ spec, variant });
+    }
+    if (!selected.length) {
+      alert('Belum ada audio Ready pada pilihan batch ini. Generate audio atau attach Folder/ZIP terlebih dahulu.');
+      return { status: 'empty' };
+    }
+
+    const results = [];
+    const historyRecords = [];
+    for (let index = 0; index < selected.length; index += 1) {
+      const { spec, variant } = selected[index];
+      setBatchStatusText(`MP3 ${index + 1}/${selected.length}`);
+      const blob = await readTableAudioVariantBlob(variant);
+      if (!blob) continue;
+      const filename = variant.filename || `${sanitizeFilename(spec.mapKey)}.mp3`;
+      const url = URL.createObjectURL(blob);
+      triggerBrowserDownload(url, filename);
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+      if (variant.sourceType === 'staging' && variant.stagingId) {
+        await markAudioStagingExported(variant.stagingId, { kind: 'mp3', filename });
+      }
+      historyRecords.push({
+        mode: 'table', mapKey: spec.mapKey, part: spec.part, engine: variant.engine || null,
+        voice: variant.voiceId || null, filename, delivery: 'browser-mp3'
+      });
+      results.push({ status: 'download-triggered', filename, sourceType: variant.sourceType, size: blob.size });
+    }
+    if (historyRecords.length) recordAudioDownloadHistoryDurably(historyRecords);
+    setBatchStatusText('');
+    await refreshTableAudioStaging();
+    addLog('Batch', `Direct MP3 export: ${results.length}/${selected.length} file • ${availableCount} Ready across Staging/Folder/ZIP.`);
+    return { status: 'completed', results, availableCount };
+  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+
+  const exportBatchSessions = useCallback(async (sessionIds) => {
+    const ids = [...new Set((Array.isArray(sessionIds) ? sessionIds : [sessionIds]).filter(Boolean))];
+    if (!ids.length) return { status: 'empty-selection' };
+    const sessions = (await listAudioBatchSessions({ mode: 'table' })).filter(session => ids.includes(session.id));
+    if (!sessions.length) return { status: 'missing-session' };
+
+    const specMap = new Map();
+    sessions.flatMap(session => session.requestedSpecs || []).forEach(spec => {
+      if (!spec?.mapKey) return;
+      const voiceKey = String(spec.voiceId || spec.requiredVoiceId || '').toLowerCase();
+      specMap.set(`${spec.mapKey}|${voiceKey}`, spec);
+    });
+
+    const exportRecords = [];
+    const unavailable = [];
+    for (const spec of specMap.values()) {
+      const variant = resolveTableAudioVariantForSpec(spec);
+      if (!variant) {
+        unavailable.push(spec);
+        continue;
+      }
+      const record = buildExportRecordFromSpec(spec, variant);
+      if (record) exportRecords.push(record);
+    }
+    if (!exportRecords.length) {
+      alert('Audio Batch ini sedang tidak tersedia dari IndexedDB Staging, Folder, maupun ZIP attached. Riwayat Batch tetap disimpan, tetapi binary perlu direconnect terlebih dahulu.');
+      return { status: 'unavailable', unavailableCount: unavailable.length };
+    }
+
+    setBatchStatusText(`Export ${exportRecords.length} Ready audio...`);
+    const mergedSessionId = ids.length === 1 ? ids[0] : `MERGE_${Date.now()}`;
+    const results = await exportTableAudioRecordZipGroups({
+      records: exportRecords,
+      sessionId: mergedSessionId,
+      readBlob: record => readTableAudioVariantBlob(record.variant),
+      onProgress: info => { if (info.phase === 'zip') setBatchStatusText(`ZIP • ${info.filename}`); },
+      onChunkExported: async ({ records: chunkRecords, filename }) => {
+        const stagingIds = chunkRecords
+          .filter(record => record.variant?.sourceType === 'staging' && record.variant?.stagingId)
+          .map(record => record.variant.stagingId);
+        if (stagingIds.length) await markAudioStagingExported(stagingIds, { kind: 'zip', sessionId: mergedSessionId, filename });
+      }
+    });
+
+    const now = Date.now();
+    for (const session of sessions) {
+      await saveAudioBatchSession({
+        ...session,
+        status: String(session.status || '').startsWith('running') ? 'interrupted-recovered' : session.status,
+        lastManualZipExportAt: now,
+        manualZipExportCount: Number(session.manualZipExportCount || 0) + results.length,
+        lastManualZipUnavailableCount: unavailable.length
+      });
+    }
+    recordAudioDownloadHistoryDurably(exportRecords.map(record => ({
+      mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine,
+      voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+    })));
+    setBatchStatusText('');
+    await refreshTableAudioStaging();
+    await refreshTableAudioBatchSessions();
+    addLog('Batch', `Batch Library export: ${exportRecords.length} Ready audio → ${results.length} ZIP${unavailable.length ? ` • ${unavailable.length} unavailable skipped` : ''}.`);
+    return { status: 'completed', results, exportedCount: exportRecords.length, unavailableCount: unavailable.length };
+  }, [resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+
+  const clearBatchSessionStaging = useCallback(async sessionId => {
+    const session = (await listAudioBatchSessions({ mode: 'table' })).find(row => row.id === sessionId);
+    if (!session) return { status: 'missing-session' };
+    const released = await releaseAudioStagingBlobs(session.audioIds || [], { reason: `batch-session-release:${sessionId}` });
+    await saveAudioBatchSession({ ...session, stagedReleasedAt: Date.now(), stagedReleasedCount: released });
+    await refreshTableAudioStaging();
+    await refreshTableAudioBatchSessions();
+    addLog('Batch', `Batch ${sessionId}: released ${released} staged binary.`);
+    return { status: 'released', released };
+  }, [refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog]);
+
+  const deleteBatchSessionHistory = useCallback(async sessionId => {
+    await deleteAudioBatchSession(sessionId);
+    await refreshTableAudioBatchSessions();
+    addLog('Batch', `Batch history deleted: ${sessionId}. Staged binary is unchanged.`);
+  }, [refreshTableAudioBatchSessions, addLog]);
 
   const handleCSVUpload = (e) => {
     return executeCsvImportFileService({
@@ -2497,15 +2833,26 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const revokeTableFolderVariantUrls = () => {
-    Object.values(tableAudioFolderVariantInventory || {}).forEach(variants => {
-      (variants || []).forEach(variant => {
-        if (!variant?.url) return;
-        try { URL.revokeObjectURL(variant.url); } catch { /* noop */ }
-      });
-    });
+    // Folder inventory stores File references only. Playback URLs are created
+    // lazily in a bounded cache and can be released independently.
+    clearTableAudioFolderRuntimeCache();
   };
 
-  const loadAudioFolderFiles = (files, _folderName = '', options = {}) => {
+  const releaseStagingCoveredByVerifiedSource = useCallback(async (externalVariants, sourceLabel = 'external') => {
+    const verified = (Array.isArray(externalVariants) ? externalVariants : []).filter(variant => variant?.verified && variant?.mapKey);
+    if (!verified.length) return 0;
+    const staged = await listAudioStagingMetadata({ mode: 'table', includeReleased: false });
+    const ids = staged.filter(record => verified.some(variant => isSameLogicalAudioVoice(record, variant))).map(record => record.id);
+    if (!ids.length) return 0;
+    const released = await releaseAudioStagingBlobs(ids, { reason: `verified-${sourceLabel}-replacement` });
+    if (released) {
+      await refreshTableAudioStaging();
+      addLog('Audio', `${sourceLabel}: ${released} duplicate staged audio released after exact source/voice verification.`);
+    }
+    return released;
+  }, [refreshTableAudioStaging, addLog]);
+
+  const loadAudioFolderFiles = async (files, _folderName = '', options = {}) => {
     clearGeneratedAudioMetaForMode(mode);
     if (mode === 'table') revokeTableFolderVariantUrls();
     const result = executeAudioFolderSelectService({
@@ -2525,7 +2872,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       onMatchedAudio: handleMatchedAudioInventory,
       edgeVoices: initialEdgeVoices
     });
-    if (mode === 'table') setTableAudioFolderVariantInventory(tableAudioVariantsFromRecords(result?.variants || []));
+    if (mode === 'table') {
+      setTableAudioFolderVariantInventory(tableAudioVariantsFromRecords(result?.variants || []));
+      await releaseStagingCoveredByVerifiedSource(result?.variants || [], 'Folder');
+    }
     return result;
   };
 
@@ -2553,6 +2903,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         return [...byIdentity.values()];
       });
       setAudioStatusTable(scan.matchedCount > 0 ? 'success' : (Object.keys(tableAudioFolderVariantInventory || {}).length ? 'success' : 'empty'));
+      await releaseStagingCoveredByVerifiedSource(scan.records || [], 'ZIP');
       addLog('System', `Table Audio ZIP: ${scan.archiveCount} archive, ${scan.matchedCount} matched audio, ${scan.orphanCount} orphan, ${scan.unsupportedCount} unsupported.`);
       alert(`[Table] Audio ZIP scan: ${scan.archiveCount} archive. Matched: ${scan.matchedCount}. Orphan: ${scan.orphanCount}. Unsupported: ${scan.unsupportedCount}.\nZIP dibaca sebagai archive index; audio diekstrak hanya saat diputar.`);
       return scan;
@@ -2568,40 +2919,48 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // Persist synchronously as well as updating React state. This prevents stale
     // Downloaded* records from resurrecting after an immediate browser refresh.
     const persisted = clearPersistedAudioDownloadHistoryForMode('table');
-    setAudioDownloadHistory(prev => {
-      const next = clearAudioDownloadHistoryForMode(prev, 'table');
-      // Preserve any newer non-Table records already present in state while using
-      // the persisted snapshot as a safety floor for older sessions.
-      return { ...persisted, ...next };
-    });
+    const stateCleared = clearAudioDownloadHistoryForMode(audioDownloadHistoryRef.current || {}, 'table');
+    // Preserve newer non-Table records while synchronously clearing Table history
+    // from both the runtime ref and durable localStorage snapshot.
+    const next = { ...persisted, ...stateCleared };
+    audioDownloadHistoryRef.current = next;
+    persistAudioDownloadHistory(next);
+    setAudioDownloadHistory(next);
   };
 
-  const resetTableAudioCoverageMemory = () => {
+  const resetTableAudioCoverageMemory = async () => {
     clearGeneratedAudioMetaForMode('table');
     clearTableAudioCoverageHistory();
-    addLog('System', 'Table Audio coverage memory reset. Downloaded* delivery history cleared; attached Folder/ZIP verified inventory remains active.');
+    const stagedExportRowsCleared = await clearAudioStagingExportHistoryForMode('table');
+    await refreshTableAudioStaging();
+    addLog('System', `Table Audio coverage memory reset. Downloaded*/Exported* history cleared (${stagedExportRowsCleared} staged ledger row${stagedExportRowsCleared === 1 ? '' : 's'}); attached Folder/ZIP and Staged binary availability remain active.`);
   };
 
   const clearTableGeneratedAudioRam = () => {
     const releasedCount = tableGeneratedSessionAudioCount;
+    clearAudioStagingRuntimeCache();
+    clearTableAudioFolderRuntimeCache();
+    clearTableAudioZipRuntimeCache();
     resetTableAudioTransientCoverageStatePreservingFolder();
-    addLog('System', `Table generated-session audio RAM cleared. Released ${releasedCount} Blob/ObjectURL slot${releasedCount === 1 ? '' : 's'}; Folder/ZIP sources and Downloaded* history remain unchanged.`);
+    addLog('System', `Table runtime audio cache cleared. Released ${releasedCount} legacy generated ObjectURL slot${releasedCount === 1 ? '' : 's'} plus bounded Staging/Folder/ZIP playback ObjectURL caches; IndexedDB Staging binaries, Folder/ZIP sources, and export history remain unchanged.`);
+  };
+
+  const clearTableAudioStaging = async () => {
+    const result = await clearAudioStagingForMode('table', { clearHistory: false });
+    await refreshTableAudioStaging();
+    await refreshTableAudioBatchSessions();
+    addLog('System', `Table Audio Staging cleared: ${result.released || 0} binary Blob${result.released === 1 ? '' : 's'} released; lightweight metadata/history retained.`);
+    return result;
   };
 
   const resetTableAudioTransientCoverageStatePreservingFolder = () => {
-    const preservedFolderMap = {};
-    const preservedUrls = new Set();
-    Object.entries(tableAudioFolderVariantInventory || {}).forEach(([mapKey, variants]) => {
-      const folderVariant = (Array.isArray(variants) ? variants : []).find(variant => variant?.sourceType === 'folder' && variant?.url);
-      if (!folderVariant?.url) return;
-      preservedFolderMap[mapKey] = folderVariant.url;
-      preservedUrls.add(folderVariant.url);
-    });
+    // Folder availability lives in tableAudioFolderVariantInventory and no
+    // longer requires one ObjectURL per slot in localAudioMapTable.
     Object.values(localAudioMapTable || {}).forEach(url => {
-      if (!url || preservedUrls.has(url)) return;
+      if (!url) return;
       try { URL.revokeObjectURL(url); } catch { /* noop */ }
     });
-    setLocalAudioMapTable(preservedFolderMap);
+    setLocalAudioMapTable({});
     clearGeneratedAudioMetaForMode('table');
   };
 
@@ -2710,7 +3069,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.detachAudioFolder = detachTableAudioFolderSource;
   folderInputRef.resetAudioCoverageMemory = resetTableAudioCoverageMemory;
   folderInputRef.clearGeneratedAudioRam = clearTableGeneratedAudioRam;
+  folderInputRef.clearAudioStaging = clearTableAudioStaging;
   folderInputRef.tableGeneratedAudioSummary = { count: tableGeneratedSessionAudioCount };
+  folderInputRef.tableAudioStagingSummary = tableAudioStagingSummary;
   folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 
@@ -2785,11 +3146,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleScroll = (e) => {
-     // FIX CRITICAL: Removed "if (isAutoScrolling.current) return;" blocker.
-     // This allows state synchronization even if the browser clamps the scroll position.
-     const currentScroll = e.currentTarget.scrollTop;
-     setScrollTop(currentScroll);
+     // R2: coalesce raw desktop virtual-list scroll events to at most one React
+     // state update per animation frame. The DOM scroll itself remains native.
+     tableAudioPendingScrollTopRef.current = e.currentTarget.scrollTop;
+     if (tableAudioScrollFrameRef.current !== null) return;
+     tableAudioScrollFrameRef.current = requestAnimationFrame(() => {
+       tableAudioScrollFrameRef.current = null;
+       setScrollTop(tableAudioPendingScrollTopRef.current);
+     });
   };
+
+  useEffect(() => () => {
+    if (tableAudioScrollFrameRef.current !== null) cancelAnimationFrame(tableAudioScrollFrameRef.current);
+    tableAudioScrollFrameRef.current = null;
+  }, []);
 
   const structuredTextBatchControls = structuredTextModeActive ? {
     preferences: structuredTextAudioGenerationPreferences,
@@ -2810,6 +3180,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
     tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
+    batchSessions: tableAudioBatchSessions, stagingRecords: tableAudioStagingRecords, stagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
+    onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions,
+    onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     inline: Boolean(options.inline),
     showClose: options.showClose !== false
   });
@@ -2900,7 +3273,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGeminiByokClear: handleGeminiByokClear, edgeVoices, edgeVoice, setEdgeVoice,
     edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
-    batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
+    batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
+    batchSessions: tableAudioBatchSessions, stagingRecords: tableAudioStagingRecords, stagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
+    onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions, onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
+    isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
     systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
@@ -3028,7 +3404,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     masteryByVocabId,
     cycleMasteryState,
     playbackSequence,
-    generatedAudioMeta
+    generatedAudioMeta,
+    tableAudioVariantInventory,
+    tableLocalAudioVoiceMode,
+    tableAudioVoicePriority,
+    audioDownloadHistory,
+    exportTableAudioMp3,
+    removeTableStagedAudio
     });
   };
 

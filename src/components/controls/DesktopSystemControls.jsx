@@ -20,6 +20,7 @@ export default function DesktopSystemControls({
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
   const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const [clearGeneratedRamConfirmOpen, setClearGeneratedRamConfirmOpen] = React.useState(false);
+  const [clearStagingConfirmOpen, setClearStagingConfirmOpen] = React.useState(false);
   const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
@@ -117,17 +118,16 @@ export default function DesktopSystemControls({
                   </div>
                   <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
                 </div>}
-                {mode === 'table' && <div className="grid grid-cols-2 gap-2">
-                  <button
-                    disabled={isSystemBusy}
-                    onClick={() => setResetCoverageConfirmOpen(true)}
-                    className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"
-                  ><RotateCcw className="w-3.5 h-3.5"/> Reset Audio Coverage Memory</button>
-                  <button
-                    disabled={isSystemBusy || !(folderInputRef?.tableGeneratedAudioSummary?.count > 0)}
-                    onClick={() => setClearGeneratedRamConfirmOpen(true)}
-                    className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 disabled:opacity-35"
-                  ><X className="w-3.5 h-3.5"/> Clear Audio RAM{folderInputRef?.tableGeneratedAudioSummary?.count > 0 ? ` (${folderInputRef.tableGeneratedAudioSummary.count})` : ''}</button>
+                {mode === 'table' && <div className="space-y-2">
+                  <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2 text-[9px]">
+                    <div className="flex items-center justify-between gap-2 font-black text-emerald-700 dark:text-emerald-300"><span>Audio Staging (IndexedDB)</span><span>{folderInputRef?.tableAudioStagingSummary?.count || 0} audio</span></div>
+                    <div className="mt-1 text-slate-500 dark:text-slate-400">{((folderInputRef?.tableAudioStagingSummary?.bytes || 0) / (1024 * 1024)).toFixed(1)} MB • survives refresh until released/cleared</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button disabled={isSystemBusy} onClick={() => setResetCoverageConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"><RotateCcw className="w-3 h-3"/> Reset Audio Coverage Memory</button>
+                    <button disabled={isSystemBusy} onClick={() => setClearGeneratedRamConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-violet-200 dark:border-violet-900 text-violet-700 dark:text-violet-300 disabled:opacity-35"><X className="w-3 h-3"/> Clear RAM</button>
+                    <button disabled={isSystemBusy || !(folderInputRef?.tableAudioStagingSummary?.count > 0)} onClick={() => setClearStagingConfirmOpen(true)} className="w-full flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[9px] font-bold border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 disabled:opacity-35"><X className="w-3 h-3"/> Clear Staging</button>
+                  </div>
                 </div>}
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -183,16 +183,24 @@ export default function DesktopSystemControls({
       />
       <SafetyConfirmDialog
         open={clearGeneratedRamConfirmOpen}
-        title="Clear generated audio RAM?"
-        message={`Melepas ${folderInputRef?.tableGeneratedAudioSummary?.count || 0} Blob/ObjectURL audio hasil generate dari memori sesi ProLingo. File ZIP/MP3 yang sudah terdownload tidak dihapus, Folder/ZIP source tetap aktif, CSV/IndexedDB/localStorage tidak dihapus, dan riwayat Downloaded* tetap dipertahankan.`}
+        title="Clear runtime audio cache?"
+        message="Melepas hanya runtime ObjectURL/cache audio sementara (legacy generated + playback cache Staging/ZIP). Blob yang tersimpan di Audio Staging IndexedDB tidak dihapus. Folder/ZIP, CSV, IndexedDB, login, cookie, dan export history tetap aman."
         confirmLabel="Clear Audio RAM"
         onCancel={() => setClearGeneratedRamConfirmOpen(false)}
         onConfirm={() => { setClearGeneratedRamConfirmOpen(false); folderInputRef.clearGeneratedAudioRam?.(); }}
       />
       <SafetyConfirmDialog
+        open={clearStagingConfirmOpen}
+        title="Clear Table Audio Staging?"
+        message={`Menghapus ${folderInputRef?.tableAudioStagingSummary?.count || 0} binary audio (${((folderInputRef?.tableAudioStagingSummary?.bytes || 0) / (1024 * 1024)).toFixed(1)} MB) dari IndexedDB Staging. Batch/export metadata kecil tetap disimpan; Folder/ZIP dan file download tidak dihapus.`}
+        confirmLabel="Clear Staging"
+        onCancel={() => setClearStagingConfirmOpen(false)}
+        onConfirm={() => { setClearStagingConfirmOpen(false); folderInputRef.clearAudioStaging?.(); }}
+      />
+      <SafetyConfirmDialog
         open={resetCoverageConfirmOpen}
         title="Reset Table audio coverage memory?"
-        message="Menghapus hanya riwayat Downloaded* Table dan metadata coverage/generation. Blob audio hasil generate di RAM tidak dilepas oleh tombol ini; gunakan Clear Audio RAM untuk membebaskan RAM. Audio Folder/ZIP tetap aktif. CSV, IndexedDB, login, cookie, dan data situs lain tidak dihapus."
+        message="Menghapus hanya riwayat Exported/Downloaded* Table dan metadata coverage legacy. Audio Staging IndexedDB tidak dihapus, Folder/ZIP tetap aktif, dan CSV/login/cookie/data situs lain tidak disentuh."
         confirmLabel="Reset Coverage"
         onCancel={() => setResetCoverageConfirmOpen(false)}
         onConfirm={() => { setResetCoverageConfirmOpen(false); folderInputRef.resetAudioCoverageMemory?.(); }}

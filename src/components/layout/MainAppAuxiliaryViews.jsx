@@ -11,7 +11,9 @@ const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="htt
 export const renderBatchPopupView = ({
   batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
   generatorEngine, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
-  isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true
+  isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
+  batchSessions = [], stagingRecords = [], stagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportBatchSessions = null,
+  onClearBatchStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
 }) => (
     <BatchPopup
       batchPanelRef={batchPanelRef}
@@ -31,6 +33,15 @@ export const renderBatchPopupView = ({
       DownloadCloudIcon={DownloadCloudIcon}
       inline={inline}
       showClose={showClose}
+      batchSessions={batchSessions}
+      stagingRecords={stagingRecords}
+      stagingSummary={stagingSummary}
+      batchAvailabilityById={batchAvailabilityById}
+      onExportCurrentMp3={onExportCurrentMp3}
+      onExportBatchSessions={onExportBatchSessions}
+      onClearBatchStaging={onClearBatchStaging}
+      onDeleteBatchHistory={onDeleteBatchHistory}
+      directMp3Limit={directMp3Limit}
     />
 );
 
@@ -82,7 +93,8 @@ export const renderMobileToolsView = ({
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
   setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch, testEdgeBackend,
   edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText, batchConfig, setBatchConfig, runBatchDownload,
-  tableCoverage, structuredTextBatch, isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
+  tableCoverage, structuredTextBatch, batchSessions, stagingRecords, stagingSummary, batchAvailabilityById, onExportCurrentMp3, onExportBatchSessions, onClearBatchStaging, onDeleteBatchHistory, directMp3Limit,
+  isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
@@ -186,6 +198,15 @@ export const renderMobileToolsView = ({
           runBatchDownload={runBatchDownload}
           tableCoverage={tableCoverage}
           structuredTextBatch={structuredTextBatch}
+          batchSessions={batchSessions}
+          stagingRecords={stagingRecords}
+          stagingSummary={stagingSummary}
+          batchAvailabilityById={batchAvailabilityById}
+          onExportCurrentMp3={onExportCurrentMp3}
+          onExportBatchSessions={onExportBatchSessions}
+          onClearBatchStaging={onClearBatchStaging}
+          onDeleteBatchHistory={onDeleteBatchHistory}
+          directMp3Limit={directMp3Limit}
           DownloadCloudIcon={DownloadCloudIcon}
           isBatchOpen={isBatchOpen}
           setIsBatchOpen={setIsBatchOpen}

@@ -2,10 +2,11 @@ const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
 
 const SOURCE_RANK = Object.freeze({
-  generated: 0,
+  staging: 0,
   folder: 1,
   zip: 2,
-  legacy: 3
+  generated: 3,
+  legacy: 4
 });
 
 export const normalizeTableAudioVoiceId = value => clean(value);
@@ -180,6 +181,7 @@ export const summarizeTableAudioVariantInventory = inventory => {
   let folderVariants = 0;
   let zipVariants = 0;
   let generatedVariants = 0;
+  let stagingVariants = 0;
   mapKeys.forEach(mapKey => {
     (inventory?.[mapKey] || []).forEach(variant => {
       sourceCopies += 1;
@@ -187,10 +189,11 @@ export const summarizeTableAudioVariantInventory = inventory => {
       // even if that same variant is available from Folder and one/many ZIPs.
       const voiceKey = lower(variant?.voiceId) || `unknown:${lower(variant?.filename)}`;
       effectiveAudio.add(`${mapKey}|${voiceKey}`);
-      if (variant?.sourceType === 'folder') folderVariants += 1;
+      if (variant?.sourceType === 'staging') stagingVariants += 1;
+      else if (variant?.sourceType === 'folder') folderVariants += 1;
       else if (variant?.sourceType === 'zip') zipVariants += 1;
       else if (variant?.sourceType === 'generated') generatedVariants += 1;
     });
   });
-  return { slots: mapKeys.length, variants: effectiveAudio.size, sourceCopies, folderVariants, zipVariants, generatedVariants };
+  return { slots: mapKeys.length, variants: effectiveAudio.size, sourceCopies, stagingVariants, folderVariants, zipVariants, generatedVariants };
 };

@@ -58,7 +58,7 @@ export const buildTableAudioBatchSlots = ({ playlist, batchConfig, generatorEngi
   return slots;
 };
 
-export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, downloadHistory }) => {
+export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, downloadHistory, stagingRecords = [] }) => {
   const variants = (tableAudioVariantInventory?.[slot.mapKey] || []).filter(Boolean);
   const verifiedVariants = variants.filter(variant => variant?.verified !== false || ['folder', 'zip'].includes(variant?.sourceType));
   const matchingVerified = slot.requiredVoiceId
@@ -83,6 +83,36 @@ export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, genera
       filename: other?.filename || null,
       voiceId: other?.voiceId || null,
       sourceType: other?.sourceType || null
+    };
+  }
+
+  // R2 durable export ledger: released staging metadata survives refresh/OOM and
+  // is voice-specific. This is completion history only; it never makes playback Ready.
+  const stagedExportHistory = (Array.isArray(stagingRecords) ? stagingRecords : []).filter(record =>
+    record?.mapKey === slot.mapKey && (record?.mp3ExportedAt || record?.zipExportedAt)
+  );
+  const matchingExported = slot.requiredVoiceId
+    ? stagedExportHistory.find(record => record?.voiceId && same(record.voiceId, slot.requiredVoiceId))
+    : stagedExportHistory[0];
+  if (matchingExported) {
+    return {
+      ...slot,
+      status: AUDIO_DOWNLOAD_COVERAGE_STATUS.DOWNLOADED,
+      verified: false,
+      filename: matchingExported.filename || matchingExported.lastExportFilename || null,
+      voiceId: matchingExported.voiceId || null,
+      sourceType: 'staging-export-history'
+    };
+  }
+  if (stagedExportHistory.length) {
+    const other = stagedExportHistory.find(record => record?.voiceId) || stagedExportHistory[0];
+    return {
+      ...slot,
+      status: AUDIO_DOWNLOAD_COVERAGE_STATUS.OTHER_VOICE,
+      verified: false,
+      filename: other?.filename || other?.lastExportFilename || null,
+      voiceId: other?.voiceId || null,
+      sourceType: 'staging-export-history'
     };
   }
 

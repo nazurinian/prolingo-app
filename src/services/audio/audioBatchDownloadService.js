@@ -1,9 +1,18 @@
-import { getAdvancedExpressionPairs, getStableAudioIdentity } from '../../utils/audioUtils';
+import { getAdvancedExpressionPairs, getStableAudioIdentity, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { getMaxAssignedNoFromRecords } from '../../utils/csvUtils';
 import { shouldDownloadTableCoverageSlot } from '../../domain/audio/audioDownloadCoverageDomain.js';
-import { triggerBrowserZipDownload } from './browserZipService.js';
+import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
+import {
+  getAudioOriginStorageEstimate,
+  listAudioStagingMetadata,
+  releaseAudioStagingBlobs,
+  saveAudioBatchSession
+} from '../persistence/audioStagingIndexedDbService.js';
+import { exportStagedAudioZipGroups } from './audioBatchExportService.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const STORAGE_SAFETY_RESERVE_BYTES = 128 * 1024 * 1024;
+const STORAGE_PRESSURE_RATIO = 0.92;
 
 const getExpressionSelection = (batchConfig, lang) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
@@ -30,6 +39,30 @@ const buildSelectedParts = ({ item, batchConfig, generatorEngine }) => {
   return result;
 };
 
+const createBatchSessionId = () => `BATCH_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+const collectRequestedSlotSpecs = ({ targets, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice }) => {
+  const specs = [];
+  targets.forEach(item => {
+    buildSelectedParts({ item, batchConfig, generatorEngine }).forEach(([part]) => {
+      specs.push({
+        mapKey: `${getStableAudioIdentity(item)}_${part}`,
+        displayId: item.displayId,
+        part,
+        bookId: resolveTableAudioBookId(item),
+        voiceId: generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : null
+      });
+    });
+  });
+  return specs;
+};
+
+const matchesRequestedSpec = (record, specs) => specs.some(spec => {
+  if (record?.mapKey !== spec.mapKey) return false;
+  if (!spec.voiceId) return true;
+  return String(record?.voiceId || '').toLowerCase() === String(spec.voiceId).toLowerCase();
+});
+
 export const executeAudioBatchDownloadService = async ({
   isBatchDownloading,
   batchStopSignalRef,
@@ -39,21 +72,24 @@ export const executeAudioBatchDownloadService = async ({
   addLog,
   batchConfig,
   mode,
-  sequenceHighWater,
   playlist,
   generatorEngine,
+  edgeVoice = null,
+  edgeIndonesianVoice = null,
   setIsBatchDownloading,
   generateAIAudio,
   coverageByMapKey = null,
   missingOnly = true,
-  onBatchDelivered = null
+  onBatchDelivered = null,
+  onBatchSessionsChanged = null,
+  onStagingChanged = null
 }) => {
   if (isBatchDownloading) {
     batchStopSignalRef.current = true;
     generationAbortControllerRef.current?.abort();
     setIsBatchStopping(true);
     setBatchStatusText('Stopping...');
-    addLog('Batch', 'Stopping batch download...');
+    addLog('Batch', 'Stopping batch generation...');
     return { status: 'stopping' };
   }
 
@@ -91,66 +127,174 @@ export const executeAudioBatchDownloadService = async ({
     return { status: 'no-selection' };
   }
 
+  // R2 staging/session flow is intentionally Table-first while Structured Text remains paused.
+  if (mode !== 'table') {
+    alert('R2 Audio Staging batch saat ini difokuskan untuk Table. Structured Text tetap memakai flow C3.4.2 sampai checkpoint Text berikutnya.');
+    return { status: 'table-only-r2' };
+  }
+
+  const sessionId = createBatchSessionId();
+  const autoExportZip = batchConfig?.autoExportZip !== false;
+  const requestedSpecs = collectRequestedSlotSpecs({ targets, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice });
+  let session = await saveAudioBatchSession({
+    id: sessionId,
+    mode: 'table',
+    status: 'running',
+    generatorEngine,
+    start: startIdx,
+    end: endIdx,
+    requestedCount: requestedSpecs.length,
+    requestedSpecs,
+    autoExportZip,
+    generatedCount: 0,
+    skippedCount: 0,
+    failedCount: 0,
+    exportedZipCount: 0,
+    safetyExportCount: 0,
+    audioIds: []
+  });
+  await onBatchSessionsChanged?.();
+
   setIsBatchDownloading(true);
-  const packageEntries = [];
-  const deliveredRecords = [];
   let generatedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
-  addLog('Info', `Starting BATCH DL (${targets.length} items) via ${generatorEngine.toUpperCase()} • ${missingOnly ? 'missing only' : 'redownload all'}...`);
+  const safetyFlushedIds = new Set();
+  const deliveredRecords = [];
+  let processedSinceStorageCheck = 0;
+  addLog('Info', `Starting R2 batch (${targets.length} items) via ${generatorEngine.toUpperCase()} • ${missingOnly ? 'missing only' : 'redownload all'} • Auto ZIP ${autoExportZip ? 'ON' : 'OFF'}...`);
+
+  const refreshSessionSnapshot = async (extra = {}) => {
+    const allMeta = await listAudioStagingMetadata({ mode: 'table', includeReleased: true });
+    const relevant = allMeta.filter(record => matchesRequestedSpec(record, requestedSpecs));
+    session = await saveAudioBatchSession({
+      ...session,
+      generatedCount,
+      skippedCount,
+      failedCount,
+      stagedCount: relevant.filter(record => record.hasBlob).length,
+      stagedBytes: relevant.filter(record => record.hasBlob).reduce((sum, record) => sum + Number(record.size || 0), 0),
+      audioIds: relevant.map(record => record.id),
+      ...extra
+    });
+    await onBatchSessionsChanged?.();
+    await onStagingChanged?.();
+    return relevant;
+  };
+
+  const safetyFlushIfNeeded = async () => {
+    processedSinceStorageCheck += 1;
+    if (processedSinceStorageCheck < 20) return false;
+    processedSinceStorageCheck = 0;
+    const estimate = await getAudioOriginStorageEstimate();
+    if (!estimate?.quota) return false;
+    const pressure = estimate.available < STORAGE_SAFETY_RESERVE_BYTES || estimate.ratio >= STORAGE_PRESSURE_RATIO;
+    if (!pressure) return false;
+    const relevant = (await refreshSessionSnapshot()).filter(record => record.hasBlob && !safetyFlushedIds.has(record.id));
+    if (!relevant.length) return false;
+    if (!autoExportZip) {
+      session = await saveAudioBatchSession({ ...session, status: 'paused-storage-pressure', storageEstimate: estimate });
+      batchStopSignalRef.current = true;
+      setBatchStatusText('Storage pressure — stopped safely');
+      addLog('Warn', 'Audio Staging mendekati batas origin storage. Auto Export ZIP OFF, batch dihentikan tanpa menghapus staged audio.');
+      return true;
+    }
+    setBatchStatusText(`Safety export • ${relevant.length} staged`);
+    const exportResults = await exportStagedAudioZipGroups({ records: relevant, sessionId, onProgress: info => {
+      if (info.phase === 'zip') setBatchStatusText(`Safety ZIP • ${info.filename}`);
+    }});
+    const exportedIds = [...new Set(exportResults.flatMap(result => result.ids || []))];
+    exportedIds.forEach(id => safetyFlushedIds.add(id));
+    deliveredRecords.push(...relevant.filter(record => exportedIds.includes(record.id)).map(record => ({
+      mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+    })));
+    await releaseAudioStagingBlobs(exportedIds, { reason: 'storage-pressure-exported' });
+    session = await saveAudioBatchSession({
+      ...session,
+      safetyExportCount: Number(session.safetyExportCount || 0) + exportResults.length,
+      exportedZipCount: Number(session.exportedZipCount || 0) + exportResults.length,
+      status: 'running-after-safety-export',
+      storageEstimate: estimate
+    });
+    await onBatchDelivered?.(deliveredRecords, { status: 'storage-pressure-safety-export', exports: exportResults });
+    deliveredRecords.length = 0;
+    await onBatchSessionsChanged?.();
+    await onStagingChanged?.();
+    addLog('Batch', `Storage-pressure safety export: ${exportResults.length} ZIP, ${exportedIds.length} staged binaries released.`);
+    return true;
+  };
 
   try {
     for (const item of targets) {
       if (batchStopSignalRef.current) break;
-      const parts = mode === 'table' ? buildSelectedParts({ item, batchConfig, generatorEngine }) : [['full', 'Full', 250]];
+      const parts = buildSelectedParts({ item, batchConfig, generatorEngine });
       for (const [part, label, waitMs] of parts) {
         if (batchStopSignalRef.current) break;
         const stableId = getStableAudioIdentity(item);
         const mapKey = `${stableId}_${part}`;
-        if (mode === 'table' && missingOnly && !shouldDownloadTableCoverageSlot(coverageByMapKey?.[mapKey])) {
+        if (missingOnly && !shouldDownloadTableCoverageSlot(coverageByMapKey?.[mapKey])) {
           skippedCount += 1;
           continue;
         }
-        setBatchStatusText(`${item.displayId} ${label}`);
-        const result = await generateAIAudio(item, part, { skipReplaceConfirm: true, deferBrowserDownload: true, suppressFailureAlert: true });
-        if (result?.status === 'success' && result?.blob) {
-          generatedCount += 1;
-          packageEntries.push({ filename: result.filename, blob: result.blob });
-          deliveredRecords.push({
-            mode,
-            mapKey: result.mapKey || mapKey,
-            part,
-            engine: result.engine || generatorEngine,
-            voice: result.voice || null,
-            filename: result.filename,
-            delivery: 'browser-zip'
-          });
-        } else if (result?.status === 'error') {
-          failedCount += 1;
-        } else if (result?.status === 'cancelled' && !batchStopSignalRef.current) {
-          failedCount += 1;
-        }
+        setBatchStatusText(`${item.displayId} ${label} • staging`);
+        const result = await generateAIAudio(item, part, {
+          skipReplaceConfirm: true,
+          deferBrowserDownload: true,
+          suppressFailureAlert: true,
+          batchSessionId: sessionId
+        });
+        if (result?.status === 'success' && result?.stagingRecord) generatedCount += 1;
+        else if (result?.status === 'error') failedCount += 1;
+        else if (result?.status === 'cancelled' && !batchStopSignalRef.current) failedCount += 1;
+
+        if ((generatedCount + failedCount) % 10 === 0) await refreshSessionSnapshot();
+        await safetyFlushIfNeeded();
         if (!batchStopSignalRef.current && waitMs) await delay(waitMs);
       }
     }
 
-    let packageResult = null;
-    if (packageEntries.length) {
-      packageResult = await triggerBrowserZipDownload({
-        entries: packageEntries,
-        filename: `ProLingo_${mode === 'table' ? 'Table' : 'Text'}_Audio_${startIdx}-${endIdx}_${Date.now()}.zip`
-      });
-      await onBatchDelivered?.(deliveredRecords, packageResult);
-      addLog('Batch', `Package ready: ${packageResult.fileCount} audio → ${packageResult.filename}.`);
+    let exportResults = [];
+    const relevant = await refreshSessionSnapshot();
+    if (autoExportZip && !batchStopSignalRef.current) {
+      const exportable = relevant.filter(record => record.hasBlob && !safetyFlushedIds.has(record.id));
+      if (exportable.length) {
+        setBatchStatusText(`Export ZIP • ${exportable.length} staged`);
+        exportResults = await exportStagedAudioZipGroups({
+          records: exportable,
+          sessionId,
+          onProgress: info => {
+            if (info.phase === 'zip') setBatchStatusText(`ZIP • ${info.filename}`);
+          }
+        });
+        const exportedIds = [...new Set(exportResults.flatMap(result => result.ids || []))];
+        deliveredRecords.push(...exportable.filter(record => exportedIds.includes(record.id)).map(record => ({
+          mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId, filename: record.filename, delivery: 'browser-zip'
+        })));
+        if (deliveredRecords.length) await onBatchDelivered?.(deliveredRecords, { status: 'batch-export', exports: exportResults });
+      }
     }
+
     const stopped = batchStopSignalRef.current;
-    const status = stopped ? 'cancelled' : failedCount ? 'completed-with-errors' : generatedCount ? 'completed' : 'up-to-date';
-    addLog('Batch', `${status}: generated ${generatedCount}, skipped covered ${skippedCount}, failed ${failedCount}.`);
-    return { status, generatedCount, skippedCount, failedCount, packageResult };
+    const status = stopped ? (session.status === 'paused-storage-pressure' ? 'paused-storage-pressure' : 'cancelled') : failedCount ? 'completed-with-errors' : generatedCount ? 'completed' : 'up-to-date';
+    session = await saveAudioBatchSession({
+      ...session,
+      status,
+      generatedCount,
+      skippedCount,
+      failedCount,
+      exportedZipCount: Number(session.exportedZipCount || 0) + exportResults.length,
+      completedAt: stopped ? null : Date.now(),
+      stoppedAt: stopped ? Date.now() : null
+    });
+    await refreshSessionSnapshot({ status: session.status, completedAt: session.completedAt, stoppedAt: session.stoppedAt, exportedZipCount: session.exportedZipCount });
+    addLog('Batch', `${status}: staged ${generatedCount}, skipped covered ${skippedCount}, failed ${failedCount}, ZIP ${session.exportedZipCount || 0}.`);
+    return { status, session, generatedCount, skippedCount, failedCount, exportResults };
   } finally {
     setIsBatchDownloading(false);
     setBatchStatusText('');
     setIsBatchStopping(false);
     batchStopSignalRef.current = false;
+    await onBatchSessionsChanged?.();
+    await onStagingChanged?.();
   }
 };

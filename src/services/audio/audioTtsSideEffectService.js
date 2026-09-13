@@ -88,6 +88,7 @@ setEdgeHealth,
 setLocalAudioMapTable,
 setLocalAudioMapText,
 onGeneratedAudio,
+persistGeneratedAudio = null,
 addLog,
 deferBrowserDownload = false,
 suppressFailureAlert = false
@@ -213,27 +214,49 @@ suppressFailureAlert = false
       }
 
       if (blob) {
-          const url = URL.createObjectURL(blob);
-          if (mode === 'table') {
-              setLocalAudioMapTable(prev => {
-                  const key = resolveGeneratedAudioMapKey({ mode, stableId, part });
-                  if (prev[key]) URL.revokeObjectURL(prev[key]);
-                  return { ...prev, [key]: url };
-              });
-          } else {
-              setLocalAudioMapText(prev => {
-                  const key = resolveGeneratedAudioMapKey({ mode, stableId, part });
-                  if (prev[key]) URL.revokeObjectURL(prev[key]);
-                  return { ...prev, [key]: url };
-              });
-          }
-
           filename = resolveGeneratedAudioFilename({ generatorEngine, blobType: blob.type, filename });
           const generatedKey = resolveGeneratedAudioMapKey({ mode, stableId, part });
           const generatedVoice = generatorEngine === 'edge'
               ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
               : aiVoiceName;
-          const deliveryStatus = deferBrowserDownload ? 'pending-package' : 'browser-direct-triggered';
+
+          // R2: Table generation persists the binary to Audio Staging IndexedDB.
+          // The large Blob/ObjectURL is no longer retained in localAudioMapTable.
+          let stagingRecord = null;
+          if (typeof persistGeneratedAudio === 'function') {
+              stagingRecord = await persistGeneratedAudio({
+                  mode,
+                  mapKey: generatedKey,
+                  stableId,
+                  part,
+                  engine: generatorEngine,
+                  voice: generatedVoice,
+                  filename,
+                  blob
+              });
+          }
+
+          let url = null;
+          if (!stagingRecord) {
+              url = URL.createObjectURL(blob);
+              if (mode === 'table') {
+                  setLocalAudioMapTable(prev => {
+                      const key = generatedKey;
+                      if (prev[key]) URL.revokeObjectURL(prev[key]);
+                      return { ...prev, [key]: url };
+                  });
+              } else {
+                  setLocalAudioMapText(prev => {
+                      const key = generatedKey;
+                      if (prev[key]) URL.revokeObjectURL(prev[key]);
+                      return { ...prev, [key]: url };
+                  });
+              }
+          }
+
+          const deliveryStatus = stagingRecord
+              ? 'staged-ready'
+              : (deferBrowserDownload ? 'pending-package' : 'browser-direct-triggered');
           onGeneratedAudio?.({
               mode,
               mapKey: generatedKey,
@@ -241,11 +264,14 @@ suppressFailureAlert = false
               engine: generatorEngine,
               voice: generatedVoice,
               filename,
-              deliveryStatus
+              deliveryStatus,
+              stagingId: stagingRecord?.id || null,
+              staged: Boolean(stagingRecord)
           });
-          if (!deferBrowserDownload) triggerBrowserDownload(url, filename);
-          addLog("Success", `${deferBrowserDownload ? 'Generated' : 'Saved'}: ${filename}`);
-          return { status: 'success', mapKey: generatedKey, filename, blob, url, part, engine: generatorEngine, voice: generatedVoice, deliveryStatus };
+
+          if (!deferBrowserDownload && !stagingRecord) triggerBrowserDownload(url, filename);
+          addLog("Success", `${stagingRecord ? 'Staged' : deferBrowserDownload ? 'Generated' : 'Saved'}: ${filename}`);
+          return { status: 'success', mapKey: generatedKey, filename, blob, url, part, engine: generatorEngine, voice: generatedVoice, deliveryStatus, stagingRecord };
       }
   } catch (e) {
       if (isGenerationCancelled(e.name)) {

@@ -1,10 +1,23 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Loader2, Lock, RefreshCw, X } from 'lucide-react';
+import { Download, FileAudio, Loader2, Lock, RefreshCw, Trash2, X } from 'lucide-react';
 import { getAdvancedExpressionPairs, getItemPartText, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 
-const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, aiLoadingId, generateAIAudio }) => {
+const SOURCE_LABEL = Object.freeze({
+  staging: 'IndexedDB Staging',
+  folder: 'Audio Folder',
+  zip: 'Audio ZIP',
+  generated: 'Runtime generated',
+  legacy: 'Legacy local'
+});
+
+const parseActionState = value => Object.fromEntries(String(value || '').split('|').filter(Boolean).map(entry => {
+  const [part, sourceType, mp3, zip, voiceId] = entry.split(':');
+  return [part, { sourceType, mp3Exported: mp3 === '1', zipExported: zip === '1', voiceId: voiceId || null }];
+}));
+
+const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, aiLoadingId, generateAIAudio, onRequestAction }) => {
   const text = String(getItemPartText(item, part) || '').trim();
   const languageLocked = generatorEngine === 'gemini' && isIndonesianAudioPart(part);
   const loading = aiLoadingId === `${item.id}-${part}`;
@@ -14,14 +27,18 @@ const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, ai
     : !text
       ? 'No text available'
       : loaded
-        ? 'Replace current session audio'
-        : 'Download audio';
+        ? 'Open audio actions'
+        : 'Generate to Audio Staging';
 
   return (
     <button
       type="button"
       disabled={disabled}
-      onClick={(event) => { event.stopPropagation(); generateAIAudio(item, part); }}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (loaded) onRequestAction?.(part);
+        else generateAIAudio(item, part);
+      }}
       className={`h-10 w-full rounded-xl border flex items-center justify-center transition-[background-color,border-color,color,opacity,transform] active:scale-[0.98] ${
         languageLocked
           ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900/50 text-slate-400 cursor-not-allowed'
@@ -34,7 +51,7 @@ const AudioCellButton = ({ item, part, loaded, generatorEngine, isSystemBusy, ai
       title={title}
       aria-label={title}
     >
-      {languageLocked ? <Lock className="h-4 w-4" /> : loading ? <Loader2 className="h-4 w-4 animate-spin" /> : loaded ? <RefreshCw className="h-4 w-4" /> : <Download className="h-4 w-4" />}
+      {languageLocked ? <Lock className="h-4 w-4" /> : loading ? <Loader2 className="h-4 w-4 animate-spin" /> : loaded ? <FileAudio className="h-4 w-4" /> : <Download className="h-4 w-4" />}
     </button>
   );
 };
@@ -47,11 +64,26 @@ export default function AudioDownloadPanel({
   isSystemBusy,
   aiLoadingId,
   generateAIAudio,
-  loadedAudioParts = ''
+  loadedAudioParts = '',
+  audioActionParts = '',
+  exportAudioMp3 = null,
+  removeStagedAudio = null
 }) {
+  const [actionPart, setActionPart] = React.useState(null);
+  const [actionBusy, setActionBusy] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!open) {
+      setActionPart(null);
+      setActionBusy(null);
+    }
+  }, [open, item?.id]);
+
   if (!open || !item || typeof document === 'undefined') return null;
 
   const loadedSet = new Set(String(loadedAudioParts || '').split('|').filter(Boolean));
+  const actionState = parseActionState(audioActionParts);
+  const selectedState = actionPart ? (actionState[actionPart] || {}) : null;
   const expressions = getAdvancedExpressionPairs(item).filter(pair => pair.en.trim() || pair.idn.trim());
   const rows = [
     { key: 'word', label: 'Word', enPart: 'word', idnPart: 'word_idn' },
@@ -59,6 +91,13 @@ export default function AudioDownloadPanel({
     ...expressions.map(pair => ({ key: `exp${pair.number}`, label: `EXP${pair.number}`, enPart: `exp${pair.number}_en`, idnPart: `exp${pair.number}_idn` }))
   ];
   const engineLabel = generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini';
+
+  const runAction = async (key, fn) => {
+    if (!fn || actionBusy) return;
+    setActionBusy(key);
+    try { await fn(); }
+    finally { setActionBusy(null); }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[95] pointer-events-none md:flex md:items-center md:justify-center" onClick={(event) => event.stopPropagation()}>
@@ -77,12 +116,25 @@ export default function AudioDownloadPanel({
               <h3 className="text-sm font-black">Audio</h3>
               <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${generatorEngine === 'edge' ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'}`}>{engineLabel}</span>
             </div>
-            <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{capitalizeDisplayText(item.word || item.text || 'Item')} • ↓ download • ↻ replace</p>
+            <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{capitalizeDisplayText(item.word || item.text || 'Item')} • first click stages • loaded click opens actions</p>
           </div>
           <button type="button" onClick={onClose} className="h-9 w-9 rounded-full border border-slate-200 dark:border-slate-600 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"><X className="h-4 w-4" /></button>
         </header>
 
         <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3 md:p-4">
+          {actionPart && <div className="mb-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><div className="text-[10px] font-black text-emerald-800 dark:text-emerald-200">{actionPart.toUpperCase()} • {SOURCE_LABEL[selectedState?.sourceType] || selectedState?.sourceType || 'Local audio'}</div><div className="mt-1 text-[8px] text-slate-500 dark:text-slate-400">{selectedState?.voiceId ? `Voice: ${selectedState.voiceId} • ` : ''}MP3 exported*: {selectedState?.mp3Exported ? 'yes' : 'no'} • ZIP exported*: {selectedState?.zipExported ? 'yes' : 'no'}</div></div>
+              <button type="button" onClick={() => setActionPart(null)} className="rounded p-1 text-slate-400 hover:bg-white/60 dark:hover:bg-slate-800"><X className="h-3.5 w-3.5"/></button>
+            </div>
+            <div className={`mt-2 grid gap-2 ${selectedState?.sourceType === 'staging' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('mp3', () => exportAudioMp3?.(item, actionPart))} className="rounded-lg bg-emerald-600 px-2 py-2 text-[9px] font-black text-white disabled:opacity-40">{actionBusy === 'mp3' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Download className="mr-1 inline h-3 w-3"/>}MP3</button>
+              <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('regen', async () => { await generateAIAudio(item, actionPart, { skipReplaceConfirm: true }); setActionPart(null); })} className="rounded-lg border border-indigo-200 dark:border-indigo-800 px-2 py-2 text-[9px] font-black text-indigo-700 dark:text-indigo-300 disabled:opacity-40">{actionBusy === 'regen' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <RefreshCw className="mr-1 inline h-3 w-3"/>}Regenerate</button>
+              {selectedState?.sourceType === 'staging' && <button type="button" disabled={isSystemBusy || actionBusy} onClick={() => runAction('release', async () => { await removeStagedAudio?.(item, actionPart); setActionPart(null); })} className="rounded-lg border border-rose-200 dark:border-rose-900 px-2 py-2 text-[9px] font-black text-rose-700 dark:text-rose-300 disabled:opacity-40">{actionBusy === 'release' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Trash2 className="mr-1 inline h-3 w-3"/>}Release</button>}
+            </div>
+            <p className="mt-2 text-[8px] leading-relaxed text-slate-400">Download MP3 reuses the current Staging / Folder / ZIP binary. Regenerate creates a new Staging variant and never overwrites the external Folder/ZIP file.</p>
+          </div>}
+
           {generatorEngine === 'gemini' && <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/15 px-2.5 py-2 text-[9px] font-bold text-amber-700 dark:text-amber-300">Gemini mode: English only. Indonesian audio is locked.</div>}
 
           <div className="grid grid-cols-[minmax(72px,1fr)_88px_88px] items-center gap-2 text-[10px]">
@@ -92,14 +144,14 @@ export default function AudioDownloadPanel({
             {rows.map(row => (
               <React.Fragment key={row.key}>
                 <div className={`h-10 rounded-xl border px-2 flex items-center font-black ${row.key.startsWith('exp') ? 'border-violet-100 dark:border-violet-900 bg-violet-50/80 dark:bg-violet-950/25 text-violet-700 dark:text-violet-300' : 'border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 text-slate-700 dark:text-slate-200'}`}>{row.label}</div>
-                <AudioCellButton item={item} part={row.enPart} loaded={loadedSet.has(row.enPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} />
-                <AudioCellButton item={item} part={row.idnPart} loaded={loadedSet.has(row.idnPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} />
+                <AudioCellButton item={item} part={row.enPart} loaded={loadedSet.has(row.enPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} onRequestAction={setActionPart} />
+                <AudioCellButton item={item} part={row.idnPart} loaded={loadedSet.has(row.idnPart)} generatorEngine={generatorEngine} isSystemBusy={isSystemBusy} aiLoadingId={aiLoadingId} generateAIAudio={generateAIAudio} onRequestAction={setActionPart} />
               </React.Fragment>
             ))}
           </div>
 
           <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
-            <strong className="text-slate-700 dark:text-slate-200">Replace stays session-only.</strong> Existing files in the selected Audio Folder are not deleted or overwritten; Refresh Audio Folder can restore the folder path.
+            <strong className="text-slate-700 dark:text-slate-200">R2 source parity.</strong> Generated audio is Staged in IndexedDB and survives refresh. Folder/ZIP audio can be re-exported as MP3 without opening or extracting the source manually.
           </div>
         </div>
       </section>

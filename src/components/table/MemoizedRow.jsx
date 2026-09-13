@@ -56,7 +56,10 @@ export const MemoizedRow = memo(({
     masteryTrackable,
     onCycleMastery,
     playbackSequence,
-    audioSourceParts = ''
+    audioSourceParts = '',
+    audioActionParts = '',
+    exportTableAudioMp3 = null,
+    removeTableStagedAudio = null
 }) => {
     const [audioPanelOpen, setAudioPanelOpen] = useState(false);
     const isMenuOpen = activeMenuId === rowId;
@@ -230,6 +233,9 @@ export const MemoizedRow = memo(({
                 aiLoadingId={aiLoadingId}
                 generateAIAudio={generateAIAudio}
                 loadedAudioParts={loadedAudioParts}
+                audioActionParts={audioActionParts}
+                exportAudioMp3={exportTableAudioMp3}
+                removeStagedAudio={removeTableStagedAudio}
             />
         </div>
     );
@@ -249,6 +255,7 @@ export const MemoizedRow = memo(({
     prev.localSentUrl === next.localSentUrl &&
     prev.localMeaningUrl === next.localMeaningUrl &&
     prev.loadedAudioParts === next.loadedAudioParts &&
+    prev.audioActionParts === next.audioActionParts &&
     prev.aiLoadingId === next.aiLoadingId &&
     prev.style.top === next.style.top &&
     prev.activeMenuId === next.activeMenuId &&

@@ -1,5 +1,58 @@
 import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils.js';
 
+const FOLDER_OBJECT_URL_CACHE_LIMIT = 12;
+const tableFolderObjectUrlCache = new Map();
+
+const folderCacheKey = variant => {
+  const file = variant?.file;
+  return [
+    String(variant?.sourceId || 'active-folder'),
+    String(variant?.mapKey || ''),
+    String(variant?.voiceId || ''),
+    String(file?.name || variant?.filename || ''),
+    Number(file?.size || 0),
+    Number(file?.lastModified || 0)
+  ].join('|');
+};
+
+const touchFolderObjectUrlCache = key => {
+  const entry = tableFolderObjectUrlCache.get(key);
+  if (!entry) return;
+  tableFolderObjectUrlCache.delete(key);
+  tableFolderObjectUrlCache.set(key, entry);
+};
+
+const trimFolderObjectUrlCache = () => {
+  while (tableFolderObjectUrlCache.size > FOLDER_OBJECT_URL_CACHE_LIMIT) {
+    const [key, entry] = tableFolderObjectUrlCache.entries().next().value || [];
+    if (!key) break;
+    try { if (entry?.url) URL.revokeObjectURL(entry.url); } catch { /* noop */ }
+    tableFolderObjectUrlCache.delete(key);
+  }
+};
+
+export const clearTableAudioFolderRuntimeCache = () => {
+  tableFolderObjectUrlCache.forEach(entry => {
+    try { if (entry?.url) URL.revokeObjectURL(entry.url); } catch { /* noop */ }
+  });
+  tableFolderObjectUrlCache.clear();
+};
+
+export const getTableAudioFolderVariantObjectUrl = async variant => {
+  const file = variant?.file;
+  if (!(file instanceof Blob)) throw new Error('Folder audio variant is missing its File/Blob reference.');
+  const key = folderCacheKey(variant);
+  const cached = tableFolderObjectUrlCache.get(key);
+  if (cached?.url) {
+    touchFolderObjectUrlCache(key);
+    return cached.url;
+  }
+  const url = URL.createObjectURL(file);
+  tableFolderObjectUrlCache.set(key, { url, createdAt: Date.now() });
+  trimFolderObjectUrlCache();
+  return url;
+};
+
 export const buildTableAudioVocabIdentityIndex = ({ playlist, getVocabIdentity }) => {
   const index = new Map();
   (playlist || []).forEach(item => {
@@ -122,10 +175,10 @@ export const executeAudioFolderSelectService = ({
                 const identity = getStableAudioIdentity(matchedItem);
                 const mapKey = `${identity}_${type}`;
                 const voice = resolveTableAudioVoiceFromFilename({ fileName: file.name, part: type, edgeVoices });
-                const url = URL.createObjectURL(file);
-                // Preserve the legacy one-URL-per-slot map for old UI/regression paths.
-                // C3.4.1 keeps every voice variant separately in variantRecords.
-                if (!newMap[mapKey]) newMap[mapKey] = url;
+                // v5.13.0/R2: Folder is an indexed lazy source. Keep the File
+                // reference only; do NOT allocate one ObjectURL for every audio
+                // during scan. Playback creates a bounded on-demand URL via
+                // getTableAudioFolderVariantObjectUrl().
                 variantRecords.push({
                     sourceType: 'folder',
                     sourceId: 'active-folder',
@@ -135,9 +188,10 @@ export const executeAudioFolderSelectService = ({
                     voiceId: voice,
                     voiceLabel: voice ? getAudioVoiceFilenameLabel(voice) : null,
                     filename: file.name,
+                    file,
+                    size: Number(file.size || 0),
                     verified: true,
-                    deliveryStatus: 'folder-verified',
-                    url
+                    deliveryStatus: 'folder-verified'
                 });
                 onMatchedAudio?.({
                     mode: 'table',

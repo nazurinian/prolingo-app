@@ -11,9 +11,8 @@ import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
 export const useMainAppPrimaryState = () => {
-  // P4-A17.1 UX hotfix: the finished app opens in the established Table workspace.
-  // Text remains available as an isolated workspace, but is no longer the startup tab.
-  const [mode, setMode] = useState('table'); 
+  // P4-A0: Part 4 development starts in the isolated Text workspace.
+  const [mode, setMode] = useState('text'); 
   const [tableViewMode, setTableViewMode] = useState('master'); 
   const [studyQueue, setStudyQueue] = useState([]); 
   const [rangeInput, setRangeInput] = useState("");
@@ -123,7 +122,7 @@ export const useMainAppPrimaryState = () => {
   const [mobileTab, setMobileTab] = useState('player'); 
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   // NEW: Batch Config includes doMeaning
-  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doWordTranslation: false, doSentence: true, doMeaning: false, expEn: [false, false, false, false, false], expIdn: [false, false, false, false, false] });
+  const [batchConfig, setBatchConfig] = useState({ start: 1, end: 10, doWord: true, doWordTranslation: false, doSentence: true, doMeaning: false, expEn: [false, false, false, false, false], expIdn: [false, false, false, false, false], autoExportZip: true });
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [batchStatusText, setBatchStatusText] = useState(""); 
   const [isBatchStopping, setIsBatchStopping] = useState(false); 
