@@ -1,4 +1,5 @@
 import './server/loadLocalEnv.js';
+import os from 'os';
 import express from 'express';
 import cors from 'cors';
 import { createEdgeTtsStream } from './server/edgeTtsService.js';
@@ -19,25 +20,73 @@ import {
 
 const app = express();
 const port = 3001;
+let edgeRequestSequence = 0;
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 
+// Graceful handler for malformed JSON request bodies
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.warn(`[WARN] Bad JSON payload received from ${req.ip || 'client'} on ${req.method} ${req.originalUrl}: ${err.message}`);
+    return res.status(400).json({ error: 'Invalid JSON payload received', details: err.message });
+  }
+  next(err);
+});
+
 app.post('/api/tts', async (req, res) => {
+  const requestId = ++edgeRequestSequence;
+  const startTime = Date.now();
+  const { text, voice, rate, pitch } = req.body || {};
+  const snippet = String(text || '').trim().substring(0, 30);
+  const voiceName = voice || 'en-GB-LibbyNeural';
+  let audioStream = null;
+  let clientClosed = false;
+  console.log(`[EDGE-TTS #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+
+  const cleanupClientDisconnect = () => {
+    if (res.writableEnded || clientClosed) return;
+    clientClosed = true;
+    if (audioStream && !audioStream.destroyed) audioStream.destroy();
+    const durationMs = Date.now() - startTime;
+    console.warn(`[EDGE-TTS #${requestId}] ⚠️  Client disconnected/aborted after ${durationMs}ms`);
+  };
+  res.once('close', cleanupClientDisconnect);
+
   try {
-    const { text, voice, rate, pitch } = req.body || {};
-    const audioStream = await createEdgeTtsStream({ text, voice, rate, pitch });
+    audioStream = await createEdgeTtsStream({ text, voice, rate, pitch });
+    if (clientClosed) {
+      if (!audioStream.destroyed) audioStream.destroy();
+      return;
+    }
+
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Transfer-Encoding', 'chunked');
+
+    let totalBytes = 0;
+    audioStream.on('data', chunk => {
+      totalBytes += chunk.length;
+    });
+
+    audioStream.on('end', () => {
+      if (clientClosed) return;
+      const durationMs = Date.now() - startTime;
+      const kb = Math.round(totalBytes / 1024);
+      console.log(`[EDGE-TTS #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
+    });
+
     audioStream.on('error', error => {
-      console.error('Edge TTS stream error:', error);
+      if (clientClosed) return;
+      console.error(`[EDGE-TTS #${requestId}] ❌ Stream error:`, error.message);
       if (!res.headersSent) res.status(500).json({ error: 'Failed to generate audio', details: error.message });
       else res.end();
     });
+
     audioStream.pipe(res);
   } catch (error) {
-    console.error('Edge TTS Error:', error);
+    if (clientClosed) return;
+    console.error(`[EDGE-TTS #${requestId}] ❌ Generation error:`, error.message);
     res.status(500).json({ error: 'Failed to generate audio', details: error.message });
   }
 });
@@ -64,7 +113,6 @@ app.delete('/api/gemini-auth', (req, res) => {
   res.json({ configured: isGeminiOwnerConfigured(), unlocked: false });
 });
 
-
 app.get('/api/gemini-byok', (req, res) => {
   res.json({ available: isGeminiByokVaultConfigured(), registered: hasGeminiByokSession(req) });
 });
@@ -88,16 +136,25 @@ app.delete('/api/gemini-byok', (req, res) => {
 });
 
 app.post('/api/gemini-tts', async (req, res) => {
+  const startTime = Date.now();
+  const text = req.body?.text;
+  const voiceName = req.body?.voiceName || 'Kore';
+  const snippet = String(text || '').trim().substring(0, 30);
+  console.log(`[GEMINI-TTS] 🤖 Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+
   try {
     const credential = resolveGeminiRequestCredential({ req });
     const data = await requestGeminiTts({
-      text: req.body?.text,
-      voiceName: req.body?.voiceName || 'Kore',
+      text,
+      voiceName,
       apiKey: credential.apiKey
     });
+    const durationMs = Date.now() - startTime;
+    console.log(`[GEMINI-TTS] ✅ Finished: "${snippet}" in ${durationMs}ms`);
     res.setHeader('Cache-Control', 'no-store');
     res.json(data);
   } catch (error) {
+    console.error(`[GEMINI-TTS] ❌ Error:`, error.message);
     res.status(Number(error.statusCode) || 500).json({ error: error.message || 'Gemini TTS request failed.' });
   }
 });
@@ -122,5 +179,19 @@ app.get('/api/health', (req, res) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
+  const networkInterfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(networkInterfaces)) {
+    for (const net of networkInterfaces[name] || []) {
+      if (net.family === 'IPv4' && !net.internal) {
+        addresses.push(net.address);
+      }
+    }
+  }
+
   console.log(`ProLingo API backend running on port ${port} (0.0.0.0)`);
+  console.log(`  ➜  Local:   http://localhost:${port}`);
+  addresses.forEach(ip => console.log(`  ➜  Network: http://${ip}:${port}`));
+  console.log('');
 });
+

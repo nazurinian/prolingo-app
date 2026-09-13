@@ -112,7 +112,7 @@ export const executeAudioBatchDownloadService = async ({
           continue;
         }
         setBatchStatusText(`${item.displayId} ${label}`);
-        const result = await generateAIAudio(item, part, { skipReplaceConfirm: true, deferBrowserDownload: true });
+        const result = await generateAIAudio(item, part, { skipReplaceConfirm: true, deferBrowserDownload: true, suppressFailureAlert: true });
         if (result?.status === 'success' && result?.blob) {
           generatedCount += 1;
           packageEntries.push({ filename: result.filename, blob: result.blob });
@@ -125,7 +125,9 @@ export const executeAudioBatchDownloadService = async ({
             filename: result.filename,
             delivery: 'browser-zip'
           });
-        } else if (result?.status && !['skipped-empty', 'locked-language'].includes(result.status)) {
+        } else if (result?.status === 'error') {
+          failedCount += 1;
+        } else if (result?.status === 'cancelled' && !batchStopSignalRef.current) {
           failedCount += 1;
         }
         if (!batchStopSignalRef.current && waitMs) await delay(waitMs);

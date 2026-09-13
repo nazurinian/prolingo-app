@@ -8,7 +8,8 @@ export const executeTextStructuredAudioGenerationRequest = async ({
   engineVoiceId,
   edgeRate = 0,
   edgePitch = 0,
-  signal
+  signal,
+  onRetry = null
 }) => {
   const content = clean(text);
   if (!content) throw new Error('Structured Text generation requires non-empty content.');
@@ -22,6 +23,7 @@ export const executeTextStructuredAudioGenerationRequest = async ({
     voiceId,
     rate: edgeRate,
     pitch: edgePitch,
-    signal
+    signal,
+    onRetry
   });
 };

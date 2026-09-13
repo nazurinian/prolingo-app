@@ -16,6 +16,7 @@ import {
   resolveGenerationFailureState,
   resolveGeminiInlineAudioState
 } from '../../domain/audio/audioTtsCompletionFailureDomain';
+import { executeTtsRequestWithRetry, readAudioResponseBlobWithIdleWatchdog, resolveAdaptiveTtsTimeoutMs } from './ttsResilienceService.js';
 
 export const executeEdgeBackendHealthService = async ({
 edgeHealth,
@@ -88,7 +89,8 @@ setLocalAudioMapTable,
 setLocalAudioMapText,
 onGeneratedAudio,
 addLog,
-deferBrowserDownload = false
+deferBrowserDownload = false,
+suppressFailureAlert = false
 }) => {
   const uniqueLoadingId = `${item.id}-${part}`;
   setAiLoadingId(uniqueLoadingId);
@@ -117,7 +119,7 @@ deferBrowserDownload = false
   if (!String(textToSpeak || '').trim()) {
       setAiLoadingId(null);
       addLog("Warn", `Skip ${stableId}/${part}: empty text.`);
-      return;
+      return { status: 'skipped-empty', stableId, part };
   }
 
   addLog("Info", `Gen (${generatorEngine}) ${stableId}/${part}...`);
@@ -138,26 +140,47 @@ deferBrowserDownload = false
                edgeVoice
            });
 
-           const response = await fetch(edgeRequest.url, {
-               method: edgeRequest.method,
-               headers: edgeRequest.headers,
-               signal: controller.signal,
-               body: JSON.stringify(edgeRequest.body)
+           const edgeResult = await executeTtsRequestWithRetry({
+               operationSignal: controller.signal,
+               timeoutMs: resolveAdaptiveTtsTimeoutMs({ text: textToSpeak, minimumMs: 30000, perCharacterMs: 80, maximumMs: 120000 }),
+               maxAttempts: 3,
+               retryDelayMs: 700,
+               onRetry: ({ nextAttempt, maxAttempts, error }) => {
+                   addLog('Warn', `Edge retry ${nextAttempt}/${maxAttempts}: ${stableId}/${part} • ${error.message}`);
+               },
+               runAttempt: async ({ signal }) => {
+                   const response = await fetch(edgeRequest.url, {
+                       method: edgeRequest.method,
+                       headers: edgeRequest.headers,
+                       signal,
+                       body: JSON.stringify(edgeRequest.body)
+                   });
+
+                   if (!response.ok) {
+                       const errText = await response.text();
+                       const error = new Error(`Edge ${response.status}: ${errText || response.statusText}`);
+                       error.retryable = response.status >= 500 || response.status === 408 || response.status === 429;
+                       throw error;
+                   }
+
+                   const contentType = response.headers.get('content-type') || '';
+                   if (contentType.includes('application/json') || contentType.includes('text/')) {
+                       const errText = await response.text();
+                       const error = new Error(`Edge returned non-audio response: ${errText.slice(0, 220)}`);
+                       error.retryable = false;
+                       throw error;
+                   }
+
+                   const attemptBlob = await readAudioResponseBlobWithIdleWatchdog({ response, signal, idleTimeoutMs: 15000 });
+                   if (!attemptBlob.size) {
+                       const error = new Error('Edge backend returned empty audio.');
+                       error.retryable = true;
+                       throw error;
+                   }
+                   return { blob: attemptBlob };
+               }
            });
-
-           if (!response.ok) {
-               const errText = await response.text();
-               throw new Error(`Edge ${response.status}: ${errText || response.statusText}`);
-           }
-
-           const contentType = response.headers.get('content-type') || '';
-           if (contentType.includes('application/json') || contentType.includes('text/')) {
-               const errText = await response.text();
-               throw new Error(`Edge returned non-audio response: ${errText.slice(0, 220)}`);
-           }
-
-           blob = await response.blob();
-           if (!blob.size) throw new Error('Edge backend returned empty audio.');
+           blob = edgeResult.blob;
            setEdgeHealth({ status: 'online', message: `Last request OK • ${Math.round(blob.size / 1024)} KB` });
       } else {
           if (!geminiAccessUnlocked) {
@@ -227,12 +250,14 @@ deferBrowserDownload = false
   } catch (e) {
       if (isGenerationCancelled(e.name)) {
           addLog("Info", `Generation cancelled: ${stableId}/${part}`);
+          return { status: 'cancelled', stableId, part };
       } else {
           const failureState = resolveGenerationFailureState({ errorMessage: e.message, generatorEngine });
           console.error(e);
           if (failureState.edgeHealth) setEdgeHealth(failureState.edgeHealth);
           addLog("Error", failureState.logMessage);
-          alert(failureState.alertMessage);
+          if (!suppressFailureAlert) alert(failureState.alertMessage);
+          return { status: 'error', stableId, part, error: e.message || String(e) };
       }
   } finally {
       if (generationAbortControllerRef.current === controller) generationAbortControllerRef.current = null;

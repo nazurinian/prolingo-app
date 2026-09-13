@@ -643,6 +643,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     localAudioMapTable,
     generatedAudioMeta
   }), [localAudioMapTable, generatedAudioMeta]);
+  const tableGeneratedSessionAudioCount = useMemo(() => {
+    const folderUrls = new Set();
+    Object.values(tableAudioFolderVariantInventory || {}).forEach(variants => {
+      (Array.isArray(variants) ? variants : []).forEach(variant => {
+        if (variant?.sourceType === 'folder' && variant?.url) folderUrls.add(variant.url);
+      });
+    });
+    return Object.values(localAudioMapTable || {}).reduce((count, url) => count + (url && !folderUrls.has(url) ? 1 : 0), 0);
+  }, [localAudioMapTable, tableAudioFolderVariantInventory]);
   const tableAudioVariantInventory = useMemo(() => mergeTableAudioVariantInventories(
     tableAudioGeneratedVariantInventory,
     tableAudioFolderVariantInventory,
@@ -1392,7 +1401,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         edgeRate: structuredTextAudioGenerationPreferences.edgeRate,
         edgePitch: structuredTextAudioGenerationPreferences.edgePitch,
         geminiAccessUnlocked: false,
-        signal: controller.signal
+        signal: controller.signal,
+        onRetry: options.batch
+          ? ({ nextAttempt, maxAttempts, error }) => addLog('Text Generate', `Retry ${nextAttempt}/${maxAttempts}: ${segmentId}/${channel} • ${error.message}`)
+          : null
       });
       const registered = await registerStructuredTextGeneratedBlob({
         item,
@@ -2393,7 +2405,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: meta }));
       },
       addLog,
-      deferBrowserDownload: Boolean(options.deferBrowserDownload)
+      deferBrowserDownload: Boolean(options.deferBrowserDownload),
+      suppressFailureAlert: Boolean(options.suppressFailureAlert)
     });
     if (result?.status === 'success' && !options.deferBrowserDownload) {
       setAudioDownloadHistory(prev => recordAudioDownloadHistory(prev, {
@@ -2569,6 +2582,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     addLog('System', 'Table Audio coverage memory reset. Downloaded* delivery history cleared; attached Folder/ZIP verified inventory remains active.');
   };
 
+  const clearTableGeneratedAudioRam = () => {
+    const releasedCount = tableGeneratedSessionAudioCount;
+    resetTableAudioTransientCoverageStatePreservingFolder();
+    addLog('System', `Table generated-session audio RAM cleared. Released ${releasedCount} Blob/ObjectURL slot${releasedCount === 1 ? '' : 's'}; Folder/ZIP sources and Downloaded* history remain unchanged.`);
+  };
+
   const resetTableAudioTransientCoverageStatePreservingFolder = () => {
     const preservedFolderMap = {};
     const preservedUrls = new Set();
@@ -2690,6 +2709,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.clearAudioZip = clearTableAudioZipSources;
   folderInputRef.detachAudioFolder = detachTableAudioFolderSource;
   folderInputRef.resetAudioCoverageMemory = resetTableAudioCoverageMemory;
+  folderInputRef.clearGeneratedAudioRam = clearTableGeneratedAudioRam;
+  folderInputRef.tableGeneratedAudioSummary = { count: tableGeneratedSessionAudioCount };
   folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 

@@ -19,6 +19,7 @@ export default function DesktopSystemControls({
   const [clearZipConfirmOpen, setClearZipConfirmOpen] = React.useState(false);
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
   const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
+  const [clearGeneratedRamConfirmOpen, setClearGeneratedRamConfirmOpen] = React.useState(false);
   const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
   return (
     <>
@@ -116,11 +117,18 @@ export default function DesktopSystemControls({
                   </div>
                   <p className="mt-1.5 text-[8px] leading-relaxed text-slate-400">ZIP is additive to Audio Folder. ProLingo indexes filenames first and opens only the requested audio entry during playback.</p>
                 </div>}
-                {mode === 'table' && <button
-                  disabled={isSystemBusy}
-                  onClick={() => setResetCoverageConfirmOpen(true)}
-                  className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"
-                ><RotateCcw className="w-3.5 h-3.5"/> Reset Audio Coverage Memory</button>}
+                {mode === 'table' && <div className="grid grid-cols-2 gap-2">
+                  <button
+                    disabled={isSystemBusy}
+                    onClick={() => setResetCoverageConfirmOpen(true)}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 disabled:opacity-35"
+                  ><RotateCcw className="w-3.5 h-3.5"/> Reset Audio Coverage Memory</button>
+                  <button
+                    disabled={isSystemBusy || !(folderInputRef?.tableGeneratedAudioSummary?.count > 0)}
+                    onClick={() => setClearGeneratedRamConfirmOpen(true)}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 disabled:opacity-35"
+                  ><X className="w-3.5 h-3.5"/> Clear Audio RAM{folderInputRef?.tableGeneratedAudioSummary?.count > 0 ? ` (${folderInputRef.tableGeneratedAudioSummary.count})` : ''}</button>
+                </div>}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     ref={batchButtonRef}
@@ -174,9 +182,17 @@ export default function DesktopSystemControls({
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
       />
       <SafetyConfirmDialog
+        open={clearGeneratedRamConfirmOpen}
+        title="Clear generated audio RAM?"
+        message={`Melepas ${folderInputRef?.tableGeneratedAudioSummary?.count || 0} Blob/ObjectURL audio hasil generate dari memori sesi ProLingo. File ZIP/MP3 yang sudah terdownload tidak dihapus, Folder/ZIP source tetap aktif, CSV/IndexedDB/localStorage tidak dihapus, dan riwayat Downloaded* tetap dipertahankan.`}
+        confirmLabel="Clear Audio RAM"
+        onCancel={() => setClearGeneratedRamConfirmOpen(false)}
+        onConfirm={() => { setClearGeneratedRamConfirmOpen(false); folderInputRef.clearGeneratedAudioRam?.(); }}
+      />
+      <SafetyConfirmDialog
         open={resetCoverageConfirmOpen}
         title="Reset Table audio coverage memory?"
-        message="Menghapus hanya riwayat Downloaded* Table yang tersimpan di ProLingo dan metadata generation sementara. Audio Folder/ZIP yang masih terhubung tetap dipindai sebagai Ready. File audio, data CSV, progress belajar, login browser, cookie, dan cache situs lain tidak dihapus."
+        message="Menghapus hanya riwayat Downloaded* Table dan metadata coverage/generation. Blob audio hasil generate di RAM tidak dilepas oleh tombol ini; gunakan Clear Audio RAM untuk membebaskan RAM. Audio Folder/ZIP tetap aktif. CSV, IndexedDB, login, cookie, dan data situs lain tidak dihapus."
         confirmLabel="Reset Coverage"
         onCancel={() => setResetCoverageConfirmOpen(false)}
         onConfirm={() => { setResetCoverageConfirmOpen(false); folderInputRef.resetAudioCoverageMemory?.(); }}
