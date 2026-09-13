@@ -12,7 +12,7 @@ export default function MobileSystemControls({
   edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch, setEdgePitch,
   testEdgeBackend, edgeHealth, folderInputRef, currentMapCount, mode, isBatchDownloading,
   isBatchStopping, batchStatusText, batchConfig, setBatchConfig, advancedDatasetStats, runBatchDownload, tableCoverage, structuredTextBatch,
-  batchSessions, stagingRecords, stagingSummary, onExportCurrentMp3, onExportBatchSessions, onClearBatchStaging, onDeleteBatchHistory, directMp3Limit, DownloadCloudIcon,
+  batchSessions, stagingRecords, stagingSummary, batchAvailabilityById, onExportCurrentMp3, onExportBatchSessions, onClearBatchStaging, onDeleteBatchHistory, directMp3Limit, DownloadCloudIcon,
   isBatchOpen, setIsBatchOpen, showLogs, setShowLogs, systemLogs, logContainerRef,
   storageRefreshToken, onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored
@@ -89,6 +89,7 @@ export default function MobileSystemControls({
                               batchSessions={batchSessions}
                               stagingRecords={stagingRecords}
                               stagingSummary={stagingSummary}
+                              batchAvailabilityById={batchAvailabilityById}
                               onExportCurrentMp3={onExportCurrentMp3}
                               onExportBatchSessions={onExportBatchSessions}
                               onClearBatchStaging={onClearBatchStaging}
