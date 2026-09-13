@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import Header from './Header';
 import BottomPlayerBar from './BottomPlayerBar';
 import SidebarShell from './SidebarShell';
@@ -167,7 +168,6 @@ export const renderMainAppShellView = (props) => {
                 isBatchDownloading={isBatchDownloading}
                 setIsBatchOpen={setIsBatchOpen}
                 isBatchOpen={isBatchOpen}
-                renderBatchPopup={renderBatchPopup}
                 debugButtonRef={debugButtonRef}
                 setShowLogs={setShowLogs}
                 showLogs={showLogs}
@@ -274,6 +274,25 @@ export const renderMainAppShellView = (props) => {
             />}
           </div>
         </SidebarShell>
+
+        {isBatchOpen && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[120] flex items-end justify-center md:items-center md:p-5">
+            <button
+              type="button"
+              aria-label="Close Batch workspace"
+              onClick={() => setIsBatchOpen(false)}
+              className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]"
+            />
+            <section
+              className="relative z-10 w-full max-w-2xl overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-2xl custom-scrollbar pb-[env(safe-area-inset-bottom,0px)]"
+              style={{ maxHeight: 'min(88dvh, 820px)' }}
+              aria-label="Batch workspace"
+            >
+              {renderBatchPopup({ inline: true, showClose: true })}
+            </section>
+          </div>,
+          document.body
+        )}
 
         {/* MAIN BODY AREA */}
         <div className={`flex-1 bg-slate-50 dark:bg-slate-900 ${isMobile ? '' : 'overflow-hidden relative flex flex-col'}`}>

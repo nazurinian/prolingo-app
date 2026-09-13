@@ -1,15 +1,17 @@
-export const APP_VERSION = '5.13.5';
+export const APP_VERSION = '5.13.6';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.1 — Card Task Safety Hotfix';
-export const APP_RELEASE_NAME = 'R2.4.1 Card Task Safety Hotfix';
+export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.2 — Batch Workspace Trigger Polish';
+export const APP_RELEASE_NAME = 'R2.4.2 Batch Workspace Trigger Polish';
 export const APP_RELEASE_DATE = '2026-09-14';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.1: locks Card Edit/Delete during active audio work and aborts Card-owned single-part generation if virtualization unmounts the row.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.1`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.2: moves the Batch trigger beside Generate Engine and opens Batch as a root workspace overlay instead of expanding inside System.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.2`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Batch trigger now lives with Generate Engine/System & TTS and opens a root workspace overlay/bottom sheet instead of expanding inside the sidebar',
+  'The lower System utility card now leaves Logs as the only standalone action, reducing sidebar height and keeping Batch re-entry independent from sidebar content',
   'Card Edit/Delete actions are locked while audio generation is active so destructive row changes cannot race an in-flight staged write',
   'Card-owned single-part generation now aborts on row unmount/virtualization just like Download All, preventing hidden orphan generation',
   'Batch Library no longer expands as a long list inside System/Batch; one Batch Library button shows the current-book history count and opens a dedicated history popup',
