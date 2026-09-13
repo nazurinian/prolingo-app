@@ -205,10 +205,7 @@ export const renderPlaylistViewport = ({
                    const rowId = `row-${item.id}`; 
                    const isInQueue = studyQueueSet.has(item.id);
                    const audioIdentity = getStableAudioIdentity(item);
-                   const localWordUrl = localAudioMapTable[`${audioIdentity}_word`] || null;
-                   const localWordIdnUrl = localAudioMapTable[`${audioIdentity}_word_idn`] || null;
-                   const localSentUrl = localAudioMapTable[`${audioIdentity}_sentence`] || null;
-                   const localMeaningUrl = localAudioMapTable[`${audioIdentity}_meaning`] || null;
+                   const rowScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
                    const audioParts = [
                        'word', 'word_idn', 'sentence', 'meaning',
                        'exp1_en', 'exp1_idn', 'exp2_en', 'exp2_idn', 'exp3_en', 'exp3_idn',
@@ -217,16 +214,17 @@ export const renderPlaylistViewport = ({
                    const resolvedAudioPartState = Object.fromEntries(audioParts.map(part => {
                        const mapKey = `${audioIdentity}_${part}`;
                        const selected = resolveTableAudioPlaybackVariant({
-                           variants: tableAudioVariantInventory?.[mapKey] || [],
+                           variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+                               isTableAudioScopeMatch(variant, rowScope)
+                           ),
                            voiceMode: tableLocalAudioVoiceMode,
                            voicePriority: tableAudioVoicePriority
                        });
-                       const rowScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
                        const rawMeta = generatedAudioMeta?.[`table:${mapKey}`] || null;
                        const meta = rawMeta && isTableAudioScopeMatch(rawMeta, rowScope) ? rawMeta : null;
                        const rawHistory = getAudioDownloadHistoryRecord(audioDownloadHistory, { mode: 'table', mapKey, ...rowScope });
                        const history = rawHistory && isTableAudioScopeMatch(rawHistory, rowScope) ? rawHistory : {};
-                       const sourceType = selected?.sourceType || (localAudioMapTable[mapKey] ? 'legacy' : '');
+                       const sourceType = selected?.sourceType || ''; // R2.3: per-row scoped inventory only
                        const engine = String(selected?.engine || meta?.engine || '').toLowerCase();
                        const dotSource = ['folder', 'zip', 'legacy'].includes(sourceType) ? 'local' : engine === 'gemini' ? 'gemini' : engine === 'edge' ? 'edge' : sourceType ? 'local' : '';
                        return [part, {
@@ -237,6 +235,10 @@ export const renderPlaylistViewport = ({
                          voiceId: selected?.voiceId || history?.voice || null
                        }];
                    }));
+                   const localWordUrl = resolvedAudioPartState.word?.sourceType ? `inventory://${audioIdentity}_word` : null;
+                   const localWordIdnUrl = resolvedAudioPartState.word_idn?.sourceType ? `inventory://${audioIdentity}_word_idn` : null;
+                   const localSentUrl = resolvedAudioPartState.sentence?.sourceType ? `inventory://${audioIdentity}_sentence` : null;
+                   const localMeaningUrl = resolvedAudioPartState.meaning?.sourceType ? `inventory://${audioIdentity}_meaning` : null;
                    const loadedAudioParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).join('|');
                    const audioSourceParts = audioParts.filter(part => resolvedAudioPartState[part]?.dotSource).map(part => `${part}:${resolvedAudioPartState[part].dotSource}`).join('|');
                    const audioActionParts = audioParts.filter(part => resolvedAudioPartState[part]?.sourceType).map(part => {

@@ -1,6 +1,6 @@
 import { getAdvancedExpressionPairs, getStableAudioIdentity, getVocabIdentity, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { getMaxAssignedNoFromRecords } from '../../utils/csvUtils';
-import { shouldDownloadTableCoverageSlot } from '../../domain/audio/audioDownloadCoverageDomain.js';
+import { buildTableAudioCoverageScopeKey, shouldDownloadTableCoverageSlot } from '../../domain/audio/audioDownloadCoverageDomain.js';
 import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
 import {
   getAudioOriginStorageEstimate,
@@ -86,6 +86,7 @@ export const executeAudioBatchDownloadService = async ({
   setIsBatchDownloading,
   generateAIAudio,
   coverageByMapKey = null,
+  coverageByScopedKey = null,
   missingOnly = true,
   onBatchDelivered = null,
   onBatchSessionsChanged = null,
@@ -241,7 +242,13 @@ export const executeAudioBatchDownloadService = async ({
         if (batchStopSignalRef.current) break;
         const stableId = getStableAudioIdentity(item);
         const mapKey = `${stableId}_${part}`;
-        if (missingOnly && !shouldDownloadTableCoverageSlot(coverageByMapKey?.[mapKey])) {
+        const coverageKey = buildTableAudioCoverageScopeKey({
+          mapKey,
+          vocabId: getVocabIdentity(item),
+          bookId: resolveTableAudioBookId(item)
+        });
+        const coverageSlot = coverageByScopedKey?.[coverageKey] || coverageByMapKey?.[mapKey];
+        if (missingOnly && !shouldDownloadTableCoverageSlot(coverageSlot)) {
           skippedCount += 1;
           continue;
         }

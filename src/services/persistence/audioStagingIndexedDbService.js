@@ -7,13 +7,24 @@ const HOT_CACHE_LIMIT = 12;
 
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
+const upper = value => clean(value).toUpperCase();
 const safeMode = value => clean(value) || 'table';
+
+const resolveScopeToken = ({ mode = 'table', vocabId = null, bookId = null } = {}) => {
+  if (safeMode(mode) !== 'table') return 'unscoped';
+  const vocab = upper(vocabId);
+  if (vocab) return `vocab:${vocab}`;
+  const book = upper(bookId);
+  if (book) return `book:${book}`;
+  return 'unscoped';
+};
 
 export const AUDIO_STAGING_DB_NAME = DB_NAME;
 export const AUDIO_STAGING_DB_VERSION = DB_VERSION;
 
-export const buildAudioStagingId = ({ mode = 'table', mapKey, engine, voiceId }) => [
+export const buildAudioStagingId = ({ mode = 'table', mapKey, engine, voiceId, vocabId = null, bookId = null }) => [
   safeMode(mode),
+  resolveScopeToken({ mode, vocabId, bookId }),
   clean(mapKey),
   lower(engine) || 'unknown-engine',
   lower(voiceId) || 'unknown-voice'
@@ -62,7 +73,7 @@ export const putAudioStagingBlob = async ({
   batchSessionId = null, metadata = null
 }) => {
   if (!(blob instanceof Blob)) throw new Error('Audio Staging requires a Blob.');
-  const id = buildAudioStagingId({ mode, mapKey, engine, voiceId });
+  const id = buildAudioStagingId({ mode, mapKey, engine, voiceId, vocabId, bookId });
   const now = Date.now();
   const db = await openDb();
   try {

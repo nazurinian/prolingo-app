@@ -63,7 +63,10 @@ export const buildTableAudioBatchSlots = ({ playlist, batchConfig, generatorEngi
 };
 
 export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, downloadHistory, stagingRecords = [] }) => {
-  const variants = (tableAudioVariantInventory?.[slot.mapKey] || []).filter(Boolean);
+  const slotHasScope = Boolean(slot?.vocabId || slot?.bookId);
+  const variants = (tableAudioVariantInventory?.[slot.mapKey] || []).filter(variant =>
+    Boolean(variant) && (!slotHasScope || isTableAudioScopeMatch(variant, slot))
+  );
   const verifiedVariants = variants.filter(variant => variant?.verified !== false || ['folder', 'zip'].includes(variant?.sourceType));
   const matchingVerified = slot.requiredVoiceId
     ? verifiedVariants.find(variant => variant?.voiceId && same(variant.voiceId, slot.requiredVoiceId))
@@ -92,7 +95,6 @@ export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, genera
 
   // R2 durable export ledger: released staging metadata survives refresh/OOM and
   // is voice-specific. This is completion history only; it never makes playback Ready.
-  const slotHasScope = Boolean(slot?.vocabId || slot?.bookId);
   const stagedExportHistory = (Array.isArray(stagingRecords) ? stagingRecords : []).filter(record =>
     record?.mapKey === slot.mapKey &&
     (!slotHasScope || isTableAudioScopeMatch(record, slot)) &&
@@ -148,6 +150,12 @@ export const resolveTableAudioCoverageSlot = ({ slot, localAudioMapTable, genera
   return { ...slot, status: AUDIO_DOWNLOAD_COVERAGE_STATUS.MISSING, verified: false, filename: null, voiceId: null };
 };
 
+
+export const buildTableAudioCoverageScopeKey = slot => {
+  const scope = clean(slot?.vocabId || slot?.bookId || '').toUpperCase() || 'UNSCOPED';
+  return `${scope}|${clean(slot?.mapKey)}`;
+};
+
 export const buildTableAudioBatchCoverage = args => {
   const slots = buildTableAudioBatchSlots(args).map(slot => resolveTableAudioCoverageSlot({ ...args, slot }));
   const counts = { total: slots.length, ready: 0, downloaded: 0, otherVoice: 0, missing: 0, needDownload: 0, covered: 0 };
@@ -159,7 +167,14 @@ export const buildTableAudioBatchCoverage = args => {
   });
   counts.needDownload = counts.otherVoice + counts.missing;
   counts.covered = counts.ready + counts.downloaded;
-  return { slots, counts, byMapKey: Object.fromEntries(slots.map(slot => [slot.mapKey, slot])) };
+  return {
+    slots,
+    counts,
+    // Legacy mapKey lookup remains for unique-NO datasets. Multi-book datasets
+    // must use byScopedKey so NO_000001 in two books cannot overwrite coverage.
+    byMapKey: Object.fromEntries(slots.map(slot => [slot.mapKey, slot])),
+    byScopedKey: Object.fromEntries(slots.map(slot => [buildTableAudioCoverageScopeKey(slot), slot]))
+  };
 };
 
 export const shouldDownloadTableCoverageSlot = slot => !slot || ![AUDIO_DOWNLOAD_COVERAGE_STATUS.READY, AUDIO_DOWNLOAD_COVERAGE_STATUS.DOWNLOADED].includes(slot.status);

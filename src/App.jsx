@@ -480,6 +480,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setSequenceHighWater,
     setManualIdHighWater,
     setImportedRowCount,
+    setSourcePack,
+    setSelectedDeckId,
+    setCurrentDeckName,
     setLockedStates,
     addLog,
     forceStopAll
@@ -999,7 +1002,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const getLocalAudioUrl = async (item, part) => {
     if (mode !== 'table') return resolveLocalAudioUrl({ mode, item, part, localAudioMapTable, localAudioMapText });
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
-    const variants = tableAudioVariantInventory?.[mapKey] || [];
+    const itemScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
+    const variants = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+      isTableAudioScopeMatch(variant, itemScope)
+    );
     const selectedVariant = resolveTableAudioPlaybackVariant({
       variants,
       voiceMode: tableLocalAudioVoiceMode,
@@ -2465,14 +2471,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const stableId = getStableAudioIdentity(item);
     const mapKey = resolveGeneratedAudioMapKey({ mode, stableId, part });
     const activeMap = mode === 'table' ? localAudioMapTable : localAudioMapText;
+    const generationScope = mode === 'table'
+      ? { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) }
+      : null;
     const selectedExistingVariant = mode === 'table'
       ? resolveTableAudioPlaybackVariant({
-          variants: tableAudioVariantInventory?.[mapKey] || [],
+          variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant => isTableAudioScopeMatch(variant, generationScope)),
           voiceMode: tableLocalAudioVoiceMode,
           voicePriority: tableAudioVoicePriority
         })
       : null;
-    const existingUrl = activeMap?.[mapKey];
+    // R2.3: raw Table runtime maps are NO-only legacy state and cannot prove
+    // which VOCAB_ID they belong to. Scoped inventory is authoritative.
+    const existingUrl = mode === 'table' ? null : activeMap?.[mapKey];
     const hasExistingAudio = Boolean(selectedExistingVariant || existingUrl);
 
     if (hasExistingAudio && !options.skipReplaceConfirm) {
@@ -2584,6 +2595,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setIsBatchDownloading,
       generateAIAudio,
       coverageByMapKey: tableAudioBatchCoverage?.byMapKey || null,
+      coverageByScopedKey: tableAudioBatchCoverage?.byScopedKey || null,
       missingOnly: options.missingOnly !== false,
       onBatchSessionsChanged: refreshTableAudioBatchSessions,
       onStagingChanged: refreshTableAudioStaging,
@@ -2658,7 +2670,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const removeTableStagedAudio = useCallback(async (item, part) => {
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
-    const candidates = (tableAudioVariantInventory?.[mapKey] || []).filter(variant => variant?.sourceType === 'staging');
+    const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
+    const candidates = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
+      variant?.sourceType === 'staging' && isTableAudioScopeMatch(variant, wanted)
+    );
     const selected = resolveTableAudioPlaybackVariant({ variants: candidates, voiceMode: tableLocalAudioVoiceMode, voicePriority: tableAudioVoicePriority });
     if (!selected?.stagingId) return { status: 'not-staged' };
     await releaseAudioStagingBlobs([selected.stagingId], { reason: 'per-card-manual-release' });
@@ -3169,7 +3184,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     : (mode === 'table' ? audioStatusTable : audioStatusText);
   const currentMapCount = structuredTextModeActive
     ? structuredTextRuntimeAudioCount
-    : (mode === 'table' ? Object.keys(tableAudioUiMap).length : Object.keys(localAudioMapText).length);
+    : (mode === 'table' ? Number(tableAudioInventorySummary?.variants || 0) : Object.keys(localAudioMapText).length);
   const activePreferLocalAudio = structuredTextModeActive
     ? textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
     : preferLocalAudio;
@@ -3186,7 +3201,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const renderStatusBadge = () => {
       if (currentAudioStatus === 'idle' && currentMapCount === 0) return <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded">Belum Load</span>;
-      if (currentMapCount > 0) return <span className="text-[10px] bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> {mode === 'table' ? `${currentMapCount} Slot • ${tableAudioInventorySummary.variants || currentMapCount} Audio` : `${currentMapCount} File Aktif`}</span>;
+      if (currentMapCount > 0) return <span className="text-[10px] bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><CheckCircle className="w-3 h-3"/> {mode === 'table' ? `${currentMapCount} Audio` : `${currentMapCount} File Aktif`}</span>;
       return <span className="text-[10px] bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300 px-2 py-0.5 rounded font-bold flex items-center gap-1"><AlertTriangle className="w-3 h-3"/> 0 File</span>;
   };
 

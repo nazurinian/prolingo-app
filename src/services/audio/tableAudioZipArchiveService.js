@@ -2,6 +2,7 @@ import { getAudioVoiceFilenameLabel } from '../../utils/audioUtils.js';
 import {
   buildTableAudioVocabIdentityIndex,
   resolveTableAudioItemByVocabPrefix,
+  resolveUniqueTableAudioItemByNo,
   resolveTableAudioPartFromFilename,
   resolveTableAudioVoiceFromFilename
 } from './audioFolderLifecycleService.js';
@@ -135,7 +136,7 @@ export const scanTableAudioZipFiles = async ({
       const numericMatch = filename.match(/^(\d+)_/);
       if (!matchedItem && numericMatch) {
         const audioNo = Number.parseInt(numericMatch[1], 10);
-        matchedItem = (playlist || []).find(item => item?.isStructured && getRecordAudioNo(item) === audioNo) || null;
+        matchedItem = resolveUniqueTableAudioItemByNo({ playlist, getRecordAudioNo, audioNo });
       }
       if (!matchedItem) {
         orphanCount += 1;

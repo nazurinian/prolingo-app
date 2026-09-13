@@ -1,5 +1,6 @@
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
+const upper = value => clean(value).toUpperCase();
 
 const SOURCE_RANK = Object.freeze({
   staging: 0,
@@ -11,7 +12,10 @@ const SOURCE_RANK = Object.freeze({
 
 export const normalizeTableAudioVoiceId = value => clean(value);
 
+const variantScopeKey = variant => upper(variant?.vocabId || variant?.bookId) || 'UNSCOPED';
+
 const variantIdentity = variant => [
+  variantScopeKey(variant),
   clean(variant?.sourceType),
   clean(variant?.sourceId),
   clean(variant?.mapKey),
@@ -28,8 +32,9 @@ const effectiveMergeIdentity = variant => {
   if (variant?.sourceType !== 'zip') return variantIdentity(variant);
   const mapKey = clean(variant?.mapKey);
   const voiceId = lower(variant?.voiceId);
-  if (mapKey && voiceId) return `zip-effective|${mapKey}|${voiceId}`;
-  return `zip-unknown|${mapKey}|${lower(variant?.filename)}|${clean(variant?.entryId)}`;
+  const scope = variantScopeKey(variant);
+  if (mapKey && voiceId) return `zip-effective|${scope}|${mapKey}|${voiceId}`;
+  return `zip-unknown|${scope}|${mapKey}|${lower(variant?.filename)}|${clean(variant?.entryId)}`;
 };
 
 export const mergeTableAudioVariantInventories = (...inventories) => {
@@ -107,7 +112,7 @@ export const buildTableAudioVoiceOptions = ({ inventory, edgeVoices = [] }) => {
         sourceCopies: 0,
         sourceTypes: new Set()
       };
-      current.slotKeys.add(clean(variant?.mapKey) || clean(mapKey));
+      current.slotKeys.add(`${variantScopeKey(variant)}|${clean(variant?.mapKey) || clean(mapKey)}`);
       current.sourceCopies += 1;
       if (variant?.sourceType) current.sourceTypes.add(variant.sourceType);
       stats.set(key, current);
@@ -191,7 +196,8 @@ export const summarizeTableAudioVariantInventory = inventory => {
       // Logical audio count: one slot + one known voice = one playable audio
       // even if that same variant is available from Folder and one/many ZIPs.
       const voiceKey = lower(variant?.voiceId) || `unknown:${lower(variant?.filename)}`;
-      effectiveAudio.add(`${mapKey}|${voiceKey}`);
+      const scopeKey = clean(variant?.vocabId || variant?.bookId || 'unscoped').toUpperCase();
+      effectiveAudio.add(`${scopeKey}|${mapKey}|${voiceKey}`);
       if (variant?.sourceType === 'staging') stagingVariants += 1;
       else if (variant?.sourceType === 'folder') folderVariants += 1;
       else if (variant?.sourceType === 'zip') zipVariants += 1;

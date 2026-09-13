@@ -8,6 +8,7 @@ const folderCacheKey = variant => {
   const file = variant?.file;
   return [
     String(variant?.sourceId || 'active-folder'),
+    String(variant?.vocabId || variant?.bookId || 'unscoped'),
     String(variant?.mapKey || ''),
     String(variant?.voiceId || ''),
     String(file?.name || variant?.filename || ''),
@@ -86,6 +87,13 @@ export const resolveTableAudioItemByVocabPrefix = ({ fileName, identityIndex }) 
     underscore = upper.indexOf('_', underscore + 1);
   }
   return matchedItem;
+};
+
+export const resolveUniqueTableAudioItemByNo = ({ playlist, getRecordAudioNo, audioNo }) => {
+  const target = Number(audioNo);
+  if (!Number.isFinite(target)) return null;
+  const matches = (playlist || []).filter(item => item?.isStructured && getRecordAudioNo(item) === target);
+  return matches.length === 1 ? matches[0] : null;
 };
 
 export const resolveTableAudioVoiceFromFilename = ({ fileName, part, edgeVoices = [] }) => {
@@ -169,7 +177,10 @@ export const executeAudioFolderSelectService = ({
             // Backward compatibility: old numeric-prefix files still use permanent NO.
             if (!matchedItem && numericMatch) {
                 const audioNo = Number.parseInt(numericMatch[1], 10);
-                matchedItem = playlist.find(item => item.isStructured && getRecordAudioNo(item) === audioNo) || null;
+                // R2.3: legacy NO-only filenames are accepted only when that NO
+                // resolves to exactly one mounted vocabulary. With multiple books
+                // sharing NO=1, guessing would leak the wrong book's audio.
+                matchedItem = resolveUniqueTableAudioItemByNo({ playlist, getRecordAudioNo, audioNo });
             }
 
             if (matchedItem) {

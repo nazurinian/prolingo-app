@@ -3,6 +3,26 @@ import { canonicalizeTableContent, getMaxAssignedNoFromRecords, getMaxManualIdFr
 import { createEmptySourcePack, normalizeDeckEntry, normalizeSourcePack } from '../../utils/multiSourceUtils';
 import { resolveDraftCacheMetadata } from '../../domain/dataset/draftCacheMetadataDomain';
 
+
+export const PROLINGO_DEMO_DECK_NAME = 'Demo • MASTER 1–5';
+
+export const PROLINGO_DEMO_MASTER_CSV = `VOCAB_ID,NO,WORDS,PART OF SPEECH,MEANING,INFO,EN,IDN,EXP1_EN,EXP1_IDN,EXP2_EN,EXP2_IDN,EXP3_EN,EXP3_IDN,EXP4_EN,EXP4_IDN,EXP5_EN,EXP5_IDN
+MASTER_0001,1,abandon,verb,meninggalkan,,The captain gave the order to abandon the sinking ship immediately.,Kapten memberi perintah untuk meninggalkan kapal yang tenggelam itu segera.,Please don't abandon me here.,Tolong jangan tinggalkan aku di sini.,We had to abandon the old project due to lack of funding.,Kami terpaksa membatalkan proyek lama itu karena kurangnya dana.,The town was completely abandoned decades ago.,Kota itu benar-benar ditinggalkan puluhan tahun yang lalu.,He abandoned his broken car by the side of the highway.,Dia meninggalkan mobilnya yang mogok di pinggir jalan tol.,"Never abandon your dreams, no matter how hard it gets.","Jangan pernah melepaskan mimpimu, seberat apa pun tantangannya."
+MASTER_0002,2,able,adjective,"sanggup, mampu ",,"With enough practice, she will be able to play the piano beautifully.","Dengan latihan yang cukup, dia akan sanggup bermain piano dengan indah.",Are you able to finish this by tomorrow?,Apakah kamu sanggup menyelesaikan ini besok?,I haven't been able to sleep well lately.,Akhir-akhir ini aku tidak bisa tidur nyenyak.,She is easily able to carry that heavy box.,Dia dengan mudah mampu mengangkat kotak berat itu.,We will be able to travel again next year.,Kita akan bisa bepergian lagi tahun depan.,He is barely able to walk after the marathon.,Dia hampir tidak kuat berjalan setelah lari maraton.
+MASTER_0003,3,ability,noun,"kemampuan, bakat, kecakapan ",,His ability to solve complex math problems amazed the teacher.,Kemampuan-nya untuk memecahkan masalah matematika yang rumit membuat guru kagum.,Her singing ability is truly world-class.,Kemampuan menyanyinya benar-benar kelas dunia.,I doubt his ability to lead the team effectively.,Aku meragukan kecakapannya memimpin tim dengan efektif.,This job requires the ability to work under pressure.,Pekerjaan ini menuntut kemampuan bekerja di bawah tekanan.,They tested my physical abilities during the exam.,Mereka menguji kemampuan fisikku selama ujian.,You should never underestimate your own abilities.,Kamu tidak boleh meremehkan bakatmu sendiri.
+MASTER_0004,4,abnormal,adjective,"aneh, luar biasa, abnormal ",,The doctor noticed an abnormal heartbeat during the check-up.,Dokter memperhatikan detak jantung yang tidak normal/aneh selama pemeriksaan.,It's highly abnormal for it to snow in this region.,Sangatlah tidak wajar jika turun salju di wilayah ini.,The blood test showed some abnormal results.,Tes darah menunjukkan beberapa hasil yang abnormal.,His behavior has been quite abnormal lately.,Tingkah lakunya cukup aneh akhir-akhir ini.,The machine is making an abnormal buzzing sound.,Mesin itu mengeluarkan suara dengung yang tidak biasa.,Experiencing a bit of anxiety before a speech isn't abnormal.,Merasa sedikit cemas sebelum pidato bukanlah hal yang aneh.
+MASTER_0005,5,abolish,verb,"menghapuskan, meniadakan, mengakhiri ",,The government decided to abolish the old tax law next year.,Pemerintah memutuskan untuk menghapuskan undang-undang pajak lama tahun depan.,The government plans to abolish the old tax law.,Pemerintah berencana menghapuskan undang-undang pajak yang lama.,Slavery was abolished in that country centuries ago.,Perbudakan telah dihapuskan di negara itu berabad-abad yang lalu.,They are campaigning to abolish single-use plastics.,Mereka berkampanye untuk meniadakan plastik sekali pakai.,Some argue we should abolish homework for primary students.,Beberapa orang berpendapat kita harus mengakhiri PR untuk siswa SD.,Abolishing the rule caused a lot of confusion.,Menghapus aturan tersebut menyebabkan banyak kebingungan.`;
+
+const buildProLingoDemoDeckEntry = () => ({
+  content: PROLINGO_DEMO_MASTER_CSV,
+  baselineContent: canonicalizeTableContent(PROLINGO_DEMO_MASTER_CSV),
+  sources: createEmptySourcePack(),
+  meta: {
+    ...resolveDraftCacheMetadata(parseTableRecords(PROLINGO_DEMO_MASTER_CSV), 5, 0, 5, getMaxAssignedNoFromRecords, getMaxManualIdFromRecords),
+    builtInDemo: true
+  }
+});
+
 export const executeDraftAutosaveEffect = ({
   isCsvDirty,
   mode,
@@ -18,7 +38,7 @@ export const executeDraftAutosaveEffect = ({
   setLastDraftAutoSaveAt,
   addLog
 }) => {
-      if (!isCsvDirty || mode !== 'table' || !currentDeckName.trim()) return undefined;
+      if (!isCsvDirty || mode !== 'table' || !currentDeckName.trim() || currentDeckName === PROLINGO_DEMO_DECK_NAME) return undefined;
       const timer = window.setTimeout(() => {
           const records = parseTableRecords(tableContent);
           const entry = {
@@ -53,6 +73,9 @@ export const executeStartupRestoreEffect = ({
   setSequenceHighWater,
   setManualIdHighWater,
   setImportedRowCount,
+  setSourcePack = null,
+  setSelectedDeckId = null,
+  setCurrentDeckName = null,
   setLockedStates,
   addLog,
   forceStopAll
@@ -61,28 +84,32 @@ export const executeStartupRestoreEffect = ({
     localStorage.removeItem('gemini_api_key');
     localStorage.removeItem('prolingo_gemini_byok_key_v1');
 
+    let persistedDecks = {};
     const saved = localStorage.getItem('pronunciation_decks');
     if (saved) {
-        setSavedDecks(JSON.parse(saved));
+        try { persistedDecks = JSON.parse(saved) || {}; }
+        catch { persistedDecks = {}; }
     }
 
-    const demoData = `VOCAB_ID,NO,WORDS,PART OF SPEECH,MEANING,INFO,EN,IDN,EXP1_EN,EXP1_IDN,EXP2_EN,EXP2_IDN,EXP3_EN,EXP3_IDN,EXP4_EN,EXP4_IDN,EXP5_EN,EXP5_IDN
-MASTER_0001,1,abandon,verb,meninggalkan,,The captain gave the order to abandon the sinking ship immediately.,Kapten memberi perintah untuk meninggalkan kapal yang tenggelam itu segera.,Please don't abandon me here.,Tolong jangan tinggalkan aku di sini.,We had to abandon the old project due to lack of funding.,Kami terpaksa membatalkan proyek lama itu karena kurangnya dana.,The town was completely abandoned decades ago.,Kota itu benar-benar ditinggalkan puluhan tahun yang lalu.,He abandoned his broken car by the side of the highway.,Dia meninggalkan mobilnya yang mogok di pinggir jalan tol.,"Never abandon your dreams, no matter how hard it gets.","Jangan pernah melepaskan mimpimu, seberat apa pun tantangannya."
-MASTER_0002,2,able,adjective,"sanggup, mampu ",,"With enough practice, she will be able to play the piano beautifully.","Dengan latihan yang cukup, dia akan sanggup bermain piano dengan indah.",Are you able to finish this by tomorrow?,Apakah kamu sanggup menyelesaikan ini besok?,I haven't been able to sleep well lately.,Akhir-akhir ini aku tidak bisa tidur nyenyak.,She is easily able to carry that heavy box.,Dia dengan mudah mampu mengangkat kotak berat itu.,We will be able to travel again next year.,Kita akan bisa bepergian lagi tahun depan.,He is barely able to walk after the marathon.,Dia hampir tidak kuat berjalan setelah lari maraton.
-MASTER_0003,3,ability,noun,"kemampuan, bakat, kecakapan ",,His ability to solve complex math problems amazed the teacher.,Kemampuan-nya untuk memecahkan masalah matematika yang rumit membuat guru kagum.,Her singing ability is truly world-class.,Kemampuan menyanyinya benar-benar kelas dunia.,I doubt his ability to lead the team effectively.,Aku meragukan kecakapannya memimpin tim dengan efektif.,This job requires the ability to work under pressure.,Pekerjaan ini menuntut kemampuan bekerja di bawah tekanan.,They tested my physical abilities during the exam.,Mereka menguji kemampuan fisikku selama ujian.,You should never underestimate your own abilities.,Kamu tidak boleh meremehkan bakatmu sendiri.
-MASTER_0004,4,abnormal,adjective,"aneh, luar biasa, abnormal ",,The doctor noticed an abnormal heartbeat during the check-up.,Dokter memperhatikan detak jantung yang tidak normal/aneh selama pemeriksaan.,It's highly abnormal for it to snow in this region.,Sangatlah tidak wajar jika turun salju di wilayah ini.,The blood test showed some abnormal results.,Tes darah menunjukkan beberapa hasil yang abnormal.,His behavior has been quite abnormal lately.,Tingkah lakunya cukup aneh akhir-akhir ini.,The machine is making an abnormal buzzing sound.,Mesin itu mengeluarkan suara dengung yang tidak biasa.,Experiencing a bit of anxiety before a speech isn't abnormal.,Merasa sedikit cemas sebelum pidato bukanlah hal yang aneh.
-MASTER_0005,5,abolish,verb,"menghapuskan, meniadakan, mengakhiri ",,The government decided to abolish the old tax law next year.,Pemerintah memutuskan untuk menghapuskan undang-undang pajak lama tahun depan.,The government plans to abolish the old tax law.,Pemerintah berencana menghapuskan undang-undang pajak yang lama.,Slavery was abolished in that country centuries ago.,Perbudakan telah dihapuskan di negara itu berabad-abad yang lalu.,They are campaigning to abolish single-use plastics.,Mereka berkampanye untuk meniadakan plastik sekali pakai.,Some argue we should abolish homework for primary students.,Beberapa orang berpendapat kita harus mengakhiri PR untuk siswa SD.,Abolishing the rule caused a lot of confusion.,Menghapus aturan tersebut menyebabkan banyak kebingungan.`;
-    setTableContent(demoData);
-    setCsvBaselineContent(canonicalizeTableContent(demoData));
+    // R2.3: the canonical 5-row MASTER demo is a built-in starter deck. It is
+    // injected on every startup and cannot be permanently replaced by a cached
+    // user deck with the same label. User decks remain untouched.
+    const demoEntry = buildProLingoDemoDeckEntry();
+    setSavedDecks({ ...persistedDecks, [PROLINGO_DEMO_DECK_NAME]: demoEntry });
+    setTableContent(demoEntry.content);
+    setCsvBaselineContent(demoEntry.baselineContent);
+    setSourcePack?.(normalizeSourcePack(demoEntry.sources));
     setSequenceHighWater(5);
     setManualIdHighWater(0);
     setImportedRowCount(5);
-    
-    if (demoData.trim().length > 0) {
+    setSelectedDeckId?.(PROLINGO_DEMO_DECK_NAME);
+    setCurrentDeckName?.(PROLINGO_DEMO_DECK_NAME);
+
+    if (demoEntry.content.trim().length > 0) {
       setLockedStates(prev => ({ ...prev, table: true }));
     }
 
-    addLog("System", APP_READY_LOG);
+    addLog('System', APP_READY_LOG);
 
     return () => forceStopAll();
 };
@@ -102,6 +129,11 @@ export const executeSaveDeckCacheService = ({
   addLog
 }) => {
       if(!currentDeckName) return;
+      if (currentDeckName === PROLINGO_DEMO_DECK_NAME) {
+          alert('Demo MASTER 1–5 adalah deck bawaan. Ubah nama deck lalu Save jika ingin menyimpan salinan yang bisa diedit.');
+          addLog('Info', 'Built-in demo is read-only; rename it before saving a copy.');
+          return;
+      }
       const records = parseTableRecords(tableContent);
       const entry = {
           content: tableContent,
@@ -201,6 +233,12 @@ export const executeDeleteDeckCacheService = ({
   addLog
 }) => {
       if (!selectedDeckId) return;
+      if (selectedDeckId === PROLINGO_DEMO_DECK_NAME) {
+          alert('Demo MASTER 1–5 adalah deck bawaan dan selalu tersedia saat ProLingo dibuka.');
+          addLog('Info', 'Built-in demo deck cannot be deleted.');
+          setIsDeleteDialogOpen(false);
+          return;
+      }
       const newDecks = { ...savedDecks };
       delete newDecks[selectedDeckId];
       setSavedDecks(newDecks);
