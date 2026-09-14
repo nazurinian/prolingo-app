@@ -62,6 +62,8 @@ export const MemoizedRow = memo(({
     downloadVoiceEn = null,
     downloadVoiceId = null,
     exportTableAudioMp3 = null,
+    exportTableCardMp3 = null,
+    exportTableCardZip = null,
     removeTableStagedAudio = null,
     cancelActiveAudioGeneration = null
 }) => {
@@ -244,6 +246,8 @@ export const MemoizedRow = memo(({
                 downloadVoiceEn={downloadVoiceEn}
                 downloadVoiceId={downloadVoiceId}
                 exportAudioMp3={exportTableAudioMp3}
+                exportCardMp3={exportTableCardMp3}
+                exportCardZip={exportTableCardZip}
                 removeStagedAudio={removeTableStagedAudio}
                 cancelActiveGeneration={cancelActiveAudioGeneration}
             />

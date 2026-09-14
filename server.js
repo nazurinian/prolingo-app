@@ -42,21 +42,33 @@ app.post('/api/tts', async (req, res) => {
   const voiceName = voice || 'en-GB-LibbyNeural';
   let audioStream = null;
   let clientClosed = false;
-  console.log(`[EDGE-TTS #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+  console.log(`[EDGE-TTS REQ #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+
+  const drainDetachedStream = (stream) => {
+    if (!stream) return;
+    try { stream.unpipe?.(res); } catch { /* no-op */ }
+    // Do not destroy msedge-tts streams on client abort. msedge-tts can still
+    // receive WebSocket frames after its internal request bookkeeping changes;
+    // destroying the stream here races that callback and can terminate Node.
+    // Resume/drain instead so upstream can finish naturally while the browser
+    // request is already considered cancelled.
+    stream.on?.('error', () => {});
+    stream.resume?.();
+  };
 
   const cleanupClientDisconnect = () => {
     if (res.writableEnded || clientClosed) return;
     clientClosed = true;
-    if (audioStream && !audioStream.destroyed) audioStream.destroy();
+    drainDetachedStream(audioStream);
     const durationMs = Date.now() - startTime;
-    console.warn(`[EDGE-TTS #${requestId}] ⚠️  Client disconnected/aborted after ${durationMs}ms`);
+    console.warn(`[EDGE-TTS REQ #${requestId}] ⚠️  Client disconnected/aborted after ${durationMs}ms • upstream draining safely`);
   };
   res.once('close', cleanupClientDisconnect);
 
   try {
     audioStream = await createEdgeTtsStream({ text, voice, rate, pitch });
     if (clientClosed) {
-      if (!audioStream.destroyed) audioStream.destroy();
+      drainDetachedStream(audioStream);
       return;
     }
 
@@ -73,12 +85,12 @@ app.post('/api/tts', async (req, res) => {
       if (clientClosed) return;
       const durationMs = Date.now() - startTime;
       const kb = Math.round(totalBytes / 1024);
-      console.log(`[EDGE-TTS #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
+      console.log(`[EDGE-TTS REQ #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
     });
 
     audioStream.on('error', error => {
       if (clientClosed) return;
-      console.error(`[EDGE-TTS #${requestId}] ❌ Stream error:`, error.message);
+      console.error(`[EDGE-TTS REQ #${requestId}] ❌ Stream error:`, error.message);
       if (!res.headersSent) res.status(500).json({ error: 'Failed to generate audio', details: error.message });
       else res.end();
     });
@@ -86,7 +98,7 @@ app.post('/api/tts', async (req, res) => {
     audioStream.pipe(res);
   } catch (error) {
     if (clientClosed) return;
-    console.error(`[EDGE-TTS #${requestId}] ❌ Generation error:`, error.message);
+    console.error(`[EDGE-TTS REQ #${requestId}] ❌ Generation error:`, error.message);
     res.status(500).json({ error: 'Failed to generate audio', details: error.message });
   }
 });

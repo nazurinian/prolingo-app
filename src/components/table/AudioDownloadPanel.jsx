@@ -1,8 +1,9 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Download, FileAudio, Loader2, Lock, RefreshCw, Trash2, X } from 'lucide-react';
+import { Download, FileArchive, FileAudio, Loader2, Lock, RefreshCw, Trash2, X } from 'lucide-react';
 import { getAdvancedExpressionPairs, getItemPartText, isIndonesianAudioPart } from '../../utils/audioUtils';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 
 const SOURCE_LABEL = Object.freeze({
   staging: 'IndexedDB Staging',
@@ -88,6 +89,8 @@ export default function AudioDownloadPanel({
   downloadVoiceEn = null,
   downloadVoiceId = null,
   exportAudioMp3 = null,
+  exportCardMp3 = null,
+  exportCardZip = null,
   removeStagedAudio = null,
   cancelActiveGeneration = null
 }) {
@@ -95,6 +98,8 @@ export default function AudioDownloadPanel({
   const [actionBusy, setActionBusy] = React.useState(null);
   const [bulkBusy, setBulkBusy] = React.useState(false);
   const [bulkProgress, setBulkProgress] = React.useState(null);
+  const [cardExportConfirm, setCardExportConfirm] = React.useState(null);
+  const [cardExportBusy, setCardExportBusy] = React.useState(null);
   const bulkStopRef = React.useRef(false);
   const bulkRunningRef = React.useRef(false);
   const ownedGenerationRef = React.useRef(false);
@@ -103,6 +108,7 @@ export default function AudioDownloadPanel({
     if (!open) {
       setActionPart(null);
       setActionBusy(null);
+      setCardExportConfirm(null);
     }
   }, [open]);
 
@@ -137,6 +143,7 @@ export default function AudioDownloadPanel({
   const engineLabel = generatorEngine === 'edge' ? 'Edge TTS' : 'Gemini';
   const currentCardGenerationActive = !isBatchDownloading && String(aiLoadingId || '').startsWith(`${item.id}-`);
   const allParts = rows.flatMap(row => [row.enPart, row.idnPart]).filter(Boolean);
+  const readyParts = allParts.filter(part => loadedSet.has(part));
   const stageableMissingParts = allParts.filter(part => {
     const text = String(getItemPartText(item, part) || '').trim();
     const languageLocked = generatorEngine === 'gemini' && isIndonesianAudioPart(part);
@@ -177,6 +184,18 @@ export default function AudioDownloadPanel({
   const stopCardGeneration = () => {
     bulkStopRef.current = true;
     cancelActiveGeneration?.();
+  };
+
+  const runCardExport = async type => {
+    if (cardExportBusy || isSystemBusy || !readyParts.length) return;
+    setCardExportConfirm(null);
+    setCardExportBusy(type);
+    try {
+      if (type === 'zip') await exportCardZip?.(item);
+      else await exportCardMp3?.(item);
+    } finally {
+      setCardExportBusy(null);
+    }
   };
 
   return createPortal(
@@ -241,6 +260,20 @@ export default function AudioDownloadPanel({
             </div>
           </div>
 
+          <div className="mb-3 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black text-emerald-800 dark:text-emerald-200">EXPORT READY CARD AUDIO</div>
+                <div className="mt-0.5 text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Ready {readyParts.length}/{allParts.length} • current EN/ID download voice only • Missing audio is skipped and never generated.</div>
+              </div>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" disabled={isSystemBusy || cardExportBusy || !readyParts.length || !exportCardMp3} onClick={() => setCardExportConfirm('mp3')} className="rounded-lg bg-emerald-600 px-2 py-2 text-[9px] font-black text-white disabled:opacity-35">{cardExportBusy === 'mp3' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <Download className="mr-1 inline h-3 w-3"/>}ALL MP3</button>
+              <button type="button" disabled={isSystemBusy || cardExportBusy || !readyParts.length || !exportCardZip} onClick={() => setCardExportConfirm('zip')} className="rounded-lg border border-emerald-300 dark:border-emerald-800 px-2 py-2 text-[9px] font-black text-emerald-700 dark:text-emerald-300 disabled:opacity-35">{cardExportBusy === 'zip' ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin"/> : <FileArchive className="mr-1 inline h-3 w-3"/>}CARD ZIP</button>
+            </div>
+            <p className="mt-2 text-[8px] leading-relaxed text-slate-400">ALL MP3 dispatches every Ready child audio in waves of max 10 browser downloads. CARD ZIP packages the same Ready set into one archive.</p>
+          </div>
+
           <div className="grid grid-cols-[minmax(72px,1fr)_88px_88px] items-center gap-2 text-[10px]">
             <div className="px-1 font-black uppercase tracking-wider text-slate-400">Part</div>
             <div className="text-center font-black text-slate-600 dark:text-slate-300">English</div>
@@ -258,6 +291,23 @@ export default function AudioDownloadPanel({
             <strong className="text-slate-700 dark:text-slate-200">R2 source parity.</strong> Generated audio is Staged in IndexedDB and survives refresh. Folder/ZIP audio can be re-exported as MP3 without opening or extracting the source manually.
           </div>
         </div>
+
+        <SafetyConfirmDialog
+          open={cardExportConfirm === 'mp3'}
+          title="Export all Ready Card audio as MP3?"
+          message={`Ready ${readyParts.length}/${allParts.length} audio • EN ${compactVoiceLabel(downloadVoiceEn)} • ID ${generatorEngine === 'gemini' ? 'locked' : compactVoiceLabel(downloadVoiceId)}. Browser downloads akan dikirim bertahap maksimal 10 file per gelombang. Missing audio dilewati dan tidak akan di-generate.`}
+          confirmLabel={`Export ${readyParts.length} MP3`}
+          onCancel={() => setCardExportConfirm(null)}
+          onConfirm={() => runCardExport('mp3')}
+        />
+        <SafetyConfirmDialog
+          open={cardExportConfirm === 'zip'}
+          title="Export Ready Card audio to ZIP?"
+          message={`Ready ${readyParts.length}/${allParts.length} audio • EN ${compactVoiceLabel(downloadVoiceEn)} • ID ${generatorEngine === 'gemini' ? 'locked' : compactVoiceLabel(downloadVoiceId)}. Hanya binary yang benar-benar Available dari Staging/Folder/ZIP yang dimasukkan; Missing audio dilewati.`}
+          confirmLabel="Export Card ZIP"
+          onCancel={() => setCardExportConfirm(null)}
+          onConfirm={() => runCardExport('zip')}
+        />
       </section>
     </div>,
     document.body

@@ -68,6 +68,8 @@ export const renderPlaylistViewport = ({
   aiVoiceName = null,
   audioDownloadHistory = {},
   exportTableAudioMp3 = null,
+  exportTableCardMp3 = null,
+  exportTableCardZip = null,
   removeTableStagedAudio = null,
   cancelActiveAudioGeneration = null
 }) => {
@@ -313,6 +315,8 @@ export const renderPlaylistViewport = ({
                            downloadVoiceEn={generatorEngine === 'edge' ? edgeVoice : aiVoiceName}
                            downloadVoiceId={generatorEngine === 'edge' ? edgeIndonesianVoice : null}
                            exportTableAudioMp3={exportTableAudioMp3}
+                           exportTableCardMp3={exportTableCardMp3}
+                           exportTableCardZip={exportTableCardZip}
                            removeTableStagedAudio={removeTableStagedAudio}
                            cancelActiveAudioGeneration={cancelActiveAudioGeneration}
                        />

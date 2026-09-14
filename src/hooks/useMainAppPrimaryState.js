@@ -12,7 +12,7 @@ import { loadTextStructuredPreferences } from '../services/persistence/textStruc
 
 export const useMainAppPrimaryState = () => {
   // P4-A0: Part 4 development starts in the isolated Text workspace.
-  const [mode, setMode] = useState('text'); 
+  const [mode, setMode] = useState('table');
   const [tableViewMode, setTableViewMode] = useState('master'); 
   const [studyQueue, setStudyQueue] = useState([]); 
   const [rangeInput, setRangeInput] = useState("");

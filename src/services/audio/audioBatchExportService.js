@@ -15,10 +15,16 @@ export const DEFAULT_AUDIO_ZIP_MAX_BYTES = 256 * 1024 * 1024;
 export const DIRECT_MP3_BATCH_LIMIT = 10;
 
 const padRange = value => Number.isFinite(Number(value)) ? String(Number(value)).padStart(4, '0') : 'NA';
+const compactVoiceFilenameLabel = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Voice';
+  const tail = raw.split('-').pop() || raw;
+  return sanitizeFilename(tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw);
+};
 
 export const buildTableAudioZipFilename = ({ bookId, voiceId, part, partNo = null, records = [] }) => {
   const range = resolveStagedGroupRange(records);
-  const base = [sanitizeFilename(bookId || 'TABLE'), sanitizeFilename(voiceId || 'Voice'), sanitizeFilename(String(part || 'audio').toUpperCase())];
+  const base = [sanitizeFilename(bookId || 'TABLE'), compactVoiceFilenameLabel(voiceId), sanitizeFilename(String(part || 'audio').toUpperCase())];
   if (partNo) base.push(`PART_${String(partNo).padStart(2, '0')}`);
   if (range.start !== null && range.end !== null) base.push(`${padRange(range.start)}-${padRange(range.end)}`);
   return `${base.join('__')}.zip`;
@@ -96,11 +102,17 @@ export const exportStagedAudioMp3 = async ({ record, sessionId = null }) => {
 };
 
 export const exportSmallStagedMp3Batch = async ({ records, sessionId = null, limit = DIRECT_MP3_BATCH_LIMIT, onProgress = null }) => {
-  const selected = (Array.isArray(records) ? records : []).filter(record => record?.hasBlob).slice(0, Math.max(1, Number(limit || DIRECT_MP3_BATCH_LIMIT)));
+  const selected = (Array.isArray(records) ? records : []).filter(record => record?.hasBlob);
+  const waveSize = Math.max(1, Number(limit || DIRECT_MP3_BATCH_LIMIT));
   const results = [];
   for (let index = 0; index < selected.length; index += 1) {
-    onProgress?.({ index: index + 1, total: selected.length, record: selected[index] });
+    const wave = Math.floor(index / waveSize) + 1;
+    const waves = Math.max(1, Math.ceil(selected.length / waveSize));
+    onProgress?.({ index: index + 1, total: selected.length, wave, waves, waveSize, record: selected[index] });
     results.push(await exportStagedAudioMp3({ record: selected[index], sessionId }));
+    const hasMore = index + 1 < selected.length;
+    if (hasMore && (index + 1) % waveSize === 0) await new Promise(resolve => window.setTimeout(resolve, 650));
+    else if (hasMore) await new Promise(resolve => window.setTimeout(resolve, 60));
   }
   return results;
 };

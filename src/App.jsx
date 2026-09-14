@@ -137,6 +137,12 @@ import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRunti
 
 
 const TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY = 'prolingo_table_local_audio_playback_v1';
+const compactVoiceFilenameLabel = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Voice';
+  const tail = raw.split('-').pop() || raw;
+  return sanitizeFilename(tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw);
+};
 
 const loadTableLocalAudioPlaybackPreference = () => {
   try {
@@ -2684,6 +2690,72 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   }, [resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, recordAudioDownloadHistoryDurably]);
 
+  const getTableCardExportParts = useCallback((item) => {
+    if (!item) return [];
+    const parts = ['word', 'word_idn', 'sentence', 'meaning'];
+    for (const pair of getAdvancedExpressionPairs(item)) {
+      parts.push(`exp${pair.number}_en`, `exp${pair.number}_idn`);
+    }
+    return parts.filter(part => String(getItemPartText(item, part) || '').trim());
+  }, []);
+
+  const exportTableCardMp3 = useCallback(async (item) => {
+    const parts = getTableCardExportParts(item);
+    const ready = parts.filter(part => Boolean(resolveSelectedTableAudioVariant(item, part)));
+    if (!ready.length) return { status: 'empty', ready: 0, missing: parts.length };
+    const totalWaves = Math.max(1, Math.ceil(ready.length / DIRECT_MP3_BATCH_LIMIT));
+    const results = [];
+    for (let index = 0; index < ready.length; index += 1) {
+      const part = ready[index];
+      results.push(await exportTableAudioMp3(item, part));
+      const isEndOfWave = (index + 1) % DIRECT_MP3_BATCH_LIMIT === 0;
+      const hasMore = index + 1 < ready.length;
+      if (isEndOfWave && hasMore) await new Promise(resolve => window.setTimeout(resolve, 650));
+      else if (hasMore) await new Promise(resolve => window.setTimeout(resolve, 60));
+    }
+    addLog('Audio', `Card direct MP3 export: ${ready.length} Ready audio • ${totalWaves} wave(s) of max ${DIRECT_MP3_BATCH_LIMIT}.`);
+    return { status: 'completed', results, ready: ready.length, missing: Math.max(0, parts.length - ready.length), waves: totalWaves };
+  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, exportTableAudioMp3, addLog]);
+
+  const exportTableCardZip = useCallback(async (item) => {
+    const parts = getTableCardExportParts(item);
+    const resolved = parts.map(part => ({ part, variant: resolveSelectedTableAudioVariant(item, part) })).filter(entry => entry.variant);
+    if (!resolved.length) return { status: 'empty', ready: 0, missing: parts.length };
+
+    const entries = [];
+    const historyRecords = [];
+    const stagedIds = [];
+    const voiceLabels = new Set();
+    for (const { part, variant } of resolved) {
+      const blob = await readTableAudioVariantBlob(variant);
+      if (!blob) continue;
+      const filename = variant.filename || `${sanitizeFilename(getAudioFilenameIdentity(item))}_${sanitizeFilename(part)}.mp3`;
+      entries.push({ filename, blob });
+      if (variant.voiceId) voiceLabels.add(compactVoiceFilenameLabel(variant.voiceId));
+      if (variant.sourceType === 'staging' && variant.stagingId) stagedIds.push(variant.stagingId);
+      historyRecords.push({
+        mode: 'table', mapKey: `${getStableAudioIdentity(item)}_${part}`, part,
+        engine: variant.engine || null, voice: variant.voiceId || null,
+        vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item), displayId: item.displayId ?? null,
+        filename, delivery: 'browser-zip'
+      });
+    }
+    if (!entries.length) return { status: 'empty-binary', ready: 0, missing: parts.length };
+
+    const book = sanitizeFilename(resolveTableAudioBookId(item) || 'TABLE');
+    const number = Number.isFinite(Number(item?.displayId)) ? String(Number(item.displayId)).padStart(4, '0') : sanitizeFilename(getAudioFilenameIdentity(item));
+    const voice = [...voiceLabels].filter(Boolean).join('-') || 'Voice';
+    const zipFilename = `${book}__${number}__${voice}__CARD_AUDIO.zip`;
+    const result = await triggerBrowserZipDownload({ entries, filename: zipFilename });
+    if (stagedIds.length) {
+      await Promise.all(stagedIds.map(id => markAudioStagingExported(id, { kind: 'zip', filename: zipFilename })));
+      await refreshTableAudioStaging();
+    }
+    if (historyRecords.length) recordAudioDownloadHistoryDurably(historyRecords.map(record => ({ ...record, filename: zipFilename })));
+    addLog('Audio', `Card ZIP export: ${entries.length} Ready audio → ${zipFilename}.`);
+    return { status: 'completed', result, filename: zipFilename, ready: entries.length, missing: Math.max(0, parts.length - entries.length) };
+  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, recordAudioDownloadHistoryDurably, addLog]);
+
   const removeTableStagedAudio = useCallback(async (item, part) => {
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
@@ -2740,7 +2812,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const slots = tableAudioBatchCoverage?.slots || [];
     const logicalSeen = new Set();
     const selected = [];
-    let availableCount = 0;
     for (const slot of slots) {
       const spec = {
         ...slot,
@@ -2753,8 +2824,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       const key = `${slot.mapKey}|${String(variant.voiceId || '').toLowerCase()}`;
       if (logicalSeen.has(key)) continue;
       logicalSeen.add(key);
-      availableCount += 1;
-      if (selected.length < DIRECT_MP3_BATCH_LIMIT) selected.push({ spec, variant });
+      selected.push({ spec, variant });
     }
     if (!selected.length) {
       alert('Belum ada audio Ready pada pilihan batch ini. Generate audio atau attach Folder/ZIP terlebih dahulu.');
@@ -2763,9 +2833,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
     const results = [];
     const historyRecords = [];
+    const totalWaves = Math.max(1, Math.ceil(selected.length / DIRECT_MP3_BATCH_LIMIT));
     for (let index = 0; index < selected.length; index += 1) {
       const { spec, variant } = selected[index];
-      setBatchStatusText(`MP3 ${index + 1}/${selected.length}`);
+      const wave = Math.floor(index / DIRECT_MP3_BATCH_LIMIT) + 1;
+      setBatchStatusText(`MP3 wave ${wave}/${totalWaves} • ${index + 1}/${selected.length}`);
       const blob = await readTableAudioVariantBlob(variant);
       if (!blob) continue;
       const filename = variant.filename || `${sanitizeFilename(spec.mapKey)}.mp3`;
@@ -2782,12 +2854,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         filename, delivery: 'browser-mp3'
       });
       results.push({ status: 'download-triggered', filename, sourceType: variant.sourceType, size: blob.size });
+
+      // Direct MP3 export is intentionally throttled in waves of 10 browser
+      // downloads. The limit is a dispatch size, not a cap on the selected
+      // export. This avoids repeatedly exporting only the first 10 files while
+      // still preventing a large selection from being fired at once.
+      const isEndOfWave = (index + 1) % DIRECT_MP3_BATCH_LIMIT === 0;
+      const hasMore = index + 1 < selected.length;
+      if (isEndOfWave && hasMore) {
+        await new Promise(resolve => window.setTimeout(resolve, 650));
+      } else if (hasMore) {
+        await new Promise(resolve => window.setTimeout(resolve, 60));
+      }
     }
     if (historyRecords.length) recordAudioDownloadHistoryDurably(historyRecords);
     setBatchStatusText('');
     await refreshTableAudioStaging();
-    addLog('Batch', `Direct MP3 export: ${results.length}/${selected.length} file • ${availableCount} Ready across Staging/Folder/ZIP.`);
-    return { status: 'completed', results, availableCount };
+    addLog('Batch', `Direct MP3 export: ${results.length}/${selected.length} Ready file • dispatched in ${totalWaves} wave(s) of max ${DIRECT_MP3_BATCH_LIMIT}.`);
+    return { status: 'completed', results, availableCount: selected.length, waves: totalWaves };
   }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
 
   const exportBatchSessions = useCallback(async (sessionIds) => {
@@ -3496,6 +3580,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     aiVoiceName,
     audioDownloadHistory,
     exportTableAudioMp3,
+    exportTableCardMp3,
+    exportTableCardZip,
     removeTableStagedAudio,
     cancelActiveAudioGeneration
     });
