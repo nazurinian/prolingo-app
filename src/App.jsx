@@ -2515,6 +2515,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (!ok) return { status: 'replace-cancelled', mapKey };
     }
 
+    const batchQuietMode = Boolean(options.batchQuietMode && mode === 'table');
+    const batchQuietLog = batchQuietMode
+      ? (type, message) => {
+          if (type === 'Error' || type === 'Warn') addLog(type, message);
+        }
+      : addLog;
+    const noopStateUpdate = () => {};
+    const batchQuietEdgeHealth = batchQuietMode
+      ? (next) => {
+          if (next?.status === 'error') setEdgeHealth(next);
+        }
+      : setEdgeHealth;
+
     const result = await executeAudioGenerationService({
       item,
       part,
@@ -2527,11 +2540,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       edgePitch,
       geminiAccessUnlocked: geminiOwnerState.unlocked || geminiOwnerState.byokRegistered,
       generationAbortControllerRef,
-      setAiLoadingId,
-      setEdgeHealth,
+      setAiLoadingId: batchQuietMode ? noopStateUpdate : setAiLoadingId,
+      setEdgeHealth: batchQuietEdgeHealth,
       setLocalAudioMapTable,
       setLocalAudioMapText,
-      onGeneratedAudio: (meta) => {
+      onGeneratedAudio: batchQuietMode ? null : (meta) => {
         const scopedMeta = mode === 'table' ? {
           ...meta,
           vocabId: getVocabIdentity(item),
@@ -2562,10 +2575,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           batchSessionId: options.batchSessionId || null,
           metadata: { generatedAt: Date.now(), source: 'tts-r2-staging' }
         });
-        setTableAudioStagingRecords(prev => [...(prev || []).filter(record => record.id !== stagingRecord.id), stagingRecord]);
+        if (!batchQuietMode) {
+          setTableAudioStagingRecords(prev => [...(prev || []).filter(record => record.id !== stagingRecord.id), stagingRecord]);
+        }
         return stagingRecord;
       } : null,
-      addLog,
+      addLog: batchQuietLog,
       deferBrowserDownload: Boolean(options.deferBrowserDownload),
       suppressFailureAlert: Boolean(options.suppressFailureAlert)
     });
@@ -2617,13 +2632,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       onStagingChanged: refreshTableAudioStaging,
       onBatchDelivered: (records) => {
         recordAudioDownloadHistoryDurably(records);
+        const updates = {};
         records.forEach(record => {
           const metaKey = `${record.mode || 'table'}:${record.mapKey}`;
           const current = generatedAudioMetaRef.current?.[metaKey] || {};
-          const next = { ...current, ...record, deliveryStatus: 'browser-package-triggered' };
-          generatedAudioMetaRef.current = { ...generatedAudioMetaRef.current, [metaKey]: next };
-          setGeneratedAudioMeta(prev => ({ ...prev, [metaKey]: next }));
+          updates[metaKey] = { ...current, ...record, deliveryStatus: 'browser-package-triggered' };
         });
+        if (Object.keys(updates).length) {
+          generatedAudioMetaRef.current = { ...generatedAudioMetaRef.current, ...updates };
+          setGeneratedAudioMeta(prev => ({ ...prev, ...updates }));
+        }
       }
     });
   };

@@ -1,15 +1,18 @@
-export const APP_VERSION = '5.13.8';
+export const APP_VERSION = '5.13.9';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.4 — TTS Error-Only Logging Hotfix';
-export const APP_RELEASE_NAME = 'R2.4.4 TTS Error-Only Logging Hotfix';
+export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.5 — Batch Memory Pressure Hardening';
+export const APP_RELEASE_NAME = 'R2.4.5 Batch Memory Pressure Hardening';
 export const APP_RELEASE_DATE = '2026-09-14';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.4: keeps normal TTS requests silent in the backend console; only TTS errors are logged unless PROLINGO_TTS_DEBUG=1 is enabled.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.4`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.5: reduces long-batch renderer memory pressure with quiet per-audio UI updates, incremental staging/session checkpoints, and a 64 MB ZIP safety ceiling.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.5`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Large Table Batch runs now use a quiet per-audio path: binary staging continues per item while spinner/health/log/generated-meta/staging-array React updates are suppressed and staging/session UI is checkpointed at lower frequency',
+  'Batch session bookkeeping now seeds Audio Staging metadata once and maintains an incremental metadata map instead of full IndexedDB getAll scans every 10 audio files',
+  'ZIP safety chunk ceiling is reduced from 256 MB to 64 MB to lower peak renderer memory during auto-export',
   'Normal Edge/Gemini TTS success and expected client-abort logs are silent by default to prevent integrated-terminal scrollback growth during large Batch runs; TTS errors remain visible and PROLINGO_TTS_DEBUG=1 restores verbose TTS diagnostics',
   'Edge backend STOP/abort no longer destroys the msedge-tts stream; disconnected requests drain safely so Card/Batch/Text abort does not race the upstream WebSocket stream',
   'Batch direct MP3 export now exports every Ready audio in the current range/type/voice selection and throttles browser downloads in waves of max 10 instead of repeatedly taking only the first 10',

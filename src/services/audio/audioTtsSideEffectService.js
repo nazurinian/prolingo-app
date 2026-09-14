@@ -271,7 +271,7 @@ suppressFailureAlert = false
 
           if (!deferBrowserDownload && !stagingRecord) triggerBrowserDownload(url, filename);
           addLog("Success", `${stagingRecord ? 'Staged' : deferBrowserDownload ? 'Generated' : 'Saved'}: ${filename}`);
-          return { status: 'success', mapKey: generatedKey, filename, blob, url, part, engine: generatorEngine, voice: generatedVoice, deliveryStatus, stagingRecord };
+          return { status: 'success', mapKey: generatedKey, filename, blob: stagingRecord ? null : blob, url, part, engine: generatorEngine, voice: generatedVoice, deliveryStatus, stagingRecord };
       }
   } catch (e) {
       if (isGenerationCancelled(e.name)) {

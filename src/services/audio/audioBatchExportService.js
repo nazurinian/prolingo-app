@@ -11,7 +11,7 @@ import {
   splitStagedAudioGroupByBytes
 } from '../../domain/audio/audioStagingDomain.js';
 
-export const DEFAULT_AUDIO_ZIP_MAX_BYTES = 256 * 1024 * 1024;
+export const DEFAULT_AUDIO_ZIP_MAX_BYTES = 64 * 1024 * 1024;
 export const DIRECT_MP3_BATCH_LIMIT = 10;
 
 const padRange = value => Number.isFinite(Number(value)) ? String(Number(value)).padStart(4, '0') : 'NA';

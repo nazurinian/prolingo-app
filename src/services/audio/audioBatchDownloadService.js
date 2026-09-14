@@ -13,6 +13,9 @@ import { exportStagedAudioZipGroups } from './audioBatchExportService.js';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const STORAGE_SAFETY_RESERVE_BYTES = 128 * 1024 * 1024;
 const STORAGE_PRESSURE_RATIO = 0.92;
+const SESSION_CHECKPOINT_INTERVAL = 50;
+const STAGING_UI_REFRESH_INTERVAL = 512;
+const BATCH_STATUS_RENDER_INTERVAL = 10;
 
 const getExpressionSelection = (batchConfig, lang) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
@@ -170,11 +173,31 @@ export const executeAudioBatchDownloadService = async ({
   const safetyFlushedIds = new Set();
   const deliveredRecords = [];
   let processedSinceStorageCheck = 0;
+  let processedSlotCount = 0;
+  let lastStagingUiRefreshAt = 0;
+
+  // R2.4.5 memory hardening: seed the current session view once. During a long
+  // batch, maintain a metadata-only in-memory map rather than re-reading the
+  // entire IndexedDB metadata store every 10 audio files.
+  let initialStagingMeta = [];
+  try {
+    initialStagingMeta = await listAudioStagingMetadata({ mode: 'table', includeReleased: true });
+  } catch (error) {
+    addLog('Warn', `Batch staging seed failed; continuing with new records only: ${error?.message || error}`);
+  }
+  const relevantById = new Map(
+    initialStagingMeta
+      .filter(record => matchesRequestedSpec(record, requestedSpecs))
+      .map(record => [record.id, record])
+  );
+  initialStagingMeta = null;
+
   addLog('Info', `Starting R2 batch (${targets.length} items) via ${generatorEngine.toUpperCase()} • ${missingOnly ? 'missing only' : 'redownload all'} • Auto ZIP ${autoExportZip ? 'ON' : 'OFF'}...`);
 
-  const refreshSessionSnapshot = async (extra = {}) => {
-    const allMeta = await listAudioStagingMetadata({ mode: 'table', includeReleased: true });
-    const relevant = allMeta.filter(record => matchesRequestedSpec(record, requestedSpecs));
+  const getRelevantSnapshot = () => [...relevantById.values()];
+
+  const refreshSessionSnapshot = async (extra = {}, { refreshStagingUi = false } = {}) => {
+    const relevant = getRelevantSnapshot();
     session = await saveAudioBatchSession({
       ...session,
       generatedCount,
@@ -186,8 +209,23 @@ export const executeAudioBatchDownloadService = async ({
       ...extra
     });
     await onBatchSessionsChanged?.();
-    await onStagingChanged?.();
+    if (refreshStagingUi) {
+      await onStagingChanged?.();
+      lastStagingUiRefreshAt = processedSlotCount;
+    }
     return relevant;
+  };
+
+  const maybeRefreshSessionCheckpoint = async () => {
+    if (!processedSlotCount || processedSlotCount % SESSION_CHECKPOINT_INTERVAL !== 0) return;
+    const refreshStagingUi = processedSlotCount - lastStagingUiRefreshAt >= STAGING_UI_REFRESH_INTERVAL;
+    await refreshSessionSnapshot({}, { refreshStagingUi });
+  };
+
+  const maybeRenderBatchStatus = ({ item, label, force = false } = {}) => {
+    if (!force && processedSlotCount > 0 && processedSlotCount % BATCH_STATUS_RENDER_INTERVAL !== 0) return;
+    const current = Math.min(requestedSpecs.length, processedSlotCount + 1);
+    setBatchStatusText(`Batch ${current}/${requestedSpecs.length} • ${item?.displayId ?? '—'} ${label || ''}`.trim());
   };
 
   const safetyFlushIfNeeded = async () => {
@@ -198,7 +236,7 @@ export const executeAudioBatchDownloadService = async ({
     if (!estimate?.quota) return false;
     const pressure = estimate.available < STORAGE_SAFETY_RESERVE_BYTES || estimate.ratio >= STORAGE_PRESSURE_RATIO;
     if (!pressure) return false;
-    const relevant = (await refreshSessionSnapshot()).filter(record => record.hasBlob && !safetyFlushedIds.has(record.id));
+    const relevant = getRelevantSnapshot().filter(record => record.hasBlob && !safetyFlushedIds.has(record.id));
     if (!relevant.length) return false;
     if (!autoExportZip) {
       session = await saveAudioBatchSession({ ...session, status: 'paused-storage-pressure', storageEstimate: estimate });
@@ -219,6 +257,10 @@ export const executeAudioBatchDownloadService = async ({
       filename: record.filename, delivery: 'browser-zip'
     })));
     await releaseAudioStagingBlobs(exportedIds, { reason: 'storage-pressure-exported' });
+    exportedIds.forEach(id => {
+      const current = relevantById.get(id);
+      if (current) relevantById.set(id, { ...current, hasBlob: false, status: 'released', releaseReason: 'storage-pressure-exported' });
+    });
     session = await saveAudioBatchSession({
       ...session,
       safetyExportCount: Number(session.safetyExportCount || 0) + exportResults.length,
@@ -250,20 +292,26 @@ export const executeAudioBatchDownloadService = async ({
         const coverageSlot = coverageByScopedKey?.[coverageKey] || coverageByMapKey?.[mapKey];
         if (missingOnly && !shouldDownloadTableCoverageSlot(coverageSlot)) {
           skippedCount += 1;
+          processedSlotCount += 1;
+          await maybeRefreshSessionCheckpoint();
           continue;
         }
-        setBatchStatusText(`${item.displayId} ${label} • staging`);
+        maybeRenderBatchStatus({ item, label, force: processedSlotCount === 0 });
         const result = await generateAIAudio(item, part, {
           skipReplaceConfirm: true,
           deferBrowserDownload: true,
           suppressFailureAlert: true,
-          batchSessionId: sessionId
+          batchSessionId: sessionId,
+          batchQuietMode: true
         });
-        if (result?.status === 'success' && result?.stagingRecord) generatedCount += 1;
-        else if (result?.status === 'error') failedCount += 1;
+        if (result?.status === 'success' && result?.stagingRecord) {
+          generatedCount += 1;
+          relevantById.set(result.stagingRecord.id, result.stagingRecord);
+        } else if (result?.status === 'error') failedCount += 1;
         else if (result?.status === 'cancelled' && !batchStopSignalRef.current) failedCount += 1;
 
-        if ((generatedCount + failedCount) % 10 === 0) await refreshSessionSnapshot();
+        processedSlotCount += 1;
+        await maybeRefreshSessionCheckpoint();
         await safetyFlushIfNeeded();
         if (!batchStopSignalRef.current && waitMs) await delay(waitMs);
       }
@@ -304,7 +352,7 @@ export const executeAudioBatchDownloadService = async ({
       completedAt: stopped ? null : Date.now(),
       stoppedAt: stopped ? Date.now() : null
     });
-    await refreshSessionSnapshot({ status: session.status, completedAt: session.completedAt, stoppedAt: session.stoppedAt, exportedZipCount: session.exportedZipCount });
+    await refreshSessionSnapshot({ status: session.status, completedAt: session.completedAt, stoppedAt: session.stoppedAt, exportedZipCount: session.exportedZipCount }, { refreshStagingUi: true });
     addLog('Batch', `${status}: staged ${generatedCount}, skipped covered ${skippedCount}, failed ${failedCount}, ZIP ${session.exportedZipCount || 0}.`);
     return { status, session, generatedCount, skippedCount, failedCount, exportResults };
   } finally {
@@ -313,6 +361,6 @@ export const executeAudioBatchDownloadService = async ({
     setIsBatchStopping(false);
     batchStopSignalRef.current = false;
     await onBatchSessionsChanged?.();
-    await onStagingChanged?.();
+    if (lastStagingUiRefreshAt !== processedSlotCount) await onStagingChanged?.();
   }
 };
