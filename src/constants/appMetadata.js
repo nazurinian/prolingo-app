@@ -1,15 +1,16 @@
-export const APP_VERSION = '5.13.7';
+export const APP_VERSION = '5.13.8';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.3 — Export + Abort + Library Polish';
-export const APP_RELEASE_NAME = 'R2.4.3 Export + Abort + Library Polish';
+export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.4 — TTS Error-Only Logging Hotfix';
+export const APP_RELEASE_NAME = 'R2.4.4 TTS Error-Only Logging Hotfix';
 export const APP_RELEASE_DATE = '2026-09-14';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.3: hardens Edge STOP/abort, upgrades direct MP3 export to all-Ready waves of 10, adds Card MP3/ZIP export, and makes Batch Library inline.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.3`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.4: keeps normal TTS requests silent in the backend console; only TTS errors are logged unless PROLINGO_TTS_DEBUG=1 is enabled.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.4`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Normal Edge/Gemini TTS success and expected client-abort logs are silent by default to prevent integrated-terminal scrollback growth during large Batch runs; TTS errors remain visible and PROLINGO_TTS_DEBUG=1 restores verbose TTS diagnostics',
   'Edge backend STOP/abort no longer destroys the msedge-tts stream; disconnected requests drain safely so Card/Batch/Text abort does not race the upstream WebSocket stream',
   'Batch direct MP3 export now exports every Ready audio in the current range/type/voice selection and throttles browser downloads in waves of max 10 instead of repeatedly taking only the first 10',
   'Card Audio now supports ALL MP3 and CARD ZIP export for all Ready child audio on the current EN/ID download voices without regenerating Missing audio',

@@ -21,6 +21,10 @@ import {
 const app = express();
 const port = 3001;
 let edgeRequestSequence = 0;
+const ttsDebugLogging = process.env.PROLINGO_TTS_DEBUG === '1';
+const ttsDebugLog = (...args) => {
+  if (ttsDebugLogging) console.log(...args);
+};
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
@@ -42,7 +46,7 @@ app.post('/api/tts', async (req, res) => {
   const voiceName = voice || 'en-GB-LibbyNeural';
   let audioStream = null;
   let clientClosed = false;
-  console.log(`[EDGE-TTS REQ #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+  ttsDebugLog(`[EDGE-TTS REQ #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
 
   const drainDetachedStream = (stream) => {
     if (!stream) return;
@@ -61,7 +65,7 @@ app.post('/api/tts', async (req, res) => {
     clientClosed = true;
     drainDetachedStream(audioStream);
     const durationMs = Date.now() - startTime;
-    console.warn(`[EDGE-TTS REQ #${requestId}] ⚠️  Client disconnected/aborted after ${durationMs}ms • upstream draining safely`);
+    ttsDebugLog(`[EDGE-TTS REQ #${requestId}] ⏹ Client disconnected/aborted after ${durationMs}ms • upstream draining safely`);
   };
   res.once('close', cleanupClientDisconnect);
 
@@ -85,7 +89,7 @@ app.post('/api/tts', async (req, res) => {
       if (clientClosed) return;
       const durationMs = Date.now() - startTime;
       const kb = Math.round(totalBytes / 1024);
-      console.log(`[EDGE-TTS REQ #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
+      ttsDebugLog(`[EDGE-TTS REQ #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
     });
 
     audioStream.on('error', error => {
@@ -152,7 +156,7 @@ app.post('/api/gemini-tts', async (req, res) => {
   const text = req.body?.text;
   const voiceName = req.body?.voiceName || 'Kore';
   const snippet = String(text || '').trim().substring(0, 30);
-  console.log(`[GEMINI-TTS] 🤖 Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
+  ttsDebugLog(`[GEMINI-TTS] 🤖 Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);
 
   try {
     const credential = resolveGeminiRequestCredential({ req });
@@ -162,7 +166,7 @@ app.post('/api/gemini-tts', async (req, res) => {
       apiKey: credential.apiKey
     });
     const durationMs = Date.now() - startTime;
-    console.log(`[GEMINI-TTS] ✅ Finished: "${snippet}" in ${durationMs}ms`);
+    ttsDebugLog(`[GEMINI-TTS] ✅ Finished: "${snippet}" in ${durationMs}ms`);
     res.setHeader('Cache-Control', 'no-store');
     res.json(data);
   } catch (error) {
