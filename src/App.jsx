@@ -2892,6 +2892,57 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return { status: 'completed', results, availableCount: selected.length, waves: totalWaves };
   }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
 
+  const exportCurrentSelectionZip = useCallback(async () => {
+    const slots = tableAudioBatchCoverage?.slots || [];
+    if (!slots.length) return { status: 'empty-selection' };
+    const exportRecords = [];
+    const unavailable = [];
+    const logicalSeen = new Set();
+    for (const slot of slots) {
+      const spec = {
+        ...slot,
+        voiceId: slot.requiredVoiceId || null,
+        vocabId: slot.vocabId || null,
+        bookId: slot.bookId || resolveTableAudioBookId(slot.vocabId || slot.stableId || slot.mapKey)
+      };
+      const variant = resolveTableAudioVariantForSpec(spec);
+      if (!variant) { unavailable.push(spec); continue; }
+      const key = `${spec.mapKey}|${String(variant.voiceId || '').toLowerCase()}|${String(spec.vocabId || spec.bookId || '').toUpperCase()}`;
+      if (logicalSeen.has(key)) continue;
+      logicalSeen.add(key);
+      const record = buildExportRecordFromSpec(spec, variant);
+      if (record) exportRecords.push(record);
+    }
+    if (unavailable.length || exportRecords.length !== slots.length) {
+      alert(`Full consolidated ZIP belum aman: ${exportRecords.length}/${slots.length} audio Ready. Load ZIP/Folder lama atau jalankan DOWNLOAD MISSING untuk ${Math.max(unavailable.length, slots.length - exportRecords.length)} slot yang belum tersedia.`);
+      return { status: 'incomplete', ready: exportRecords.length, total: slots.length, unavailableCount: unavailable.length };
+    }
+
+    const sessionId = `CONSOLIDATE_${Date.now()}`;
+    setBatchStatusText(`Consolidate ZIP • ${exportRecords.length} Ready audio`);
+    const results = await exportTableAudioRecordZipGroups({
+      records: exportRecords,
+      sessionId,
+      readBlob: record => readTableAudioVariantBlob(record.variant),
+      onProgress: info => { if (info.phase === 'zip') setBatchStatusText(`Consolidate • ${info.filename}`); },
+      onChunkExported: async ({ records: chunkRecords, filename }) => {
+        const stagingIds = chunkRecords
+          .filter(record => record.variant?.sourceType === 'staging' && record.variant?.stagingId)
+          .map(record => record.variant.stagingId);
+        if (stagingIds.length) await markAudioStagingExported(stagingIds, { kind: 'zip', sessionId, filename });
+      }
+    });
+    recordAudioDownloadHistoryDurably(exportRecords.map(record => ({
+      mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine,
+      voice: record.voiceId, vocabId: record.vocabId || null, bookId: record.bookId || null,
+      displayId: record.displayId ?? null, filename: record.filename, delivery: 'browser-zip'
+    })));
+    setBatchStatusText('');
+    await refreshTableAudioStaging();
+    addLog('Batch', `Consolidated ZIP: ${exportRecords.length}/${slots.length} Ready audio from Staging/Folder/ZIP → ${results.length} ZIP group(s).`);
+    return { status: 'completed', results, exportedCount: exportRecords.length, total: slots.length };
+  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+
   const exportBatchSessions = useCallback(async (sessionIds) => {
     const ids = [...new Set((Array.isArray(sessionIds) ? sessionIds : [sessionIds]).filter(Boolean))];
     if (!ids.length) return { status: 'empty-selection' };
@@ -3365,7 +3416,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     isBatchStopping, batchStatusText,
     tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
     batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, allStagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
-    onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions,
+    onExportCurrentMp3: exportCurrentSelectionMp3, onExportCurrentZip: exportCurrentSelectionZip, onExportBatchSessions: exportBatchSessions,
     onClearBatchStaging: clearBatchSessionStaging, onClearAllStaging: clearTableAudioStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     inline: Boolean(options.inline),
     showClose: options.showClose !== false
@@ -3459,7 +3510,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setEdgePitch, testEdgeBackend, edgeHealth, folderInputRef, isBatchDownloading, isBatchStopping, batchStatusText,
     batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
     batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
-    onExportCurrentMp3: exportCurrentSelectionMp3, onExportBatchSessions: exportBatchSessions, onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
+    onExportCurrentMp3: exportCurrentSelectionMp3, onExportCurrentZip: exportCurrentSelectionZip, onExportBatchSessions: exportBatchSessions, onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
     isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
     systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,

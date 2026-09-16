@@ -1,15 +1,21 @@
-export const APP_VERSION = '5.13.9';
+export const APP_VERSION = '5.13.10';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.5 — Batch Memory Pressure Hardening';
-export const APP_RELEASE_NAME = 'R2.4.5 Batch Memory Pressure Hardening';
-export const APP_RELEASE_DATE = '2026-09-14';
+export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.6 — Live Telemetry + Resume Consolidation';
+export const APP_RELEASE_NAME = 'R2.4.6 Live Telemetry + Resume Consolidation';
+export const APP_RELEASE_DATE = '2026-09-17';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.5: reduces long-batch renderer memory pressure with quiet per-audio UI updates, incremental staging/session checkpoints, and a 64 MB ZIP safety ceiling.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.5`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.6: adds lightweight live Batch telemetry plus verified-source resume and consolidated ZIP rebuild across Staging, Folder, and mounted ZIP sources.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.6`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Live Batch Telemetry now updates lightweight processed/Ready estimate/Missing estimate/Generated/Skipped/Failed/Remaining counters without re-reading the full IndexedDB inventory',
+  'Batch final reconciliation still refreshes authoritative IndexedDB-backed coverage at completion, stop, or safety checkpoint',
+  'Exported* history no longer suppresses DOWNLOAD MISSING by itself: only a currently verified Staging/Folder/mounted-ZIP binary on the exact active voice is treated as Ready',
+  'Mounted old ZIP coverage can therefore resume interrupted ranges without regenerating existing audio, while unavailable history-only slots are generated again',
+  'Batch Workspace can build consolidated ZIP group(s) from a complete current selection by lazily combining Ready binaries across Staging, Folder, and mounted ZIP sources without TTS regeneration',
+  'Consolidated ZIP stays locked while any selected slot is unavailable or wrong-voice, making incomplete audio coverage explicit before final archive export',
   'Large Table Batch runs now use a quiet per-audio path: binary staging continues per item while spinner/health/log/generated-meta/staging-array React updates are suppressed and staging/session UI is checkpointed at lower frequency',
   'Batch session bookkeeping now seeds Audio Staging metadata once and maintains an incremental metadata map instead of full IndexedDB getAll scans every 10 audio files',
   'ZIP safety chunk ceiling is reduced from 256 MB to 64 MB to lower peak renderer memory during auto-export',

@@ -9,6 +9,7 @@ import {
   saveAudioBatchSession
 } from '../persistence/audioStagingIndexedDbService.js';
 import { exportStagedAudioZipGroups } from './audioBatchExportService.js';
+import { publishTableBatchTelemetry, resetTableBatchTelemetry } from './audioBatchTelemetryService.js';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const STORAGE_SAFETY_RESERVE_BYTES = 128 * 1024 * 1024;
@@ -100,6 +101,7 @@ export const executeAudioBatchDownloadService = async ({
     generationAbortControllerRef.current?.abort();
     setIsBatchStopping(true);
     setBatchStatusText('Stopping...');
+    publishTableBatchTelemetry({ status: 'stopping' });
     addLog('Batch', 'Stopping batch generation...');
     return { status: 'stopping' };
   }
@@ -147,6 +149,24 @@ export const executeAudioBatchDownloadService = async ({
   const sessionId = createBatchSessionId();
   const autoExportZip = batchConfig?.autoExportZip !== false;
   const requestedSpecs = collectRequestedSlotSpecs({ targets, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice });
+  const resolveCoverageForSpec = spec => {
+    const coverageKey = buildTableAudioCoverageScopeKey(spec);
+    return coverageByScopedKey?.[coverageKey] || coverageByMapKey?.[spec.mapKey] || null;
+  };
+  const initialReadyCount = requestedSpecs.reduce((count, spec) => count + (shouldDownloadTableCoverageSlot(resolveCoverageForSpec(spec)) ? 0 : 1), 0);
+  resetTableBatchTelemetry({
+    sessionId,
+    status: 'starting',
+    total: requestedSpecs.length,
+    processed: 0,
+    generated: 0,
+    skippedReady: 0,
+    failed: 0,
+    remaining: requestedSpecs.length,
+    readyEstimate: initialReadyCount,
+    missingEstimate: Math.max(0, requestedSpecs.length - initialReadyCount),
+    reconciled: false
+  });
   let session = await saveAudioBatchSession({
     id: sessionId,
     mode: 'table',
@@ -170,11 +190,27 @@ export const executeAudioBatchDownloadService = async ({
   let generatedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
+  let releasedDuringBatchCount = 0;
   const safetyFlushedIds = new Set();
   const deliveredRecords = [];
   let processedSinceStorageCheck = 0;
   let processedSlotCount = 0;
   let lastStagingUiRefreshAt = 0;
+
+  const publishLiveTelemetry = ({ status = 'running', item = null, label = null, reconciled = false } = {}) => {
+    const readyEstimate = Math.max(0, Math.min(requestedSpecs.length, initialReadyCount + generatedCount - releasedDuringBatchCount));
+    publishTableBatchTelemetry({
+      sessionId, status, total: requestedSpecs.length, processed: processedSlotCount,
+      generated: generatedCount, skippedReady: skippedCount, failed: failedCount,
+      remaining: Math.max(0, requestedSpecs.length - processedSlotCount),
+      readyEstimate,
+      missingEstimate: Math.max(0, requestedSpecs.length - readyEstimate),
+      currentDisplayId: item?.displayId ?? null,
+      currentLabel: label || null,
+      reconciled
+    });
+  };
+  publishLiveTelemetry({ status: 'running' });
 
   // R2.4.5 memory hardening: seed the current session view once. During a long
   // batch, maintain a metadata-only in-memory map rather than re-reading the
@@ -251,6 +287,7 @@ export const executeAudioBatchDownloadService = async ({
     }});
     const exportedIds = [...new Set(exportResults.flatMap(result => result.ids || []))];
     exportedIds.forEach(id => safetyFlushedIds.add(id));
+    releasedDuringBatchCount += exportedIds.length;
     deliveredRecords.push(...relevant.filter(record => exportedIds.includes(record.id)).map(record => ({
       mode: 'table', mapKey: record.mapKey, part: record.part, engine: record.engine, voice: record.voiceId,
       vocabId: record.vocabId || null, bookId: record.bookId || null, displayId: record.displayId ?? null,
@@ -272,6 +309,7 @@ export const executeAudioBatchDownloadService = async ({
     deliveredRecords.length = 0;
     await onBatchSessionsChanged?.();
     await onStagingChanged?.();
+    publishLiveTelemetry({ status: 'running' });
     addLog('Batch', `Storage-pressure safety export: ${exportResults.length} ZIP, ${exportedIds.length} staged binaries released.`);
     return true;
   };
@@ -284,15 +322,15 @@ export const executeAudioBatchDownloadService = async ({
         if (batchStopSignalRef.current) break;
         const stableId = getStableAudioIdentity(item);
         const mapKey = `${stableId}_${part}`;
-        const coverageKey = buildTableAudioCoverageScopeKey({
+        const coverageSlot = resolveCoverageForSpec({
           mapKey,
           vocabId: getVocabIdentity(item),
           bookId: resolveTableAudioBookId(item)
         });
-        const coverageSlot = coverageByScopedKey?.[coverageKey] || coverageByMapKey?.[mapKey];
         if (missingOnly && !shouldDownloadTableCoverageSlot(coverageSlot)) {
           skippedCount += 1;
           processedSlotCount += 1;
+          publishLiveTelemetry({ item, label });
           await maybeRefreshSessionCheckpoint();
           continue;
         }
@@ -311,6 +349,7 @@ export const executeAudioBatchDownloadService = async ({
         else if (result?.status === 'cancelled' && !batchStopSignalRef.current) failedCount += 1;
 
         processedSlotCount += 1;
+        publishLiveTelemetry({ item, label });
         await maybeRefreshSessionCheckpoint();
         await safetyFlushIfNeeded();
         if (!batchStopSignalRef.current && waitMs) await delay(waitMs);
@@ -353,7 +392,8 @@ export const executeAudioBatchDownloadService = async ({
       stoppedAt: stopped ? Date.now() : null
     });
     await refreshSessionSnapshot({ status: session.status, completedAt: session.completedAt, stoppedAt: session.stoppedAt, exportedZipCount: session.exportedZipCount }, { refreshStagingUi: true });
-    addLog('Batch', `${status}: staged ${generatedCount}, skipped covered ${skippedCount}, failed ${failedCount}, ZIP ${session.exportedZipCount || 0}.`);
+    publishLiveTelemetry({ status, reconciled: true });
+    addLog('Batch', `${status}: staged ${generatedCount}, skipped Ready ${skippedCount}, failed ${failedCount}, ZIP ${session.exportedZipCount || 0}.`);
     return { status, session, generatedCount, skippedCount, failedCount, exportResults };
   } finally {
     setIsBatchDownloading(false);

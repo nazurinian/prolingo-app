@@ -2,6 +2,7 @@ import React from 'react';
 import { X, CheckSquare, Square, XCircle, Loader2, Lock, FileArchive, Music, Trash2, Database, History, HardDrive } from 'lucide-react';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 import { clampBatchRangeNumber, resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
+import { getTableBatchTelemetrySnapshot, subscribeTableBatchTelemetry } from '../../services/audio/audioBatchTelemetryService.js';
 
 const getExpressionSelection = (batchConfig, lang) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
@@ -103,6 +104,7 @@ export const BatchPopup = ({
   allStagingSummary = null,
   batchAvailabilityById = {},
   onExportCurrentMp3 = null,
+  onExportCurrentZip = null,
   onExportBatchSessions = null,
   onClearBatchStaging = null,
   onClearAllStaging = null,
@@ -115,6 +117,12 @@ export const BatchPopup = ({
   const [libraryOpen, setLibraryOpen] = React.useState(false);
   const [clearAllStagingConfirmOpen, setClearAllStagingConfirmOpen] = React.useState(false);
   const [directMp3ConfirmOpen, setDirectMp3ConfirmOpen] = React.useState(false);
+  const [consolidatedZipConfirmOpen, setConsolidatedZipConfirmOpen] = React.useState(false);
+  const liveBatchTelemetry = React.useSyncExternalStore(
+    subscribeTableBatchTelemetry,
+    getTableBatchTelemetrySnapshot,
+    getTableBatchTelemetrySnapshot
+  );
   const expEn = getExpressionSelection(batchConfig, 'en');
   const expIdn = getExpressionSelection(batchConfig, 'idn');
   const isStructuredTextBatch = mode === 'text' && Boolean(structuredTextBatch);
@@ -173,7 +181,7 @@ export const BatchPopup = ({
             <div className="rounded-lg border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="text">
               <div className="flex justify-between font-black text-violet-700 dark:text-violet-300"><span>Audio Coverage</span><span>{coverage?.covered || 0}/{coverage?.total || 0}</span></div>
               <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400">
-                <span>Ready: {coverage?.ready || 0}</span><span>Downloaded*: {coverage?.downloaded || 0}</span>
+                <span>Ready: {coverage?.ready || 0}</span><span>Exported history*: {coverage?.downloaded || 0}</span>
                 <span>Other voice: {coverage?.otherVoice || 0}</span><span>Stale: {coverage?.stale || 0}</span>
                 <span>Missing: {coverage?.missing || 0}</span><span className="font-black text-amber-600 dark:text-amber-300">Need: {coverage?.needDownload || 0}</span>
               </div>
@@ -226,10 +234,16 @@ export const BatchPopup = ({
           <div className="text-xs text-slate-400 italic">Legacy Text batch.</div>
         )}
 
+        {!isStructuredTextBatch && mode === 'table' && liveBatchTelemetry?.sessionId && <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-live-batch-telemetry="table">
+          <div className="flex items-center justify-between gap-2 font-black text-cyan-700 dark:text-cyan-300"><span>Live Batch • {String(liveBatchTelemetry.status || 'idle').replaceAll('-', ' ')}</span><span>{liveBatchTelemetry.processed || 0}/{liveBatchTelemetry.total || 0}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveBatchTelemetry.readyEstimate || 0}</span><span>Need est.: {liveBatchTelemetry.missingEstimate || 0}</span><span>Generated: {liveBatchTelemetry.generated || 0}</span><span>Skipped Ready: {liveBatchTelemetry.skippedReady || 0}</span><span>Failed: {liveBatchTelemetry.failed || 0}</span><span>Remaining: {liveBatchTelemetry.remaining || 0}</span></div>
+          <p className="mt-1 text-[8px] text-cyan-600/80 dark:text-cyan-300/80">Counter UI only • IndexedDB remains source of truth{liveBatchTelemetry.reconciled ? ' • final sync reconciled' : ''}.</p>
+        </div>}
+
         {!isStructuredTextBatch && mode === 'table' && <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="table">
           <div className="flex justify-between font-black text-indigo-700 dark:text-indigo-300"><span>Audio Coverage</span><span>{coverage?.covered || 0}/{coverage?.total || 0}</span></div>
-          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready: {coverage?.ready || 0}</span><span>Downloaded*: {coverage?.downloaded || 0}</span><span>Other voice: {coverage?.otherVoice || 0}</span><span>Missing: {coverage?.missing || 0}</span></div>
-          <p className="mt-1 font-black text-amber-600 dark:text-amber-300">Need download: {coverage?.needDownload || 0}</p>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready: {coverage?.ready || 0}</span><span>Exported history*: {coverage?.downloaded || 0}</span><span>Other voice: {coverage?.otherVoice || 0}</span><span>Missing: {coverage?.missing || 0}</span></div>
+          <p className="mt-1 font-black text-amber-600 dark:text-amber-300">Need source/current voice: {coverage?.needDownload || 0}</p>
         </div>}
 
         {!isStructuredTextBatch && <div className="flex gap-2 items-center text-xs">
@@ -276,6 +290,8 @@ export const BatchPopup = ({
           </div>
           <button type="button" disabled={isBatchDownloading || !onExportCurrentMp3 || !(coverage?.ready > 0)} onClick={() => setDirectMp3ConfirmOpen(true)} className="w-full rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>EXPORT READY MP3 • {coverage?.ready || 0} available</button>
           <p className="text-[8px] leading-relaxed text-slate-400">Uses the current Batch range, selected audio types, and active download voices. All Ready files are exported; browser downloads are throttled in waves of max {directMp3Limit}.</p>
+          <button type="button" disabled={isBatchDownloading || !onExportCurrentZip || !(coverage?.total > 0) || coverage?.ready !== coverage?.total} onClick={() => setConsolidatedZipConfirmOpen(true)} className="w-full rounded border border-sky-200 dark:border-sky-800 py-2 text-[10px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>{coverage?.ready === coverage?.total && coverage?.total > 0 ? `BUILD CONSOLIDATED ZIP • ${coverage.ready}/${coverage.total} Ready` : `FULL ZIP PENDING • ${coverage?.needDownload || 0} need source`}</button>
+          <p className="text-[8px] leading-relaxed text-slate-400">Mounted ZIP/Folder + new Staging may be recompressed into a complete current-range ZIP without TTS. Full export unlocks only when every selected slot is truly Ready now.</p>
         </div>}
 
         {!isStructuredTextBatch && <button
@@ -329,6 +345,14 @@ export const BatchPopup = ({
             </section>
         }
 
+        <SafetyConfirmDialog
+          open={consolidatedZipConfirmOpen}
+          title="Build consolidated ZIP from all Ready sources?"
+          message={`Range ${clampRangeValue(batchConfig?.start)}–${clampRangeValue(batchConfig?.end)} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • EN ${compactVoiceLabel(tableDownloadVoiceEn)} • ID ${isGemini ? 'locked' : compactVoiceLabel(tableDownloadVoiceId)}. ProLingo will read the exact current-voice binaries from Staging, Folder, and mounted ZIP sources, then build fresh complete ZIP group(s). Existing ZIP files are not modified and no TTS is generated.`}
+          confirmLabel="Build Full ZIP"
+          onCancel={() => setConsolidatedZipConfirmOpen(false)}
+          onConfirm={() => { setConsolidatedZipConfirmOpen(false); onExportCurrentZip?.(); }}
+        />
         <SafetyConfirmDialog
           open={directMp3ConfirmOpen}
           title="Export all Ready audio as direct MP3?"

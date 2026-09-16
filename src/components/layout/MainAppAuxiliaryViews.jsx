@@ -12,7 +12,7 @@ export const renderBatchPopupView = ({
   batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
   generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
   isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
-  batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportBatchSessions = null,
+  batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportCurrentZip = null, onExportBatchSessions = null,
   onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
 }) => (
     <BatchPopup
@@ -42,6 +42,7 @@ export const renderBatchPopupView = ({
       allStagingSummary={allStagingSummary}
       batchAvailabilityById={batchAvailabilityById}
       onExportCurrentMp3={onExportCurrentMp3}
+      onExportCurrentZip={onExportCurrentZip}
       onExportBatchSessions={onExportBatchSessions}
       onClearBatchStaging={onClearBatchStaging}
       onClearAllStaging={onClearAllStaging}

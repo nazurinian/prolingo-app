@@ -165,8 +165,10 @@ export const buildTableAudioBatchCoverage = args => {
     else if (slot.status === AUDIO_DOWNLOAD_COVERAGE_STATUS.OTHER_VOICE) counts.otherVoice += 1;
     else counts.missing += 1;
   });
-  counts.needDownload = counts.otherVoice + counts.missing;
-  counts.covered = counts.ready + counts.downloaded;
+  // R2.4.6: only a binary that is Ready now may suppress generation.
+  // Exported* is durable history, not proof that the MP3/ZIP still exists locally.
+  counts.needDownload = counts.downloaded + counts.otherVoice + counts.missing;
+  counts.covered = counts.ready;
   return {
     slots,
     counts,
@@ -177,4 +179,4 @@ export const buildTableAudioBatchCoverage = args => {
   };
 };
 
-export const shouldDownloadTableCoverageSlot = slot => !slot || ![AUDIO_DOWNLOAD_COVERAGE_STATUS.READY, AUDIO_DOWNLOAD_COVERAGE_STATUS.DOWNLOADED].includes(slot.status);
+export const shouldDownloadTableCoverageSlot = slot => !slot || slot.status !== AUDIO_DOWNLOAD_COVERAGE_STATUS.READY;
