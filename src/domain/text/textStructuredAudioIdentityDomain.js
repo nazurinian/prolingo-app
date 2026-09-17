@@ -1,4 +1,5 @@
 import { TEXT_AUDIO_CHANNELS } from '../../constants/textDatabaseConstants.js';
+import { buildCanonicalTextAudioFilename } from './textFilenameDomain.js';
 
 export const TEXT_STRUCTURED_AUDIO_IDENTITY_VERSION = 1;
 
@@ -64,17 +65,6 @@ export const getTextStructuredAudioVariantKey = variant => buildTextStructuredAu
   voiceId: variant?.voiceId
 });
 
-const safeFilenameToken = (value, fallback) => {
-  const token = clean(value)
-    .normalize('NFKD')
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
-    .replace(/\s+/g, '-')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^[-._]+|[-._]+$/g, '');
-  return token || fallback;
-};
-
 export const buildTextStructuredAudioFilename = ({
   audioVariantId,
   segmentId,
@@ -82,15 +72,14 @@ export const buildTextStructuredAudioFilename = ({
   engine,
   voiceId = null,
   extension = 'mp3'
-}) => {
-  const variantId = safeFilenameToken(String(audioVariantId || '').toUpperCase(), 'TXTAUDIO');
-  const segment = safeFilenameToken(normalizeSegmentId(segmentId), 'SEGMENT');
-  const channelToken = safeFilenameToken(normalizeChannel(channel).toUpperCase(), 'TEXT');
-  const engineToken = safeFilenameToken(normalizeEngine(engine).toUpperCase(), 'LOCAL');
-  const voiceToken = safeFilenameToken(voiceId, 'DEFAULT');
-  const ext = safeFilenameToken(String(extension || 'mp3').replace(/^\.+/, '').toLowerCase(), 'mp3');
-  return `${segment}__${channelToken}__${engineToken}__${voiceToken}__${variantId}.${ext}`;
-};
+}) => buildCanonicalTextAudioFilename({
+  audioVariantId,
+  segmentId: normalizeSegmentId(segmentId),
+  channel: normalizeChannel(channel),
+  engine: normalizeEngine(engine),
+  voiceId,
+  extension
+});
 
 const compareVariantNewestFirst = (a, b) => {
   const updatedDelta = Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0);

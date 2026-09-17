@@ -1,4 +1,5 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import { textVoiceFilenameTokenMatches } from '../../domain/text/textFilenameDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const upper = value => clean(value).toUpperCase();
@@ -60,7 +61,7 @@ const segmentMatchesParsedIdentity = ({ variant, parsed, index }) => {
 const variantMatchesParsedDetails = ({ variant, parsed }) => {
   if (lower(variant?.channel) !== lower(parsed?.channel)) return false;
   if (lower(variant?.engine) !== lower(parsed?.engine)) return false;
-  if (clean(variant?.voiceId) && lower(variant.voiceId) !== lower(parsed?.voiceToken)) return false;
+  if (clean(variant?.voiceId) && !textVoiceFilenameTokenMatches(parsed?.voiceToken, variant.voiceId)) return false;
   return true;
 };
 

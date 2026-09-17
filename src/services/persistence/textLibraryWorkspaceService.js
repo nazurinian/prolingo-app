@@ -143,6 +143,16 @@ export const executeTextLibraryRenameDocument = async ({ id, title, setTextLibra
   return result;
 };
 
+export const executeTextLibraryMoveDocument = async ({ id, collectionId = null, setTextLibrarySnapshot, addLog }) => {
+  const result = await executeTextLibraryCommand({
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+    payload: { id, collectionId: collectionId || null }
+  });
+  setTextLibrarySnapshot(result.librarySnapshot);
+  addLog?.('Text Library', `Moved Document ${id} → ${collectionId || 'Library Root'}.`);
+  return result;
+};
+
 
 export const executeTextLibraryDeleteDocument = async ({
   id,

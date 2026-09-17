@@ -13,7 +13,7 @@ export default function DesktopDataWorkspace({
   undoLastDataChange, lastDraftAutoSaveAt, textLibraryCatalog, activeTextDocument, activeTextDocumentTree,
   activeTextDocumentId, activeTextEditorModel, textLibraryCommandBusy, textLibraryCommandError,
   handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
-  handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection,
+  handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection,
   handleTextLibraryStructuredCommand, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) {
   const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
@@ -21,6 +21,7 @@ export default function DesktopDataWorkspace({
   const textBlockCount = activeTextDocumentTree?.blocks?.length || 0;
   const textSegmentCount = useMemo(() => (activeTextDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0), [activeTextDocumentTree]);
   const textCoverage = structuredTextAudioLibraryControls?.coverage || {};
+  const textSourceCount = activeTextDocumentTree?.__packActions?.sourceAttachments?.length || 0;
   return (
     mode === 'text' ? (
               <div className="flex-1 p-3 bg-white dark:bg-slate-800">
@@ -37,20 +38,20 @@ export default function DesktopDataWorkspace({
                     <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textBlockCount}</p><p className="text-[7px] font-black uppercase text-slate-400">Cards</p></div>
                     <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textSegmentCount}</p><p className="text-[7px] font-black uppercase text-slate-400">Segments</p></div>
                   </div>
-                  <p className="text-[8px] text-slate-400">Audio Ready {textCoverage.ready || 0}/{textCoverage.total || 0} • Missing {textCoverage.missing || textCoverage.needDownload || 0}</p>
+                  <p className="text-[8px] text-slate-400">Sources {textSourceCount} • Audio Ready {textCoverage.ready || 0}/{textCoverage.total || 0} • Missing {textCoverage.missing || textCoverage.needDownload || 0}</p>
                   <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="w-full min-h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black transition active:scale-[0.99]">OPEN TEXT WORKSPACE</button>
                 </section>
 
-                {textWorkspaceOpen && <div className="fixed inset-0 z-[125] flex items-center justify-center p-4 md:p-6" data-text-data-workspace="true">
+                {textWorkspaceOpen && <div className="fixed inset-0 z-[125] flex items-center justify-center p-2 md:p-6 overflow-hidden" data-text-data-workspace="true">
                   <button type="button" aria-label="Close Text workspace" onClick={() => setTextWorkspaceOpen(false)} className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]"/>
-                  <section className="relative z-10 w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
+                  <section className="relative z-10 w-full max-w-6xl h-[92dvh] max-h-[900px] min-h-0 min-w-0 overflow-hidden rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
                     <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                       <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-300"/>
                       <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Workspace</h2><p className="text-[9px] text-slate-400">Legacy • Paragraph • Conversation • Library • Sources • Audio</p></div>
                       <button type="button" onClick={() => setTextWorkspaceOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500"><X className="w-4 h-4"/></button>
                     </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-3 md:p-4 space-y-3">
-                      <div className="grid grid-cols-3 gap-2">
+                    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3 md:p-4 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         {['Legacy','Paragraph','Conversation'].map(label => <div key={label} className={`rounded-xl border p-2.5 ${textModeLabel === label ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/20' : 'border-slate-200 dark:border-slate-700'}`}><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">{label}</p><p className="mt-1 text-[8px] text-slate-400">{label === 'Legacy' ? 'Manual pronunciation sandbox' : label === 'Paragraph' ? 'Structured single-narrator learning' : 'Structured multi-speaker learning'}</p></div>)}
                       </div>
                       <TextLibraryShell
@@ -64,6 +65,7 @@ export default function DesktopDataWorkspace({
                         onCreateDocument={handleTextLibraryCreateDocument}
                         onCreateCollection={handleTextLibraryCreateCollection}
                         onRenameDocument={handleTextLibraryRenameDocument}
+                        onMoveDocument={handleTextLibraryMoveDocument}
                         onDeleteDocument={handleTextLibraryDeleteDocument}
                         onRenameCollection={handleTextLibraryRenameCollection}
                         onDeleteCollection={handleTextLibraryDeleteCollection}

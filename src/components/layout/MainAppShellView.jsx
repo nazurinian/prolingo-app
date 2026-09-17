@@ -38,7 +38,7 @@ export const renderMainAppShellView = (props) => {
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
     saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt, renderMobileTools, renderPlaylist, isPaused,
     isPlaying, playingIndex, speakingPart, activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll,
-    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, isChangeReviewOpen,
+    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, onOpenTextPlayer, isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen, closeManualEditor,
     manualEditingId, importedRowCount, sequenceHighWater, manualForm, setManualForm, manualAdvancedOpen,
     setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen, setTableContent, setCsvBaselineContent, setSourcePack,
@@ -49,7 +49,7 @@ export const renderMainAppShellView = (props) => {
     masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   } = props;
 
@@ -269,6 +269,7 @@ export const renderMainAppShellView = (props) => {
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
               handleTextLibraryDeleteDocument={handleTextLibraryDeleteDocument}
+              handleTextLibraryMoveDocument={handleTextLibraryMoveDocument}
               handleTextLibraryRenameCollection={handleTextLibraryRenameCollection}
               handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
@@ -340,6 +341,7 @@ export const renderMainAppShellView = (props) => {
         setPlaybackMode={setPlaybackMode}
         playingContext={playingContext}
         structuredTextModeActive={structuredTextModeActive}
+        onOpenTextPlayer={onOpenTextPlayer}
       />
       {isChangeReviewOpen && (
         <ChangeReviewModal

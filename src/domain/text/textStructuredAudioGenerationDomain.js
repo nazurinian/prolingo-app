@@ -141,11 +141,11 @@ export const buildTextStructuredGenerationJobs = ({
     const block = (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate.id === item.blockId) || null;
     const segment = (Array.isArray(block?.segments) ? block.segments : []).find(candidate => candidate.id === (item.segmentId || item.id)) || item;
     if (allowText && clean(item?.text)) {
-      const download = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel: 'text', preferences: prefs });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'text', preferences: prefs });
       jobs.push({ segmentId: item.segmentId || item.id, channel: 'text', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
     if (allowMeaning && clean(item?.meaning)) {
-      const download = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel: 'meaning', preferences: prefs });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'meaning', preferences: prefs });
       jobs.push({ segmentId: item.segmentId || item.id, channel: 'meaning', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
   });

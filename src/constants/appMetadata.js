@@ -1,15 +1,35 @@
-export const APP_VERSION = '5.14.0';
+export const APP_VERSION = '5.14.4';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T1 C0–C3 — Desktop Foundation + CRUD';
-export const APP_RELEASE_NAME = 'Final Text T1 Desktop Foundation + CRUD';
-export const APP_RELEASE_DATE = '2026-09-17';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T5 C5 — Conversation Speaker Identity + Multi-Voice';
+export const APP_RELEASE_NAME = 'Final Text T5 Conversation Speaker Identity + Multi-Voice';
+export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T1: desktop Text Data now uses a compact mini surface → full workspace, exposes official Legacy / Paragraph / Conversation creation paths, and exposes safe Document/Collection CRUD while preserving Table/R2.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T1`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T5: Conversation speaker profiles now use stable speaker identity and document-level playback/download multi-voice inheritance while Card/Segment overrides remain available.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T5`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T5 introduces stable Conversation speaker identity in Segment metadata without changing Text IndexedDB v1 schema',
+  'Document speaker playback profiles are active again for both EN/Text and ID/Meaning channels; Card speaker and Segment overrides remain higher priority',
+  'Document speaker Edge download profiles are separate from playback voices and now participate in generation, coverage, runtime reconnect, and Card inheritance',
+  'Card speaker playback/download overrides can bind to stable speaker IDs while legacy label-keyed profiles remain readable for backward compatibility',
+  'Renaming a speaker label after its stable identity has been persisted no longer silently loses the intended Document speaker profile',
+  'Final Text T4 moves persistent structured playback controls out of the learning/Card body and into a dedicated root Text Player workspace',
+  'Bottom Audio Player now exposes TEXT PLAYER on desktop and Player on mobile while retaining play/pause/prev/next/stop transport',
+  'Existing Show, playback channel order, Playback Feel, voice/audio download, generation, and source controls are preserved inside the Text Player workspace rather than removed',
+  'Final Text T3 centralizes Text export/audio naming under one canonical filename domain; existing Table naming code remains untouched',
+  'Generated Text audio now uses compact human voice tokens such as Ryan while retaining SEGMENT_ID + channel + engine + TXTAUDIO_ID identity in the filename',
+  'Text Folder/ZIP reconnect accepts both legacy full voice tokens and the new compact voice token, so old exported audio remains reconnectable',
+  'Text Pack JSON, Text DB Backup, and fallback browser Text audio ZIP names now use consistent double-underscore naming families and safe timestamps',
+  'Final Text T2 implements canonical Text JSON Attach/Sync identity without changing the Text IndexedDB v1 object-store schema',
+  'Repeated loading of the same canonical Text Pack now Syncs mapped local entities in place instead of silently creating another copy; Import as Copy preserves the old A14 independent-copy behavior explicitly',
+  'Source attachment mapping, baseline fingerprints, status, last-sync metadata, and source filename metadata are persisted under the existing Text META store',
+  'Sync creates new source entities with new permanent local IDs, updates clean mapped entities in place, removes clean source-owned entities deleted upstream, preserves local-only edits, and fails closed when the same mapped entity changed both locally and in source',
+  'Detach • Keep Local removes the source relationship while preserving local content; Remove Source Data deletes only clean source-owned mapped content and refuses destructive removal when local edits or foreign local children exist',
+  'Text Pack default package identity is stable across repeat exports and includes an immutable root creation stamp so unrelated databases with the same DOC/COLLECTION sequence do not collide accidentally',
+  'Desktop Text Workspace is constrained to a bounded viewport with one internal vertical scroller and hidden horizontal overflow to fix the T1 workspace overflow path',
+  'Document Move is exposed for local Documents so they can move between Library Root and Collections without changing permanent DOC_ID; attached source Documents must be detached before manual relocation',
   'Final Text T1 starts contract C0–C3 implementation without modifying frozen Table/R2 behavior',
   'Desktop Text Data sidebar is reduced to a compact summary with OPEN TEXT WORKSPACE; the full Text Library/editor/data stack moves to a root workspace overlay',
   'Legacy, Paragraph, and Conversation are official new-Document creation paths; Mixed remains compatibility-only and is not offered for new Documents',

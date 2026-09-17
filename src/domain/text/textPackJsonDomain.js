@@ -14,12 +14,22 @@ import { getTextIdSequence } from './textIdentityDomain.js';
 
 export const PROLINGO_TEXT_PACK_TYPE = 'prolingo-text-pack';
 export const PROLINGO_TEXT_PACK_VERSION = 1;
-export const PROLINGO_TEXT_PACK_IMPORT_MODE = 'merge';
+export const PROLINGO_TEXT_PACK_IMPORT_MODE = 'attach-sync';
+export const PROLINGO_TEXT_PACK_COPY_MODE = 'copy';
 export const PROLINGO_TEXT_PACK_SCOPE_TYPES = Object.freeze(['document', 'collection']);
 
 const sortByOrderThenId = records => [...records].sort((a, b) => (a.order - b.order) || String(a.id).localeCompare(String(b.id)));
 const cloneRecord = record => ({ ...record, metadata: record?.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata) ? { ...record.metadata } : {} });
 const normalizePackageId = (value, fallback) => String(value || fallback).trim().replace(/[^A-Za-z0-9_.:-]+/g, '_').slice(0, 180);
+const stableIdentityStamp = value => {
+  const text = String(value ?? '');
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0').toUpperCase();
+};
 
 const maxSequence = (records, kind) => records.reduce((max, record) => Math.max(max, getTextLibraryIdSequence(kind, record?.id)), 0);
 const maxTextSequence = records => records.reduce((max, record) => Math.max(max, getTextIdSequence(record?.id)), 0);
@@ -117,6 +127,7 @@ export const createProLingoTextPack = ({
   let collections = [];
   let documents = [];
   let scope;
+  let sourceRootCreatedAt = null;
 
   if (scopeType === 'document') {
     const document = snapshot.documents.find(item => item.id === rootId);
@@ -124,6 +135,7 @@ export const createProLingoTextPack = ({
     requireStructuredDocuments([document]);
     const sourceCollection = document.collectionId ? snapshot.collections.find(item => item.id === document.collectionId) || null : null;
     documents = [{ ...cloneRecord(document), collectionId: null, order: 1 }];
+    sourceRootCreatedAt = document.createdAt ?? null;
     scope = {
       type: 'document',
       rootId: document.id,
@@ -137,13 +149,21 @@ export const createProLingoTextPack = ({
     if (!documents.length) throw new Error(`Collection ${collection.id} has no Documents to export`);
     requireStructuredDocuments(documents);
     collections = [{ ...cloneRecord(collection), order: 1 }];
+    sourceRootCreatedAt = collection.createdAt ?? null;
     documents = documents.map((document, index) => ({ ...cloneRecord(document), order: index + 1 }));
     scope = { type: 'collection', rootId: collection.id };
   }
 
   const portable = selectDocumentRecords(snapshot, documents.map(document => document.id));
   const exportedAt = new Date(now).toISOString();
-  const fallbackId = `PTP_${now}_${scope.type}_${scope.rootId}`;
+  // Final Text C2: packageId is canonical source identity. Keep the default stable
+  // across repeat exports of the same Text root so reloading can Sync/Replace
+  // instead of silently creating another local copy.
+  // Root IDs are only guaranteed unique inside one Text database. Include the
+  // immutable root creation stamp so two unrelated databases that both contain
+  // DOC_000001 / COLLECTION_000001 do not accidentally become the same
+  // canonical attachment after exchanging JSON files.
+  const fallbackId = `PTP_${scope.type}_${scope.rootId}_${stableIdentityStamp(sourceRootCreatedAt)}`;
   const pack = {
     packageType: PROLINGO_TEXT_PACK_TYPE,
     packageVersion: PROLINGO_TEXT_PACK_VERSION,
@@ -353,6 +373,6 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       audioVariants: importedAudioVariants.length
     },
     packageId: pack.packageId,
-    importMode: PROLINGO_TEXT_PACK_IMPORT_MODE
+    importMode: PROLINGO_TEXT_PACK_COPY_MODE
   };
 };

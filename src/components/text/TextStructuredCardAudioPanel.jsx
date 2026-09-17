@@ -116,19 +116,17 @@ export const TextStructuredCardAudioPanel = ({
     const resolved = resolveTextStructuredEffectiveVoiceProfile({
       documentTree,
       block: safeBlock,
-      segment: segment ? { ...segment, metadata: {} } : null,
+      segment: segment ? { ...segment, metadata: { ...(segment.metadata?.speakerIdentityV1 ? { speakerIdentityV1: segment.metadata.speakerIdentityV1 } : {}) } } : null,
       channel,
       defaultVoiceName: channel === 'meaning' ? defaultMeaningVoiceName : defaultTextVoiceName,
-      includeDocumentSpeakerProfile: false,
-      simpleCardSpeakerMode: true
     });
     return `${compactVoiceLabel(resolved.voiceName)} · ${getTextStructuredVoiceOverrideLabel(resolved.source)}`;
   };
 
-  const speakerOverrideCount = speakers.reduce((count, { key }) => (
+  const speakerOverrideCount = speakers.reduce((count, { id, key }) => (
     count
-    + (cardProfile.speakers?.text?.[key] ? 1 : 0)
-    + (cardProfile.speakers?.meaning?.[key] ? 1 : 0)
+    + ((cardProfile.speakerIds?.text?.[id] || cardProfile.speakers?.text?.[key]) ? 1 : 0)
+    + ((cardProfile.speakerIds?.meaning?.[id] || cardProfile.speakers?.meaning?.[key]) ? 1 : 0)
   ), 0);
 
   return <div
@@ -164,7 +162,7 @@ export const TextStructuredCardAudioPanel = ({
           <span className="shrink-0 rounded-md bg-violet-100 dark:bg-violet-900/40 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Default</span>
           <p className="min-w-0 text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">
             {isConversation
-              ? 'All speakers use Sidebar voices. Expand a speaker only to customise this Card.'
+              ? 'Speakers inherit the Document speaker profile first. Expand a speaker only to customise this Card.'
               : 'This Card uses Sidebar voices. Open override only when this Paragraph needs a different voice.'}
           </p>
         </div>
@@ -181,7 +179,7 @@ export const TextStructuredCardAudioPanel = ({
 
           {!isConversation && <div className="grid gap-2 md:grid-cols-2">
             {['text', 'meaning'].map(channel => {
-              const inherited = resolveTextStructuredEffectiveDownloadVoice({ block: { ...block, metadata: {} }, segment: firstSegment, channel, preferences: generationPreferences });
+              const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block: { ...block, metadata: {} }, segment: firstSegment, channel, preferences: generationPreferences });
               const value = cardDownloadProfile.channels?.[channel] || '';
               return <label key={channel} className="block min-w-0">
                 <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download voice' : 'EN download voice'}</span>
@@ -196,17 +194,17 @@ export const TextStructuredCardAudioPanel = ({
               <VoiceSummary label="Global Edge ID" value={generationPreferences?.edgeMeaningVoiceId} accent="sky"/>
             </div>
             <p className="text-[8px] text-slate-400">Each detected speaker inherits these Edge defaults unless a speaker download override is set below.</p>
-            {speakers.map(({ key, label }) => {
-              const sample = segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || firstSegment;
-              return <div key={`download-${key}`} className="rounded-lg border border-violet-100 dark:border-violet-900 bg-white/70 dark:bg-slate-900/30 p-2">
+            {speakers.map(({ id, key, label }) => {
+              const sample = segments.find(segment => segment?.metadata?.speakerIdentityV1 === id) || segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || firstSegment;
+              return <div key={`download-${id}`} className="rounded-lg border border-violet-100 dark:border-violet-900 bg-white/70 dark:bg-slate-900/30 p-2">
                 <p className="mb-1.5 text-[9px] font-black text-violet-700 dark:text-violet-300">{label}</p>
                 <div className="grid gap-2 md:grid-cols-2">
                   {['text', 'meaning'].map(channel => {
-                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ block: { ...block, metadata: { ...block.metadata, audioDownloadProfileV1: { ...cardDownloadProfile, speakers: { text: {}, meaning: {} } } } }, segment: sample, channel, preferences: generationPreferences });
-                    const value = cardDownloadProfile.speakers?.[channel]?.[key] || '';
+                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block: { ...block, metadata: { ...block.metadata, audioDownloadProfileV1: { ...cardDownloadProfile, speakers: { text: {}, meaning: {} }, speakerIds: { text: {}, meaning: {} } } } }, segment: sample, channel, preferences: generationPreferences });
+                    const value = cardDownloadProfile.speakerIds?.[channel]?.[id] || cardDownloadProfile.speakers?.[channel]?.[key] || '';
                     return <label key={channel} className="block min-w-0">
                       <span className="mb-1 block text-[8px] font-bold text-slate-500">{channel === 'meaning' ? 'ID Edge' : 'EN Edge'}</span>
-                      <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, label)} testId={`${block.id}:${key}:download:${channel}`}/>
+                      <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, { id, label })} testId={`${block.id}:${id}:download:${channel}`}/>
                     </label>;
                   })}
                 </div>
@@ -244,29 +242,29 @@ export const TextStructuredCardAudioPanel = ({
 
           {speakers.length === 0 && <div className="rounded-xl border border-dashed border-sky-200 dark:border-sky-900 p-3 text-center text-[9px] text-slate-400">Add speaker names to Conversation Segments first.</div>}
 
-          {speakers.map(({ key, label }) => {
-            const sample = segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || null;
-            const speakerExpanded = expandedSpeakerKey === key;
-            const enOverride = cardProfile.speakers?.text?.[key] || '';
-            const idOverride = cardProfile.speakers?.meaning?.[key] || '';
+          {speakers.map(({ id, key, label }) => {
+            const sample = segments.find(segment => segment?.metadata?.speakerIdentityV1 === id) || segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || null;
+            const speakerExpanded = expandedSpeakerKey === id;
+            const enOverride = cardProfile.speakerIds?.text?.[id] || cardProfile.speakers?.text?.[key] || '';
+            const idOverride = cardProfile.speakerIds?.meaning?.[id] || cardProfile.speakers?.meaning?.[key] || '';
             const hasOverride = Boolean(enOverride || idOverride);
-            return <div key={key} className={`rounded-xl border overflow-hidden transition ${hasOverride ? 'border-sky-200 dark:border-sky-800 bg-sky-50/55 dark:bg-sky-950/15' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30'}`} data-text-mobile-speaker-card={key}>
-              <button type="button" onClick={() => setExpandedSpeakerKey(current => current === key ? null : key)} className="w-full min-h-11 flex items-center gap-2 px-2.5 py-2 text-left" aria-expanded={speakerExpanded} aria-controls={`speaker-voice-${block.id}-${key}`}>
+            return <div key={id} className={`rounded-xl border overflow-hidden transition ${hasOverride ? 'border-sky-200 dark:border-sky-800 bg-sky-50/55 dark:bg-sky-950/15' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30'}`} data-text-mobile-speaker-card={id}>
+              <button type="button" onClick={() => setExpandedSpeakerKey(current => current === id ? null : id)} className="w-full min-h-11 flex items-center gap-2 px-2.5 py-2 text-left" aria-expanded={speakerExpanded} aria-controls={`speaker-voice-${block.id}-${id}`}>
                 <span className="shrink-0 px-2 py-1 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-[10px] font-black text-sky-700 dark:text-sky-300">{label}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[10px] text-slate-600 dark:text-slate-300">{clue(sample, 'text')}</p>
-                  <p className="mt-0.5 truncate text-[8px] text-slate-400">{hasOverride ? `Custom • EN ${compactVoiceLabel(enOverride || defaultTextVoiceName)} • ID ${compactVoiceLabel(idOverride || defaultMeaningVoiceName)}` : `Sidebar default • ${compactVoiceLabel(defaultTextVoiceName)}`}</p>
+                  <p className="mt-0.5 truncate text-[8px] text-slate-400">{hasOverride ? `Custom • EN ${compactVoiceLabel(enOverride || defaultTextVoiceName)} • ID ${compactVoiceLabel(idOverride || defaultMeaningVoiceName)}` : `Document/global inherit • ${compactVoiceLabel(defaultTextVoiceName)}`}</p>
                 </div>
                 <ChevronDown className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${speakerExpanded ? 'rotate-180' : ''}`}/>
               </button>
 
-              {speakerExpanded && <div id={`speaker-voice-${block.id}-${key}`} className="grid gap-2 border-t border-slate-100 dark:border-slate-800 p-3 md:grid-cols-2">
+              {speakerExpanded && <div id={`speaker-voice-${block.id}-${id}`} className="grid gap-2 border-t border-slate-100 dark:border-slate-800 p-3 md:grid-cols-2">
                 {['text', 'meaning'].map(channel => {
                   const isMeaning = channel === 'meaning';
-                  const value = cardProfile.speakers?.[channel]?.[key] || '';
+                  const value = cardProfile.speakerIds?.[channel]?.[id] || cardProfile.speakers?.[channel]?.[key] || '';
                   return <label key={channel} className="block min-w-0">
                     <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-slate-500">{isMeaning ? 'ID voice' : 'EN voice'}</span>
-                    <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoices : englishVoices} disabled={disabled} onChange={voiceName => onCardVoiceChange?.(block.id, channel, voiceName, label)} testId={`${block.id}:${key}:${channel}`}/>
+                    <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoices : englishVoices} disabled={disabled} onChange={voiceName => onCardVoiceChange?.(block.id, channel, voiceName, { id, label })} testId={`${block.id}:${id}:${channel}`}/>
                   </label>;
                 })}
               </div>}
@@ -295,11 +293,9 @@ export const TextStructuredCardAudioPanel = ({
                     const inherited = resolveTextStructuredEffectiveVoiceProfile({
                       documentTree,
                       block,
-                      segment: { ...segment, metadata: {} },
+                      segment: { ...segment, metadata: { ...(segment.metadata?.speakerIdentityV1 ? { speakerIdentityV1: segment.metadata.speakerIdentityV1 } : {}) } },
                       channel,
                       defaultVoiceName: isMeaning ? defaultMeaningVoiceName : defaultTextVoiceName,
-                      includeDocumentSpeakerProfile: false,
-                      simpleCardSpeakerMode: true
                     });
                     return <div key={channel} className="flex min-w-0 items-center gap-1.5">
                       <div className="min-w-0 flex-1"><VoiceSelect value={value} inheritedLabel={`${compactVoiceLabel(inherited.voiceName)} · ${getTextStructuredVoiceOverrideLabel(inherited.source)}`} voices={isMeaning ? indonesianVoices : englishVoices} disabled={disabled} onChange={voiceName => onSegmentVoiceChange?.(segment.id, channel, voiceName)} testId={`${segment.id}:${channel}`}/></div>
@@ -310,7 +306,7 @@ export const TextStructuredCardAudioPanel = ({
                 <div className="mt-2 grid gap-2 border-t border-violet-100 dark:border-violet-900 pt-2 md:grid-cols-2" data-text-segment-download-overrides="true">
                   {['text', 'meaning'].map(channel => {
                     const segmentDownload = getTextStructuredAudioDownloadProfile(segment);
-                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ block, segment: { ...segment, metadata: {} }, channel, preferences: generationPreferences });
+                    const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment: { ...segment, metadata: { ...(segment.metadata?.speakerIdentityV1 ? { speakerIdentityV1: segment.metadata.speakerIdentityV1 } : {}) } }, channel, preferences: generationPreferences });
                     return <label key={`download-${channel}`} className="block min-w-0">
                       <span className="mb-1 block text-[8px] font-bold text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID Edge download' : 'EN Edge download'}</span>
                       <EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onSegmentDownloadVoiceChange?.(segment.id, channel, voiceId)} testId={`${segment.id}:download:${channel}`}/>

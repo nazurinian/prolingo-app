@@ -50,6 +50,7 @@ import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
 import { initialEdgeVoices } from './constants/voiceConstants';
 import { downloadTextFile, encodeWAV, formatVoiceLabel, getAdvancedContentCount, getAdvancedExpressionPairs, getAudioFilenameIdentity, getItemPartText, getRecordAudioNo, getStableAudioIdentity, getVocabIdentity, groupVoicesByRegion, hasAdvancedContent, isIndonesianAudioPart, sanitizeFilename, triggerBrowserDownload, writeString } from './utils/audioUtils';
+import { buildCanonicalTextBrowserAudioPackageFilename } from './domain/text/textFilenameDomain.js';
 import { canonicalizeTableContent, createEmptyManualForm, csvEscape, detectDelimiter, getMaxAssignedNoFromRecords, getMaxManualIdFromRecords, getNextManualVocabId, getRecordSignature, getTableChangeSummary, normalizeHeaderKey, normalizeVocabId, parseDelimitedText, parseTableRecords, serializeTableRecords, validateTableRecords } from './utils/csvUtils';
 import { createEmptySourcePack, detectV510SourceKey, getDuplicateSourceIds, getSourceChangeSummary, getSourceDiagnostics, mergeSourcePackBaselines, normalizeDeckEntry, normalizeSourcePack, parseLayerSourceRecords, readV510FileText, serializeLayerSourceRecords, serializeMainSourceRecords, serializeSourceFromMerged } from './utils/multiSourceUtils';
 import { createDefaultPlaybackSequence, createEmptyVocabularyOrder, createPlaybackPresetSequence, formatPlaybackDelay, getPlaybackItemId, getPlaybackListSignature, normalizePlaybackDelays, normalizePlaybackSequence, playbackConfigSignature, reorderPlaybackListByIds } from './utils/playbackSequenceUtils';
@@ -111,14 +112,15 @@ import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/text
 import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
-import { buildTextStructuredSpeakerVoiceMetadata, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
 import { resolveTextLibrarySearchActionTarget, resolveTextLibrarySearchResults, TEXT_LIBRARY_SEARCH_ACTIONS } from './domain/text/textLibrarySearchDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
-import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryDeleteCollection, executeTextLibraryDeleteDocument, executeTextLibraryRenameCollection, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
-import { executeProLingoTextPackExport, executeProLingoTextPackFileMerge } from './services/persistence/textPackJsonService.js';
+import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryDeleteCollection, executeTextLibraryDeleteDocument, executeTextLibraryMoveDocument, executeTextLibraryRenameCollection, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeProLingoTextPackExport, executeProLingoTextPackFileAttachOrSync, executeProLingoTextPackFileImportCopy, executeTextSourceDetach, readTextSourceAttachments } from './services/persistence/textPackJsonService.js';
 import { executeProLingoTextDatabaseBackupExport, executeProLingoTextDatabaseReplaceRestore, readProLingoTextDatabaseBackupFile } from './services/persistence/textDatabaseBackupService.js';
 import { syncLegacyTextProjectionToDatabase } from './services/persistence/textLibraryIndexedDbService.js';
 import { APP_CHECKPOINT_ID, APP_VERSION } from './constants/appMetadata.js';
@@ -201,6 +203,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
   // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
   const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
+  // Final Text C2: canonical JSON source attachments live in Text IndexedDB META.
+  const [textSourceAttachments, setTextSourceAttachments] = useState([]);
+  // Final Text C4: advanced structured playback controls live in a root Text Player workspace opened from the bottom player.
+  const [textPlayerWorkspaceOpen, setTextPlayerWorkspaceOpen] = useState(false);
   // C3.4.1 Table-only: Folder remains the stable source; ZIP archives are an
   // additive lazy source. Voice variants are tracked independently per audio slot.
   const [tableAudioFolderVariantInventory, setTableAudioFolderVariantInventory] = useState({});
@@ -624,6 +630,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }), [legacyTextBootstrapState, addLog, setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot, setTextDatabaseStatus, setTextDatabaseError]);
 
   useEffect(() => {
+    if (textDatabaseStatus !== 'hydrated' && textDatabaseStatus !== 'ready') return undefined;
+    let cancelled = false;
+    readTextSourceAttachments()
+      .then(attachments => { if (!cancelled) setTextSourceAttachments(attachments); })
+      .catch(error => { if (!cancelled) addLog('Error', `Text source registry load failed: ${error?.message || error}`); });
+    return () => { cancelled = true; };
+  }, [textDatabaseStatus, addLog]);
+
+  useEffect(() => {
     setTextIdentityState(prev => reconcileTextIdentityState(prev, textContent));
   }, [textContent, setTextIdentityState]);
 
@@ -648,6 +663,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedTextBrowserVoice = structuredTextVoiceState.textVoice;
   const selectedTextIndonesianVoice = structuredTextVoiceState.meaningVoice;
   const structuredTextModeActive = mode === 'text' && activeTextEditorModel === 'structured-v1';
+  useEffect(() => { if (!structuredTextModeActive) setTextPlayerWorkspaceOpen(false); }, [structuredTextModeActive]);
   // P4-A11: speaker profiles are document metadata, not audio identity. The requested
   // voice can differ per conversation speaker while SEGMENT_ID/TXTAUDIO identity stays stable.
   const structuredTextSpeakerVoiceMap = useMemo(
@@ -665,11 +681,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       item,
       channel,
       defaultVoiceName: defaultVoiceId,
-      // UX-HARDENING C3.1: sidebar is the simple shared default. Legacy A11
-      // Document speaker metadata is retained for compatibility/export, but the
-      // active app flow only applies explicit Card/Segment overrides.
-      includeDocumentSpeakerProfile: false,
-      simpleCardSpeakerMode: true
     });
     const requestedVoiceId = assignment.voiceName || defaultVoice?.name || null;
     const pool = isMeaning ? indonesianVoices : voices;
@@ -690,8 +701,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textVoiceId: defaultStructuredTextVoiceId,
     meaningVoiceId: defaultStructuredMeaningVoiceId,
     speakerVoiceMap: structuredTextSpeakerVoiceMap,
-    includeDocumentSpeakerProfile: false,
-    simpleCardSpeakerMode: true,
     preferredGeneratedEngine: 'edge',
     downloadPreferences: structuredTextAudioGenerationPreferences
   }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextAudioGenerationPreferences]);
@@ -1493,7 +1502,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const segment = (block?.segments || []).find(candidate => candidate.id === segmentId) || item;
     const resolvedDownloadVoice = downloadVoiceId
       ? { voiceId: downloadVoiceId, source: downloadVoiceSource || 'job-download' }
-      : resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
+      : resolveTextStructuredEffectiveDownloadVoice({ documentTree: activeTextDocumentTree, block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
     const generationVoiceState = {
       ...resolveTextStructuredGenerationVoiceState({
         channel,
@@ -1592,7 +1601,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         const safeTitle = sanitizeFilename(activeTextDocumentTree?.title || 'Text_Document').replace(/\s+/g, '_');
         const packageResult = await triggerBrowserZipDownload({
           entries: packageRecords.map(record => ({ filename: record.filename, blob: record.blob })),
-          filename: `ProLingo_Text_${safeTitle}_Audio_${Date.now()}.zip`
+          filename: buildCanonicalTextBrowserAudioPackageFilename({ title: safeTitle, createdAt: Date.now() })
         });
         await markStructuredTextPackagedDelivery(packageRecords);
         addLog('Text Generate', `Browser package: ${packageResult.fileCount} audio → ${packageResult.filename}.`);
@@ -1630,6 +1639,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
       const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
       const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
+        documentTree: activeTextDocumentTree,
         block,
         segment,
         channel,
@@ -1888,6 +1898,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryMoveDocument = useCallback((id, collectionId) => runTextLibraryUiCommand(() => executeTextLibraryMoveDocument({ id, collectionId, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteDocument = useCallback((id) => runTextLibraryUiCommand(async () => {
     forceStopAll();
     setCurrentIndex(null);
@@ -1904,7 +1915,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const textPackSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
-    checkpoint: 'A16 — Text Search + Final UX Polish',
+    checkpoint: 'Final Text T2 — Canonical Source Lifecycle',
     engineeringLine: APP_CHECKPOINT_ID
   }), []);
 
@@ -1938,16 +1949,53 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }), [runTextLibraryUiCommand, textLibrarySnapshot, activeTextDocument?.collectionId, textPackSourceMetadata, addLog]);
 
-  const handleTextPackImportMerge = useCallback((file) => runTextLibraryUiCommand(async () => {
-    const merged = await executeProLingoTextPackFileMerge({ file });
+  const applyTextSourceSnapshot = useCallback((snapshot) => {
+    if (!snapshot) return;
+    setTextLibrarySnapshot(snapshot);
+    const nextActiveId = snapshot.activeDocumentId || null;
+    if (nextActiveId !== activeTextDocumentId) {
+      const projection = resolveTextLibraryActiveProjection(snapshot);
+      setActiveTextDocumentId(nextActiveId);
+      setTextIdentityState(projection.textIdentityState);
+      setTextContent(projection.textContent);
+      setCurrentIndex(null);
+      setPlayingIndex(null);
+      setPlayingContext(null);
+    }
+  }, [activeTextDocumentId, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext]);
+
+  const handleTextPackAttachOrSync = useCallback((file) => runTextLibraryUiCommand(async () => {
+    const result = await executeProLingoTextPackFileAttachOrSync({ file });
+    applyTextSourceSnapshot(result.snapshot);
+    setTextSourceAttachments(result.attachments || []);
+    const stats = result.stats || {};
+    addLog('Text Source', result.mode === 'attach'
+      ? `Attached ${result.packageId}: ${result.counts?.documents || 0} Document, ${result.counts?.blocks || 0} Card, ${result.counts?.segments || 0} Segment.`
+      : `Synced ${result.packageId}: +${stats.created || 0} ~${stats.updated || 0} -${stats.deleted || 0}; local-preserved ${stats.preservedLocal || 0}.`);
+    return result;
+  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, addLog]);
+
+  const handleTextPackImportCopy = useCallback((file) => runTextLibraryUiCommand(async () => {
+    const merged = await executeProLingoTextPackFileImportCopy({ file });
     setTextLibrarySnapshot(merged.snapshot);
-    addLog('Text Pack', `Merge ${merged.packageId}: +${merged.counts.documents} Document, +${merged.counts.blocks} Card, +${merged.counts.segments} Segment, +${merged.counts.audioVariants} audio metadata.`);
+    addLog('Text Pack', `Imported independent copy ${merged.packageId}: +${merged.counts.documents} Document, +${merged.counts.blocks} Card, +${merged.counts.segments} Segment.`);
     return merged;
   }), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
 
+  const handleTextSourceDetach = useCallback((attachmentId, removeData = false) => runTextLibraryUiCommand(async () => {
+    if (removeData) forceStopAll();
+    const result = await executeTextSourceDetach({ attachmentId, removeData });
+    applyTextSourceSnapshot(result.snapshot);
+    setTextSourceAttachments(result.attachments || []);
+    addLog('Text Source', removeData
+      ? `Removed source-owned local data for ${result.attachment?.packageId || attachmentId} (${result.counts?.removed || 0} records).`
+      : `Detached ${result.attachment?.packageId || attachmentId}; local data kept as independent Text data.`);
+    return result;
+  }), [runTextLibraryUiCommand, forceStopAll, applyTextSourceSnapshot, addLog]);
+
   const textDatabaseBackupSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
-    checkpoint: 'A16 — Text Search + Final UX Polish',
+    checkpoint: 'Final Text T2 — Canonical Source Lifecycle',
     engineeringLine: APP_CHECKPOINT_ID
   }), []);
 
@@ -1983,6 +2031,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setActiveTextDocumentId(result.snapshot.activeDocumentId || null);
     setTextIdentityState(projection.textIdentityState);
     setTextContent(projection.textContent);
+    setTextSourceAttachments(await readTextSourceAttachments());
     const counts = result.diagnostics?.counts || {};
     addLog('Text DB', `REPLACE restore complete: ${counts.documents || 0} Document, ${counts.blocks || 0} Card, ${counts.segments || 0} Segment, ${counts.audioVariants || 0} audio metadata.`);
     return result;
@@ -1994,7 +2043,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     __packActions: {
       exportDocument: handleTextPackExportDocument,
       exportCollection: activeTextDocument?.collectionId ? handleTextPackExportCollection : null,
-      importMerge: handleTextPackImportMerge
+      attachOrSync: handleTextPackAttachOrSync,
+      importCopy: handleTextPackImportCopy,
+      detachSource: handleTextSourceDetach,
+      sourceAttachments: textSourceAttachments
     },
     __databaseBackupActions: {
       exportDatabase: handleTextDatabaseBackupExport,
@@ -2007,7 +2059,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       onQueryChange: setTextLibrarySearchQuery,
       onAction: handleTextLibrarySearchAction
     }
-  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackImportMerge, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction]);
+  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackAttachOrSync, handleTextPackImportCopy, handleTextSourceDetach, textSourceAttachments, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction]);
 
   const handleStructuredTextAttachAudioFile = useCallback(async (segmentId, channel, file) => {
     if (!file || !segmentId || !['text', 'meaning'].includes(channel)) return null;
@@ -2052,12 +2104,35 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [handleTextLibraryStructuredCommand, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, addLog]);
 
-  const handleStructuredTextSpeakerVoiceChange = useCallback(async (speaker, voiceName, channel = 'text') => {
+  const ensureStructuredTextSpeakerIdentity = useCallback(async (speakerLike) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const candidates = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
+    const requestedId = typeof speakerLike === 'object' ? String(speakerLike?.id || '').trim() : '';
+    const requestedLabel = typeof speakerLike === 'object' ? String(speakerLike?.label || '').trim() : String(speakerLike || '').trim();
+    const normalizedLabel = requestedLabel.toLowerCase().replace(/\s+/g, ' ');
+    const identity = candidates.find(item => requestedId && item.id === requestedId)
+      || candidates.find(item => String(item.label || '').trim().toLowerCase().replace(/\s+/g, ' ') === normalizedLabel)
+      || null;
+    if (!identity?.id) return null;
+    for (const segmentId of identity.segmentIds || []) {
+      const segment = (activeTextDocumentTree.blocks || []).flatMap(block => block.segments || []).find(item => item.id === segmentId);
+      if (!segment || getTextStructuredSegmentSpeakerId(segment) === identity.id) continue;
+      await handleTextLibraryStructuredCommand({
+        type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+        payload: { id: segment.id, metadata: buildTextStructuredSegmentSpeakerIdentityMetadata(segment.metadata, identity.id) }
+      });
+    }
+    return identity;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand]);
+
+  const handleStructuredTextSpeakerVoiceChange = useCallback(async (speakerLike, voiceName, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
-    const metadata = buildTextStructuredSpeakerVoiceMetadata({
+    const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
+    if (!identity) return null;
+    const metadata = buildTextStructuredSpeakerVoiceProfileV2Metadata({
       metadata: activeTextDocumentTree.metadata,
-      speaker,
+      speakerId: identity.id,
       channel,
       voiceName
     });
@@ -2065,20 +2140,41 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
       payload: { id: activeTextDocumentTree.id, metadata }
     });
-    if (result) addLog('Text Voice', `${speaker} • ${channel} → ${voiceName || 'Document default'}.`);
+    if (result) addLog('Text Voice', `${identity.label} • ${channel} → ${voiceName || 'Document default'} • ${identity.id}.`);
     return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
 
-  const handleStructuredTextCardVoiceChange = useCallback(async (blockId, channel = 'text', voiceName = null, speaker = null) => {
+  const handleStructuredTextSpeakerDownloadVoiceChange = useCallback(async (speakerLike, voiceId, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
+    if (!identity) return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      voiceId,
+      speakerId: identity.id
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio', `${identity.label} • ${channel} download → ${voiceId || 'Global default'} • ${identity.id}.`);
+    return result;
+  }, [activeTextDocumentTree, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextCardVoiceChange = useCallback(async (blockId, channel = 'text', voiceName = null, speakerLike = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
     if (!block) return null;
     forceStopAll();
+    const speaker = typeof speakerLike === 'object' ? speakerLike?.label : speakerLike;
+    const speakerId = typeof speakerLike === 'object' ? speakerLike?.id : null;
     const metadata = buildTextStructuredVoiceOverrideMetadata({
       metadata: block.metadata,
       channel,
       voiceName,
-      speaker
+      speaker,
+      speakerId
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
@@ -2107,15 +2203,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
-  const handleStructuredTextCardDownloadVoiceChange = useCallback(async (blockId, channel = 'text', voiceId = null, speaker = null) => {
+  const handleStructuredTextCardDownloadVoiceChange = useCallback(async (blockId, channel = 'text', voiceId = null, speakerLike = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
     if (!block) return null;
+    const speaker = typeof speakerLike === 'object' ? speakerLike?.label : speakerLike;
+    const speakerId = typeof speakerLike === 'object' ? speakerLike?.id : null;
     const metadata = buildTextStructuredAudioDownloadProfileMetadata({
       metadata: block.metadata,
       channel,
       voiceId,
-      speaker
+      speaker,
+      speakerId
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
@@ -3530,7 +3629,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 
@@ -3579,6 +3678,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         defaultMeaningVoiceName={defaultStructuredMeaningVoiceId}
         speakerVoiceMap={structuredTextSpeakerVoiceMap}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
+        onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}
         onSegmentVoiceChange={handleStructuredTextSegmentVoiceChange}
         onCardDownloadVoiceChange={handleStructuredTextCardDownloadVoiceChange}
@@ -3601,6 +3701,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onGenerateAudio={handleStructuredTextGenerateAudio}
         focusTarget={textLibrarySearchFocusTarget}
         onFocusConsumed={handleTextLibrarySearchFocusConsumed}
+        controlsWorkspaceOpen={textPlayerWorkspaceOpen}
+        onCloseControlsWorkspace={() => setTextPlayerWorkspaceOpen(false)}
       />;
     }
     return renderPlaylistViewport({
@@ -3700,7 +3802,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt,
     renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex, speakingPart,
     activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
-    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, isChangeReviewOpen,
+    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true), isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen,
     closeManualEditor, manualEditingId, importedRowCount, sequenceHighWater, manualForm,
     setManualForm, manualAdvancedOpen, setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen,
@@ -3713,7 +3815,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 };

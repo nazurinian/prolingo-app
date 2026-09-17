@@ -74,7 +74,7 @@ export const buildTextStructuredAudioCoverageMap = ({
       ['text', 'meaning'].forEach(channel => {
         const content = clean(channel === 'meaning' ? segment?.meaning : segment?.text);
         if (!content) return;
-        const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel, preferences });
+        const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel, preferences });
         map[buildTextStructuredRuntimeAudioKey(segment.id, channel)] = resolveTextStructuredAudioCoverageSlot({
           audioVariants,
           runtimeAudioUrls,

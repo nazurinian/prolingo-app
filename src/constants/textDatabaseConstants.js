@@ -16,7 +16,8 @@ export const TEXT_LIBRARY_META_KEYS = Object.freeze({
   INITIALIZED: 'initialized',
   ACTIVE_DOCUMENT_ID: 'activeDocumentId',
   ID_COUNTERS: 'idCounters',
-  LEGACY_MIGRATION: 'legacyMigration'
+  LEGACY_MIGRATION: 'legacyMigration',
+  SOURCE_ATTACHMENTS: 'sourceAttachments'
 });
 
 export const TEXT_ID_PREFIXES = Object.freeze({

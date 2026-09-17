@@ -194,7 +194,7 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
             })
           : effective.voiceName;
         const content = channel === 'meaning' ? segment?.meaning : segment?.text;
-        const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ block, segment, channel, preferences: downloadPreferences });
+        const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel, preferences: downloadPreferences });
         const metadataVariant = resolveGeneratedMetadataByVoice({
           audioVariants,
           segmentId: segment.id,

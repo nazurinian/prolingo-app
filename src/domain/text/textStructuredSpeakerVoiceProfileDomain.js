@@ -2,6 +2,7 @@ import {
   normalizeTextStructuredSpeakerKey,
   resolveTextStructuredSpeakerVoice
 } from './textStructuredAudioIdentityDomain.js';
+import { collectTextStructuredConversationSpeakerIdentities, getTextStructuredSpeakerVoiceProfileV2 } from './textStructuredSpeakerIdentityDomain.js';
 
 export const TEXT_STRUCTURED_SPEAKER_VOICE_METADATA_KEY = 'speakerVoiceMapV1';
 
@@ -24,21 +25,7 @@ export const normalizeTextStructuredSpeakerVoiceMap = candidate => ({
 export const getTextStructuredSpeakerVoiceMap = documentLike =>
   normalizeTextStructuredSpeakerVoiceMap(documentLike?.metadata?.[TEXT_STRUCTURED_SPEAKER_VOICE_METADATA_KEY]);
 
-export const collectTextStructuredConversationSpeakers = documentTree => {
-  const seen = new Set();
-  const speakers = [];
-  (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).forEach(block => {
-    if (block?.blockType !== 'conversation') return;
-    (Array.isArray(block?.segments) ? block.segments : []).forEach(segment => {
-      const label = clean(segment?.speaker);
-      const key = normalizeTextStructuredSpeakerKey(label);
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      speakers.push({ key, label });
-    });
-  });
-  return speakers;
-};
+export const collectTextStructuredConversationSpeakers = documentTree => collectTextStructuredConversationSpeakerIdentities(documentTree);
 
 export const patchTextStructuredSpeakerVoiceMap = ({
   speakerVoiceMap,
@@ -92,8 +79,12 @@ export const resolveTextStructuredRequestedSpeakerVoiceName = ({
 export const getTextStructuredSpeakerAssignedVoiceName = ({
   documentTree,
   speaker,
+  speakerId = null,
   channel = 'text'
 }) => {
+  const stable = getTextStructuredSpeakerVoiceProfileV2(documentTree);
+  const stableVoice = speakerId ? clean(stable?.[channel]?.[speakerId]) : null;
+  if (stableVoice) return stableVoice;
   const map = getTextStructuredSpeakerVoiceMap(documentTree);
   const key = normalizeTextStructuredSpeakerKey(speaker);
   return clean(map?.[channel]?.[key]) || null;

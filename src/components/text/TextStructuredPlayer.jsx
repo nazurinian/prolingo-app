@@ -21,10 +21,10 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
-import { normalizeTextStructuredSpeakerKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
 import { resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
-import { collectTextStructuredConversationSpeakers } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -199,8 +199,6 @@ const StructuredPlayerCard = ({
                 segment,
                 channel: 'text',
                 defaultVoiceName: defaultTextVoiceName,
-                includeDocumentSpeakerProfile: false,
-                simpleCardSpeakerMode: true
               }).voiceName
             : null;
           return (
@@ -307,6 +305,7 @@ export const TextStructuredPlayer = ({
   defaultMeaningVoiceName = null,
   speakerVoiceMap = {},
   onSpeakerVoiceChange,
+  onSpeakerDownloadVoiceChange,
   onCardVoiceChange,
   onSegmentVoiceChange,
   onCardDownloadVoiceChange,
@@ -328,9 +327,10 @@ export const TextStructuredPlayer = ({
   onRetryFailedGeneration,
   onGenerateAudio,
   focusTarget = null,
-  onFocusConsumed
+  onFocusConsumed,
+  controlsWorkspaceOpen = false,
+  onCloseControlsWorkspace
 }) => {
-  const [controlsExpanded, setControlsExpanded] = useState(false);
   const [advancedControlsExpanded, setAdvancedControlsExpanded] = useState(false);
   const [audioGenerationExpanded, setAudioGenerationExpanded] = useState(false);
   const [playbackFeelExpanded, setPlaybackFeelExpanded] = useState(false);
@@ -344,7 +344,8 @@ export const TextStructuredPlayer = ({
   const controlsBusy = structuredSessionActive || generationBusy;
   const conversationSpeakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
   const englishVoiceNames = useMemo(() => [...new Set((Array.isArray(englishVoices) ? englishVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [englishVoices]);
-  const textSpeakerMap = speakerVoiceMap?.text && typeof speakerVoiceMap.text === 'object' ? speakerVoiceMap.text : {};
+  const indonesianVoiceNames = useMemo(() => [...new Set((Array.isArray(indonesianVoices) ? indonesianVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [indonesianVoices]);
+  const documentDownloadProfile = useMemo(() => getTextStructuredAudioDownloadProfile(documentTree), [documentTree?.metadata]);
 
   useEffect(() => {
     if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
@@ -361,16 +362,22 @@ export const TextStructuredPlayer = ({
             {documentTree?.documentType === 'conversation' ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text</p>
+            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text • Player settings via bottom bar</p>
             <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
           </div>
-          <button type="button" onClick={() => setControlsExpanded(value => !value)} className={`min-h-10 sm:min-h-9 px-2.5 py-2 sm:py-1.5 rounded-lg border text-[9px] font-black transition-all duration-150 active:scale-95 ${controlsExpanded ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-700'}`} aria-expanded={controlsExpanded} title="Show Text controls">
-            <ChevronRight className={`w-3 h-3 inline mr-1 transition-transform duration-200 ${controlsExpanded ? 'rotate-90' : ''}`}/>Controls
-          </button>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Document"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
 
-        {controlsExpanded && <div className="border-t border-indigo-100 dark:border-indigo-900 p-2.5 animate-in fade-in slide-in-from-top-1 duration-200" data-text-compact-controls="true">
+        {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-[155] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-2 md:p-6" data-text-player-workspace="true" onMouseDown={event => { if (event.target === event.currentTarget) onCloseControlsWorkspace?.(); }}>
+            <div className="w-full max-w-5xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
+              <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><Volume2 className="w-4 h-4"/></div>
+                <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Player</h2><p className="text-[9px] text-slate-400 truncate">{documentTree?.title || 'Text Document'} • playback • voices • audio download</p></div>
+                <button type="button" onClick={() => onCloseControlsWorkspace?.()} className="min-h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-[9px] font-black text-slate-500 hover:text-red-500"><X className="w-4 h-4 inline mr-1"/>Close</button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3 md:p-4">
+                <div className="rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 p-2.5" data-text-compact-controls="true">
           <div className="mb-2 flex items-center gap-2 text-[8px] text-slate-400">
             <span className="font-black text-slate-600 dark:text-slate-300">Document</span>
             <span className="truncate" title={documentTree?.title || 'Text Document'}>{documentTree?.title || 'Text Document'}</span>
@@ -383,34 +390,60 @@ export const TextStructuredPlayer = ({
           </button>
 
         {advancedControlsExpanded && <><div className="animate-in fade-in duration-150">
-        {false && conversationSpeakers.length > 0 && <div className="mt-1 rounded-xl border border-sky-100 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20 p-2.5" data-text-speaker-voice-profiles="true" aria-hidden="true">
+        {conversationSpeakers.length > 0 && <div className="mt-1 rounded-xl border border-sky-100 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20 p-2.5" data-text-speaker-voice-profiles="true">
           <div className="flex items-center gap-1.5 mb-2">
             <Users className="w-3.5 h-3.5 text-sky-500"/>
-            <span className="text-[9px] font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Conversation Voices</span>
-            <span className="text-[8px] text-slate-400">EN per speaker • default {compactVoiceLabel(defaultTextVoiceName)}</span>
+            <span className="text-[9px] font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Conversation Speaker Profiles</span>
+            <span className="text-[8px] text-slate-400">Document-level • playback and Edge download stay separate</span>
           </div>
-          <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-            {conversationSpeakers.map(({ key, label }) => {
-              const assignedVoice = textSpeakerMap[normalizeTextStructuredSpeakerKey(key)] || '';
-              const assignedMissing = assignedVoice && !englishVoiceNames.includes(assignedVoice);
-              return <label key={key} className="flex items-center gap-2 rounded-lg bg-white dark:bg-slate-900/50 border border-sky-100 dark:border-sky-900 px-2 py-1.5">
-                <span className="text-[9px] font-black text-sky-700 dark:text-sky-300 min-w-[34px] truncate" title={label}>{label}</span>
-                <select
-                  value={assignedVoice}
-                  disabled={controlsBusy}
-                  onChange={event => onSpeakerVoiceChange?.(label, event.target.value || null, 'text')}
-                  className="min-w-0 flex-1 text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 px-1.5 py-1 disabled:opacity-50"
-                  title={`Voice profile for ${label}`}
-                  data-text-speaker-voice-select={key}
-                >
-                  <option value="">Document default • {compactVoiceLabel(defaultTextVoiceName)}</option>
-                  {assignedMissing && <option value={assignedVoice}>Unavailable • {compactVoiceLabel(assignedVoice)}</option>}
-                  {englishVoiceNames.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
-                </select>
-              </label>;
+          <div className="space-y-2">
+            {conversationSpeakers.map(({ id: speakerId, label, persisted }) => {
+              const playbackText = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId, channel: 'text' }) || '';
+              const playbackMeaning = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId, channel: 'meaning' }) || '';
+              const downloadText = documentDownloadProfile?.speakerIds?.text?.[speakerId] || documentDownloadProfile?.speakers?.text?.[String(label || '').trim().toLowerCase().replace(/\s+/g, ' ')] || '';
+              const downloadMeaning = documentDownloadProfile?.speakerIds?.meaning?.[speakerId] || documentDownloadProfile?.speakers?.meaning?.[String(label || '').trim().toLowerCase().replace(/\s+/g, ' ')] || '';
+              const edgeEnglish = (edgeGenerationVoices || []).filter(voice => String(voice.lang || '').startsWith('en-'));
+              const edgeMeaning = (edgeGenerationVoices || []).filter(voice => !String(voice.lang || '').startsWith('en-'));
+              return <div key={speakerId} className="rounded-xl border border-sky-100 dark:border-sky-900 bg-white/90 dark:bg-slate-900/50 p-2.5" data-text-speaker-profile-id={speakerId}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="rounded-lg bg-sky-100 dark:bg-sky-900/40 px-2 py-1 text-[9px] font-black text-sky-700 dark:text-sky-300">{label}</span>
+                  <span className="text-[7px] font-mono text-slate-400" title={speakerId}>{speakerId.slice(0, 12)}…</span>
+                  <span className="ml-auto text-[7px] text-slate-400">{persisted ? 'stable identity' : 'identity saved on first change'}</span>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  <label className="text-[8px] font-bold text-slate-500">Playback EN
+                    <select value={playbackText} disabled={controlsBusy} onChange={event => onSpeakerVoiceChange?.({ id: speakerId, label }, event.target.value || null, 'text')} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-speaker-playback-en={speakerId}>
+                      <option value="">Global • {compactVoiceLabel(defaultTextVoiceName)}</option>
+                      {playbackText && !englishVoiceNames.includes(playbackText) && <option value={playbackText}>Unavailable • {compactVoiceLabel(playbackText)}</option>}
+                      {englishVoiceNames.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[8px] font-bold text-slate-500">Playback ID
+                    <select value={playbackMeaning} disabled={controlsBusy} onChange={event => onSpeakerVoiceChange?.({ id: speakerId, label }, event.target.value || null, 'meaning')} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-speaker-playback-id={speakerId}>
+                      <option value="">Global • {compactVoiceLabel(defaultMeaningVoiceName)}</option>
+                      {playbackMeaning && !indonesianVoiceNames.includes(playbackMeaning) && <option value={playbackMeaning}>Unavailable • {compactVoiceLabel(playbackMeaning)}</option>}
+                      {indonesianVoiceNames.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[8px] font-bold text-violet-600 dark:text-violet-300">Edge Download EN
+                    <select value={downloadText} disabled={controlsBusy} onChange={event => onSpeakerDownloadVoiceChange?.({ id: speakerId, label }, event.target.value || null, 'text')} className="mt-1 w-full text-[9px] rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-speaker-download-en={speakerId}>
+                      <option value="">Global Edge EN</option>
+                      {downloadText && !edgeEnglish.some(voice => voice.id === downloadText) && <option value={downloadText}>Unavailable • {compactVoiceLabel(downloadText)}</option>}
+                      {edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[8px] font-bold text-violet-600 dark:text-violet-300">Edge Download ID
+                    <select value={downloadMeaning} disabled={controlsBusy} onChange={event => onSpeakerDownloadVoiceChange?.({ id: speakerId, label }, event.target.value || null, 'meaning')} className="mt-1 w-full text-[9px] rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-speaker-download-id={speakerId}>
+                      <option value="">Global Edge ID</option>
+                      {downloadMeaning && !edgeMeaning.some(voice => voice.id === downloadMeaning) && <option value={downloadMeaning}>Unavailable • {compactVoiceLabel(downloadMeaning)}</option>}
+                      {edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </div>;
             })}
           </div>
-          <p className="mt-1.5 text-[8px] text-slate-400">Speaker profile memilih voice runtime; SEGMENT_ID dan TXTAUDIO identity tidak berubah.</p>
+          <p className="mt-1.5 text-[8px] text-slate-400">Stable speaker identity is stored in Segment metadata on first profile change. Renaming the visible speaker label later does not replace the profile identity. Card and Segment overrides remain higher priority.</p>
         </div>}
 
         <div className="mt-3 rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2.5" data-text-audio-generation="true" data-text-edge-only-generation="true" data-text-audio-generation-collapsible="true">
@@ -530,8 +563,11 @@ export const TextStructuredPlayer = ({
           </div>}
         </div>
 
-        <p className="mt-2 text-[9px] text-slate-400">Text controls tetap isolated dari Table. Tutup Controls untuk kembali ke tampilan Card yang lapang.</p>
-        </div>}
+        <p className="mt-2 text-[9px] text-slate-400">Text controls tetap isolated dari Table. Tutup Text Player untuk kembali ke tampilan Card yang lapang.</p>
+                </div>
+              </div>
+            </div>
+          </div>, document.body)}
       </div>
 
       <div className="space-y-3 animate-in fade-in duration-200">

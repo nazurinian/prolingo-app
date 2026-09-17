@@ -8,6 +8,7 @@ import {
   validateProLingoTextDatabaseBackup
 } from '../../domain/text/textDatabaseBackupDomain.js';
 import { openTextLibraryDatabase } from './textLibraryIndexedDbService.js';
+import { buildCanonicalTextDatabaseBackupFilename } from '../../domain/text/textFilenameDomain.js';
 
 const MAX_TEXT_DATABASE_BACKUP_BYTES = 50 * 1024 * 1024;
 
@@ -46,12 +47,10 @@ const readRawDatabaseState = async db => {
   return { metaRecords, stores: { collections, documents, blocks, segments, audioVariants } };
 };
 
-const safeFilenameTimestamp = value => String(value || '').replace(/[:.]/g, '-');
-
 export const serializeProLingoTextDatabaseBackup = backup => `${JSON.stringify(validateProLingoTextDatabaseBackup(backup).backup, null, 2)}\n`;
 
 export const buildProLingoTextDatabaseBackupFilename = backup =>
-  `ProLingo_TextDB_Backup_${safeFilenameTimestamp(backup.createdAt || new Date().toISOString())}.json`;
+  buildCanonicalTextDatabaseBackupFilename({ createdAt: backup.createdAt || new Date().toISOString() });
 
 export const triggerProLingoTextDatabaseBackupDownload = backupCandidate => {
   const { backup } = validateProLingoTextDatabaseBackup(backupCandidate);
