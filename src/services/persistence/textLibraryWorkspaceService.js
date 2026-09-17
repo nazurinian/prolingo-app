@@ -5,7 +5,7 @@ import {
   resolveTextLibraryDocumentTree
 } from '../../domain/text/textLibraryDomain.js';
 import { createEmptyTextIdentityState } from '../../domain/text/textIdentityDomain.js';
-import { executeTextLibraryCommand } from './textLibraryCommandService.js';
+import { executeTextAudioVariantUpsert, executeTextLibraryCommand } from './textLibraryCommandService.js';
 import { syncLegacyTextProjectionToDatabase } from './textLibraryIndexedDbService.js';
 
 export const resolveTextLibraryActiveProjection = librarySnapshot => {
@@ -209,7 +209,25 @@ export const executeTextLibraryDeleteCollection = async ({ id, setTextLibrarySna
   return result;
 };
 
-export const executeTextLibraryStructuredCommand = async ({ command, setTextLibrarySnapshot, addLog }) => {
+export const executeTextLibraryStructuredCommand = async ({ command, setTextLibrarySnapshot, addLog, deferSnapshot = false }) => {
+  if (command?.type === TEXT_LIBRARY_COMMAND_TYPES.UPSERT_AUDIO_VARIANT) {
+    const result = await executeTextAudioVariantUpsert(command.payload || {});
+    if (!deferSnapshot) {
+      setTextLibrarySnapshot(previous => {
+        if (!previous) return previous;
+        const variants = Array.isArray(previous.audioVariants) ? previous.audioVariants : [];
+        const exists = variants.some(item => item.id === result.audioVariant.id);
+        return {
+          ...previous,
+          counters: result.counters || previous.counters,
+          audioVariants: exists
+            ? variants.map(item => item.id === result.audioVariant.id ? result.audioVariant : item)
+            : [...variants, result.audioVariant]
+        };
+      });
+    }
+    return result;
+  }
   const result = await executeTextLibraryCommand(command);
   setTextLibrarySnapshot(result.librarySnapshot);
   const label = [result.entity, result.action].filter(Boolean).join(' ');

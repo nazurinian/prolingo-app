@@ -116,9 +116,11 @@ export const listAudioStagingMetadata = async ({ mode = null, includeReleased = 
   const db = await openDb();
   try {
     const tx = db.transaction(META_STORE, 'readonly');
-    const rows = await waitRequest(tx.objectStore(META_STORE).getAll());
+    const store = tx.objectStore(META_STORE);
+    // When a mode is known, use the existing IndexedDB mode index instead of
+    // materialising every Table + Text staging metadata record in memory.
+    const rows = await waitRequest(mode ? store.index('mode').getAll(safeMode(mode)) : store.getAll());
     return (rows || [])
-      .filter(row => !mode || row?.mode === mode)
       .filter(row => includeReleased || row?.hasBlob)
       .sort((a, b) => Number(a?.createdAt || 0) - Number(b?.createdAt || 0));
   } finally {
@@ -232,6 +234,27 @@ export const clearAudioStagingRuntimeCache = () => {
     try { if (entry?.url) URL.revokeObjectURL(entry.url); } catch { /* noop */ }
   });
   objectUrlCache.clear();
+};
+
+// Scoped cache release keeps Table/Text runtime ownership isolated while both
+// modes share the same binary staging database and bounded ObjectURL cache.
+export const clearAudioStagingRuntimeCacheForMode = (mode = 'table') => {
+  const prefix = `${safeMode(mode)}|`;
+  [...objectUrlCache.entries()].forEach(([id, entry]) => {
+    if (!String(id || '').startsWith(prefix)) return;
+    try { if (entry?.url) URL.revokeObjectURL(entry.url); } catch { /* noop */ }
+    objectUrlCache.delete(id);
+  });
+};
+
+export const clearAudioStagingRuntimeCacheForIds = ids => {
+  [...new Set((Array.isArray(ids) ? ids : [ids]).filter(Boolean))].forEach(id => {
+    const entry = objectUrlCache.get(id);
+    if (entry?.url) {
+      try { URL.revokeObjectURL(entry.url); } catch { /* noop */ }
+    }
+    objectUrlCache.delete(id);
+  });
 };
 
 export const releaseAudioStagingBlobs = async (ids, { reason = 'manual-release' } = {}) => {

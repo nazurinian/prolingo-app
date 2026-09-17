@@ -1,15 +1,23 @@
-export const APP_VERSION = '5.14.4';
+export const APP_VERSION = '5.14.5';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T5 C5 — Conversation Speaker Identity + Multi-Voice';
-export const APP_RELEASE_NAME = 'Final Text T5 Conversation Speaker Identity + Multi-Voice';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T6 C6 — Text Audio Resource Hardening';
+export const APP_RELEASE_NAME = 'Final Text T6 Text Audio Resource Hardening';
 export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T5: Conversation speaker profiles now use stable speaker identity and document-level playback/download multi-voice inheritance while Card/Segment overrides remain available.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T5`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T6: Text audio now uses durable Staging plus lazy Folder/ZIP binaries, bounded runtime caches, lightweight metadata updates, and history-only Downloaded semantics.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T6`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T6 adds durable Text binary Staging in the shared Audio Staging database under an isolated text mode while keeping core Text IndexedDB v1 metadata-oriented',
+  'Generated Text audio commits to Folder or Text Staging before runtime Blob release; large Batch packaging no longer retains thousands of generated Blobs/ObjectURLs in React/runtime memory',
+  'Text Folder audio is indexed lazily and creates only on-demand ObjectURLs through a bounded cache; ZIP lazy behavior remains preserved',
+  'Downloaded/export metadata is history only: only an actually accessible Staging/Folder/ZIP/runtime binary is Ready and can suppress missing-only generation',
+  'Structured Text audio metadata upsert uses a segment/channel IndexedDB fast path instead of full Text Library getAll/diff work per generated audio',
+  'Text Batch runtime/audio-variant React state is flushed periodically and browser ZIP packaging reads staged binary back in resource-bounded 64 MB groups',
+  'Text Data exposes Clear Staging and Clear Runtime Cache controls; Text staging cache release is mode-scoped so it does not revoke Table staging ObjectURLs',
+  'Desktop Text Workspace now renders through a document.body portal above the global player/header stacking contexts, fixing the remaining clipped/covered workspace path',
   'Final Text T5 introduces stable Conversation speaker identity in Segment metadata without changing Text IndexedDB v1 schema',
   'Document speaker playback profiles are active again for both EN/Text and ID/Meaning channels; Card speaker and Segment overrides remain higher priority',
   'Document speaker Edge download profiles are separate from playback voices and now participate in generation, coverage, runtime reconnect, and Card inheritance',

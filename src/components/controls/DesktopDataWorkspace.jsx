@@ -1,5 +1,6 @@
 import { APP_DATA_MANAGER_RELEASE_NOTE } from '../../constants/appMetadata';
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowRightToLine, BookOpen, Lock, Unlock, Layers, Upload, X, FileDown, History, RotateCcw } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
@@ -42,9 +43,9 @@ export default function DesktopDataWorkspace({
                   <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="w-full min-h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black transition active:scale-[0.99]">OPEN TEXT WORKSPACE</button>
                 </section>
 
-                {textWorkspaceOpen && <div className="fixed inset-0 z-[125] flex items-center justify-center p-2 md:p-6 overflow-hidden" data-text-data-workspace="true">
-                  <button type="button" aria-label="Close Text workspace" onClick={() => setTextWorkspaceOpen(false)} className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]"/>
-                  <section className="relative z-10 w-full max-w-6xl h-[92dvh] max-h-[900px] min-h-0 min-w-0 overflow-hidden rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
+                {typeof document !== 'undefined' && textWorkspaceOpen && createPortal(<div className="fixed inset-0 z-[150] flex items-center justify-center p-2 md:p-4 overflow-hidden" data-text-data-workspace="true">
+                  <button type="button" aria-label="Close Text workspace" onClick={() => setTextWorkspaceOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-[1px]"/>
+                  <section className="relative z-10 w-full max-w-6xl h-[calc(100dvh-1rem)] md:h-[calc(100dvh-2rem)] max-h-[960px] min-h-0 min-w-0 overflow-hidden rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
                     <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                       <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-300"/>
                       <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Workspace</h2><p className="text-[9px] text-slate-400">Legacy • Paragraph • Conversation • Library • Sources • Audio</p></div>
@@ -78,7 +79,7 @@ export default function DesktopDataWorkspace({
                       </div> : <div className="space-y-2"><div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Structured Document • Card/Segment editor</div><TextStructuredEditor documentTree={activeTextDocumentTree} isBusy={textLibraryCommandBusy || isSystemBusy} error={textLibraryCommandError} onCommand={handleTextLibraryStructuredCommand} audioCoverageMap={structuredTextAudioCoverageMap}/></div>}
                     </div>
                   </section>
-                </div>}
+                </div>, document.body)}
               </div>
             ) : (
               <div className="flex-1 p-3 min-h-[220px] bg-white dark:bg-slate-800 flex flex-col gap-3">

@@ -2,6 +2,7 @@ const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
 
 const sourceTypeForRuntime = entry => {
+  if (entry?.stagingBacked) return 'staging';
   if (entry?.zipBacked) return 'zip';
   if (entry?.folderBacked) return 'folder';
   if (entry?.generated) return 'generated';
@@ -13,13 +14,13 @@ export const summarizeTextStructuredAudioRuntimeInventory = ({ documentTree, aud
   const segmentIds = new Set((documentTree?.blocks || []).flatMap(block => (block?.segments || []).map(segment => String(segment?.id || '').toUpperCase())).filter(Boolean));
   const variants = (Array.isArray(audioVariants) ? audioVariants : []).filter(variant => segmentIds.has(String(variant?.segmentId || '').toUpperCase()));
   const voices = new Map();
-  const sources = { folder: 0, zip: 0, generated: 0, runtime: 0, metadata: 0 };
+  const sources = { staging: 0, folder: 0, zip: 0, generated: 0, runtime: 0, metadata: 0 };
   let ready = 0;
   let metadataOnly = 0;
 
   variants.forEach(variant => {
     const runtime = runtimeAudioUrls?.[variant.id];
-    if (runtime?.url || runtime?.zipBacked) {
+    if (runtime?.url || runtime?.stagingBacked || runtime?.folderBacked || runtime?.zipBacked) {
       ready += 1;
       const source = sourceTypeForRuntime(runtime);
       sources[source] = (sources[source] || 0) + 1;

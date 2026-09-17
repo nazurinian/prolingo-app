@@ -35,7 +35,7 @@ export const resolveTextStructuredAudioCoverageSlot = ({
   if (exactCompatible) {
     const runtime = runtimeAudioUrls?.[exactCompatible.id];
     const deliveryStatus = exactCompatible?.metadata?.deliveryStatus || 'metadata-history';
-    if ((runtime?.url && (runtime?.folderBacked || deliveryStatus === 'folder-written')) || runtime?.zipBacked) {
+    if (runtime?.url || runtime?.folderBacked || runtime?.zipBacked || runtime?.stagingBacked) {
       return {
         status: TEXT_AUDIO_COVERAGE_STATUS.READY,
         requiredVoiceId,
@@ -43,8 +43,8 @@ export const resolveTextStructuredAudioCoverageSlot = ({
         variantId: exactCompatible.id,
         filename: runtime.filename || exactCompatible.filename || null,
         verified: true,
-        deliveryStatus: runtime?.zipBacked ? 'zip-indexed' : deliveryStatus,
-        sourceType: runtime?.zipBacked ? 'zip' : (runtime?.folderBacked ? 'folder' : 'runtime')
+        deliveryStatus: runtime?.stagingBacked ? 'staged-ready' : (runtime?.zipBacked ? 'zip-indexed' : (runtime?.folderBacked ? 'folder-indexed' : deliveryStatus)),
+        sourceType: runtime?.stagingBacked ? 'staging' : (runtime?.zipBacked ? 'zip' : (runtime?.folderBacked ? 'folder' : 'runtime'))
       };
     }
     if (deliveryStatus === 'pending-package') {
@@ -110,9 +110,10 @@ export const summarizeTextStructuredAudioCoverage = ({ documentTree, coverageMap
       });
     });
   });
-  counts.needDownload = counts.otherVoice + counts.stale + counts.missing;
-  counts.covered = counts.ready + counts.downloaded;
+  // Final Text C6: Downloaded* is history only. Only an actually readable binary source is Ready.
+  counts.needDownload = counts.downloaded + counts.otherVoice + counts.stale + counts.missing;
+  counts.covered = counts.ready;
   return counts;
 };
 
-export const shouldDownloadTextStructuredCoverageSlot = slot => !slot || ![TEXT_AUDIO_COVERAGE_STATUS.READY, TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED].includes(slot.status);
+export const shouldDownloadTextStructuredCoverageSlot = slot => !slot || slot.status !== TEXT_AUDIO_COVERAGE_STATUS.READY;

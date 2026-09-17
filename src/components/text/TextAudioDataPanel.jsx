@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Archive, ChevronDown, ChevronRight, FolderOpen, HardDrive, Layers, Upload, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, Database, FolderOpen, HardDrive, Layers, Trash2, Upload, X } from 'lucide-react';
 
 const clean = value => String(value ?? '').trim();
+const formatBytes = value => {
+  const bytes = Math.max(0, Number(value || 0));
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 const voiceLabel = value => {
   const text = clean(value);
   const neural = text.match(/(?:^|[-_])([A-Za-z]+)Neural$/i);
@@ -13,6 +20,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
   const zipInputRef = useRef(null);
   if (!audioLibrary) return null;
 
+  const staging = audioLibrary.staging || {};
   const folder = audioLibrary.folderState || {};
   const zip = audioLibrary.zipState || {};
   const coverage = audioLibrary.coverage || {};
@@ -27,7 +35,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
       <HardDrive className="w-4 h-4 text-violet-600 dark:text-violet-300"/>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Audio Library</p>
-        <p className="text-[8px] text-slate-400 truncate">Ready {coverage.ready || 0}/{coverage.total || 0} • need {coverage.needDownload || 0} • Folder + ZIP</p>
+        <p className="text-[8px] text-slate-400 truncate">Ready {coverage.ready || 0}/{coverage.total || 0} • need {coverage.needDownload || 0} • Staging + Folder + ZIP</p>
       </div>
       <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-violet-100 dark:border-violet-900 text-violet-600 dark:text-violet-300">{inventory.ready || 0} LOCAL</span>
     </button>
@@ -35,9 +43,24 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
     {expanded && <div className="border-t border-violet-100 dark:border-violet-900 p-2.5 space-y-2" data-text-audio-data-panel-details="true">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center">
         <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-emerald-600">{coverage.ready || 0}</p><p className="text-[7px] font-black uppercase text-slate-400">Ready</p></div>
-        <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-sky-600">{coverage.downloaded || 0}</p><p className="text-[7px] font-black uppercase text-slate-400">Downloaded*</p></div>
+        <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-sky-600">{coverage.downloaded || 0}</p><p className="text-[7px] font-black uppercase text-slate-400">History*</p></div>
         <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-amber-600">{(coverage.otherVoice || 0) + (coverage.stale || 0)}</p><p className="text-[7px] font-black uppercase text-slate-400">Other/Stale</p></div>
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-slate-500">{coverage.missing || 0}</p><p className="text-[7px] font-black uppercase text-slate-400">Missing</p></div>
+      </div>
+
+      <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-white dark:bg-slate-900/40 p-2.5 space-y-2" data-text-audio-staging="true">
+        <div className="flex items-center gap-2">
+          <Database className="w-3.5 h-3.5 text-emerald-500"/>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Text Staging (IndexedDB)</p>
+            <p className="text-[8px] text-slate-400 truncate">{staging.count || 0} binary • {formatBytes(staging.bytes || 0)} • generated audio is committed here before runtime Blob release</p>
+          </div>
+          <button type="button" disabled={disabled || !(staging.count > 0)} onClick={audioLibrary.onClearStaging} className="min-h-10 px-2.5 py-2 rounded-lg border border-red-200 dark:border-red-900 text-[8px] font-black text-red-500 disabled:opacity-35" title="Release Text Staging binary but keep Text metadata/history"><Trash2 className="w-3 h-3 inline mr-1"/>Clear Staging</button>
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+          <p className="text-[8px] leading-relaxed text-slate-400">Ready requires an actual binary in Staging, Folder, ZIP, or a live manual attachment. Download/export history alone is not Ready.</p>
+          <button type="button" disabled={disabled} onClick={audioLibrary.onClearRuntimeCache} className="shrink-0 min-h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-500 dark:text-slate-300 disabled:opacity-40">Clear Runtime Cache</button>
+        </div>
       </div>
 
       <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2.5 space-y-2">

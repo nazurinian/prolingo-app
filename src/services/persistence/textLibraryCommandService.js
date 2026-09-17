@@ -1,10 +1,12 @@
 import {
   TEXT_LIBRARY_META_KEYS,
   TEXT_LIBRARY_SCHEMA_VERSION,
-  TEXT_LIBRARY_STORES
+  TEXT_LIBRARY_STORES,
+  TEXT_STRUCTURED_EDITOR_MODEL
 } from '../../constants/textDatabaseConstants.js';
 import { applyTextLibraryCommand } from '../../domain/text/textLibraryCommandDomain.js';
-import { normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
+import { createTextAudioVariantRecord, formatTextLibraryId, normalizeTextIdCounters, normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
+import { getTextStructuredAudioVariantKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
 import { openTextLibraryDatabase } from './textLibraryIndexedDbService.js';
 
 const requestToPromise = request => new Promise((resolve, reject) => {
@@ -91,6 +93,82 @@ export const executeTextLibraryCommand = async command => {
     putMeta(metaStore, TEXT_LIBRARY_META_KEYS.ID_COUNTERS, after.counters);
     await done;
     return { ...result, librarySnapshot: after };
+  } finally {
+    db.close();
+  }
+};
+
+
+// Final Text C6 fast path: audio generation must not read/diff the entire Text
+// Library on every generated audio. This transaction touches only one Segment,
+// its Document, the candidate channel variants, and the identity counter.
+export const executeTextAudioVariantUpsert = async payload => {
+  const db = await openTextLibraryDatabase();
+  try {
+    const tx = db.transaction([
+      TEXT_LIBRARY_STORES.META,
+      TEXT_LIBRARY_STORES.DOCUMENTS,
+      TEXT_LIBRARY_STORES.SEGMENTS,
+      TEXT_LIBRARY_STORES.AUDIO_VARIANTS
+    ], 'readwrite');
+    const done = transactionDone(tx);
+    const segmentStore = tx.objectStore(TEXT_LIBRARY_STORES.SEGMENTS);
+    const documentStore = tx.objectStore(TEXT_LIBRARY_STORES.DOCUMENTS);
+    const audioStore = tx.objectStore(TEXT_LIBRARY_STORES.AUDIO_VARIANTS);
+    const metaStore = tx.objectStore(TEXT_LIBRARY_STORES.META);
+    const segmentId = String(payload?.segmentId || '').toUpperCase();
+    const channel = String(payload?.channel || 'text').toLowerCase();
+    const [segment, countersRecord, channelVariants] = await Promise.all([
+      requestToPromise(segmentStore.get(segmentId)),
+      requestToPromise(metaStore.get(TEXT_LIBRARY_META_KEYS.ID_COUNTERS)),
+      requestToPromise(audioStore.index('bySegmentChannel').getAll([segmentId, channel]))
+    ]);
+    if (!segment) throw new Error(`Unknown Text segment: ${segmentId}`);
+    const document = await requestToPromise(documentStore.get(segment.documentId));
+    if (!document || document.editorModel !== TEXT_STRUCTURED_EDITOR_MODEL) throw new Error(`Text audio requires a structured Document: ${segment.documentId}`);
+
+    const identity = {
+      segmentId,
+      channel,
+      engine: payload?.engine || 'local',
+      source: payload?.source || 'file',
+      voiceId: payload?.voiceId ?? null
+    };
+    const identityKey = getTextStructuredAudioVariantKey(identity);
+    const existing = (channelVariants || []).find(item => getTextStructuredAudioVariantKey(item) === identityKey) || null;
+    const now = Date.now();
+    let counters = normalizeTextIdCounters(countersRecord?.value);
+    let record;
+    let action;
+    if (existing) {
+      record = createTextAudioVariantRecord({
+        ...existing,
+        ...identity,
+        language: payload?.language === undefined ? existing.language : payload.language,
+        filename: payload?.filename === undefined ? existing.filename : payload.filename,
+        mimeType: payload?.mimeType === undefined ? existing.mimeType : payload.mimeType,
+        updatedAt: now,
+        metadata: payload?.metadata === undefined ? existing.metadata : payload.metadata
+      });
+      action = 'update';
+    } else {
+      counters = { ...counters, audioVariant: Number(counters.audioVariant || 0) + 1 };
+      record = createTextAudioVariantRecord({
+        id: formatTextLibraryId('AUDIO_VARIANT', counters.audioVariant),
+        ...identity,
+        language: payload?.language,
+        filename: payload?.filename,
+        mimeType: payload?.mimeType,
+        createdAt: now,
+        updatedAt: now,
+        metadata: payload?.metadata
+      });
+      putMeta(metaStore, TEXT_LIBRARY_META_KEYS.ID_COUNTERS, counters, now);
+      action = 'create';
+    }
+    audioStore.put(record);
+    await done;
+    return { entity: 'audioVariant', action, id: record.id, segmentId, identityKey, audioVariant: record, counters };
   } finally {
     db.close();
   }
