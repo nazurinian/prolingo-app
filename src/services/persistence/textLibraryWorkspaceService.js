@@ -116,7 +116,10 @@ export const executeTextLibraryCreateDocument = async ({
     setTextIdentityState,
     setTextContent
   });
-  addLog?.('Text Library', `Created structured Document ${result.id}: ${projection.document?.title || result.id}.`);
+  const modeLabel = projection.document?.editorModel === TEXT_LEGACY_EDITOR_MODEL
+    ? 'Legacy'
+    : (projection.document?.documentType === 'conversation' ? 'Conversation' : projection.document?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility');
+  addLog?.('Text Library', `Created ${modeLabel} Document ${result.id}: ${projection.document?.title || result.id}.`);
   return result;
 };
 
@@ -137,6 +140,62 @@ export const executeTextLibraryRenameDocument = async ({ id, title, setTextLibra
   });
   setTextLibrarySnapshot(result.librarySnapshot);
   addLog?.('Text Library', `Renamed Document ${id}.`);
+  return result;
+};
+
+
+export const executeTextLibraryDeleteDocument = async ({
+  id,
+  activeTextDocumentId,
+  activeTextEditorModel,
+  textIdentityState,
+  setTextLibrarySnapshot,
+  setActiveTextDocumentId,
+  setTextIdentityState,
+  setTextContent,
+  addLog
+}) => {
+  if (!id) throw new Error('Text Document delete requires DOC_ID');
+  if (id === activeTextDocumentId) {
+    await flushActiveLegacyProjection({
+      activeTextDocumentId,
+      activeTextEditorModel,
+      textIdentityState,
+      setTextLibrarySnapshot
+    });
+  }
+  const result = await executeTextLibraryCommand({
+    type: TEXT_LIBRARY_COMMAND_TYPES.DELETE_DOCUMENT,
+    payload: { id }
+  });
+  applyActiveDocumentRuntime({
+    librarySnapshot: result.librarySnapshot,
+    setTextLibrarySnapshot,
+    setActiveTextDocumentId,
+    setTextIdentityState,
+    setTextContent
+  });
+  addLog?.('Text Library', `Deleted Document ${id}.`);
+  return result;
+};
+
+export const executeTextLibraryRenameCollection = async ({ id, title, setTextLibrarySnapshot, addLog }) => {
+  const result = await executeTextLibraryCommand({
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_COLLECTION,
+    payload: { id, title }
+  });
+  setTextLibrarySnapshot(result.librarySnapshot);
+  addLog?.('Text Library', `Renamed Collection ${id}.`);
+  return result;
+};
+
+export const executeTextLibraryDeleteCollection = async ({ id, setTextLibrarySnapshot, addLog }) => {
+  const result = await executeTextLibraryCommand({
+    type: TEXT_LIBRARY_COMMAND_TYPES.DELETE_COLLECTION,
+    payload: { id }
+  });
+  setTextLibrarySnapshot(result.librarySnapshot);
+  addLog?.('Text Library', `Deleted Collection ${id}.`);
   return result;
 };
 

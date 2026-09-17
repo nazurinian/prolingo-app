@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
-import { AlertTriangle, BookOpen, ChevronRight, Database, Download, Edit3, FileText, Layers, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Upload, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, ChevronRight, Database, Download, Edit3, FileText, Layers, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Trash2, Upload, X } from 'lucide-react';
 
-const typeLabel = type => type === 'conversation' ? 'Conversation' : type === 'paragraph' ? 'Paragraph' : 'Mixed';
+const typeLabel = document => document?.editorModel === 'legacy-line-v1' ? 'Legacy' : document?.documentType === 'conversation' ? 'Conversation' : document?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed (compatibility)';
 
 export const TextLibraryShell = ({
   catalog,
@@ -15,15 +15,22 @@ export const TextLibraryShell = ({
   onCreateDocument,
   onCreateCollection,
   onRenameDocument,
+  onDeleteDocument,
+  onRenameCollection,
+  onDeleteCollection,
   audioLibrary = null,
   compact = false
 }) => {
   const [createMode, setCreateMode] = useState(null);
   const [newDocumentTitle, setNewDocumentTitle] = useState('');
-  const [newDocumentType, setNewDocumentType] = useState('mixed');
+  const [newDocumentType, setNewDocumentType] = useState('paragraph');
   const [newDocumentCollectionId, setNewDocumentCollectionId] = useState('');
   const [newCollectionTitle, setNewCollectionTitle] = useState('');
   const [renameOpen, setRenameOpen] = useState(false);
+  const [collectionRenameOpen, setCollectionRenameOpen] = useState(false);
+  const [collectionRenameTitle, setCollectionRenameTitle] = useState('');
+  const [deleteDocumentArmed, setDeleteDocumentArmed] = useState(false);
+  const [deleteCollectionArmed, setDeleteCollectionArmed] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const textPackInputRef = useRef(null);
   const databaseBackupInputRef = useRef(null);
@@ -43,18 +50,20 @@ export const TextLibraryShell = ({
   );
   const documentCount = (catalog?.rootDocuments?.length || 0) + (catalog?.collections || []).reduce((sum, collection) => sum + (collection.documents?.length || 0), 0);
   const showLibraryTools = !compact || advancedLibraryToolsExpanded;
+  const activeCollection = activeDocument?.collectionId ? (catalog?.collections || []).find(item => item.id === activeDocument.collectionId) || null : null;
 
   const submitDocument = async () => {
     const title = newDocumentTitle.trim();
     if (!title || isBusy) return;
     const result = await onCreateDocument?.({
       title,
-      documentType: newDocumentType,
+      documentType: newDocumentType === 'legacy' ? 'mixed' : newDocumentType,
+      editorModel: newDocumentType === 'legacy' ? 'legacy-line-v1' : 'structured-v1',
       collectionId: newDocumentCollectionId || null
     });
     if (!result) return;
     setNewDocumentTitle('');
-    setNewDocumentType('mixed');
+    setNewDocumentType('paragraph');
     setCreateMode(null);
   };
 
@@ -75,6 +84,35 @@ export const TextLibraryShell = ({
     setRenameOpen(false);
   };
 
+
+  const submitCollectionRename = async () => {
+    const title = collectionRenameTitle.trim();
+    if (!activeCollection?.id || !title || isBusy) return;
+    const result = await onRenameCollection?.(activeCollection.id, title);
+    if (!result) return;
+    setCollectionRenameOpen(false);
+  };
+
+  const requestDeleteDocument = async () => {
+    if (!activeDocument?.id || isBusy) return;
+    if (!deleteDocumentArmed) {
+      setDeleteDocumentArmed(true);
+      return;
+    }
+    const result = await onDeleteDocument?.(activeDocument.id);
+    if (result) setDeleteDocumentArmed(false);
+  };
+
+  const requestDeleteCollection = async () => {
+    if (!activeCollection?.id || isBusy) return;
+    if (!deleteCollectionArmed) {
+      setDeleteCollectionArmed(true);
+      return;
+    }
+    const result = await onDeleteCollection?.(activeCollection.id);
+    if (result) setDeleteCollectionArmed(false);
+  };
+
   const runPackAction = async (action, successLabel) => {
     if (!action || isBusy) return null;
     setPackStatus(null);
@@ -92,7 +130,7 @@ export const TextLibraryShell = ({
     const result = await packActions.importMerge(file);
     if (!result) return;
     const counts = result.counts || {};
-    setPackStatus(`Merged ${counts.documents || 0} document(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
+    setPackStatus(`Imported independent copy: ${counts.documents || 0} document(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
   };
 
 
@@ -239,7 +277,7 @@ export const TextLibraryShell = ({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{activeDocument.title}</p>
-              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{typeLabel(activeDocument.documentType)}</span>
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{typeLabel(activeDocument)}</span>
               {!compact && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${activeDocument.editorModel === 'structured-v1' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{activeDocument.editorModel === 'structured-v1' ? 'STRUCTURED V1' : 'LEGACY BRIDGE'}</span>}
             </div>
             {!compact && <p className="text-[8px] font-mono text-slate-400 mt-1">{activeDocument.id}</p>}
@@ -268,7 +306,7 @@ export const TextLibraryShell = ({
         <div className="grid grid-cols-3 gap-1.5">
           <button type="button" disabled={isBusy || activeDocument?.editorModel !== 'structured-v1' || !packActions.exportDocument} onClick={() => runPackAction(packActions.exportDocument, result => `Exported ${result.filename}.`)} className="px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title="Export active structured Document"><Download className="w-3 h-3 inline mr-1"/>Document</button>
           <button type="button" disabled={isBusy || !activeDocument?.collectionId || !packActions.exportCollection} onClick={() => runPackAction(packActions.exportCollection, result => `Exported ${result.filename}.`)} className="px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title={activeDocument?.collectionId ? 'Export active Collection' : 'Move this Document into a Collection to export a Collection pack'}><Layers className="w-3 h-3 inline mr-1"/>Collection</button>
-          <button type="button" disabled={isBusy} onClick={() => textPackInputRef.current?.click()} className="px-2 py-1.5 rounded bg-indigo-600 text-white text-[9px] font-bold disabled:opacity-40" title="Import Text Pack with safe Merge"><Upload className="w-3 h-3 inline mr-1"/>Import Merge</button>
+          <button type="button" disabled={isBusy} onClick={() => textPackInputRef.current?.click()} className="px-2 py-1.5 rounded bg-indigo-600 text-white text-[9px] font-bold disabled:opacity-40" title="Import this Text Pack as an independent local copy"><Upload className="w-3 h-3 inline mr-1"/>Import as Copy</button>
         </div>
         <input ref={textPackInputRef} type="file" accept=".json,application/json" onChange={handleTextPackFile} className="hidden" />
         {packStatus && <p className="text-[8px] text-emerald-600 dark:text-emerald-400" role="status" aria-live="polite">{packStatus}</p>}
@@ -298,7 +336,7 @@ export const TextLibraryShell = ({
             <span>Segments <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.segments || 0}</b></span>
             <span>Audio metadata <b className="text-slate-700 dark:text-slate-200">{preparedDatabaseBackup.diagnostics.counts?.audioVariants || 0}</b></span>
           </div>
-          <p className="text-[8px] text-red-600 dark:text-red-400 flex gap-1.5"><AlertTriangle className="w-3 h-3 shrink-0"/>Restore replaces the entire local Text Library. Use A14 Text Pack Import Merge when you only want to add portable content.</p>
+          <p className="text-[8px] text-red-600 dark:text-red-400 flex gap-1.5"><AlertTriangle className="w-3 h-3 shrink-0"/>Restore replaces the entire local Text Library. Use Import as Copy when you intentionally want an independent duplicate; canonical Sync/Replace is implemented under Final Text C2.</p>
           <button type="button" disabled={isBusy} onClick={applyDatabaseReplaceRestore} className={`w-full px-2 py-1.5 rounded border text-[9px] font-black ${databaseRestoreArmed ? 'border-red-400 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300' : 'border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300'}`}>
             <RefreshCcw className="w-3 h-3 inline mr-1"/>{databaseRestoreArmed ? 'Confirm Replace Entire Text DB' : 'Arm Replace Restore'}
           </button>
@@ -307,6 +345,38 @@ export const TextLibraryShell = ({
         {databaseBackupStatus && <p className="text-[8px] text-slate-500 dark:text-slate-400 break-words" role="status" aria-live="polite">{databaseBackupStatus}</p>}
       </div>}
 
+
+      {activeDocument && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2.5 space-y-2" data-text-library-crud="true">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Document actions</p>
+            <p className="text-[8px] text-slate-400 truncate">{typeLabel(activeDocument)} • {activeDocument.id}</p>
+          </div>
+          <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title || ''); setRenameOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300"><Edit3 className="w-3 h-3 inline mr-1"/>Rename</button>
+          <button type="button" disabled={isBusy} onClick={requestDeleteDocument} className={`min-h-10 px-2.5 rounded-lg border text-[8px] font-black ${deleteDocumentArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`}><Trash2 className="w-3 h-3 inline mr-1"/>{deleteDocumentArmed ? 'Confirm delete' : 'Delete'}</button>
+        </div>
+        {activeCollection && <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+          <div className="min-w-0 flex-1"><p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Collection</p><p className="text-[8px] text-slate-400 truncate">{activeCollection.title} • {activeCollection.id}</p></div>
+          <button type="button" disabled={isBusy} onClick={() => { setCollectionRenameTitle(activeCollection.title || ''); setCollectionRenameOpen(value => !value); setDeleteCollectionArmed(false); }} className="min-h-10 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300">Rename</button>
+          <button type="button" disabled={isBusy || (activeCollection.documents?.length || 0) > 0} onClick={requestDeleteCollection} className={`min-h-10 px-2 rounded-lg border text-[8px] font-black disabled:opacity-40 ${deleteCollectionArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`} title={(activeCollection.documents?.length || 0) > 0 ? 'Collection must be empty before deletion' : 'Delete empty collection'}>{deleteCollectionArmed ? 'Confirm' : 'Delete'}</button>
+        </div>}
+      </div>}
+
+      {(catalog?.collections || []).length > 0 && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2.5" data-text-collection-manager="true">
+        <p className="text-[9px] font-black text-slate-600 dark:text-slate-300 mb-2">Collections</p>
+        <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
+          {(catalog.collections || []).map(collection => <div key={collection.id} className="flex items-center gap-2 rounded-md bg-slate-50 dark:bg-slate-800/60 px-2 py-1.5">
+            <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-slate-600 dark:text-slate-300 truncate">{collection.title}</p><p className="text-[7px] text-slate-400">{collection.documents?.length || 0} document(s) • {collection.id}</p></div>
+            {(collection.documents?.length || 0) === 0 && <button type="button" disabled={isBusy} onClick={async () => { if (typeof window !== 'undefined' && !window.confirm(`Delete empty Collection “${collection.title}”?`)) return; await onDeleteCollection?.(collection.id); }} className="w-9 h-9 flex items-center justify-center rounded-lg border border-red-200 dark:border-red-900 text-red-500 disabled:opacity-40" title="Delete empty Collection"><Trash2 className="w-3.5 h-3.5"/></button>}
+          </div>)}
+        </div>
+      </div>}
+
+      {collectionRenameOpen && activeCollection && <div className="flex gap-1.5">
+        <input value={collectionRenameTitle} onChange={event => setCollectionRenameTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitCollectionRename()} disabled={isBusy} className="flex-1 min-w-0 min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white" />
+        <button type="button" disabled={isBusy || !collectionRenameTitle.trim()} onClick={submitCollectionRename} className="p-1.5 rounded bg-indigo-600 text-white disabled:opacity-40"><Save className="w-3.5 h-3.5"/></button>
+        <button type="button" onClick={() => setCollectionRenameOpen(false)} className="p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-400"><X className="w-3.5 h-3.5"/></button>
+      </div>}
 
       {renameOpen && <div className="flex gap-1.5">
         <input value={renameTitle} onChange={event => setRenameTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitRename()} disabled={isBusy} className="flex-1 min-w-0 min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white" autoFocus={!compact} />
@@ -319,7 +389,7 @@ export const TextLibraryShell = ({
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Document title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-2 gap-2">
           <select value={newDocumentType} onChange={event => setNewDocumentType(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
-            <option value="mixed">Mixed</option><option value="paragraph">Paragraph</option><option value="conversation">Conversation</option>
+            <option value="legacy">Legacy • pronunciation sandbox</option><option value="paragraph">Paragraph</option><option value="conversation">Conversation</option>
           </select>
           <select value={newDocumentCollectionId} onChange={event => setNewDocumentCollectionId(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
             <option value="">Library Root</option>

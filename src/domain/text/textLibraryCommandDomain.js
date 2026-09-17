@@ -238,15 +238,21 @@ const createDocument = (snapshot, payload, now) => {
   if (collectionId) requireCollection(snapshot, collectionId);
   const allocated = allocateIdentity(snapshot, 'DOCUMENT');
   const siblings = resolveDocumentSiblings(snapshot, collectionId);
+  const requestedEditorModel = payload?.editorModel === TEXT_LEGACY_EDITOR_MODEL
+    ? TEXT_LEGACY_EDITOR_MODEL
+    : TEXT_STRUCTURED_EDITOR_MODEL;
+  const requestedDocumentType = requestedEditorModel === TEXT_LEGACY_EDITOR_MODEL
+    ? 'mixed'
+    : (payload?.documentType || 'paragraph');
   const record = createTextDocumentRecord({
     id: allocated.id,
     title: normalizeTitle(payload?.title, 'Untitled Text'),
     collectionId,
     order: maxOrder(siblings) + 1,
-    documentType: payload?.documentType || 'mixed',
+    documentType: requestedDocumentType,
     textLanguage: payload?.textLanguage,
     meaningLanguage: payload?.meaningLanguage,
-    editorModel: TEXT_STRUCTURED_EDITOR_MODEL,
+    editorModel: requestedEditorModel,
     createdAt: now,
     updatedAt: now,
     metadata: payload?.metadata
@@ -290,9 +296,6 @@ const updateDocument = (snapshot, payload, now) => {
 
 const deleteDocument = (snapshot, payload, now) => {
   const current = requireDocument(snapshot, payload?.id);
-  if (current.editorModel === TEXT_LEGACY_EDITOR_MODEL) {
-    throw new Error(`Legacy compatibility document ${current.id} cannot be deleted by the structured command API`);
-  }
   const removedBlockIds = new Set(snapshot.blocks.filter(item => item.documentId === current.id).map(item => item.id));
   const removedSegmentIds = new Set(snapshot.segments.filter(item => item.documentId === current.id).map(item => item.id));
   const activeDocumentId = resolveNextActiveDocumentId(snapshot.documents, current.id, snapshot.activeDocumentId);

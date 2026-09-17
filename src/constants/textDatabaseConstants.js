@@ -28,6 +28,7 @@ export const TEXT_ID_PREFIXES = Object.freeze({
 });
 
 export const TEXT_DOCUMENT_TYPES = Object.freeze(['paragraph', 'conversation', 'mixed']);
+export const TEXT_USER_MODES = Object.freeze(['legacy', 'paragraph', 'conversation']);
 export const TEXT_BLOCK_TYPES = Object.freeze(['paragraph', 'conversation']);
 export const TEXT_AUDIO_CHANNELS = Object.freeze(['text', 'meaning']);
 

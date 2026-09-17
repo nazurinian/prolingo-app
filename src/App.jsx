@@ -117,7 +117,7 @@ import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiv
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
 import { resolveTextLibrarySearchActionTarget, resolveTextLibrarySearchResults, TEXT_LIBRARY_SEARCH_ACTIONS } from './domain/text/textLibrarySearchDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
-import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
+import { executeTextLibraryCreateCollection, executeTextLibraryCreateDocument, executeTextLibraryDeleteCollection, executeTextLibraryDeleteDocument, executeTextLibraryRenameCollection, executeTextLibraryRenameDocument, executeTextLibrarySelectDocument, executeTextLibraryStructuredCommand, resolveTextLibraryActiveProjection } from './services/persistence/textLibraryWorkspaceService.js';
 import { executeProLingoTextPackExport, executeProLingoTextPackFileMerge } from './services/persistence/textPackJsonService.js';
 import { executeProLingoTextDatabaseBackupExport, executeProLingoTextDatabaseReplaceRestore, readProLingoTextDatabaseBackupFile } from './services/persistence/textDatabaseBackupService.js';
 import { syncLegacyTextProjectionToDatabase } from './services/persistence/textLibraryIndexedDbService.js';
@@ -1888,6 +1888,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryDeleteDocument = useCallback((id) => runTextLibraryUiCommand(async () => {
+    forceStopAll();
+    setCurrentIndex(null);
+    setPlayingIndex(null);
+    setPlayingContext(null);
+    return executeTextLibraryDeleteDocument({
+      id, activeTextDocumentId, activeTextEditorModel, textIdentityState,
+      setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
+    });
+  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog]);
+  const handleTextLibraryRenameCollection = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameCollection({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryDeleteCollection = useCallback((id) => runTextLibraryUiCommand(() => executeTextLibraryDeleteCollection({ id, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(() => executeTextLibraryStructuredCommand({ command, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
 
   const textPackSourceMetadata = useMemo(() => ({
@@ -3518,7 +3530,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 
@@ -3701,7 +3713,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentVocabIds: currentProgressVocabIds, onProgressRestored: handleProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 };

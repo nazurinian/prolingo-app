@@ -49,7 +49,7 @@ export const renderMainAppShellView = (props) => {
     masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
+    handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   } = props;
 
@@ -268,6 +268,9 @@ export const renderMainAppShellView = (props) => {
               handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+              handleTextLibraryDeleteDocument={handleTextLibraryDeleteDocument}
+              handleTextLibraryRenameCollection={handleTextLibraryRenameCollection}
+              handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
               structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
               structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}

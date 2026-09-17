@@ -1,15 +1,22 @@
-export const APP_VERSION = '5.13.10';
+export const APP_VERSION = '5.14.0';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'P4-R2.4';
-export const APP_CHECKPOINT_LABEL = 'P4-R2.4 • C3.4.7.4.6 — Live Telemetry + Resume Consolidation';
-export const APP_RELEASE_NAME = 'R2.4.6 Live Telemetry + Resume Consolidation';
+export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T1 C0–C3 — Desktop Foundation + CRUD';
+export const APP_RELEASE_NAME = 'Final Text T1 Desktop Foundation + CRUD';
 export const APP_RELEASE_DATE = '2026-09-17';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} P4-R2.4 C3.4.7.4.6: adds lightweight live Batch telemetry plus verified-source resume and consolidated ZIP rebuild across Staging, Folder, and mounted ZIP sources.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-R2.4 C3.4.7.4.6`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T1: desktop Text Data now uses a compact mini surface → full workspace, exposes official Legacy / Paragraph / Conversation creation paths, and exposes safe Document/Collection CRUD while preserving Table/R2.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T1`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T1 starts contract C0–C3 implementation without modifying frozen Table/R2 behavior',
+  'Desktop Text Data sidebar is reduced to a compact summary with OPEN TEXT WORKSPACE; the full Text Library/editor/data stack moves to a root workspace overlay',
+  'Legacy, Paragraph, and Conversation are official new-Document creation paths; Mixed remains compatibility-only and is not offered for new Documents',
+  'Legacy can now be created as a first-class local Text Document for quick pronunciation/manual TTS experiments',
+  'Document Delete is exposed in the Text Workspace with two-step confirmation and preserves permanent high-water identities',
+  'Collection rename and empty-Collection deletion are exposed while non-empty Collection delete remains fail-closed',
+  'A14 merge behavior is relabelled Import as Copy so duplicate semantics are explicit until C2 canonical Attach/Sync/Detach is implemented',
   'Live Batch Telemetry now updates lightweight processed/Ready estimate/Missing estimate/Generated/Skipped/Failed/Remaining counters without re-reading the full IndexedDB inventory',
   'Batch final reconciliation still refreshes authoritative IndexedDB-backed coverage at completion, stop, or safety checkpoint',
   'Exported* history no longer suppresses DOWNLOAD MISSING by itself: only a currently verified Staging/Folder/mounted-ZIP binary on the exact active voice is treated as Ready',
