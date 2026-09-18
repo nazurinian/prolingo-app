@@ -21,7 +21,7 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
-import { resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
+import { getTextStructuredVoiceOverrideProfile, resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
@@ -317,6 +317,8 @@ export const TextStructuredPlayer = ({
   defaultTextVoiceName = null,
   defaultMeaningVoiceName = null,
   speakerVoiceMap = {},
+  onDocumentVoiceChange,
+  onDocumentDownloadVoiceChange,
   onSpeakerVoiceChange,
   onSpeakerDownloadVoiceChange,
   onCardVoiceChange,
@@ -360,7 +362,9 @@ export const TextStructuredPlayer = ({
   const conversationSpeakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
   const englishVoiceNames = useMemo(() => [...new Set((Array.isArray(englishVoices) ? englishVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [englishVoices]);
   const indonesianVoiceNames = useMemo(() => [...new Set((Array.isArray(indonesianVoices) ? indonesianVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [indonesianVoices]);
+  const documentVoiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
   const documentDownloadProfile = useMemo(() => getTextStructuredAudioDownloadProfile(documentTree), [documentTree?.metadata]);
+  const documentModeLabel = documentTree?.documentType === 'conversation' ? 'Conversation' : documentTree?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility';
 
   useEffect(() => {
     if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
@@ -377,8 +381,8 @@ export const TextStructuredPlayer = ({
             {documentTree?.documentType === 'conversation' ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text • Player settings via bottom bar</p>
-            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
+            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Player settings via bottom bar</p>
+            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : ' • single narrator'} • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
           </div>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Document"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
@@ -405,6 +409,45 @@ export const TextStructuredPlayer = ({
           </button>
 
         {advancedControlsExpanded && <><div className="animate-in fade-in duration-150">
+        <div className="mt-1 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/20 p-2.5" data-text-document-voice-defaults="true">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Volume2 className="w-3.5 h-3.5 text-indigo-500"/>
+            <span className="text-[9px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">{documentTree?.documentType === 'paragraph' ? 'Paragraph Narrator Defaults' : 'Document Fallback Voices'}</span>
+            <span className="text-[8px] text-slate-400">Document-level • Card/Segment overrides stay higher priority</span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <label className="text-[8px] font-bold text-slate-500">Playback EN
+              <select value={documentVoiceProfile?.channels?.text || ''} disabled={controlsBusy} onChange={event => onDocumentVoiceChange?.(event.target.value || null, 'text')} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-document-playback-en="true">
+                <option value="">Document fallback • {compactVoiceLabel(documentVoiceProfile?.channels?.text || defaultTextVoiceName)}</option>
+                {documentVoiceProfile?.channels?.text && !englishVoiceNames.includes(documentVoiceProfile.channels.text) && <option value={documentVoiceProfile.channels.text}>Unavailable • {compactVoiceLabel(documentVoiceProfile.channels.text)}</option>}
+                {englishVoiceNames.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
+              </select>
+            </label>
+            <label className="text-[8px] font-bold text-slate-500">Playback ID
+              <select value={documentVoiceProfile?.channels?.meaning || ''} disabled={controlsBusy} onChange={event => onDocumentVoiceChange?.(event.target.value || null, 'meaning')} className="mt-1 w-full text-[9px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-document-playback-id="true">
+                <option value="">Document fallback • {compactVoiceLabel(documentVoiceProfile?.channels?.meaning || defaultMeaningVoiceName)}</option>
+                {documentVoiceProfile?.channels?.meaning && !indonesianVoiceNames.includes(documentVoiceProfile.channels.meaning) && <option value={documentVoiceProfile.channels.meaning}>Unavailable • {compactVoiceLabel(documentVoiceProfile.channels.meaning)}</option>}
+                {indonesianVoiceNames.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
+              </select>
+            </label>
+            <label className="text-[8px] font-bold text-violet-600 dark:text-violet-300">Edge Download EN
+              <select value={documentDownloadProfile?.channels?.text || ''} disabled={controlsBusy} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, 'text')} className="mt-1 w-full text-[9px] rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-document-download-en="true">
+                <option value="">Document fallback • {compactVoiceLabel(documentDownloadProfile?.channels?.text || generationPreferences?.edgeTextVoiceId)}</option>
+                {documentDownloadProfile?.channels?.text && !(edgeGenerationVoices || []).some(voice => voice.id === documentDownloadProfile.channels.text) && <option value={documentDownloadProfile.channels.text}>Unavailable • {compactVoiceLabel(documentDownloadProfile.channels.text)}</option>}
+                {(edgeGenerationVoices || []).filter(voice => String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+              </select>
+            </label>
+            <label className="text-[8px] font-bold text-violet-600 dark:text-violet-300">Edge Download ID
+              <select value={documentDownloadProfile?.channels?.meaning || ''} disabled={controlsBusy} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, 'meaning')} className="mt-1 w-full text-[9px] rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2 py-1.5" data-text-document-download-id="true">
+                <option value="">Document fallback • {compactVoiceLabel(documentDownloadProfile?.channels?.meaning || generationPreferences?.edgeMeaningVoiceId)}</option>
+                {documentDownloadProfile?.channels?.meaning && !(edgeGenerationVoices || []).some(voice => voice.id === documentDownloadProfile.channels.meaning) && <option value={documentDownloadProfile.channels.meaning}>Unavailable • {compactVoiceLabel(documentDownloadProfile.channels.meaning)}</option>}
+                {(edgeGenerationVoices || []).filter(voice => !String(voice.lang || '').startsWith('en-')).map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="mt-1.5 text-[8px] text-slate-400">{documentTree?.documentType === 'paragraph' ? 'Set the narrator once for the whole Paragraph Document; individual Cards/Segments can still override it.' : 'Conversation speakers normally use their Speaker Profiles below; these defaults are fallback voices when no speaker-specific assignment exists.'}</p>
+        </div>
+
         {conversationSpeakers.length > 0 && <div className="mt-1 rounded-xl border border-sky-100 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20 p-2.5" data-text-speaker-voice-profiles="true">
           <div className="flex items-center gap-1.5 mb-2">
             <Users className="w-3.5 h-3.5 text-sky-500"/>

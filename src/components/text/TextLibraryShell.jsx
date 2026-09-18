@@ -332,7 +332,7 @@ export const TextLibraryShell = ({
               {!compact && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${activeDocument.editorModel === 'structured-v1' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{activeDocument.editorModel === 'structured-v1' ? 'STRUCTURED V1' : 'LEGACY'}</span>}
             </div>
             {!compact && <p className="text-[8px] font-mono text-slate-400 mt-1">{activeDocument.id}</p>}
-            <p className="text-[9px] text-slate-400 mt-1">{blockCount} card{blockCount === 1 ? '' : 's'} • {segmentCount} playable segment{segmentCount === 1 ? '' : 's'}</p>
+            <p className="text-[9px] text-slate-400 mt-1">{activeDocument.editorModel === 'legacy-line-v1' ? `${blockCount} pronunciation line${blockCount === 1 ? '' : 's'} • lightweight manual TTS` : `${blockCount} card${blockCount === 1 ? '' : 's'} • ${segmentCount} playable segment${segmentCount === 1 ? '' : 's'}`}</p>
           </div>
           <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title); setRenameOpen(true); }} className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 disabled:opacity-50 active:scale-95 transition" title="Rename Document" aria-label="Rename active Text document"><Edit3 className="w-3.5 h-3.5"/></button>
         </div>

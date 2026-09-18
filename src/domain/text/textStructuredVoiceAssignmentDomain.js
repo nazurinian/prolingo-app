@@ -137,6 +137,7 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
   const speakerId = getTextStructuredSegmentSpeakerId(segment);
   const segmentProfile = getTextStructuredVoiceOverrideProfile(segment);
   const blockProfile = getTextStructuredVoiceOverrideProfile(block);
+  const documentProfile = getTextStructuredVoiceOverrideProfile(documentTree);
   const documentSpeakerMap = getTextStructuredSpeakerVoiceMap(documentTree);
   const documentSpeakerProfileV2 = getTextStructuredSpeakerVoiceProfileV2(documentTree);
 
@@ -147,6 +148,7 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
     { source: 'document-speaker', voiceName: speakerId ? documentSpeakerProfileV2?.[normalizedChannel]?.[speakerId] : null },
     { source: 'document-speaker-legacy', voiceName: speakerKey ? documentSpeakerMap?.[normalizedChannel]?.[speakerKey] : null },
     { source: 'card', voiceName: blockProfile.channels?.[normalizedChannel] },
+    { source: 'document', voiceName: documentProfile.channels?.[normalizedChannel] },
     { source: 'global', voiceName: defaultVoiceName }
   ];
   const selected = candidates.find(candidate => clean(candidate.voiceName)) || { source: 'none', voiceName: null };
@@ -154,7 +156,7 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
     channel: normalizedChannel,
     voiceName: clean(selected.voiceName) || null,
     source: selected.source,
-    inherited: selected.source === 'global' || selected.source === 'document-speaker'
+    inherited: selected.source === 'global' || selected.source === 'document' || selected.source === 'document-speaker'
   };
 };
 
@@ -178,6 +180,7 @@ export const getTextStructuredVoiceOverrideLabel = source => ({
   'document-speaker': 'Document speaker profile',
   'document-speaker-legacy': 'Document speaker profile (legacy)',
   card: 'Card override',
+  document: 'Document default',
   global: 'Global default',
   none: 'No voice'
 }[source] || 'Voice');

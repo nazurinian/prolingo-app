@@ -1,15 +1,21 @@
-export const APP_VERSION = '5.14.7';
+export const APP_VERSION = '5.14.8';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T8 C8+C9 — Text Batch Multi-Voice Resume & Consolidation';
-export const APP_RELEASE_NAME = 'Final Text T8 Batch Multi-Voice Resume & Consolidation';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T9 C10-C12 — Mode-Specific Final Polish';
+export const APP_RELEASE_NAME = 'Final Text T9 Mode-Specific Final Polish';
 export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T8: Text Batch now supports Card-range scope, exact multi-speaker/multi-voice coverage, lightweight live telemetry, resume from real Ready sources, direct MP3, and complete/explicit-partial consolidated ZIP export without re-generating Ready audio.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T8`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T9: Legacy is polished as the official lightweight pronunciation path, Paragraph gains Document-level narrator playback/download defaults, and Conversation enforces first-class speaker input while retaining stable multi-voice inheritance.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T9`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T9 polishes Legacy, Paragraph, and Conversation as three official Text paths before mobile parity',
+  'Legacy desktop labels now describe pronunciation lines rather than structured Cards and the header shows LEGACY without the misleading MIXED compatibility prefix',
+  'Paragraph gains Document-level Playback EN/ID and Edge Download EN/ID narrator defaults so a single narrator can be configured once for the whole Document',
+  'Document playback/download defaults participate in the same inheritance resolver used by Player, manual audio, coverage, and Batch; Card/Segment overrides remain higher priority',
+  'Conversation speaker input is required for new/edited Conversation Segments so speaker remains first-class data instead of silently creating anonymous dialogue lines',
+  'Conversation compact Player summary now reports speaker count and Document fallback voices remain available below speaker-specific profiles',
   'Final Text T8 adds current-Document Card-range Batch scope while preserving permanent TEXT_ID/SEGMENT_ID identities and current EN/Text + ID/Meaning channel selection',
   'Conversation Text Batch keeps each Segment on its exact resolved speaker/channel Edge download voice; document speaker, Card speaker, and Segment overrides are not flattened to one Batch voice',
   'Text Batch coverage distinguishes Ready, history-only Downloaded, Other Voice, Stale, and Missing; only currently readable Staging/Folder/ZIP/runtime binary suppresses Download Missing',
