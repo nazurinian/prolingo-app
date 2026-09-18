@@ -1030,10 +1030,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextPlaybackFeelChange = useCallback((patch) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...(patch || {}) }));
   }, []);
-  const handleStructuredTextAudioSourceModeChange = useCallback((audioSourceMode) => {
+  const handleStructuredTextAudioSourceModeChange = (audioSourceMode) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, audioSourceMode }));
     forceStopAll();
-  }, [forceStopAll]);
+  };
 
   const handleStructuredTextAudioGenerationPreferenceChange = useCallback((patch) => {
     setStructuredTextAudioGenerationPreferences(prev => normalizeTextStructuredAudioGenerationPreferences({ ...prev, ...(patch || {}) }));
