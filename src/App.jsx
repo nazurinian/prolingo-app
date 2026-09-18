@@ -2547,6 +2547,37 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return identity;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand]);
 
+  const handleStructuredTextDocumentVoiceChange = useCallback(async (voiceName, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredVoiceOverrideMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      voiceName
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Voice', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} → ${voiceName || 'Global default'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentDownloadVoiceChange = useCallback(async (voiceId, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      voiceId
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Download', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} → ${voiceId || 'Global Edge default'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
   const handleStructuredTextSpeakerVoiceChange = useCallback(async (speakerLike, voiceName, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
@@ -4332,6 +4363,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         defaultTextVoiceName={defaultStructuredTextVoiceId}
         defaultMeaningVoiceName={defaultStructuredMeaningVoiceId}
         speakerVoiceMap={structuredTextSpeakerVoiceMap}
+        onDocumentVoiceChange={handleStructuredTextDocumentVoiceChange}
+        onDocumentDownloadVoiceChange={handleStructuredTextDocumentDownloadVoiceChange}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}

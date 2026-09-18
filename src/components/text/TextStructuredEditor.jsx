@@ -47,14 +47,15 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
 
   const save = async () => {
     const cleanText = normalize(text);
-    if (!cleanText || isBusy) return;
+    const cleanSpeaker = normalize(speaker);
+    if (!cleanText || isBusy || (isConversation && !cleanSpeaker)) return;
     const command = segment ? {
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
       payload: {
         id: segment.id,
         text: cleanText,
         meaning: normalize(meaning),
-        speaker: isConversation ? normalize(speaker) || null : null
+        speaker: isConversation ? cleanSpeaker : null
       }
     } : {
       type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
@@ -62,7 +63,7 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
         blockId: block.id,
         text: cleanText,
         meaning: normalize(meaning),
-        speaker: isConversation ? normalize(speaker) || null : null,
+        speaker: isConversation ? cleanSpeaker : null,
         joinAfter: isConversation ? 'line' : 'space'
       }
     };
@@ -75,7 +76,7 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
       {isConversation && <input
         value={speaker}
         onChange={event => setSpeaker(event.target.value)}
-        placeholder="Speaker (optional)"
+        placeholder="Speaker (required)"
         disabled={isBusy}
         className="w-full min-h-11 text-sm md:text-[10px] px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white"
       />}
@@ -98,7 +99,7 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
       />
       <div className={`${compact ? 'sticky bottom-0 z-10 -mx-1 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 px-2 py-2 shadow-sm backdrop-blur' : ''} flex justify-end gap-1.5`} data-text-mobile-editor-savebar={compact ? 'true' : undefined}>
         <button type="button" disabled={isBusy} onClick={onClose} className="min-h-10 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 active:scale-95 transition"><X className="w-3 h-3 inline mr-1"/>Cancel</button>
-        <button type="button" disabled={isBusy || !normalize(text)} onClick={save} className="min-h-10 px-3 py-2 rounded-lg bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40 active:scale-95 transition"><Save className="w-3 h-3 inline mr-1"/>{segment ? 'Save Segment' : 'Add Segment'}</button>
+        <button type="button" disabled={isBusy || !normalize(text) || (isConversation && !normalize(speaker))} onClick={save} className="min-h-10 px-3 py-2 rounded-lg bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40 active:scale-95 transition"><Save className="w-3 h-3 inline mr-1"/>{segment ? 'Save Segment' : 'Add Segment'}</button>
       </div>
     </div>
   );
@@ -270,7 +271,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
               <h3 className="text-xs font-black text-slate-800 dark:text-white">{compact ? 'Cards & Segments' : 'Structured Card / Segment Editor'}</h3>
               {!compact && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">DIRECT INDEXEDDB</span>}
             </div>
-            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • Text + Meaning{documentType !== 'paragraph' ? ' + Speaker' : ''}</p>
+            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • {documentType === 'conversation' ? 'Multi-speaker • Text + Meaning' : documentType === 'paragraph' ? 'Single narrator • Text + Meaning' : 'Compatibility cards • Text + Meaning + optional Speaker'}</p>
             {documentAudio.total > 0 && <p className={`mt-1 text-[8px] font-bold ${documentAudio.needDownload ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>Audio coverage {documentAudio.covered}/{documentAudio.total}{documentAudio.needDownload ? ` • ${documentAudio.needDownload} need download` : ' • complete'}</p>}
           </div>
           <button type="button" disabled={isBusy} onClick={() => setCreatingCard(value => !value)} className="min-h-10 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[10px] font-black disabled:opacity-40 active:scale-95 transition"><Plus className="w-3 h-3 inline mr-1"/>Card</button>

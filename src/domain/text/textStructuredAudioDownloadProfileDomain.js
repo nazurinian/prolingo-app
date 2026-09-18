@@ -119,5 +119,8 @@ export const resolveTextStructuredEffectiveDownloadVoice = ({
   const cardVoice = blockProfile.channels[normalizedChannel];
   if (cardVoice) return { voiceId: cardVoice, source: 'card-download' };
 
+  const documentVoice = documentProfile.channels[normalizedChannel];
+  if (documentVoice) return { voiceId: documentVoice, source: 'document-download' };
+
   return { voiceId: defaultVoiceId, source: 'global-download' };
 };
