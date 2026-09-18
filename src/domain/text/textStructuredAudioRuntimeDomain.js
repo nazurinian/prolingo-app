@@ -99,6 +99,7 @@ export const resolveTextStructuredRuntimeAudio = ({
   requestedVoiceId,
   preferredGeneratedVoiceId = null,
   preferredGeneratedEngine = null,
+  allowAnyGenerated = false,
   content = ''
 }) => {
   const urls = runtimeAudioUrls && typeof runtimeAudioUrls === 'object' ? runtimeAudioUrls : {};
@@ -141,6 +142,15 @@ export const resolveTextStructuredRuntimeAudio = ({
       preferredGeneratedEngine,
       content
     });
+  }
+  if (!variant && allowAnyGenerated) {
+    const wantedEngine = clean(preferredGeneratedEngine).toLowerCase();
+    variant = runtimeVariants
+      .filter(item => String(item?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
+      .filter(item => String(item?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
+      .filter(item => String(item?.source || '').toLowerCase() === 'generated' || String(item?.source || '').toLowerCase() === 'file')
+      .filter(item => !wantedEngine || String(item?.source || '').toLowerCase() === 'file' || String(item?.engine || '').toLowerCase() === wantedEngine)
+      .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))[0] || null;
   }
   if (!variant) return null;
   const runtime = urls[variant.id];

@@ -14,6 +14,7 @@ export const TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES = Object.freeze({
 
 export const TEXT_STRUCTURED_AUDIO_SOURCE_MODES = Object.freeze({
   LOCAL_FIRST: 'local-first',
+  CUSTOM_LOCAL: 'custom-local',
   TTS_ONLY: 'tts-only'
 });
 
@@ -41,6 +42,11 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
   playbackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
   browserTextVoiceName: null,
   browserMeaningVoiceName: null,
+  // v5.14.11/T12: Text and Meaning playback speed are independent, while
+  // browserTtsRate remains a readable compatibility alias for older saved prefs.
+  browserTextRate: 1,
+  browserMeaningRate: 1,
+  browserRatesLinked: true,
   browserTtsRate: 1,
   audioSourceMode: TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
   playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
@@ -59,7 +65,7 @@ const normalizeText = value => String(value ?? '').trim();
 const normalizeVoiceName = value => normalizeText(value) || null;
 const normalizeRate = value => {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return DEFAULT_TEXT_STRUCTURED_PREFERENCES.browserTtsRate;
+  if (!Number.isFinite(numeric)) return DEFAULT_TEXT_STRUCTURED_PREFERENCES.browserTextRate;
   return Math.min(2, Math.max(0.5, Math.round(numeric * 10) / 10));
 };
 const normalizeDelay = value => {
@@ -68,31 +74,50 @@ const normalizeDelay = value => {
   return Math.min(5000, Math.max(0, Math.round(numeric / 50) * 50));
 };
 
-export const normalizeTextStructuredPreferences = candidate => ({
-  displayMode: displayModes.has(candidate?.displayMode)
-    ? candidate.displayMode
-    : DEFAULT_TEXT_STRUCTURED_PREFERENCES.displayMode,
-  playbackChannelMode: playbackModes.has(candidate?.playbackChannelMode)
-    ? candidate.playbackChannelMode
-    : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackChannelMode,
-  browserTextVoiceName: normalizeVoiceName(candidate?.browserTextVoiceName),
-  browserMeaningVoiceName: normalizeVoiceName(candidate?.browserMeaningVoiceName),
-  browserTtsRate: normalizeRate(candidate?.browserTtsRate),
-  audioSourceMode: candidate?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
-    ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
-    : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
-  playbackOrderMode: orderModes.has(candidate?.playbackOrderMode)
-    ? candidate.playbackOrderMode
-    : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackOrderMode,
-  repeatMode: repeatModes.has(candidate?.repeatMode)
-    ? candidate.repeatMode
-    : DEFAULT_TEXT_STRUCTURED_PREFERENCES.repeatMode,
-  resumeMode: resumeModes.has(candidate?.resumeMode)
-    ? candidate.resumeMode
-    : DEFAULT_TEXT_STRUCTURED_PREFERENCES.resumeMode,
-  channelDelayMs: normalizeDelay(candidate?.channelDelayMs),
-  segmentDelayMs: normalizeDelay(candidate?.segmentDelayMs)
-});
+export const normalizeTextStructuredPreferences = candidate => {
+  const legacyRate = normalizeRate(candidate?.browserTtsRate);
+  const browserTextRate = normalizeRate(candidate?.browserTextRate ?? legacyRate);
+  const browserRatesLinked = candidate?.browserRatesLinked !== false;
+  const browserMeaningRate = browserRatesLinked
+    ? browserTextRate
+    : normalizeRate(candidate?.browserMeaningRate ?? legacyRate);
+  return {
+    displayMode: displayModes.has(candidate?.displayMode)
+      ? candidate.displayMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.displayMode,
+    playbackChannelMode: playbackModes.has(candidate?.playbackChannelMode)
+      ? candidate.playbackChannelMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackChannelMode,
+    browserTextVoiceName: normalizeVoiceName(candidate?.browserTextVoiceName),
+    browserMeaningVoiceName: normalizeVoiceName(candidate?.browserMeaningVoiceName),
+    browserTextRate,
+    browserMeaningRate,
+    browserRatesLinked,
+    // Compatibility alias. New runtime code resolves by channel.
+    browserTtsRate: browserTextRate,
+    audioSourceMode: candidate?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
+      ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
+      : candidate?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
+        ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
+        : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+    playbackOrderMode: orderModes.has(candidate?.playbackOrderMode)
+      ? candidate.playbackOrderMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackOrderMode,
+    repeatMode: repeatModes.has(candidate?.repeatMode)
+      ? candidate.repeatMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.repeatMode,
+    resumeMode: resumeModes.has(candidate?.resumeMode)
+      ? candidate.resumeMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.resumeMode,
+    channelDelayMs: normalizeDelay(candidate?.channelDelayMs),
+    segmentDelayMs: normalizeDelay(candidate?.segmentDelayMs)
+  };
+};
+
+export const resolveTextStructuredPlaybackRate = (preferences, channel = 'text') => {
+  const normalized = normalizeTextStructuredPreferences(preferences || {});
+  return channel === 'meaning' ? normalized.browserMeaningRate : normalized.browserTextRate;
+};
 
 export const resolveStructuredTextDisplayState = ({ displayMode, isActive = false }) => {
   const normalized = normalizeTextStructuredPreferences({ displayMode }).displayMode;

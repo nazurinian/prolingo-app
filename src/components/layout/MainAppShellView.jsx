@@ -6,6 +6,7 @@ import SidebarShell from './SidebarShell';
 import SidebarTopControls from './SidebarTopControls';
 import PlayerAudioSourceControls from '../controls/PlayerAudioSourceControls';
 import PlayerBrowserTtsControls from '../controls/PlayerBrowserTtsControls';
+import TextStructuredAudioControls from '../text/TextStructuredAudioControls.jsx';
 import DesktopLearnControls from '../controls/DesktopLearnControls';
 import DesktopDataActions from '../controls/DesktopDataActions';
 import DesktopDataWorkspace from '../controls/DesktopDataWorkspace';
@@ -22,7 +23,7 @@ export const renderMainAppShellView = (props) => {
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
-    handleMobileTabSwitch, renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection,
+    handleMobileTabSwitch, renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection, setSidebarSection,
     renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio, setPreferLocalAudio, generatorEngine,
     setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, edgeVoices, edgeVoice,
     setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
@@ -30,9 +31,10 @@ export const renderMainAppShellView = (props) => {
     geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
     batchButtonRef, isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices, selectedVoice,
-    setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate, setRate, showIndonesianBrowserVoice,
+    setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice, rate, setRate, meaningRate, setMeaningRate, ratesLinked, setRatesLinked, showIndonesianBrowserVoice,
+    textStructuredPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, handleStructuredTextDocumentVoiceChange, handleStructuredTextSpeakerVoiceChange, handleStructuredTextDisplayModeChange, handleStructuredTextPlaybackChannelModeChange, handleStructuredTextPlaybackFeelChange,
     renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode, memorySettings, setMemorySettings, advancedDatasetStats,
-    csvInputRef, handleCSVUpload, openManualAdd, playlist, tableViewMode, exportTableCSV,
+    csvInputRef, handleCSVUpload, openManualAdd, playlist, tableViewMode, exportTableCSV, rangeInput, setRangeInput, handleRangeAdd,
     setIsClearDialogOpen, setIsChangeReviewOpen, undoStack, undoLastDataChange, isMultiSourceMode, textareaRef,
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates, dirtySourceKeys,
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
@@ -50,8 +52,14 @@ export const renderMainAppShellView = (props) => {
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
-    structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   } = props;
+
+  const mobileTextDocuments = mode === 'text' ? [
+    ...(textLibraryCatalog?.rootDocuments || []),
+    ...(textLibraryCatalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
+  ] : [];
+  const getTextModeLabel = document => document?.editorModel === 'legacy-line-v1' ? 'LEGACY' : document?.documentType === 'conversation' ? 'CONV' : document?.documentType === 'paragraph' ? 'PARA' : 'MIXED';
 
   return (
     <div className={`bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans flex flex-col relative transition-colors ${isMobile ? 'min-h-[100dvh] overflow-x-hidden' : 'h-screen overflow-hidden'}`}>
@@ -92,6 +100,10 @@ export const renderMainAppShellView = (props) => {
         activeTextDocumentId={activeTextDocumentId}
         textLibraryCommandBusy={textLibraryCommandBusy || isSystemBusy}
         handleTextLibrarySelectDocument={handleTextLibrarySelectDocument}
+        tableViewMode={tableViewMode}
+        rangeInput={rangeInput}
+        setRangeInput={setRangeInput}
+        handleRangeAdd={handleRangeAdd}
       />
 
       <div className="flex-1 flex overflow-hidden relative z-0">
@@ -116,7 +128,7 @@ export const renderMainAppShellView = (props) => {
                 renderControlSectionTabs={renderControlSectionTabs}
               />
 
-              {sidebarSection === 'player' && <>
+              {sidebarSection === 'player' && mode === 'table' && <>
               <PlayerAudioSourceControls
                 currentMapCount={currentMapCount}
                 mode={mode}
@@ -183,7 +195,7 @@ export const renderMainAppShellView = (props) => {
                 onProgressRestored={onProgressRestored}
               />}
 
-              {sidebarSection === 'player' && <>
+              {sidebarSection === 'player' && mode === 'table' && <>
               <PlayerBrowserTtsControls
                 voices={voices}
                 selectedVoice={selectedVoice}
@@ -197,9 +209,23 @@ export const renderMainAppShellView = (props) => {
                 structuredTextModeActive={structuredTextModeActive}
                 rate={rate}
                 setRate={setRate}
+                meaningRate={meaningRate}
+                setMeaningRate={setMeaningRate}
+                ratesLinked={ratesLinked}
+                setRatesLinked={setRatesLinked}
               />
 
               </>}
+
+              {sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
+                {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <>
+                  <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-3">
+                    <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Legacy Audio</p>
+                    <p className="text-[8px] text-slate-400 mb-2">Legacy is EN-only: choose Browser TTS voice and speed here.</p>
+                    <PlayerBrowserTtsControls voices={voices} selectedVoice={selectedVoice} setSelectedVoice={setSelectedVoice} isSystemBusy={isSystemBusy} mode="text" indonesianVoices={[]} selectedIndonesianVoice={null} setSelectedIndonesianVoice={() => {}} showIndonesianVoice={false} structuredTextModeActive={false} rate={rate} setRate={setRate}/>
+                  </div>
+                </>}
+              </div>}
 
               {sidebarSection === 'learn' && <DesktopLearnControls
                   mode={mode}
@@ -229,6 +255,9 @@ export const renderMainAppShellView = (props) => {
                 saveUpdatedCSV={saveUpdatedCSV}
                 isMultiSourceMode={isMultiSourceMode}
                 activeTextEditorModel={activeTextEditorModel}
+                isBatchOpen={isBatchOpen}
+                setIsBatchOpen={setIsBatchOpen}
+                isBatchDownloading={isBatchDownloading}
               />}
             </div>
             
@@ -273,7 +302,6 @@ export const renderMainAppShellView = (props) => {
               handleTextLibraryRenameCollection={handleTextLibraryRenameCollection}
               handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
-              structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
               structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
             />}
           </div>
@@ -318,6 +346,15 @@ export const renderMainAppShellView = (props) => {
                           paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode)}px` : '0'
                       }}
                  >
+                    {isMobile && mode === 'text' && <div className="mb-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-900/95 p-2 shadow-sm" data-mobile-text-document-strip="true">
+                      <div className="flex items-center gap-1.5 overflow-x-auto overscroll-x-contain custom-scrollbar pb-0.5">
+                        {mobileTextDocuments.map(document => <button key={document.id} type="button" disabled={textLibraryCommandBusy} onClick={() => handleTextLibrarySelectDocument?.(document.id)} className={`shrink-0 min-h-10 max-w-[180px] rounded-lg border px-2.5 py-1.5 text-left ${document.id === activeTextDocumentId ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                          <span className="block truncate text-[9px] font-black">{document.title}</span><span className={`block text-[7px] font-bold ${document.id === activeTextDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{getTextModeLabel(document)}</span>
+                        </button>)}
+                        {!mobileTextDocuments.length && <span className="shrink-0 px-2 text-[9px] text-slate-400">No Text data yet</span>}
+                        <button type="button" onClick={() => { setSidebarSection?.('data'); handleMobileTabSwitch?.('tools'); }} className="shrink-0 min-h-10 rounded-lg border border-indigo-200 dark:border-indigo-800 px-3 text-[9px] font-black text-indigo-700 dark:text-indigo-300">DATA</button>
+                      </div>
+                    </div>}
                     {renderPlaylist()}
                  </div>
             </div>

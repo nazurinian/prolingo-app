@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
-  Settings, FileText, Table2
+  Settings, FileText, Table2, ChevronDown, ChevronUp, ListPlus
 } from 'lucide-react';
 
 /**
@@ -44,7 +44,15 @@ const Header = ({
   activeTextDocumentId,
   textLibraryCommandBusy,
   handleTextLibrarySelectDocument,
+  tableViewMode,
+  rangeInput,
+  setRangeInput,
+  handleRangeAdd,
 }) => {
+  const [mobileStudyQueueExpanded, setMobileStudyQueueExpanded] = useState(false);
+  useEffect(() => {
+    if (!isMobile || mode !== 'table' || tableViewMode !== 'study' || mobileTab !== 'player') setMobileStudyQueueExpanded(false);
+  }, [isMobile, mode, tableViewMode, mobileTab]);
   return (
     <div className={`z-50 bg-white dark:bg-slate-800 transition-transform duration-300 shadow-md ${isMobile ? 'fixed top-0 left-0 right-0 w-full' : 'sticky top-0 border-b border-slate-200 dark:border-slate-700'} ${isMobile && !showAppBar ? '-translate-y-full' : 'translate-y-0'}`}>
       
@@ -69,7 +77,7 @@ const Header = ({
                     {(textLibraryCatalog?.rootDocuments || []).length > 0 && <optgroup label="Library Root">{textLibraryCatalog.rootDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>}
                     {(textLibraryCatalog?.collections || []).map(collection => <optgroup key={collection.id} label={collection.title}>{(collection.documents || []).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>)}
                   </select>
-                  {activeTextDocument && <span className="hidden lg:inline-flex text-[9px] font-black px-2 py-1 rounded bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 whitespace-nowrap">{activeTextDocument.documentType.toUpperCase()} • {activeTextDocument.editorModel === 'structured-v1' ? 'STRUCTURED' : 'LEGACY'}</span>}
+                  {activeTextDocument && <span className="hidden lg:inline-flex text-[9px] font-black px-2 py-1 rounded bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 whitespace-nowrap">{activeTextDocument.editorModel === 'legacy-line-v1' ? 'LEGACY' : `${activeTextDocument.documentType.toUpperCase()} • STRUCTURED`}</span>}
                 </div>
               ) : (
                 <>
@@ -132,7 +140,20 @@ const Header = ({
       </div>
     
       {/* 2. TABLE WORKSPACE TABS (Mobile). Utility navigation now lives behind the top-right Controls button. */}
-      {isMobile && mode === 'table' && mobileTab === 'player' && renderWorkspaceTabs(true)}
+      {isMobile && mode === 'table' && mobileTab === 'player' && <>
+        {renderWorkspaceTabs(true)}
+        {tableViewMode === 'study' && <div className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 pb-2" data-mobile-study-anchor="true">
+          <button type="button" onClick={() => setMobileStudyQueueExpanded(value => !value)} className="w-full min-h-10 rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/20 px-3 flex items-center gap-2 text-indigo-700 dark:text-indigo-300" aria-expanded={mobileStudyQueueExpanded}>
+            <ListPlus className="w-4 h-4"/>
+            <span className="text-[10px] font-black uppercase tracking-wide flex-1 text-left">Study • Add Queue</span>
+            {mobileStudyQueueExpanded ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
+          </button>
+          {mobileStudyQueueExpanded && <div className="mt-2 flex items-center gap-2" data-mobile-study-add-queue="true">
+            <input disabled={isSystemBusy} value={rangeInput} onChange={event => setRangeInput?.(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') handleRangeAdd?.(); }} placeholder="e.g. 1-10, 15, 22-30" className="min-h-10 flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400 disabled:opacity-50"/>
+            <button type="button" disabled={isSystemBusy || !String(rangeInput || '').trim()} onClick={() => handleRangeAdd?.()} className="min-h-10 px-3 rounded-lg bg-indigo-600 text-white text-[10px] font-black disabled:opacity-40">ADD</button>
+          </div>}
+        </div>}
+      </>}
     </div>
   );
 };

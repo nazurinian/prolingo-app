@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, ListPlus } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, BookOpen } from 'lucide-react';
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
 import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
@@ -10,54 +11,50 @@ export default function MobileDataControls({
   saveUpdatedSource, exportMergedDataset, savedDecks, selectedDeckId, handleLoadDeck,
   currentDeckName, setCurrentDeckName, handleSaveDeck, handleDeleteDeckInit, csvInputRef,
   openManualAdd, playlist, tableViewMode, exportTableCSV, setIsClearDialogOpen, csvChangeSummary,
-  setIsChangeReviewOpen, undoStack, undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput,
-  handleRangeAdd, textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
+  setIsChangeReviewOpen, undoStack, undoLastDataChange, saveUpdatedCSV,
+  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
-  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument,
+  handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+  structuredTextAudioCoverageMap, isBatchOpen = false, setIsBatchOpen, isBatchDownloading = false
 }) {
   const [textMobileSurface, setTextMobileSurface] = useState('library');
+  const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
+  const textModeLabel = activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Legacy' : activeTextDocument?.documentType === 'conversation' ? 'Conversation' : activeTextDocument?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility';
+  const textBlockCount = activeTextDocumentTree?.blocks?.length || 0;
+  const textSegmentCount = useMemo(() => (activeTextDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0), [activeTextDocumentTree]);
 
   useEffect(() => {
     if (mode !== 'text') return;
-    if (textMobileSurface === 'edit' && activeTextDocument?.editorModel !== 'structured-v1') {
-      setTextMobileSurface('library');
-    }
+    if (textMobileSurface === 'edit' && activeTextDocument?.editorModel !== 'structured-v1') setTextMobileSurface('library');
   }, [mode, activeTextDocument?.editorModel, textMobileSurface]);
 
   if (mode === 'text') {
     const canEditStructured = activeTextDocument?.editorModel === 'structured-v1';
-    return <div className="space-y-3" data-text-mobile-workspace="true">
+    const workspace = <div className="space-y-3" data-text-mobile-workspace="true">
       <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/70 p-1" role="tablist" aria-label="Text mobile workspace">
-        <button type="button" role="tab" aria-selected={textMobileSurface === 'library'} onClick={() => setTextMobileSurface('library')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] ${textMobileSurface === 'library' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Library</button>
+        <button type="button" role="tab" aria-selected={textMobileSurface === 'library'} onClick={() => setTextMobileSurface('library')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] ${textMobileSurface === 'library' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Library & Sources</button>
         <button type="button" role="tab" aria-selected={textMobileSurface === 'edit'} disabled={!canEditStructured} onClick={() => canEditStructured && setTextMobileSurface('edit')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] disabled:opacity-35 ${textMobileSurface === 'edit' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Edit Cards</button>
       </div>
-
+      <button type="button" disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen?.(!isBatchOpen)} className={`w-full min-h-11 rounded-xl border text-[10px] font-black flex items-center justify-center gap-2 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'} disabled:opacity-50`}><Layers className="w-4 h-4"/>{isBatchDownloading ? 'BATCH AUDIO • RUNNING' : 'BATCH AUDIO'}</button>
       {textMobileSurface === 'library' && <TextLibraryShell
-        compact
-        catalog={textLibraryCatalog}
-        activeDocument={activeTextDocument}
-        activeDocumentTree={activeTextDocumentTree}
-        activeDocumentId={activeTextDocumentId}
-        isBusy={textLibraryCommandBusy}
-        error={textLibraryCommandError}
-        onSelectDocument={handleTextLibrarySelectDocument}
-        onCreateDocument={handleTextLibraryCreateDocument}
-        onCreateCollection={handleTextLibraryCreateCollection}
-        onRenameDocument={handleTextLibraryRenameDocument}
-        audioLibrary={structuredTextAudioLibraryControls}
+        catalog={textLibraryCatalog} activeDocument={activeTextDocument} activeDocumentTree={activeTextDocumentTree} activeDocumentId={activeTextDocumentId}
+        isBusy={textLibraryCommandBusy} error={textLibraryCommandError} onSelectDocument={handleTextLibrarySelectDocument}
+        onCreateDocument={handleTextLibraryCreateDocument} onCreateCollection={handleTextLibraryCreateCollection} onRenameDocument={handleTextLibraryRenameDocument}
+        onMoveDocument={handleTextLibraryMoveDocument} onDeleteDocument={handleTextLibraryDeleteDocument} onRenameCollection={handleTextLibraryRenameCollection}
+        onDeleteCollection={handleTextLibraryDeleteCollection} onStructuredCommand={handleTextLibraryStructuredCommand}
       />}
-
-      {textMobileSurface === 'edit' && canEditStructured && <TextStructuredEditor
-        compact
-        documentTree={activeTextDocumentTree}
-        isBusy={textLibraryCommandBusy}
-        error={textLibraryCommandError}
-        onCommand={handleTextLibraryStructuredCommand}
-        audioCoverageMap={structuredTextAudioCoverageMap}
-      />}
-
-      {textMobileSurface === 'edit' && activeTextDocument?.editorModel === 'legacy-line-v1' && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">This legacy Text document still uses the compatibility editor. Select a structured document to edit Cards and Segments here.</div>}
+      {textMobileSurface === 'edit' && canEditStructured && <TextStructuredEditor compact documentTree={activeTextDocumentTree} isBusy={textLibraryCommandBusy} error={textLibraryCommandError} onCommand={handleTextLibraryStructuredCommand} audioCoverageMap={structuredTextAudioCoverageMap}/>}
+      {!canEditStructured && <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300">Legacy stays a pronunciation sandbox. Use the main Text view for line editing; Library, source lifecycle, backup/audio tools, and CRUD remain available here.</div>}
+    </div>;
+    return <div className="space-y-3" data-text-mobile-mini="true">
+      <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
+        <div className="flex items-start gap-2"><BookOpen className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0 flex-1"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Data</p><p className="text-[8px] text-slate-400 truncate">{textModeLabel} • {activeTextDocument?.title || 'No active document'}</p></div><span className="rounded-md border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 px-1.5 py-1 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeLabel.toUpperCase()}</span></div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-center"><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textBlockCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Lines' : 'Cards'}</p></div><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textSegmentCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Playable' : 'Segments'}</p></div></div>
+        <p className="mt-2 text-[8px] text-slate-400">DATA = Library • JSON Sources • CRUD • Backup • Batch</p>
+        <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="mt-3 w-full min-h-11 rounded-lg bg-indigo-600 text-white text-[10px] font-black active:scale-[0.99]" data-text-mobile-open-workspace="true">OPEN DATA WORKSPACE</button>
+      </section>
+      {typeof document !== 'undefined' && textWorkspaceOpen && createPortal(<div className="fixed inset-0 z-[160] bg-slate-950/60 backdrop-blur-[1px] p-0 sm:p-2" data-text-mobile-full-workspace="true"><section className="ml-auto h-[100dvh] w-full max-w-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-2xl sm:h-[calc(100dvh-1rem)] sm:rounded-2xl flex flex-col"><div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-3"><BookOpen className="w-5 h-5 text-indigo-600"/><div className="min-w-0 flex-1"><h2 className="text-sm font-black">Text Data Workspace</h2><p className="text-[9px] text-slate-400">Library • JSON Sources • CRUD • Backup • Batch</p></div><button type="button" onClick={() => setTextWorkspaceOpen(false)} className="min-h-11 min-w-11 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center" aria-label="Close Text Data workspace"><X className="w-4 h-4"/></button></div><div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-28">{workspace}</div></section></div>, document.body)}
     </div>;
   }
   return (
@@ -83,7 +80,6 @@ export default function MobileDataControls({
                   </div>}
               </div>
 
-              {mode === 'table' && <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors"><h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><ListPlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/> Add to Queue (Range)</h3><div className="flex gap-2"><input className="flex-1 text-sm border border-slate-300 dark:border-slate-600 rounded px-3 py-2 focus:outline-indigo-500 dark:bg-slate-700 dark:text-white" placeholder="Ex: 1-10, 15" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleRangeAdd()} disabled={isSystemBusy}/><button onClick={handleRangeAdd} disabled={!rangeInput.trim() || isSystemBusy} className={`px-4 py-2 rounded text-xs font-bold ${!rangeInput.trim() || isSystemBusy ? 'bg-slate-100 dark:bg-slate-700 text-slate-400' : 'bg-indigo-600 text-white'}`}>Apply</button></div></div>}
     </>
   );
 }

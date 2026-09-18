@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Database, Settings, Volume2 } from 'lucide-react';
+import { BookOpen, Database, Headphones, Settings, Volume2 } from 'lucide-react';
 import MobileTools from './MobileTools';
 import WorkspaceTabs from '../table/WorkspaceTabs';
 import MasterDataToolbar from '../table/MasterDataToolbar';
@@ -61,17 +61,21 @@ export const renderBatchPopupView = ({
   />;
 };
 
-export const renderControlSectionTabsView = ({ compact = false, sidebarSection, setSidebarSection }) => {
+export const renderControlSectionTabsView = ({ compact = false, sidebarSection, setSidebarSection, mode = 'table' }) => {
     const iconFor = (key) => {
       if (key === 'player') return <Volume2 className="w-3.5 h-3.5"/>;
+      if (key === 'audio') return <Headphones className="w-3.5 h-3.5"/>;
       if (key === 'learn') return <BookOpen className="w-3.5 h-3.5"/>;
       if (key === 'data') return <Database className="w-3.5 h-3.5"/>;
       return <Settings className="w-3.5 h-3.5"/>;
     };
+    const sections = mode === 'text'
+      ? [{ key: 'audio', label: 'Audio', shortLabel: 'AUDIO' }, ...V5116_CONTROL_SECTIONS.filter(section => section.key === 'data' || section.key === 'system')]
+      : V5116_CONTROL_SECTIONS;
     return (
       <div className={`rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/40 ${compact ? 'p-1.5' : 'p-2'}`}>
-        <div className="grid grid-cols-4 gap-1">
-          {V5116_CONTROL_SECTIONS.map(section => {
+        <div className={`grid ${sections.length === 3 ? 'grid-cols-3' : sections.length === 5 ? 'grid-cols-5' : 'grid-cols-4'} gap-1`}>
+          {sections.map(section => {
             const active = sidebarSection === section.key;
             return (
               <button
@@ -96,14 +100,15 @@ export const renderMobileToolsView = ({
   tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
   setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
-  rate, setRate, showIndonesianBrowserVoice, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
+  rate, setRate, meaningRate, setMeaningRate, ratesLinked, setRatesLinked, showIndonesianBrowserVoice, structuredTextModeActive,
+  textStructuredPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, handleStructuredTextDocumentVoiceChange, handleStructuredTextSpeakerVoiceChange, handleStructuredTextDisplayModeChange, handleStructuredTextPlaybackChannelModeChange, handleStructuredTextPlaybackFeelChange, renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
   memorySettings, setMemorySettings, advancedDatasetStats, isMultiSourceMode,
   dirtySourceKeys, isCsvDirty, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries,
   sourcePack, openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset,
   savedDecks, selectedDeckId, handleLoadDeck, currentDeckName, setCurrentDeckName,
   handleSaveDeck, handleDeleteDeckInit, csvInputRef, openManualAdd, playlist, tableViewMode,
   exportTableCSV, setIsClearDialogOpen, csvChangeSummary, setIsChangeReviewOpen, undoStack,
-  undoLastDataChange, saveUpdatedCSV, rangeInput, setRangeInput, handleRangeAdd,
+  undoLastDataChange, saveUpdatedCSV,
   generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
   userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock, geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
   edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice,
@@ -115,8 +120,8 @@ export const renderMobileToolsView = ({
   masteryByVocabId, activityByVocabId, currentVocabIds, onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
-  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+  structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) => (
       <MobileTools
           sidebarSection={sidebarSection}
@@ -141,6 +146,20 @@ export const renderMobileToolsView = ({
           showIndonesianBrowserVoice={showIndonesianBrowserVoice}
           rate={rate}
           setRate={setRate}
+          meaningRate={meaningRate}
+          setMeaningRate={setMeaningRate}
+          ratesLinked={ratesLinked}
+          setRatesLinked={setRatesLinked}
+          structuredTextModeActive={structuredTextModeActive}
+          textStructuredPreferences={textStructuredPreferences}
+          defaultStructuredTextVoiceId={defaultStructuredTextVoiceId}
+          defaultStructuredMeaningVoiceId={defaultStructuredMeaningVoiceId}
+          handleStructuredTextDocumentVoiceChange={handleStructuredTextDocumentVoiceChange}
+          handleStructuredTextSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
+          handleStructuredTextDisplayModeChange={handleStructuredTextDisplayModeChange}
+          handleStructuredTextPlaybackChannelModeChange={handleStructuredTextPlaybackChannelModeChange}
+          handleStructuredTextPlaybackFeelChange={handleStructuredTextPlaybackFeelChange}
+          structuredTextAudioSidebarControls={structuredTextAudioSidebarControls}
           renderPlaybackSequenceBuilder={renderPlaybackSequenceBuilder}
           isMemoryMode={isMemoryMode}
           setIsMemoryMode={setIsMemoryMode}
@@ -176,9 +195,6 @@ export const renderMobileToolsView = ({
           undoStack={undoStack}
           undoLastDataChange={undoLastDataChange}
           saveUpdatedCSV={saveUpdatedCSV}
-          rangeInput={rangeInput}
-          setRangeInput={setRangeInput}
-          handleRangeAdd={handleRangeAdd}
           generatorEngine={generatorEngine}
           setGeneratorEngine={setGeneratorEngine}
           aiVoiceName={aiVoiceName}
@@ -249,8 +265,11 @@ export const renderMobileToolsView = ({
           handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
           handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
           handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+          handleTextLibraryMoveDocument={handleTextLibraryMoveDocument}
+          handleTextLibraryDeleteDocument={handleTextLibraryDeleteDocument}
+          handleTextLibraryRenameCollection={handleTextLibraryRenameCollection}
+          handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
           handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
-          structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
           structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
       />
 );

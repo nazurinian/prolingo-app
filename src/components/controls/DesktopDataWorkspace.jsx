@@ -15,13 +15,12 @@ export default function DesktopDataWorkspace({
   activeTextDocumentId, activeTextEditorModel, textLibraryCommandBusy, textLibraryCommandError,
   handleTextLibrarySelectDocument, handleTextLibraryCreateDocument, handleTextLibraryCreateCollection, handleTextLibraryRenameDocument,
   handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection,
-  handleTextLibraryStructuredCommand, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+  handleTextLibraryStructuredCommand, structuredTextAudioCoverageMap
 }) {
   const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
   const textModeLabel = activeTextEditorModel === 'legacy-line-v1' ? 'Legacy' : activeTextDocument?.documentType === 'conversation' ? 'Conversation' : activeTextDocument?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility';
   const textBlockCount = activeTextDocumentTree?.blocks?.length || 0;
   const textSegmentCount = useMemo(() => (activeTextDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0), [activeTextDocumentTree]);
-  const textCoverage = structuredTextAudioLibraryControls?.coverage || {};
   const textSourceCount = activeTextDocumentTree?.__packActions?.sourceAttachments?.length || 0;
   return (
     mode === 'text' ? (
@@ -36,19 +35,19 @@ export default function DesktopDataWorkspace({
                     <span className="px-1.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeLabel.toUpperCase()}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 text-center">
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textBlockCount}</p><p className="text-[7px] font-black uppercase text-slate-400">Cards</p></div>
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textSegmentCount}</p><p className="text-[7px] font-black uppercase text-slate-400">Segments</p></div>
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textBlockCount}</p><p className="text-[7px] font-black uppercase text-slate-400">{activeTextEditorModel === 'legacy-line-v1' ? 'Lines' : 'Cards'}</p></div>
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textSegmentCount}</p><p className="text-[7px] font-black uppercase text-slate-400">{activeTextEditorModel === 'legacy-line-v1' ? 'Playable' : 'Segments'}</p></div>
                   </div>
-                  <p className="text-[8px] text-slate-400">Sources {textSourceCount} • Audio Ready {textCoverage.ready || 0}/{textCoverage.total || 0} • Missing {textCoverage.missing || textCoverage.needDownload || 0}</p>
-                  <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="w-full min-h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black transition active:scale-[0.99]">OPEN TEXT WORKSPACE</button>
+                  <p className="text-[8px] text-slate-400">Sources {textSourceCount} • Library / JSON / CRUD / Backup</p>
+                  <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="w-full min-h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black transition active:scale-[0.99]">OPEN DATA WORKSPACE</button>
                 </section>
 
                 {typeof document !== 'undefined' && textWorkspaceOpen && createPortal(<div className="fixed inset-0 z-[150] flex items-center justify-center p-2 md:p-4 overflow-hidden" data-text-data-workspace="true">
-                  <button type="button" aria-label="Close Text workspace" onClick={() => setTextWorkspaceOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-[1px]"/>
+                  <button type="button" aria-label="Close Text Data workspace" onClick={() => setTextWorkspaceOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-[1px]"/>
                   <section className="relative z-10 w-full max-w-6xl h-[calc(100dvh-1rem)] md:h-[calc(100dvh-2rem)] max-h-[960px] min-h-0 min-w-0 overflow-hidden rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
                     <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
                       <BookOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-300"/>
-                      <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Workspace</h2><p className="text-[9px] text-slate-400">Legacy • Paragraph • Conversation • Library • Sources • Audio</p></div>
+                      <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Data Workspace</h2><p className="text-[9px] text-slate-400">Library • JSON Sources • CRUD • Backup • Legacy / Paragraph / Conversation</p></div>
                       <button type="button" onClick={() => setTextWorkspaceOpen(false)} className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500"><X className="w-4 h-4"/></button>
                     </div>
                     <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3 md:p-4 space-y-3">
@@ -70,10 +69,10 @@ export default function DesktopDataWorkspace({
                         onDeleteDocument={handleTextLibraryDeleteDocument}
                         onRenameCollection={handleTextLibraryRenameCollection}
                         onDeleteCollection={handleTextLibraryDeleteCollection}
-                        audioLibrary={structuredTextAudioLibraryControls}
+                        onStructuredCommand={handleTextLibraryStructuredCommand}
                       />
                       {activeTextEditorModel === 'legacy-line-v1' ? <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/10 p-3 space-y-2">
-                        <div><p className="text-[10px] font-black text-amber-700 dark:text-amber-300">Legacy pronunciation sandbox</p><p className="text-[8px] text-slate-400">Free-form text remains intentionally lightweight.</p></div>
+                        <div><p className="text-[10px] font-black text-amber-700 dark:text-amber-300">Legacy pronunciation sandbox</p><p className="text-[8px] text-slate-400">One word, phrase, or sentence per line. Global Player uses browser TTS for fast pronunciation practice; no Paragraph/Conversation Card setup is required.</p></div>
                         <textarea ref={textareaRef} disabled={isSystemBusy || textLibraryCommandBusy} readOnly={isLocked || isSystemBusy || textLibraryCommandBusy} className={`w-full min-h-[220px] text-xs font-mono p-3 border rounded-lg resize-y focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'bg-slate-100 dark:bg-slate-950 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-700`} placeholder="Type a word, phrase, or sentence to practise pronunciation" value={textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
                         <div className="flex justify-end items-center gap-2"><button disabled={isLocked || isSystemBusy || textLibraryCommandBusy} onClick={handleInsertTab} className="text-[9px] px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500"><ArrowRightToLine className="w-3 h-3 inline mr-1"/>Add Tab</button><button disabled={isSystemBusy || textLibraryCommandBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className="text-[9px] px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500">{isLocked ? <><Lock className="w-3 h-3 inline mr-1"/>Locked</> : <><Unlock className="w-3 h-3 inline mr-1"/>Unlocked</>}</button></div>
                       </div> : <div className="space-y-2"><div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Structured Document • Card/Segment editor</div><TextStructuredEditor documentTree={activeTextDocumentTree} isBusy={textLibraryCommandBusy || isSystemBusy} error={textLibraryCommandError} onCommand={handleTextLibraryStructuredCommand} audioCoverageMap={structuredTextAudioCoverageMap}/></div>}

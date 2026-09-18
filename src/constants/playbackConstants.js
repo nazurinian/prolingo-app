@@ -65,4 +65,4 @@ export const V5116_CONTROL_SECTIONS = [
   { key: 'system', label: 'System', shortLabel: 'SYSTEM' }
 ];
 
-export const V5116_CONTROL_SECTION_KEYS = new Set(V5116_CONTROL_SECTIONS.map(section => section.key));
+export const V5116_CONTROL_SECTION_KEYS = new Set([...V5116_CONTROL_SECTIONS.map(section => section.key), 'audio']);

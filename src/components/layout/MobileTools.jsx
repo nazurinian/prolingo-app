@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Volume2, ToggleRight, ToggleLeft } from 'lucide-react';
-import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import PlayerBrowserTtsControls from '../controls/PlayerBrowserTtsControls';
+import TextStructuredAudioControls from '../text/TextStructuredAudioControls.jsx';
 import MobileLearnControls from '../controls/MobileLearnControls';
 import MobileDataControls from '../controls/MobileDataControls';
 import MobileSystemControls from '../controls/MobileSystemControls';
@@ -29,6 +30,20 @@ const MobileTools = ({
   showIndonesianBrowserVoice = mode === 'table',
   rate,
   setRate,
+  meaningRate,
+  setMeaningRate,
+  ratesLinked,
+  setRatesLinked,
+  structuredTextModeActive = false,
+  textStructuredPreferences = {},
+  defaultStructuredTextVoiceId = null,
+  defaultStructuredMeaningVoiceId = null,
+  handleStructuredTextDocumentVoiceChange,
+  handleStructuredTextSpeakerVoiceChange,
+  handleStructuredTextDisplayModeChange,
+  handleStructuredTextPlaybackChannelModeChange,
+  handleStructuredTextPlaybackFeelChange,
+  structuredTextAudioSidebarControls = null,
   renderPlaybackSequenceBuilder,
   isMemoryMode,
   setIsMemoryMode,
@@ -64,9 +79,6 @@ const MobileTools = ({
   undoStack,
   undoLastDataChange,
   saveUpdatedCSV,
-  rangeInput,
-  setRangeInput,
-  handleRangeAdd,
   generatorEngine,
   setGeneratorEngine,
   aiVoiceName,
@@ -128,8 +140,8 @@ const MobileTools = ({
   onProgressRestored,
   textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
-  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryStructuredCommand,
-  structuredTextAudioLibraryControls, structuredTextAudioCoverageMap,
+  handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+  structuredTextAudioCoverageMap,
 }) => {
   const rootRef = useRef(null);
   const lastScrollTopRef = useRef(0);
@@ -211,7 +223,7 @@ const MobileTools = ({
               {renderControlSectionTabs(true)}
           </div>
 
-          {sidebarSection === 'player' && <>
+          {sidebarSection === 'player' && mode === 'table' && <>
               <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
                   <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Volume2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/> Player</h3>
                   <div className={`p-3 rounded-lg border mb-3 ${currentMapCount > 0 ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800' : 'bg-slate-50 dark:bg-slate-700 border-slate-100 dark:border-slate-600'}`}>
@@ -231,15 +243,34 @@ const MobileTools = ({
                           disabled={isSystemBusy}
                       />
                   </div>
-                  <div className="space-y-2">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Browser TTS</p>
-                      {mode === 'text' && showIndonesianBrowserVoice && <p className="text-[9px] font-bold text-slate-400 uppercase">English Voice (Text)</p>}
-                      <GroupedVoiceSelect voices={voices} selectedValue={selectedVoice?.name || ''} onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))} disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} context="main"/>
-                      {showIndonesianBrowserVoice && (indonesianVoices.length > 0 ? <><p className="text-[9px] font-bold text-slate-400 uppercase mt-2">Indonesian Voice (Meaning)</p><GroupedVoiceSelect voices={indonesianVoices} selectedValue={selectedIndonesianVoice?.name || ''} onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))} disabled={isSystemBusy} className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} context="meaning"/></> : <div className="text-[10px] text-red-400 italic border p-2 rounded bg-red-50 dark:bg-red-900/20">Browser tidak menyediakan suara Indonesia.</div>)}
-                      <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded border border-slate-100 dark:border-slate-600"><span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-8 text-center">{rate}x</span><input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(e.target.value)} className="flex-1 h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-indigo-600" /></div>
-                  </div>
+                  <PlayerBrowserTtsControls
+                    voices={voices}
+                    selectedVoice={selectedVoice}
+                    setSelectedVoice={setSelectedVoice}
+                    isSystemBusy={isSystemBusy}
+                    mode={mode}
+                    indonesianVoices={indonesianVoices}
+                    selectedIndonesianVoice={selectedIndonesianVoice}
+                    setSelectedIndonesianVoice={setSelectedIndonesianVoice}
+                    showIndonesianVoice={showIndonesianBrowserVoice}
+                    structuredTextModeActive={structuredTextModeActive}
+                    rate={rate}
+                    setRate={setRate}
+                    meaningRate={meaningRate}
+                    setMeaningRate={setMeaningRate}
+                    ratesLinked={ratesLinked}
+                    setRatesLinked={setRatesLinked}
+                  />
               </div>
           </>}
+
+          {sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
+              {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Legacy Audio</p>
+                <p className="text-[8px] text-slate-400 mb-2">EN-only voice and speed.</p>
+                <PlayerBrowserTtsControls voices={voices} selectedVoice={selectedVoice} setSelectedVoice={setSelectedVoice} isSystemBusy={isSystemBusy} mode="text" indonesianVoices={[]} selectedIndonesianVoice={null} setSelectedIndonesianVoice={() => {}} showIndonesianVoice={false} structuredTextModeActive={false} rate={rate} setRate={setRate}/>
+              </div>}
+          </div>}
 
           {sidebarSection === 'learn' && <MobileLearnControls
               mode={mode}
@@ -283,9 +314,6 @@ const MobileTools = ({
               undoStack={undoStack}
               undoLastDataChange={undoLastDataChange}
               saveUpdatedCSV={saveUpdatedCSV}
-              rangeInput={rangeInput}
-              setRangeInput={setRangeInput}
-              handleRangeAdd={handleRangeAdd}
               textLibraryCatalog={textLibraryCatalog}
               activeTextDocument={activeTextDocument}
               activeTextDocumentTree={activeTextDocumentTree}
@@ -296,9 +324,15 @@ const MobileTools = ({
               handleTextLibraryCreateDocument={handleTextLibraryCreateDocument}
               handleTextLibraryCreateCollection={handleTextLibraryCreateCollection}
               handleTextLibraryRenameDocument={handleTextLibraryRenameDocument}
+              handleTextLibraryMoveDocument={handleTextLibraryMoveDocument}
+              handleTextLibraryDeleteDocument={handleTextLibraryDeleteDocument}
+              handleTextLibraryRenameCollection={handleTextLibraryRenameCollection}
+              handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
-              structuredTextAudioLibraryControls={structuredTextAudioLibraryControls}
               structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
+              isBatchOpen={isBatchOpen}
+              setIsBatchOpen={setIsBatchOpen}
+              isBatchDownloading={isBatchDownloading}
           />}
 
           {sidebarSection === 'system' && <MobileSystemControls

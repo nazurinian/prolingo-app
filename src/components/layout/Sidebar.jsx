@@ -160,7 +160,7 @@ export const Sidebar = ({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Control Center</p>
-                  <p className="text-[8px] text-slate-400">Extensible shell for Player / Learn / Data / System.</p>
+                  <p className="text-[8px] text-slate-400">{mode === 'text' ? 'AUDIO / DATA / SYSTEM • Player settings in bottom bar.' : 'Player / Learn / Data / System.'}</p>
                 </div>
                 <span className="text-[8px] font-black px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">{sidebarSection.toUpperCase()}</span>
               </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { SkipBack, SkipForward, Pause, Play, XCircle, List, Repeat1, Shuffle } from 'lucide-react';
+import { SkipBack, SkipForward, Pause, Play, XCircle, List, Repeat1, Shuffle, SlidersHorizontal } from 'lucide-react';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT } from '../../domain/text/textStructuredPlaybackDomain.js';
 
@@ -70,8 +70,8 @@ const BottomPlayerBar = ({
            </div>
            <div className="flex justify-end gap-1 pl-1">
               {isStructuredText ? (
-                <button type="button" onClick={onOpenTextPlayer} className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300" title="Open Structured Text Player">
-                  <List className="w-5 h-5"/>
+                <button type="button" onClick={onOpenTextPlayer} className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300" title="Open Text Player settings">
+                  <SlidersHorizontal className="w-5 h-5"/>
                   <span className="text-[9px] font-bold uppercase">Player</span>
                 </button>
               ) : (
@@ -117,8 +117,8 @@ const BottomPlayerBar = ({
 
            <div className="w-64 flex flex-col items-end gap-1">
              {isStructuredText ? (
-               <button type="button" onClick={onOpenTextPlayer} className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-lg text-xs font-black transition" title="Open Structured Text Player">
-                 <List className="w-4 h-4"/> TEXT PLAYER
+               <button type="button" onClick={onOpenTextPlayer} className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-lg text-xs font-black transition" title="Open Text Player settings">
+                 <SlidersHorizontal className="w-4 h-4"/> PLAYER SETTINGS
                </button>
              ) : (
                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">

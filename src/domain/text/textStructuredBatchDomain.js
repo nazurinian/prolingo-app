@@ -54,3 +54,72 @@ export const buildTextStructuredBatchSelection = ({ documentTree, preferences, c
     speakers: [...new Set(slots.map(slot => clean(slot.speaker)).filter(Boolean))]
   };
 };
+
+export const buildTextStructuredBatchWorkspaceSelection = ({
+  documentTrees = [],
+  preferences,
+  coverageMapsByDocument = {},
+  activeDocumentId = null,
+  activeScope = null
+} = {}) => {
+  const documents = [];
+  const jobs = [];
+  const slots = [];
+  const totalCoverage = { total: 0, ready: 0, downloaded: 0, otherVoice: 0, stale: 0, missing: 0, needDownload: 0, covered: 0 };
+
+  for (const documentTree of (Array.isArray(documentTrees) ? documentTrees : [])) {
+    if (!documentTree?.id) continue;
+    const isActiveDocument = documentTree.id === activeDocumentId;
+    const selection = buildTextStructuredBatchSelection({
+      documentTree,
+      preferences,
+      coverageMap: coverageMapsByDocument?.[documentTree.id] || {},
+      scope: isActiveDocument ? activeScope : null
+    });
+    const annotatedSlots = (selection.slots || []).map(slot => ({
+      ...slot,
+      documentId: documentTree.id,
+      documentTitle: documentTree.title || 'Text Document',
+      collectionId: documentTree.collectionId || null,
+      documentType: documentTree.documentType || 'mixed'
+    }));
+    const slotByKey = new Map(annotatedSlots.map(slot => [slot.key, slot]));
+    const annotatedJobs = (selection.jobs || []).map(job => {
+      const key = buildTextStructuredRuntimeAudioKey(job.segmentId, job.channel);
+      const slot = slotByKey.get(key);
+      return {
+        ...job,
+        documentId: documentTree.id,
+        documentTitle: documentTree.title || 'Text Document',
+        collectionId: documentTree.collectionId || null,
+        documentType: documentTree.documentType || 'mixed',
+        coverage: slot?.coverage || null,
+        coverageStatus: slot?.coverage?.status || TEXT_AUDIO_COVERAGE_STATUS.MISSING
+      };
+    });
+    jobs.push(...annotatedJobs);
+    slots.push(...annotatedSlots);
+    Object.keys(totalCoverage).forEach(key => { totalCoverage[key] += Number(selection.coverage?.[key] || 0); });
+    documents.push({
+      id: documentTree.id,
+      title: documentTree.title || 'Text Document',
+      collectionId: documentTree.collectionId || null,
+      documentType: documentTree.documentType || 'mixed',
+      cardCount: selection.scope?.blockIds?.length || 0,
+      totalCardCount: selection.scope?.cardCount || 0,
+      jobCount: selection.jobs?.length || 0,
+      coverage: selection.coverage,
+      scope: selection.scope
+    });
+  }
+
+  return {
+    documents,
+    documentCount: documents.length,
+    jobs,
+    slots,
+    coverage: totalCoverage,
+    voices: [...new Set(slots.map(slot => clean(slot.coverage?.requiredVoiceId || slot.downloadVoiceId)).filter(Boolean))],
+    speakers: [...new Set(slots.map(slot => clean(slot.speaker)).filter(Boolean))]
+  };
+};

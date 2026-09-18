@@ -1,8 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
-import TextAudioDataPanel from './TextAudioDataPanel.jsx';
+import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
 import { AlertTriangle, BookOpen, ChevronRight, Copy, Database, Download, Edit3, FileText, Layers, Link2, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Trash2, Unlink, Upload, X } from 'lucide-react';
 
 const typeLabel = document => document?.editorModel === 'legacy-line-v1' ? 'Legacy' : document?.documentType === 'conversation' ? 'Conversation' : document?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed (compatibility)';
+const typeKey = document => document?.editorModel === 'legacy-line-v1' ? 'legacy' : document?.documentType === 'conversation' ? 'conversation' : document?.documentType === 'paragraph' ? 'paragraph' : 'mixed';
 
 export const TextLibraryShell = ({
   catalog,
@@ -19,7 +20,7 @@ export const TextLibraryShell = ({
   onDeleteDocument,
   onRenameCollection,
   onDeleteCollection,
-  audioLibrary = null,
+  onStructuredCommand,
   compact = false
 }) => {
   const [createMode, setCreateMode] = useState(null);
@@ -47,6 +48,8 @@ export const TextLibraryShell = ({
   const [databaseRestoreArmed, setDatabaseRestoreArmed] = useState(false);
   const [advancedLibraryToolsExpanded, setAdvancedLibraryToolsExpanded] = useState(false);
   const [sourceActionArmed, setSourceActionArmed] = useState(null);
+  const [libraryFilter, setLibraryFilter] = useState('all');
+  const [demoBusy, setDemoBusy] = useState(null);
 
   const blockCount = activeDocumentTree?.blocks?.length || 0;
   const segmentCount = useMemo(
@@ -59,6 +62,45 @@ export const TextLibraryShell = ({
   const sourceAttachments = Array.isArray(packActions?.sourceAttachments) ? packActions.sourceAttachments : [];
   const activeDocumentAttachment = activeDocument?.id ? sourceAttachments.find(item => Object.values(item.idMap?.documents || {}).includes(activeDocument.id)) || null : null;
   const activeCollectionAttachment = activeCollection?.id ? sourceAttachments.find(item => Object.values(item.idMap?.collections || {}).includes(activeCollection.id)) || null : null;
+  const allDocuments = useMemo(() => [
+    ...(catalog?.rootDocuments || []).map(document => ({ ...document, collectionTitle: 'Library Root' })),
+    ...(catalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
+  ], [catalog]);
+  const filteredDocuments = libraryFilter === 'all' ? allDocuments : allDocuments.filter(document => typeKey(document) === libraryFilter);
+
+  const createDemo = async mode => {
+    if (isBusy || demoBusy) return;
+    setDemoBusy(mode);
+    try {
+      const result = await onCreateDocument?.({
+        title: mode === 'legacy' ? 'Demo • Legacy Pronunciation' : mode === 'paragraph' ? 'Demo • Paragraph' : 'Demo • Conversation • 3 Speakers',
+        documentType: mode === 'legacy' ? 'mixed' : mode,
+        editorModel: mode === 'legacy' ? 'legacy-line-v1' : 'structured-v1',
+        collectionId: null
+      });
+      if (!result?.id || mode === 'legacy' || !onStructuredCommand) return;
+      const block = await onStructuredCommand({
+        type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_BLOCK,
+        payload: { documentId: result.id, blockType: mode, title: mode === 'paragraph' ? 'Daily Practice' : 'Three-speaker practice' }
+      });
+      if (!block?.id) return;
+      const rows = mode === 'paragraph'
+        ? [
+            { text: 'I practise English every day.', meaning: 'Saya berlatih bahasa Inggris setiap hari.' },
+            { text: 'Today I am testing the ProLingo player.', meaning: 'Hari ini saya sedang menguji pemutar ProLingo.' }
+          ]
+        : [
+            { speaker: 'David', text: 'Hi, shall we start our practice?', meaning: 'Hai, apakah kita mulai latihan kita?' },
+            { speaker: 'Maya', text: 'Yes, I am ready.', meaning: 'Ya, saya siap.' },
+            { speaker: 'Nina', text: 'Great. I will listen carefully.', meaning: 'Bagus. Saya akan mendengarkan dengan saksama.' }
+          ];
+      for (const row of rows) {
+        await onStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT, payload: { blockId: block.id, ...row } });
+      }
+    } finally {
+      setDemoBusy(null);
+    }
+  };
 
   const submitDocument = async () => {
     const title = newDocumentTitle.trim();
@@ -239,24 +281,28 @@ export const TextLibraryShell = ({
         </div>
       </div>
 
-      <select
-        value={activeDocumentId || ''}
-        disabled={isBusy || !documentCount}
-        onChange={event => onSelectDocument?.(event.target.value)}
-        className="w-full min-h-11 text-sm md:text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 disabled:opacity-50"
-      >
-        {(catalog?.rootDocuments || []).length > 0 && <optgroup label="Library Root">
-          {catalog.rootDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}
-        </optgroup>}
-        {(catalog?.collections || []).map(collection => <optgroup key={collection.id} label={collection.title}>
-          {(collection.documents || []).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}
-        </optgroup>)}
-      </select>
+      <div className="space-y-2" data-text-library-mode-tabs="true">
+        <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/60 p-1" role="tablist" aria-label="Text Library mode filter">
+          {[['all','All'],['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation']].map(([key,label]) => <button key={key} type="button" role="tab" aria-selected={libraryFilter === key} onClick={() => setLibraryFilter(key)} className={`min-h-10 rounded-lg px-1.5 py-2 text-[9px] font-black transition ${libraryFilter === key ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>{label}</button>)}
+        </div>
+        {filteredDocuments.length > 0 ? <div className="max-h-48 overflow-y-auto overscroll-contain custom-scrollbar space-y-1" data-text-library-unified-list="true">
+          {filteredDocuments.map(document => <button key={document.id} type="button" disabled={isBusy} onClick={() => onSelectDocument?.(document.id)} className={`w-full min-h-11 rounded-lg border px-2.5 py-2 text-left transition ${document.id === activeDocumentId ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 text-slate-600 dark:text-slate-300'}`}>
+            <div className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-[10px] font-black">{document.title}</span><span className={`shrink-0 rounded px-1.5 py-0.5 text-[7px] font-black uppercase ${document.id === activeDocumentId ? 'bg-white/15 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>{typeLabel(document)}</span></div>
+            <p className={`mt-0.5 truncate text-[8px] ${document.id === activeDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{document.collectionTitle} • {document.id}</p>
+          </button>)}
+        </div> : <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-3 text-center" data-text-library-empty-filter="true"><p className="text-[10px] font-black text-slate-600 dark:text-slate-300">No {libraryFilter === 'all' ? 'Text' : typeLabel({ editorModel: libraryFilter === 'legacy' ? 'legacy-line-v1' : 'structured-v1', documentType: libraryFilter })} documents</p><p className="mt-1 text-[8px] text-slate-400">Create fresh data, import an existing JSON source, or load a starter demo.</p></div>}
+      </div>
+
+      <div className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5" data-text-library-demos="true">
+        <div className="flex items-center justify-between gap-2"><div><p className="text-[9px] font-black text-violet-700 dark:text-violet-300">Starter Demos</p><p className="text-[8px] text-slate-400">Create isolated local samples for Player/Audio testing.</p></div><PlayCircle className="w-4 h-4 text-violet-500"/></div>
+        <div className="mt-2 grid grid-cols-3 gap-1.5">{[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation • 3']].map(([key,label]) => <button key={key} type="button" disabled={isBusy || Boolean(demoBusy)} onClick={() => createDemo(key)} className="min-h-10 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-1 py-2 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-40">{demoBusy === key ? 'Creating…' : label}</button>)}</div>
+        <p className="mt-1.5 text-[7px] leading-relaxed text-slate-400">Paragraph and Conversation demos include EN + ID/Meaning segments. Conversation uses David, Maya, and Nina. Legacy creates a clean pronunciation sandbox so you can paste/type any word or phrase without structured Cards.</p>
+      </div>
 
       {!documentCount && <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-4 text-center" data-text-library-empty="true">
         <FileText className="w-5 h-5 mx-auto text-indigo-300 dark:text-indigo-700"/>
         <p className="mt-2 text-[10px] font-black text-slate-600 dark:text-slate-300">No Text documents yet</p>
-        <p className="mt-1 text-[9px] leading-relaxed text-slate-400">Create a Document to start building Cards and Segments. Collections are optional.</p>
+        <p className="mt-1 text-[9px] leading-relaxed text-slate-400">Create fresh data, attach/import a JSON source below, or load one of the starter demos.</p>
         <button type="button" disabled={isBusy} onClick={() => setCreateMode('document')} className="mt-3 min-h-10 px-3 py-2 rounded-lg bg-indigo-600 text-white text-[10px] font-black disabled:opacity-40 active:scale-95 transition"><Plus className="w-3 h-3 inline mr-1"/>Create first Document</button>
       </div>}
 
@@ -321,7 +367,6 @@ export const TextLibraryShell = ({
         </div>}
       </div>}
 
-      {activeDocument?.editorModel === 'structured-v1' && <TextAudioDataPanel audioLibrary={audioLibrary} compact={compact} disabled={isBusy} />}
 
       {activeDocument && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2.5">
         <div className="flex items-start gap-2">
@@ -332,7 +377,7 @@ export const TextLibraryShell = ({
               {!compact && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${activeDocument.editorModel === 'structured-v1' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{activeDocument.editorModel === 'structured-v1' ? 'STRUCTURED V1' : 'LEGACY'}</span>}
             </div>
             {!compact && <p className="text-[8px] font-mono text-slate-400 mt-1">{activeDocument.id}</p>}
-            <p className="text-[9px] text-slate-400 mt-1">{blockCount} card{blockCount === 1 ? '' : 's'} • {segmentCount} playable segment{segmentCount === 1 ? '' : 's'}</p>
+            <p className="text-[9px] text-slate-400 mt-1">{activeDocument.editorModel === 'legacy-line-v1' ? `${blockCount} pronunciation line${blockCount === 1 ? '' : 's'} • lightweight manual TTS` : `${blockCount} card${blockCount === 1 ? '' : 's'} • ${segmentCount} playable segment${segmentCount === 1 ? '' : 's'}`}</p>
           </div>
           <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title); setRenameOpen(true); }} className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-700 disabled:opacity-50 active:scale-95 transition" title="Rename Document" aria-label="Rename active Text document"><Edit3 className="w-3.5 h-3.5"/></button>
         </div>
@@ -477,9 +522,9 @@ export const TextLibraryShell = ({
         <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">New Structured Document</p>
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Document title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <select value={newDocumentType} onChange={event => setNewDocumentType(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
-            <option value="legacy">Legacy • pronunciation sandbox</option><option value="paragraph">Paragraph</option><option value="conversation">Conversation</option>
-          </select>
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">
+            {[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation']].map(([key,label]) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
+          </div>
           <select value={newDocumentCollectionId} onChange={event => setNewDocumentCollectionId(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
             <option value="">Library Root</option>
             {(catalog?.collections || []).map(collection => <option key={collection.id} value={collection.id}>{collection.title}</option>)}

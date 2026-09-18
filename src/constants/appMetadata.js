@@ -1,15 +1,53 @@
-export const APP_VERSION = '5.14.7';
+export const APP_VERSION = '5.14.14';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T8 C8+C9 — Text Batch Multi-Voice Resume & Consolidation';
-export const APP_RELEASE_NAME = 'Final Text T8 Batch Multi-Voice Resume & Consolidation';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T15 — Runtime Blank Hotfix';
+export const APP_RELEASE_NAME = 'Final Text T15 Pre-Runtime Blank-Screen Hotfix';
 export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T8: Text Batch now supports Card-range scope, exact multi-speaker/multi-voice coverage, lightweight live telemetry, resume from real Ready sources, direct MP3, and complete/explicit-partial consolidated ZIP export without re-generating Ready audio.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T8`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T15: forward-only runtime hotfix over T14; TextStructuredAudioControls now preserves stable React hook order across Text hydration while keeping the T14 UX architecture unchanged.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T15`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T15 fixes a runtime blank-screen regression introduced by T14: TextStructuredAudioControls no longer declares useState after a conditional return, preserving React hook order when Text hydration changes from no structured document to an active structured document',
+  'T15 is forward-only over v5.14.13: no rollback, schema change, data migration, Table core change, audio identity change, Batch contract change or JSON lifecycle change is introduced',
+  'Final Text T14 is a UX-only preflight over the sealed T13 architecture: Text Control Center is simplified to AUDIO / DATA / SYSTEM while Player Settings remains exclusively in the bottom player bar',
+  'Text AUDIO is split into PLAYBACK and DOWNLOAD sub-surfaces so multi-speaker voice/speed controls no longer share one long scroll with Edge defaults, Staging, Folder and ZIP resources',
+  'Text DATA labels are clarified to DATA WORKSPACE and explicitly describe Library / JSON / CRUD / Backup plus Batch launch; no audio resources are moved back into DATA',
+  'Mobile bottom player labels the structured Text shortcut PLAYER instead of generic Settings, reducing ambiguity with AUDIO and DATA controls',
+  'T14 changes navigation labels and presentation only; Text DB/schema, audio identity, runtime resolver, download inheritance, Batch scope, JSON lifecycle and frozen Table core remain unchanged',
+  'Final Text T13 corrects the pre-runtime control architecture before device acceptance: bottom Player Settings owns playback behaviour only while sidebar AUDIO owns voice/speed/local-audio/download-resource configuration',
+  'Mobile Table Study Queue restores Add Queue behind an expandable Study anchor without changing frozen src/components/table core files',
+  'Conversation AUDIO profiles are derived from detected Segment speakers and expose independent EN/ID TTS voice + speed rows with sync-to-first-speaker controls; Paragraph remains one narrator EN+ID and Legacy remains EN-only',
+  'Structured local audio now has explicit Load All / Custom / Global TTS modes; Custom resolves only the chosen available local voice per speaker/channel and otherwise falls back to Browser TTS instead of silently selecting another generated voice',
+  'DATA no longer owns Text Folder/ZIP/Staging audio resources; those controls live under AUDIO while manual Generate/MP3 stays on Card/Segment Audio and mass generation stays in Batch',
+  'Text Batch scope expands from active-Document range to Active Document / Current Collection / Selected Documents / All Structured Documents while every job carries document identity',
+  'Multi-Document Batch coverage and generation preserve each Document/speaker/channel download inheritance and consolidated ZIP output is split back into separate Document archives',
+  'Runtime-FROZEN is still intentionally pending real desktop/mobile acceptance on the sealed T13 Full Release Candidate',
+  'Final Text T12 separates Player playback configuration from Text Audio/Download generation/export configuration before runtime acceptance',
+  'Structured Text playback now has independent EN/Text and ID/Meaning speed with optional SYNC while legacy browserTtsRate preferences migrate compatibly',
+  'Conversation Player profiles remain segment-driven: every stable speaker found in the active Document receives independent EN/ID playback voice controls',
+  'Mobile Text adds direct Document switching plus DATA access in the study surface; mobile bottom player exposes separate PLAYER and AUDIO shortcuts',
+  'Text Library replaces the primary Document dropdown workflow with All/Legacy/Paragraph/Conversation tabs, a unified filtered list, and starter demos',
+  'Mobile Table Add Queue range returns beside the learning body instead of remaining buried in Data settings; Table core components remain untouched',
+  'Text Batch explicitly follows Text Audio / Edge Download profiles and remains independent from Player voices and Player playback speed',
+  'Final Text T11 consolidates the new authoritative C0–C14 regression gate and replaces obsolete version-pinned P4/R2 tests as the release decision surface',
+  'C14 verifies full Table-critical byte freeze against v5.13.10, Text DB/schema v1 migration safety, the three official Text modes, source lifecycle, multi-speaker audio, manual audio, Batch resume/export/resource guards, canonical naming, Player relocation, and mobile parity',
+  'Synthetic 5,000-Card / 10,000-job Text Batch planning stress completes with metadata-only jobs and no Blob/ObjectURL payload retention in the batch plan',
+  'Historical P4/R2 tests that pin superseded versions/checkpoints remain archived as compatibility evidence and are not used to force modern Final Text behavior backward',
+  'Engineering final is complete; runtime freeze remains gated on the combined desktop/mobile acceptance checklist as required by C14.4',
+  'Final Text T10 completes C13 mobile parity without changing Table or desktop Text contracts',
+  'Mobile Text Data now uses a compact summary and OPEN TEXT WORKSPACE full-height sheet, matching the desktop mini-entry to full-workspace pattern',
+  'Mobile Text Library full workspace now receives move/delete Document and rename/delete Collection actions instead of silently omitting desktop CRUD capabilities',
+  'Mobile Text Library/source/audio advanced tools remain available through the same TextLibraryShell contract, with 44px-class touch targets for workspace navigation and close actions',
+  'Structured Text Player continues to open from the mobile bottom player into the shared responsive Text Player workspace; Text Batch continues through the dedicated structured Text Batch surface',
+  'Final Text T9 polishes Legacy, Paragraph, and Conversation as three official Text paths before mobile parity',
+  'Legacy desktop labels now describe pronunciation lines rather than structured Cards and the header shows LEGACY without the misleading MIXED compatibility prefix',
+  'Paragraph gains Document-level Playback EN/ID and Edge Download EN/ID narrator defaults so a single narrator can be configured once for the whole Document',
+  'Document playback/download defaults participate in the same inheritance resolver used by Player, manual audio, coverage, and Batch; Card/Segment overrides remain higher priority',
+  'Conversation speaker input is required for new/edited Conversation Segments so speaker remains first-class data instead of silently creating anonymous dialogue lines',
+  'Conversation compact Player summary now reports speaker count and Document fallback voices remain available below speaker-specific profiles',
   'Final Text T8 adds current-Document Card-range Batch scope while preserving permanent TEXT_ID/SEGMENT_ID identities and current EN/Text + ID/Meaning channel selection',
   'Conversation Text Batch keeps each Segment on its exact resolved speaker/channel Edge download voice; document speaker, Card speaker, and Segment overrides are not flattened to one Batch voice',
   'Text Batch coverage distinguishes Ready, history-only Downloaded, Other Voice, Stale, and Missing; only currently readable Staging/Folder/ZIP/runtime binary suppresses Download Missing',

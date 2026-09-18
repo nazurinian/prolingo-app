@@ -88,7 +88,7 @@ export default function DesktopSystemControls({
                     </div>
                 )}
 
-                <button
+                {mode === 'table' && <button
                   ref={batchButtonRef}
                   type="button"
                   disabled={isSystemBusy && !isBatchDownloading}
@@ -102,7 +102,7 @@ export default function DesktopSystemControls({
                   <Layers className="w-3.5 h-3.5"/>
                   {isBatchDownloading ? 'Batch • Running' : 'Batch'}
                   {(folderInputRef?.tableAudioBatchHistoryCount || 0) > 0 && <span className={`ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[8px] ${isBatchOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200'}`}>{folderInputRef.tableAudioBatchHistoryCount}</span>}
-                </button>
+                </button>}
               </div>
 
               <div className="space-y-2 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">

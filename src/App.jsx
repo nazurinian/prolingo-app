@@ -104,7 +104,7 @@ import { executeRecordStudyActivity } from './services/progress/studyTrackingInt
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
-import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
@@ -114,9 +114,11 @@ import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs
 import { getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
-import { buildTextStructuredBatchSelection } from './domain/text/textStructuredBatchDomain.js';
+import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection } from './domain/text/textStructuredBatchDomain.js';
 import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
+import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
+import { buildTextStructuredLocalAudioProfileMetadata, collectTextStructuredAvailableLocalVoices, getTextStructuredLocalAudioProfile, resolveTextStructuredCustomLocalAudioVoice } from './domain/text/textStructuredLocalAudioProfileDomain.js';
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
 import { resolveTextLibrarySearchActionTarget, resolveTextLibrarySearchResults, TEXT_LIBRARY_SEARCH_ACTIONS } from './domain/text/textLibrarySearchDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
@@ -258,7 +260,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // P4-A12: Text-owned generator/folder state. These preferences never read Table generator settings.
   const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(loadTextStructuredAudioGenerationPreferences);
   const [structuredTextAudioGenerationState, setStructuredTextAudioGenerationState] = useState({ running: false, completed: 0, total: 0, current: null, failedJobs: [], lastStatus: null, processed: 0, generated: 0, skippedReady: 0, failed: 0, remaining: 0, readyEstimate: 0, missingEstimate: 0 });
-  const [structuredTextBatchScope, setStructuredTextBatchScope] = useState({ documentId: null, startCard: 1, endCard: 1 });
+  const [structuredTextBatchScope, setStructuredTextBatchScope] = useState({ scopeMode: 'document', documentId: null, collectionId: null, selectedDocumentIds: [], startCard: 1, endCard: 1 });
   const [structuredTextEdgeHealth, setStructuredTextEdgeHealth] = useState({ status: 'idle', message: 'Not tested' });
   const [structuredTextAudioFolderState, setStructuredTextAudioFolderState] = useState({ status: 'idle', name: null, matchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0 });
   // C3.4.2 Text-only: ZIP audio archives are additive to the remembered Folder.
@@ -759,6 +761,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       assignmentSource: assignment.source
     };
   }, [activeTextDocumentTree, selectedTextBrowserVoice, selectedTextIndonesianVoice, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, voices, indonesianVoices]);
+  const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
+    const blockId = item?.blockId || item?.textId;
+    const segmentId = item?.segmentId || item?.id;
+    const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate?.id === blockId) || null;
+    const segment = (block?.segments || []).find(candidate => candidate?.id === segmentId) || item || null;
+    return resolveTextStructuredEffectivePlaybackRate({
+      documentTree: activeTextDocumentTree,
+      block,
+      segment,
+      channel,
+      globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, channel)
+    });
+  }, [activeTextDocumentTree, textStructuredPreferences]);
   const structuredTextAudioRuntimeStatusMap = useMemo(() => buildTextStructuredRuntimeAudioStatusMap({
     documentTree: activeTextDocumentTree,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -775,6 +790,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     runtimeAudioUrls: structuredTextAudioRuntimeUrls,
     preferences: structuredTextAudioGenerationPreferences
   }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextAudioGenerationPreferences]);
+  const structuredTextAvailableLocalVoices = useMemo(() => collectTextStructuredAvailableLocalVoices({
+    documentTree: activeTextDocumentTree,
+    audioVariants: textLibrarySnapshot?.audioVariants || [],
+    runtimeAudioUrls: structuredTextAudioRuntimeUrls
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls]);
   const structuredTextDocumentCoverage = useMemo(() => {
     const channels = [];
     if (structuredTextAudioGenerationPreferences?.generateText !== false) channels.push('text');
@@ -785,25 +805,69 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channels
     });
   }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
+  const structuredTextBatchDocumentOptions = useMemo(() => {
+    if (!textLibrarySnapshot) return [];
+    return (textLibrarySnapshot.documents || [])
+      .filter(document => document?.editorModel === 'structured-v1')
+      .map(document => ({
+        id: document.id,
+        title: document.title || 'Text Document',
+        collectionId: document.collectionId || null,
+        documentType: document.documentType || 'mixed'
+      }));
+  }, [textLibrarySnapshot]);
+
   useEffect(() => {
     const documentId = activeTextDocumentTree?.id || null;
+    const collectionId = activeTextDocumentTree?.collectionId || null;
     const cardCount = Math.max(1, activeTextDocumentTree?.blocks?.length || 1);
     setStructuredTextBatchScope(prev => {
-      if (prev?.documentId === documentId) {
-        const startCard = Math.min(cardCount, Math.max(1, Number(prev?.startCard || 1)));
-        const endCard = Math.min(cardCount, Math.max(startCard, Number(prev?.endCard || cardCount)));
-        if (startCard === prev.startCard && endCard === prev.endCard) return prev;
-        return { ...prev, startCard, endCard };
-      }
-      return { documentId, startCard: 1, endCard: cardCount };
+      const startCard = Math.min(cardCount, Math.max(1, Number(prev?.startCard || 1)));
+      const endCard = Math.min(cardCount, Math.max(startCard, Number(prev?.endCard || cardCount)));
+      const validSelected = (prev?.selectedDocumentIds || []).filter(id => structuredTextBatchDocumentOptions.some(document => document.id === id));
+      if (prev?.documentId === documentId && prev?.collectionId === collectionId && startCard === prev.startCard && endCard === prev.endCard && validSelected.length === (prev?.selectedDocumentIds || []).length) return prev;
+      return { ...prev, documentId, collectionId, startCard, endCard, selectedDocumentIds: validSelected };
     });
-  }, [activeTextDocumentTree?.id, activeTextDocumentTree?.blocks?.length]);
-  const structuredTextBatchSelection = useMemo(() => buildTextStructuredBatchSelection({
-    documentTree: activeTextDocumentTree,
+  }, [activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId, activeTextDocumentTree?.blocks?.length, structuredTextBatchDocumentOptions]);
+
+  const structuredTextBatchTargetDocumentIds = useMemo(() => {
+    const modeValue = structuredTextBatchScope?.scopeMode || 'document';
+    if (modeValue === 'all') return structuredTextBatchDocumentOptions.map(document => document.id);
+    if (modeValue === 'selected') return (structuredTextBatchScope?.selectedDocumentIds || []).filter(id => structuredTextBatchDocumentOptions.some(document => document.id === id));
+    if (modeValue === 'collection') {
+      const collectionId = activeTextDocumentTree?.collectionId || null;
+      return structuredTextBatchDocumentOptions.filter(document => (document.collectionId || null) === collectionId).map(document => document.id);
+    }
+    return activeTextDocumentTree?.id ? [activeTextDocumentTree.id] : [];
+  }, [structuredTextBatchScope?.scopeMode, structuredTextBatchScope?.selectedDocumentIds, structuredTextBatchDocumentOptions, activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId]);
+
+  const structuredTextBatchTargetTrees = useMemo(() => {
+    if (!textLibrarySnapshot) return [];
+    return structuredTextBatchTargetDocumentIds
+      .map(documentId => resolveTextLibraryDocumentTree(textLibrarySnapshot, documentId))
+      .filter(documentTree => documentTree?.editorModel === 'structured-v1');
+  }, [textLibrarySnapshot, structuredTextBatchTargetDocumentIds]);
+
+  const structuredTextBatchCoverageMaps = useMemo(() => {
+    const maps = {};
+    structuredTextBatchTargetTrees.forEach(documentTree => {
+      maps[documentTree.id] = buildTextStructuredAudioCoverageMap({
+        documentTree,
+        audioVariants: textLibrarySnapshot?.audioVariants || [],
+        runtimeAudioUrls: structuredTextAudioRuntimeUrls,
+        preferences: structuredTextAudioGenerationPreferences
+      });
+    });
+    return maps;
+  }, [structuredTextBatchTargetTrees, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextAudioGenerationPreferences]);
+
+  const structuredTextBatchSelection = useMemo(() => buildTextStructuredBatchWorkspaceSelection({
+    documentTrees: structuredTextBatchTargetTrees,
     preferences: structuredTextAudioGenerationPreferences,
-    coverageMap: structuredTextAudioCoverageMap,
-    scope: structuredTextBatchScope
-  }), [activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextAudioCoverageMap, structuredTextBatchScope]);
+    coverageMapsByDocument: structuredTextBatchCoverageMaps,
+    activeDocumentId: activeTextDocumentTree?.id || null,
+    activeScope: (structuredTextBatchScope?.scopeMode || 'document') === 'document' ? structuredTextBatchScope : null
+  }), [structuredTextBatchTargetTrees, structuredTextAudioGenerationPreferences, structuredTextBatchCoverageMaps, activeTextDocumentTree?.id, structuredTextBatchScope]);
   const activeTableAudioStagingRecords = useMemo(
     () => filterTableAudioStagingRecordsForPlaylist(tableAudioStagingRecords, playlist),
     [tableAudioStagingRecords, playlist]
@@ -918,7 +982,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }), [playlist, batchConfig, generatorEngine, edgeVoice, edgeIndonesianVoice, localAudioMapTable, generatedAudioMeta, tableAudioVariantInventory, audioDownloadHistory, activeTableAudioStagingRecords]);
   const activeBrowserTtsVoice = structuredTextModeActive ? selectedTextBrowserVoice : selectedVoice;
   const activeBrowserTtsIndonesianVoice = structuredTextModeActive ? selectedTextIndonesianVoice : selectedIndonesianVoice;
-  const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTtsRate : rate;
+  const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTextRate : rate;
+  const activeBrowserTtsMeaningRate = structuredTextModeActive ? textStructuredPreferences.browserMeaningRate : rate;
+  const activeBrowserTtsRatesLinked = structuredTextModeActive ? textStructuredPreferences.browserRatesLinked !== false : true;
   const handleActiveBrowserTtsVoiceChange = (voice) => {
     if (structuredTextModeActive) {
       setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'text', voice }) }));
@@ -933,15 +999,41 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     setSelectedIndonesianVoice(voice);
   };
-  const handleActiveBrowserTtsRateChange = (value) => {
+  const handleActiveBrowserTtsRateChange = (value, channel = 'text') => {
     if (structuredTextModeActive) {
       const numericRate = Number(value);
-      const browserTtsRate = Number.isFinite(numericRate) ? Math.min(2, Math.max(0.5, Math.round(numericRate * 10) / 10)) : 1;
-      setTextStructuredPreferences(prev => ({ ...prev, browserTtsRate }));
+      const nextRate = Number.isFinite(numericRate) ? Math.min(2, Math.max(0.5, Math.round(numericRate * 10) / 10)) : 1;
+      setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({
+        ...prev,
+        ...(channel === 'meaning'
+          ? { browserMeaningRate: nextRate, ...(prev.browserRatesLinked !== false ? { browserTextRate: nextRate } : {}) }
+          : { browserTextRate: nextRate, browserTtsRate: nextRate, ...(prev.browserRatesLinked !== false ? { browserMeaningRate: nextRate } : {}) })
+      }));
       return;
     }
     setRate(value);
   };
+  const handleActiveBrowserTtsRatesLinkedChange = (linked) => {
+    if (!structuredTextModeActive) return;
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({
+      ...prev,
+      browserRatesLinked: Boolean(linked),
+      ...(linked ? { browserMeaningRate: prev.browserTextRate ?? prev.browserTtsRate ?? 1 } : {})
+    }));
+  };
+  const handleStructuredTextDisplayModeChange = useCallback((displayMode) => {
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, displayMode }));
+  }, []);
+  const handleStructuredTextPlaybackChannelModeChange = useCallback((playbackChannelMode) => {
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackChannelMode }));
+  }, []);
+  const handleStructuredTextPlaybackFeelChange = useCallback((patch) => {
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...(patch || {}) }));
+  }, []);
+  const handleStructuredTextAudioSourceModeChange = useCallback((audioSourceMode) => {
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, audioSourceMode }));
+    forceStopAll();
+  }, [forceStopAll]);
 
   const handleStructuredTextAudioGenerationPreferenceChange = useCallback((patch) => {
     setStructuredTextAudioGenerationPreferences(prev => normalizeTextStructuredAudioGenerationPreferences({ ...prev, ...(patch || {}) }));
@@ -1689,7 +1781,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (!runtimeEntry) {
       stagingRecord = await putTextAudioStagingBlob({
         audioVariantId: first.id,
-        documentId: activeTextDocumentTree?.id || item?.documentId || null,
+        documentId: item?.documentId || activeTextDocumentTree?.id || null,
         segmentId,
         channel,
         engine,
@@ -1797,16 +1889,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     flushStructuredTextPendingAudioVariants();
   }, [setTextLibrarySnapshot, addLog, flushStructuredTextPendingAudioVariants]);
 
-  const generateStructuredTextAudioJob = useCallback(async ({ segmentId, channel, downloadVoiceId = null, downloadVoiceSource = null }, options = {}) => {
-    const item = structuredTextPlaybackList.find(candidate => (candidate?.segmentId || candidate?.id) === segmentId);
-    if (!item) throw new Error(`Unknown structured Text segment: ${segmentId}`);
+  const generateStructuredTextAudioJob = useCallback(async ({ documentId = null, segmentId, channel, downloadVoiceId = null, downloadVoiceSource = null }, options = {}) => {
+    const jobDocumentTree = documentId && textLibrarySnapshot
+      ? resolveTextLibraryDocumentTree(textLibrarySnapshot, documentId)
+      : activeTextDocumentTree;
+    const jobPlaybackList = resolveStructuredTextPlaybackList(jobDocumentTree);
+    const sourceItem = jobPlaybackList.find(candidate => (candidate?.segmentId || candidate?.id) === segmentId);
+    if (!sourceItem) throw new Error(`Unknown structured Text segment: ${segmentId}${documentId ? ` in ${documentId}` : ''}`);
+    const item = { ...sourceItem, documentId: jobDocumentTree?.id || documentId || sourceItem?.documentId || null };
     const content = channel === 'meaning' ? item.meaning : item.text;
-    if (!String(content || '').trim()) return { status: 'skipped-empty', segmentId, channel };
-    const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item.blockId) || null;
+    if (!String(content || '').trim()) return { status: 'skipped-empty', documentId: item.documentId, segmentId, channel };
+    const block = (jobDocumentTree?.blocks || []).find(candidate => candidate.id === item.blockId) || null;
     const segment = (block?.segments || []).find(candidate => candidate.id === segmentId) || item;
     const resolvedDownloadVoice = downloadVoiceId
       ? { voiceId: downloadVoiceId, source: downloadVoiceSource || 'job-download' }
-      : resolveTextStructuredEffectiveDownloadVoice({ documentTree: activeTextDocumentTree, block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
+      : resolveTextStructuredEffectiveDownloadVoice({ documentTree: jobDocumentTree, block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
     const generationVoiceState = {
       ...resolveTextStructuredGenerationVoiceState({
         channel,
@@ -1844,18 +1941,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         deferRuntimeState: Boolean(options.batch)
       });
       if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} • ${generationVoiceState.engine.toUpperCase()} • ${generationVoiceState.engineVoiceId} → ${registered.filename}.`);
-      return { status: 'success', segmentId, channel, ...registered };
+      return { status: 'success', documentId: item.documentId, segmentId, channel, ...registered };
     } catch (error) {
       if (error?.name === 'AbortError') {
         if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} cancelled.`);
-        return { status: 'cancelled', segmentId, channel };
+        return { status: 'cancelled', documentId: item.documentId, segmentId, channel };
       }
       if (!options.batch) addLog('Error', `Text Generate ${segmentId}/${channel}: ${error?.message || error}`);
-      return { status: 'error', segmentId, channel, error: error?.message || String(error) };
+      return { status: 'error', documentId: item.documentId, segmentId, channel, error: error?.message || String(error) };
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextPlaybackList, activeTextDocumentTree, structuredTextAudioGenerationPreferences, registerStructuredTextGeneratedBlob, addLog]);
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, registerStructuredTextGeneratedBlob, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
@@ -1874,19 +1971,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [structuredTextAudioGenerationState.running, forceStopAll, generateStructuredTextAudioJob]);
 
   const runStructuredTextAudioGenerationBatch = useCallback(async (jobsCandidate = null, options = {}) => {
-    if (structuredTextAudioGenerationState.running || !activeTextDocumentTree) return null;
+    if (structuredTextAudioGenerationState.running || !(structuredTextBatchSelection?.documentCount > 0)) return null;
     forceStopAll();
     const allJobs = Array.isArray(jobsCandidate)
       ? jobsCandidate
       : (structuredTextBatchSelection?.jobs || []);
     const missingOnly = options.missingOnly !== false;
     const jobs = missingOnly
-      ? allJobs.filter(job => shouldDownloadTextStructuredCoverageSlot(structuredTextAudioCoverageMap?.[`${String(job.segmentId || '').toUpperCase()}::${job.channel}`]))
+      ? allJobs.filter(job => shouldDownloadTextStructuredCoverageSlot(job?.coverage || { status: job?.coverageStatus || 'missing' }))
       : allJobs;
-    const readyBefore = allJobs.reduce((sum, job) => {
-      const slot = structuredTextAudioCoverageMap?.[`${String(job.segmentId || '').toUpperCase()}::${job.channel}`];
-      return sum + (slot?.status === 'ready' ? 1 : 0);
-    }, 0);
+    const readyBefore = allJobs.reduce((sum, job) => sum + ((job?.coverage?.status || job?.coverageStatus) === 'ready' ? 1 : 0), 0);
     const skippedReady = missingOnly ? Math.max(0, allJobs.length - jobs.length) : 0;
     const sessionId = `TEXT_BATCH_${Date.now()}`;
 
@@ -1978,13 +2072,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       flushStructuredTextStagingSummary();
       let packageChunkCount = 0;
       if (packageRecords.length) {
-        const packageResults = await exportTextAudioStagingZipChunks({
-          records: packageRecords.map(record => record.stagingRecord).filter(Boolean),
-          documentTitle: activeTextDocumentTree?.title || 'Text_Document'
+        const recordsByDocument = new Map();
+        packageRecords.forEach(record => {
+          const documentId = record?.documentId || record?.stagingRecord?.documentId || 'TEXT_DOCUMENT';
+          const list = recordsByDocument.get(documentId) || [];
+          list.push(record);
+          recordsByDocument.set(documentId, list);
         });
-        packageChunkCount = packageResults.length;
-        await markStructuredTextPackagedDelivery(packageRecords);
-        packageResults.forEach(result => addLog('Text Generate', `Browser package: ${result.fileCount} audio → ${result.filename}.`));
+        for (const [documentId, documentRecords] of recordsByDocument.entries()) {
+          const documentDescriptor = structuredTextBatchSelection?.documents?.find(document => document.id === documentId);
+          const packageResults = await exportTextAudioStagingZipChunks({
+            records: documentRecords.map(record => record.stagingRecord).filter(Boolean),
+            documentTitle: documentDescriptor?.title || documentRecords[0]?.documentTitle || 'Text_Document'
+          });
+          packageChunkCount += packageResults.length;
+          await markStructuredTextPackagedDelivery(documentRecords);
+          packageResults.forEach(result => addLog('Text Generate', `Browser package (${documentDescriptor?.title || documentId}): ${result.fileCount} audio → ${result.filename}.`));
+        }
       }
 
       const stopped = structuredTextAudioBatchStopRef.current;
@@ -2013,7 +2117,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       structuredTextAudioBatchStopRef.current = false;
       structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextAudioGenerationState.running, activeTextDocumentTree, structuredTextBatchSelection, structuredTextAudioCoverageMap, forceStopAll, generateStructuredTextAudioJob, markStructuredTextPackagedDelivery, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
+  }, [structuredTextAudioGenerationState.running, structuredTextBatchSelection, forceStopAll, generateStructuredTextAudioJob, markStructuredTextPackagedDelivery, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
 
   const handleStructuredTextCancelGeneration = useCallback(() => {
     structuredTextAudioBatchStopRef.current = true;
@@ -2033,7 +2137,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const targetVoice = voiceState.ttsVoice;
     const targetVoiceId = voiceState.requestedVoiceId;
 
-    if (textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY && targetVoiceId) {
+    if (textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY) {
       const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
       const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
       const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
@@ -2043,16 +2147,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         channel,
         preferences: structuredTextAudioGenerationPreferences
       });
-      const runtimeAudio = resolveTextStructuredRuntimeAudio({
+      const customLocalVoiceId = textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
+        ? resolveTextStructuredCustomLocalAudioVoice({ documentTree: activeTextDocumentTree, block, segment, channel })
+        : null;
+      const localAllowed = textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL || Boolean(customLocalVoiceId);
+      const runtimeAudio = localAllowed ? resolveTextStructuredRuntimeAudio({
         audioVariants: textLibrarySnapshot?.audioVariants || [],
         runtimeAudioUrls: structuredTextAudioRuntimeUrls,
         segmentId: item?.segmentId || item?.id,
         channel,
-        requestedVoiceId: targetVoiceId,
-        preferredGeneratedVoiceId: generatedVoice.voiceId,
+        requestedVoiceId: customLocalVoiceId || targetVoiceId,
+        preferredGeneratedVoiceId: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL ? customLocalVoiceId : generatedVoice.voiceId,
         preferredGeneratedEngine: 'edge',
+        allowAnyGenerated: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
         content: textToRead
-      });
+      }) : null;
       if (runtimeAudio) {
         let runtimeUrl = runtimeAudio.url;
         if (!runtimeUrl && runtimeAudio.runtime?.stagingBacked) {
@@ -2092,7 +2201,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             currentAudioObjRef,
             playbackResolveRef,
             stopSignalRef,
-            playbackRate: 1,
+            playbackRate: resolveStructuredTextItemPlaybackRate(item, channel),
             addLog,
             label: `Text Player ${runtimeAudio.variant.id}/${channel}`
           });
@@ -2120,7 +2229,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       ttsReplayRef,
       playbackResolveRef,
       rateRef: null,
-      rate: textStructuredPreferences.browserTtsRate,
+      rate: resolveStructuredTextItemPlaybackRate(item, channel),
       pitch: 1
     });
   };
@@ -2547,6 +2656,53 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return identity;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand]);
 
+  const handleStructuredTextDocumentVoiceChange = useCallback(async (voiceName, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredVoiceOverrideMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      voiceName
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Voice', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} → ${voiceName || 'Global default'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentRateChange = useCallback(async (rateValue, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredPlaybackRateProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      rate: rateValue
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}×.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentDownloadVoiceChange = useCallback(async (voiceId, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      voiceId
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Download', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} → ${voiceId || 'Global Edge default'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
   const handleStructuredTextSpeakerVoiceChange = useCallback(async (speakerLike, voiceName, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
@@ -2563,6 +2719,82 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       payload: { id: activeTextDocumentTree.id, metadata }
     });
     if (result) addLog('Text Voice', `${identity.label} • ${channel} → ${voiceName || 'Document default'} • ${identity.id}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSpeakerRateChange = useCallback(async (speakerLike, rateValue, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
+    if (!identity) return null;
+    const metadata = buildTextStructuredPlaybackRateProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      speakerId: identity.id,
+      channel,
+      rate: rateValue
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio', `${identity.label} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}× • ${identity.id}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSyncSpeakerVoice = useCallback(async (channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const speakers = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
+    if (speakers.length < 2) return null;
+    const profile = activeTextDocumentTree?.metadata?.speakerVoiceProfileV2 || {};
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const first = speakers[0];
+    const firstVoice = String(profile?.[normalizedChannel]?.[first.id] || '').trim();
+    const syncCustomLocal = textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
+    const localProfile = syncCustomLocal ? getTextStructuredLocalAudioProfile(activeTextDocumentTree) : null;
+    const firstLocalVoice = syncCustomLocal ? String(localProfile?.speakerIds?.[normalizedChannel]?.[first.id] || '').trim() : '';
+    let metadata = activeTextDocumentTree.metadata || {};
+    for (const speaker of speakers) {
+      metadata = buildTextStructuredSpeakerVoiceProfileV2Metadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, voiceName: firstVoice || null });
+      if (syncCustomLocal) metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, voiceId: firstLocalVoice || null });
+    }
+    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
+    if (result) addLog('Text Audio', `Synced ${normalizedChannel} speaker voice to ${first.label}: ${firstVoice || 'Document default'}${syncCustomLocal ? ` • custom local ${firstLocalVoice || 'Global TTS'}` : ''}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog, textStructuredPreferences.audioSourceMode]);
+
+  const handleStructuredTextSyncSpeakerRate = useCallback(async (channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const speakers = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
+    if (speakers.length < 2) return null;
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const rateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
+    const first = speakers[0];
+    const firstRate = rateProfile?.speakerIds?.[normalizedChannel]?.[first.id] || rateProfile?.channels?.[normalizedChannel] || resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel);
+    let metadata = activeTextDocumentTree.metadata || {};
+    for (const speaker of speakers) metadata = buildTextStructuredPlaybackRateProfileMetadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, rate: firstRate });
+    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
+    if (result) addLog('Text Audio', `Synced ${normalizedChannel} speaker speed to ${first.label}: ${Number(firstRate).toFixed(1)}×.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog, textStructuredPreferences]);
+
+  const handleStructuredTextDocumentLocalAudioVoiceChange = useCallback(async (voiceId, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata: activeTextDocumentTree.metadata, channel, voiceId });
+    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
+    if (result) addLog('Text Audio', `Custom local ${channel} → ${voiceId || 'Global TTS'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSpeakerLocalAudioVoiceChange = useCallback(async (speakerLike, voiceId, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
+    if (!identity) return null;
+    const metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata: activeTextDocumentTree.metadata, channel, voiceId, speakerId: identity.id });
+    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
+    if (result) addLog('Text Audio', `${identity.label} custom local ${channel} → ${voiceId || 'Global TTS'}.`);
     return result;
   }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
 
@@ -2684,11 +2916,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         ttsReplayRef,
         playbackResolveRef,
         rateRef: null,
-        rate: textStructuredPreferences.browserTtsRate,
+        rate: resolveStructuredTextItemPlaybackRate(item, channel),
         pitch: 1
       });
     });
-  }, [structuredTextAudioGenerationState.running, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, safePlayTransition, addLog, stopSignalRef, pauseStateRef, synth, currentUtteranceRef, ttsReplayRef, playbackResolveRef, textStructuredPreferences.browserTtsRate]);
+  }, [structuredTextAudioGenerationState.running, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, resolveStructuredTextItemPlaybackRate, safePlayTransition, addLog, stopSignalRef, pauseStateRef, synth, currentUtteranceRef, ttsReplayRef, playbackResolveRef]);
 
   const handleStructuredTextGenerateCardAudio = useCallback((blockId, channels = null, options = {}) => {
     if (!activeTextDocumentTree) return null;
@@ -2724,6 +2956,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (!variant || !runtime) return null;
     return { key, coverage, variant, runtime };
   }, [structuredTextAudioCoverageMap, textLibrarySnapshot?.audioVariants]);
+
+  const resolveStructuredTextBatchReadySlot = useCallback(slot => {
+    const coverage = slot?.coverage || null;
+    if (!coverage || coverage.status !== 'ready' || !coverage.variantId) return null;
+    const variantId = String(coverage.variantId || '').toUpperCase();
+    const variant = (textLibrarySnapshot?.audioVariants || []).find(item => String(item?.id || '').toUpperCase() === variantId) || null;
+    const runtime = structuredTextAudioRuntimeUrlsRef.current?.[variantId] || null;
+    if (!variant || !runtime) return null;
+    return { key: slot?.key || buildTextStructuredRuntimeAudioKey(slot?.segmentId, slot?.channel), coverage, variant, runtime };
+  }, [textLibrarySnapshot?.audioVariants]);
 
   const readStructuredTextManualReadyBlob = useCallback(async runtime => {
     if (!runtime) return null;
@@ -2812,7 +3054,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleStructuredTextBatchExportReadyMp3 = useCallback(async () => {
     const slots = structuredTextBatchSelection?.slots || [];
-    const ready = slots.map(slot => ({ slot, resolved: resolveStructuredTextManualReadySlot(slot.segmentId, slot.channel) })).filter(item => item.resolved);
+    const ready = slots.map(slot => ({ slot, resolved: resolveStructuredTextBatchReadySlot(slot) })).filter(item => item.resolved);
     if (!ready.length) {
       addLog('Warn', 'Text Batch MP3 export: no Ready binary in the selected Card range/current exact voices.');
       return { status: 'empty', exported: 0, total: slots.length };
@@ -2842,11 +3084,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     addLog('Text Audio', `Text Batch direct MP3: ${exported}/${ready.length} Ready exported in waves of max ${DIRECT_MP3_BATCH_LIMIT}${failed ? ` • failed ${failed}` : ''}.`);
     return { status: failed ? 'completed-with-errors' : 'completed', exported, failed, total: slots.length };
-  }, [structuredTextBatchSelection, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  }, [structuredTextBatchSelection, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
   const handleStructuredTextBatchExportConsolidatedZip = useCallback(async ({ partial = false } = {}) => {
     const slots = structuredTextBatchSelection?.slots || [];
-    const ready = slots.map(slot => ({ slot, resolved: resolveStructuredTextManualReadySlot(slot.segmentId, slot.channel) })).filter(item => item.resolved);
+    const ready = slots.map(slot => ({ slot, resolved: resolveStructuredTextBatchReadySlot(slot) })).filter(item => item.resolved);
     if (!slots.length) return { status: 'empty', ready: 0, total: 0 };
     if (!partial && ready.length !== slots.length) {
       addLog('Warn', `Text Full ZIP blocked: ${ready.length}/${slots.length} Ready • ${slots.length - ready.length} Missing/other/stale.`);
@@ -2854,49 +3096,57 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     if (partial && !ready.length) return { status: 'empty', ready: 0, total: slots.length };
 
-    const voiceIds = [...new Set(ready.map(item => item.resolved.coverage.requiredVoiceId).filter(Boolean))];
+    const readyByDocument = new Map();
+    ready.forEach(item => {
+      const documentId = item.slot?.documentId || 'TEXT_DOCUMENT';
+      const list = readyByDocument.get(documentId) || [];
+      list.push(item);
+      readyByDocument.set(documentId, list);
+    });
     const exportedChunks = [];
-    let entries = [];
-    let stagedIds = [];
-    let bytes = 0;
-    const flush = async ({ forcePartNo = null } = {}) => {
-      if (!entries.length) return null;
-      const filename = buildCanonicalTextConsolidatedZipFilename({
-        documentTitle: activeTextDocumentTree?.title || 'Text',
-        voiceIds,
-        partial,
-        partNo: forcePartNo
-      });
-      const result = await triggerBrowserZipDownload({ entries, filename });
-      if (stagedIds.length) await markAudioStagingExported(stagedIds, { kind: 'zip', filename });
-      exportedChunks.push({ ...result, filename, fileCount: entries.length, bytes });
-      entries = [];
-      stagedIds = [];
-      bytes = 0;
-      return result;
-    };
-
     try {
-      for (let index = 0; index < ready.length; index += 1) {
-        const item = ready[index];
-        const blob = await readStructuredTextManualReadyBlob(item.resolved.runtime);
-        if (!blob) throw new Error(`Ready binary unavailable for ${item.slot.segmentId}/${item.slot.channel}.`);
-        if (entries.length && bytes + blob.size > TEXT_AUDIO_STAGING_ZIP_MAX_BYTES) {
-          await flush({ forcePartNo: exportedChunks.length + 1 });
+      for (const [documentId, documentReady] of readyByDocument.entries()) {
+        const documentDescriptor = structuredTextBatchSelection?.documents?.find(document => document.id === documentId);
+        const documentSlots = slots.filter(slot => (slot.documentId || 'TEXT_DOCUMENT') === documentId);
+        const documentComplete = documentReady.length === documentSlots.length;
+        if (!partial && !documentComplete) throw new Error(`Document ${documentDescriptor?.title || documentId} is incomplete.`);
+        const voiceIds = [...new Set(documentReady.map(item => item.resolved.coverage.requiredVoiceId).filter(Boolean))];
+        let entries = [];
+        let stagedIds = [];
+        let bytes = 0;
+        let documentPartCount = 0;
+        const flushDocument = async () => {
+          if (!entries.length) return;
+          documentPartCount += 1;
+          const filename = buildCanonicalTextConsolidatedZipFilename({
+            documentTitle: documentDescriptor?.title || documentReady[0]?.slot?.documentTitle || 'Text',
+            voiceIds,
+            partial: partial || !documentComplete,
+            partNo: documentPartCount > 1 ? documentPartCount : null
+          });
+          const result = await triggerBrowserZipDownload({ entries, filename });
+          if (stagedIds.length) await markAudioStagingExported(stagedIds, { kind: 'zip', filename });
+          exportedChunks.push({ ...result, documentId, documentTitle: documentDescriptor?.title || documentId, filename, fileCount: entries.length, bytes });
+          entries = []; stagedIds = []; bytes = 0;
+        };
+        for (const item of documentReady) {
+          const blob = await readStructuredTextManualReadyBlob(item.resolved.runtime);
+          if (!blob) throw new Error(`Ready binary unavailable for ${item.slot.segmentId}/${item.slot.channel}.`);
+          if (entries.length && bytes + blob.size > TEXT_AUDIO_STAGING_ZIP_MAX_BYTES) await flushDocument();
+          const filename = item.resolved.runtime.filename || item.resolved.coverage.filename || item.resolved.variant.filename || `${item.slot.segmentId}__${item.slot.channel}.mp3`;
+          entries.push({ filename, blob });
+          bytes += Number(blob.size || 0);
+          if (item.resolved.runtime.stagingBacked && item.resolved.runtime.stagingId) stagedIds.push(item.resolved.runtime.stagingId);
         }
-        const filename = item.resolved.runtime.filename || item.resolved.coverage.filename || item.resolved.variant.filename || `${item.slot.segmentId}__${item.slot.channel}.mp3`;
-        entries.push({ filename, blob });
-        bytes += Number(blob.size || 0);
-        if (item.resolved.runtime.stagingBacked && item.resolved.runtime.stagingId) stagedIds.push(item.resolved.runtime.stagingId);
+        await flushDocument();
       }
-      await flush({ forcePartNo: exportedChunks.length ? exportedChunks.length + 1 : null });
-      addLog('Text Audio', `${partial ? 'Partial' : 'Full'} consolidated Text ZIP: ${ready.length}/${slots.length} Ready → ${exportedChunks.length} ZIP group(s), no TTS.`);
-      return { status: 'completed', ready: ready.length, total: slots.length, chunks: exportedChunks };
+      addLog('Text Audio', `${partial ? 'Partial' : 'Full'} Text ZIP: ${ready.length}/${slots.length} Ready across ${readyByDocument.size} Document(s) → ${exportedChunks.length} ZIP group(s), no TTS.`);
+      return { status: 'completed', ready: ready.length, total: slots.length, chunks: exportedChunks, documents: readyByDocument.size };
     } catch (error) {
       addLog('Error', `Text consolidated ZIP failed: ${error?.message || error}`);
       return { status: 'error', error, ready: ready.length, total: slots.length, chunks: exportedChunks };
     }
-  }, [structuredTextBatchSelection, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, activeTextDocumentTree?.title, addLog]);
+  }, [structuredTextBatchSelection, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
   const handleStructuredTextEdgeHealthCheck = useCallback(async () => {
     if (structuredTextAudioGenerationState.running || structuredTextEdgeHealth.status === 'testing') return null;
@@ -4155,9 +4405,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     preferences: structuredTextAudioGenerationPreferences,
     voices: initialEdgeVoices,
     coverage: structuredTextBatchSelection?.coverage || structuredTextDocumentCoverage,
-    scope: structuredTextBatchSelection?.scope || structuredTextBatchScope,
-    cardCount: structuredTextBatchSelection?.scope?.cardCount || activeTextDocumentTree?.blocks?.length || 0,
+    scope: structuredTextBatchScope,
+    cardCount: activeTextDocumentTree?.blocks?.length || 0,
     documentTitle: activeTextDocumentTree?.title || 'Text Document',
+    activeDocumentId: activeTextDocumentTree?.id || null,
+    activeCollectionId: activeTextDocumentTree?.collectionId || null,
+    documentOptions: structuredTextBatchDocumentOptions,
+    documentsResolved: structuredTextBatchSelection?.documents || [],
+    targetDocumentIds: structuredTextBatchTargetDocumentIds,
     voicesResolved: structuredTextBatchSelection?.voices || [],
     speakersResolved: structuredTextBatchSelection?.speakers || [],
     running: Boolean(structuredTextAudioGenerationState.running),
@@ -4247,9 +4502,44 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setPlaybackDelay
   });
 
+  useEffect(() => {
+    if (mode === 'text' && (sidebarSection === 'player' || sidebarSection === 'learn')) setSidebarSection('audio');
+    if (mode === 'table' && sidebarSection === 'audio') setSidebarSection('player');
+  }, [mode, sidebarSection, setSidebarSection]);
+
   const renderControlSectionTabs = (compact = false) => renderControlSectionTabsView({
-    compact, sidebarSection, setSidebarSection
+    compact, sidebarSection, setSidebarSection, mode
   });
+
+  const structuredTextAudioSidebarControls = {
+    documentTree: activeTextDocumentTree,
+    preferences: textStructuredPreferences,
+    englishVoices: voices,
+    indonesianVoices,
+    defaultTextVoiceName: defaultStructuredTextVoiceId,
+    defaultMeaningVoiceName: defaultStructuredMeaningVoiceId,
+    globalTextRate: textStructuredPreferences.browserTextRate || 1,
+    globalMeaningRate: textStructuredPreferences.browserMeaningRate || 1,
+    availableLocalVoices: structuredTextAvailableLocalVoices,
+    disabled: isSystemBusy || structuredTextAudioGenerationState.running,
+    onAudioSourceModeChange: handleStructuredTextAudioSourceModeChange,
+    onDocumentVoiceChange: handleStructuredTextDocumentVoiceChange,
+    onSpeakerVoiceChange: handleStructuredTextSpeakerVoiceChange,
+    onDocumentRateChange: handleStructuredTextDocumentRateChange,
+    onSpeakerRateChange: handleStructuredTextSpeakerRateChange,
+    onSyncSpeakerVoice: handleStructuredTextSyncSpeakerVoice,
+    onSyncSpeakerRate: handleStructuredTextSyncSpeakerRate,
+    onDocumentLocalAudioVoiceChange: handleStructuredTextDocumentLocalAudioVoiceChange,
+    onSpeakerLocalAudioVoiceChange: handleStructuredTextSpeakerLocalAudioVoiceChange,
+    generationPreferences: structuredTextAudioGenerationPreferences,
+    edgeGenerationVoices: initialEdgeVoices,
+    onGenerationPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
+    onDocumentDownloadVoiceChange: handleStructuredTextDocumentDownloadVoiceChange,
+    onSpeakerDownloadVoiceChange: handleStructuredTextSpeakerDownloadVoiceChange,
+    edgeHealth: structuredTextEdgeHealth,
+    onEdgeHealthCheck: handleStructuredTextEdgeHealthCheck,
+    audioLibrary: structuredTextAudioLibraryControls
+  };
 
   const renderMobileTools = () => renderMobileToolsView({
     sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
@@ -4257,7 +4547,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange, isSystemBusy, voices, selectedVoice: activeBrowserTtsVoice,
     setSelectedVoice: handleActiveBrowserTtsVoiceChange, indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
     setSelectedIndonesianVoice: handleActiveBrowserTtsIndonesianVoiceChange, rate: activeBrowserTtsRate,
-    setRate: handleActiveBrowserTtsRateChange, showIndonesianBrowserVoice: (mode === 'table' || structuredTextModeActive),
+    setRate: (value) => handleActiveBrowserTtsRateChange(value, 'text'), meaningRate: activeBrowserTtsMeaningRate, setMeaningRate: (value) => handleActiveBrowserTtsRateChange(value, 'meaning'), ratesLinked: activeBrowserTtsRatesLinked, setRatesLinked: handleActiveBrowserTtsRatesLinkedChange, showIndonesianBrowserVoice: (mode === 'table' || structuredTextModeActive),
+    structuredTextModeActive, textStructuredPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, handleStructuredTextDocumentVoiceChange, handleStructuredTextSpeakerVoiceChange, handleStructuredTextDisplayModeChange, handleStructuredTextPlaybackChannelModeChange, handleStructuredTextPlaybackFeelChange,
     renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode, memorySettings,
     setMemorySettings, advancedDatasetStats, isMultiSourceMode, dirtySourceKeys, isCsvDirty,
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker,
@@ -4265,7 +4556,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     handleLoadDeck, currentDeckName, setCurrentDeckName, handleSaveDeck, handleDeleteDeckInit,
     csvInputRef, openManualAdd, playlist, tableViewMode, exportTableCSV,
     setIsClearDialogOpen, csvChangeSummary, setIsChangeReviewOpen, undoStack, undoLastDataChange,
-    saveUpdatedCSV, rangeInput, setRangeInput, handleRangeAdd, generatorEngine,
+    saveUpdatedCSV, generatorEngine,
     setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
     userApiKey, onUserApiKeyChange: handleUserApiKeyChange,
     geminiOwnerConfigured: geminiOwnerState.configured, geminiOwnerUnlocked: geminiOwnerState.unlocked,
@@ -4285,6 +4576,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
+    structuredTextAudioSidebarControls,
     structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 
@@ -4315,9 +4607,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         displayMode={textStructuredPreferences.displayMode}
         playbackChannelMode={textStructuredPreferences.playbackChannelMode}
         playbackPreferences={textStructuredPreferences}
-        onDisplayModeChange={(displayMode) => setTextStructuredPreferences(prev => ({ ...prev, displayMode }))}
-        onPlaybackChannelModeChange={(playbackChannelMode) => setTextStructuredPreferences(prev => ({ ...prev, playbackChannelMode }))}
-        onPlaybackFeelChange={(patch) => setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...patch }))}
+        onDisplayModeChange={handleStructuredTextDisplayModeChange}
+        onPlaybackChannelModeChange={handleStructuredTextPlaybackChannelModeChange}
+        onPlaybackFeelChange={handleStructuredTextPlaybackFeelChange}
         onPlayDocument={handleStructuredTextPlayDocument}
         onPlayCard={handleStructuredTextPlayCard}
         onPlaySegment={handleStructuredTextPlaySegment}
@@ -4332,6 +4624,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         defaultTextVoiceName={defaultStructuredTextVoiceId}
         defaultMeaningVoiceName={defaultStructuredMeaningVoiceId}
         speakerVoiceMap={structuredTextSpeakerVoiceMap}
+        onDocumentVoiceChange={handleStructuredTextDocumentVoiceChange}
+        onDocumentDownloadVoiceChange={handleStructuredTextDocumentDownloadVoiceChange}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}
@@ -4433,7 +4727,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     currentDeckName, setCurrentDeckName, handleSaveDeck, mode, isCsvDirty,
     csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef, sourceInputRef, fullPackInputRef,
     handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab, handleMobileTabSwitch,
-    renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection,
+    renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection, setSidebarSection,
     renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange,
     generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
     edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice,
@@ -4448,18 +4742,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     selectedVoice: activeBrowserTtsVoice, setSelectedVoice: handleActiveBrowserTtsVoiceChange,
     indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
     setSelectedIndonesianVoice: handleActiveBrowserTtsIndonesianVoiceChange,
-    rate: activeBrowserTtsRate, setRate: handleActiveBrowserTtsRateChange,
+    rate: activeBrowserTtsRate, setRate: (value) => handleActiveBrowserTtsRateChange(value, 'text'), meaningRate: activeBrowserTtsMeaningRate, setMeaningRate: (value) => handleActiveBrowserTtsRateChange(value, 'meaning'), ratesLinked: activeBrowserTtsRatesLinked, setRatesLinked: handleActiveBrowserTtsRatesLinkedChange,
     showIndonesianBrowserVoice: (mode === 'table' || structuredTextModeActive),
+    textStructuredPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, handleStructuredTextDocumentVoiceChange, handleStructuredTextSpeakerVoiceChange, handleStructuredTextDisplayModeChange, handleStructuredTextPlaybackChannelModeChange, handleStructuredTextPlaybackFeelChange,
     renderPlaybackSequenceBuilder, isMemoryMode, setIsMemoryMode,
     memorySettings, setMemorySettings, advancedDatasetStats, csvInputRef, handleCSVUpload,
-    openManualAdd, playlist, tableViewMode, exportTableCSV, setIsClearDialogOpen,
+    openManualAdd, playlist, tableViewMode, exportTableCSV, rangeInput, setRangeInput, handleRangeAdd, setIsClearDialogOpen,
     setIsChangeReviewOpen, undoStack, undoLastDataChange, isMultiSourceMode, textareaRef,
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates,
     dirtySourceKeys, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack,
     openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt,
     renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex, speakingPart,
     activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
-    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true), isChangeReviewOpen,
+    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive,
+    onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true),
+    isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen,
     closeManualEditor, manualEditingId, importedRowCount, sequenceHighWater, manualForm,
     setManualForm, manualAdvancedOpen, setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen,
@@ -4473,7 +4770,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
-    structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
   });
 };
 
