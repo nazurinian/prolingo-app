@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronRight, Eye, FileText, FolderOpen, Loader2, MessageSquare, Play, PlayCircle, RotateCcw, Server, SkipForward, Upload, Users, Volume2, Wand2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, FileDown, FileText, FolderOpen, Loader2, MessageSquare, Play, PlayCircle, RotateCcw, Server, SkipForward, Square, Upload, Users, Volume2, Wand2, X } from 'lucide-react';
 import {
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
   resolveStructuredTextPlaybackList
@@ -107,6 +107,10 @@ const StructuredPlayerCard = ({
   onPreviewTts,
   onGenerateCardAudio,
   onGenerateSpeakerAudio,
+  onCancelGeneration,
+  onExportSegmentAudio,
+  onExportCardZip,
+  playbackBusy = false,
   focusTarget = null,
   onFocusConsumed,
   userNavigationRef = null
@@ -175,7 +179,7 @@ const StructuredPlayerCard = ({
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
-          <button type="button" disabled={controlsBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
+          <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
             <Volume2 className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1"/><span className="hidden sm:inline">Audio</span>
           </button>
           <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95 flex items-center justify-center" title="Play this card" aria-label="Play this card">
@@ -221,26 +225,30 @@ const StructuredPlayerCard = ({
                     <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">{segment.meaning || <span className="italic text-slate-400">No Meaning</span>}</p>
                   </div>}
 
-                  {segmentToolsId === segment.id && <div className="mt-2 flex flex-wrap gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60 p-2 animate-in fade-in duration-150" data-text-audio-runtime-controls={segment.id}>
+                  {segmentToolsId === segment.id && <div className="mt-2 grid gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60 p-2 animate-in fade-in duration-150 md:grid-cols-2" data-text-audio-runtime-controls={segment.id}>
                     {['text', 'meaning'].map(channel => {
-                      const status = audioRuntimeStatusMap?.[buildTextStructuredRuntimeAudioKey(segment.id, channel)] || { available: false };
-                      const label = channel === 'meaning' ? 'ID audio' : 'EN audio';
-                      return <div key={channel} className={`flex min-h-9 items-center gap-1 rounded-lg border px-2 py-1 ${status.available ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/25' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'}`}>
-                        <label className="cursor-pointer text-[8px] font-black text-slate-600 dark:text-slate-300" title={`Attach local ${label} for the currently selected Text voice`}>
-                          <Upload className="w-3 h-3 inline mr-1"/>{status.available ? label : (status.stale ? `Stale ${label}` : (status.metadataExists ? `Reconnect ${label}` : `Attach ${label}`))}
-                          <input type="file" accept="audio/*,.mp3,.wav,.ogg,.webm" className="hidden" onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) onAttachAudioFile?.(segment.id, channel, file);
-                            event.target.value = '';
-                          }}/>
-                        </label>
-                        <button type="button" disabled={generationBusy || (channel === 'meaning' ? !segment.meaning : !segment.text)} onClick={() => onGenerateAudio?.(segment.id, channel)} className="px-1 py-1 text-[8px] font-black text-violet-600 dark:text-violet-300 disabled:opacity-35" title={`Generate Edge ${label}`}><Wand2 className="w-3 h-3 inline mr-0.5"/>Edge</button>
-                        {status.metadataExists && <>
-                          <span className={`max-w-[120px] truncate text-[7px] ${status.available ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'}`} title={`${status.voiceId || ''} • ${status.filename || status.variantId}`}>{status.available ? (status.filename || status.variantId) : (status.stale ? 'text changed • regenerate' : 'reconnect file')}</span>
-                          <button type="button" onClick={() => onRemoveAudioVariant?.(status.variantId)} className="p-1 text-slate-400 hover:text-red-500" title="Remove runtime audio variant"><X className="w-3 h-3"/></button>
-                        </>}
+                      const key = buildTextStructuredRuntimeAudioKey(segment.id, channel);
+                      const status = audioRuntimeStatusMap?.[key] || { available: false };
+                      const coverage = audioCoverageMap?.[key] || { status: 'missing' };
+                      const label = channel === 'meaning' ? 'ID' : 'EN';
+                      const hasContent = channel === 'meaning' ? Boolean(segment.meaning) : Boolean(segment.text);
+                      const ready = coverage.status === 'ready';
+                      const removable = Boolean(status.variantId) && (coverage.sourceType === 'staging' || status.source === 'file');
+                      return <div key={channel} className={`rounded-lg border p-2 ${ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/25' : 'border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-800'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-black text-slate-700 dark:text-slate-200">{label} audio</span>
+                          <span className={`ml-auto rounded px-1.5 py-0.5 text-[7px] font-black uppercase ${ready ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'}`}>{coverage.status || 'missing'}</span>
+                        </div>
+                        <p className="mt-1 truncate text-[7px] text-slate-400" title={coverage.requiredVoiceId || status.downloadVoiceId || ''}>{coverage.requiredVoiceId || status.downloadVoiceId || 'No resolved download voice'}</p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <button type="button" disabled={generationBusy || !hasContent} onClick={() => onGenerateAudio?.(segment.id, channel)} className="min-h-8 px-2 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-35"><Wand2 className="w-3 h-3 inline mr-1"/>{ready ? 'Regenerate' : 'Generate'}</button>
+                          <button type="button" disabled={!ready} onClick={() => onExportSegmentAudio?.(segment.id, channel)} className="min-h-8 px-2 rounded-lg border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[8px] font-black disabled:opacity-35"><FileDown className="w-3 h-3 inline mr-1"/>MP3</button>
+                          <label className="min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 inline-flex items-center cursor-pointer text-[8px] font-black text-slate-500 dark:text-slate-300"><Upload className="w-3 h-3 mr-1"/>Attach<input type="file" accept="audio/*,.mp3,.wav,.ogg,.webm" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) onAttachAudioFile?.(segment.id, channel, file); event.target.value = ''; }}/></label>
+                          {removable && <button type="button" onClick={() => onRemoveAudioVariant?.(status.variantId || coverage.variantId)} className="min-h-8 px-2 rounded-lg border border-red-200 dark:border-red-900 text-red-600 text-[8px] font-black" title="Release staged audio or remove manual local variant"><X className="w-3 h-3 inline mr-1"/>Release</button>}
+                        </div>
                       </div>;
                     })}
+                    {generationBusy && <button type="button" onClick={() => onCancelGeneration?.()} className="md:col-span-2 min-h-9 rounded-lg border border-red-200 dark:border-red-900 text-red-600 text-[8px] font-black"><Square className="w-3 h-3 inline mr-1 fill-current"/>STOP generation</button>}
                   </div>}
                 </div>
                 <div className="w-full sm:w-auto flex flex-row flex-wrap gap-1 sm:flex-col sm:shrink-0">
@@ -264,7 +272,9 @@ const StructuredPlayerCard = ({
       generationPreferences={generationPreferences}
       edgeGenerationVoices={edgeGenerationVoices}
       cardCoverage={cardCoverage}
-      disabled={controlsBusy}
+      audioCoverageMap={audioCoverageMap}
+      generationRunning={generationBusy}
+      disabled={playbackBusy || generationBusy}
       onClose={() => setAudioPanelOpen(false)}
       onCardVoiceChange={onCardVoiceChange}
       onSegmentVoiceChange={onSegmentVoiceChange}
@@ -273,6 +283,9 @@ const StructuredPlayerCard = ({
       onPreviewTts={onPreviewTts}
       onGenerateCardAudio={onGenerateCardAudio}
       onGenerateSpeakerAudio={onGenerateSpeakerAudio}
+      onCancelGeneration={onCancelGeneration}
+      onExportSegmentAudio={onExportSegmentAudio}
+      onExportCardZip={onExportCardZip}
     />, document.body)}
   </>);
 };
@@ -326,6 +339,8 @@ export const TextStructuredPlayer = ({
   onCancelGeneration,
   onRetryFailedGeneration,
   onGenerateAudio,
+  onExportSegmentAudio,
+  onExportCardZip,
   focusTarget = null,
   onFocusConsumed,
   controlsWorkspaceOpen = false,
@@ -601,6 +616,7 @@ export const TextStructuredPlayer = ({
           generationPreferences={generationPreferences}
           edgeGenerationVoices={edgeGenerationVoices}
           controlsBusy={controlsBusy}
+          playbackBusy={structuredSessionActive}
           onCardVoiceChange={onCardVoiceChange}
           onSegmentVoiceChange={onSegmentVoiceChange}
           onCardDownloadVoiceChange={onCardDownloadVoiceChange}
@@ -608,6 +624,9 @@ export const TextStructuredPlayer = ({
           onPreviewTts={onPreviewTts}
           onGenerateCardAudio={onGenerateCardAudio}
           onGenerateSpeakerAudio={onGenerateSpeakerAudio}
+          onCancelGeneration={onCancelGeneration}
+          onExportSegmentAudio={onExportSegmentAudio}
+          onExportCardZip={onExportCardZip}
           focusTarget={focusTarget}
           onFocusConsumed={onFocusConsumed}
           userNavigationRef={userNavigationRef}

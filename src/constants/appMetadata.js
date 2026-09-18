@@ -1,15 +1,21 @@
-export const APP_VERSION = '5.14.5';
+export const APP_VERSION = '5.14.6';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T6 C6 — Text Audio Resource Hardening';
-export const APP_RELEASE_NAME = 'Final Text T6 Text Audio Resource Hardening';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T7 C7 — Manual Card & Segment Audio UX';
+export const APP_RELEASE_NAME = 'Final Text T7 Manual Card & Segment Audio UX';
 export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T6: Text audio now uses durable Staging plus lazy Folder/ZIP binaries, bounded runtime caches, lightweight metadata updates, and history-only Downloaded semantics.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T6`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T7: manual Card/Segment audio now exposes exact Ready/Missing coverage, Generate Missing/Regenerate/Stop, direct MP3, complete Card ZIP, and safe Staging release on top of the T6 resource architecture.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T7`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T7 makes manual Card/Segment audio exact-coverage aware: EN/Text and ID/Meaning show Ready/Missing status plus the resolved Edge download voice',
+  'Card Audio adds Generate Missing, Regenerate All, STOP re-entry, per-Segment Generate/Regenerate, direct MP3 export, and complete-only CARD ZIP export without silent generation',
+  'Manual MP3/CARD ZIP export reads the currently Ready binary lazily from Staging, Folder, ZIP, or runtime source and never treats history-only Downloaded metadata as exportable binary',
+  'Card ZIP fails closed while any non-empty exact-voice slot is Missing so a partial archive cannot be mistaken for a complete Card package',
+  'Manual Release removes Card-owned Staging binary while preserving core metadata/history; Folder/ZIP source-owned variants are protected from one-off Card deletion and manual local files remain removable',
+  'Card Audio remains re-enterable during generation so STOP is reachable while playback controls stay protected from conflicting work',
   'Final Text T6 adds durable Text binary Staging in the shared Audio Staging database under an isolated text mode while keeping core Text IndexedDB v1 metadata-oriented',
   'Generated Text audio commits to Folder or Text Staging before runtime Blob release; large Batch packaging no longer retains thousands of generated Blobs/ObjectURLs in React/runtime memory',
   'Text Folder audio is indexed lazily and creates only on-demand ObjectURLs through a bounded cache; ZIP lazy behavior remains preserved',
