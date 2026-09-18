@@ -78,5 +78,8 @@ export const buildCanonicalTextDocumentZipFilename = ({ documentTitle = 'Text', 
   return `${join(...base)}.zip`;
 };
 
-export const buildCanonicalTextConsolidatedZipFilename = ({ documentTitle = 'Text', voiceIds = [], partial = false } = {}) =>
-  `${join(documentTitle, normalizeVoiceGroup(voiceIds), partial ? 'PARTIAL' : 'FULL', 'TEXT_AUDIO')}.zip`;
+export const buildCanonicalTextConsolidatedZipFilename = ({ documentTitle = 'Text', voiceIds = [], partial = false, partNo = null } = {}) => {
+  const base = [documentTitle, normalizeVoiceGroup(voiceIds), partial ? 'PARTIAL' : 'FULL', 'TEXT_AUDIO'];
+  if (partNo) base.push(`PART_${String(partNo).padStart(2, '0')}`);
+  return `${join(...base)}.zip`;
+};

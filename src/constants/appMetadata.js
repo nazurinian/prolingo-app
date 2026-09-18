@@ -1,15 +1,25 @@
-export const APP_VERSION = '5.14.6';
+export const APP_VERSION = '5.14.7';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T7 C7 — Manual Card & Segment Audio UX';
-export const APP_RELEASE_NAME = 'Final Text T7 Manual Card & Segment Audio UX';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T8 C8+C9 — Text Batch Multi-Voice Resume & Consolidation';
+export const APP_RELEASE_NAME = 'Final Text T8 Batch Multi-Voice Resume & Consolidation';
 export const APP_RELEASE_DATE = '2026-09-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T7: manual Card/Segment audio now exposes exact Ready/Missing coverage, Generate Missing/Regenerate/Stop, direct MP3, complete Card ZIP, and safe Staging release on top of the T6 resource architecture.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T7`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T8: Text Batch now supports Card-range scope, exact multi-speaker/multi-voice coverage, lightweight live telemetry, resume from real Ready sources, direct MP3, and complete/explicit-partial consolidated ZIP export without re-generating Ready audio.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T8`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T8 adds current-Document Card-range Batch scope while preserving permanent TEXT_ID/SEGMENT_ID identities and current EN/Text + ID/Meaning channel selection',
+  'Conversation Text Batch keeps each Segment on its exact resolved speaker/channel Edge download voice; document speaker, Card speaker, and Segment overrides are not flattened to one Batch voice',
+  'Text Batch coverage distinguishes Ready, history-only Downloaded, Other Voice, Stale, and Missing; only currently readable Staging/Folder/ZIP/runtime binary suppresses Download Missing',
+  'Missing-only Text Batch resumes from mounted Staging, Folder, and ZIP coverage and skips already Ready exact variants without trusting export history',
+  'Live Text Batch telemetry uses lightweight counters for Processed/Generated/Skipped Ready/Failed/Remaining/Ready estimate/Need estimate and publishes only at sparse UI checkpoints instead of rescanning IndexedDB per audio',
+  'STOP keeps already committed partial binary valid and leaves the selected scope resumable through Download Missing on the next run',
+  'Text Batch direct MP3 exports every Ready selected slot in browser-download waves of max 10 without starting TTS',
+  'Text consolidated ZIP lazily combines Ready binaries across Text Staging, Folder, mounted ZIP, and runtime sources with a 64 MB resource ceiling; complete export is locked until Ready equals Total',
+  'Explicit partial Text ZIP export remains available only as a clearly PARTIAL-labelled archive so incomplete coverage cannot be mistaken for a full package',
+  'Canonical Text consolidated ZIP naming now supports PART_XX suffixes for resource-bounded multi-archive output while preserving compact resolved voice labels',
   'Final Text T7 makes manual Card/Segment audio exact-coverage aware: EN/Text and ID/Meaning show Ready/Missing status plus the resolved Edge download voice',
   'Card Audio adds Generate Missing, Regenerate All, STOP re-entry, per-Segment Generate/Regenerate, direct MP3 export, and complete-only CARD ZIP export without silent generation',
   'Manual MP3/CARD ZIP export reads the currently Ready binary lazily from Staging, Folder, ZIP, or runtime source and never treats history-only Downloaded metadata as exportable binary',

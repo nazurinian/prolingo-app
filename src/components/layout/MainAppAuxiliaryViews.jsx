@@ -4,6 +4,7 @@ import MobileTools from './MobileTools';
 import WorkspaceTabs from '../table/WorkspaceTabs';
 import MasterDataToolbar from '../table/MasterDataToolbar';
 import BatchPopup from '../table/BatchPopup';
+import TextBatchPopup from '../text/TextBatchPopup.jsx';
 import { V5116_CONTROL_SECTIONS } from '../../constants/playbackConstants';
 
 const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>;
@@ -14,42 +15,51 @@ export const renderBatchPopupView = ({
   isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
   batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportCurrentZip = null, onExportBatchSessions = null,
   onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
-}) => (
-    <BatchPopup
+}) => {
+  if (mode === 'text' && structuredTextBatch) {
+    return <TextBatchPopup
       batchPanelRef={batchPanelRef}
-      mode={mode}
       setIsBatchOpen={setIsBatchOpen}
-      isBatchDownloading={isBatchDownloading}
-      batchConfig={batchConfig}
-      setBatchConfig={setBatchConfig}
-      generatorEngine={generatorEngine}
-      edgeVoice={edgeVoice}
-      edgeIndonesianVoice={edgeIndonesianVoice}
-      aiVoiceName={aiVoiceName}
-      advancedDatasetStats={advancedDatasetStats}
-      handleBatchRangeBlur={handleBatchRangeBlur}
-      runBatchDownload={runBatchDownload}
-      isBatchStopping={isBatchStopping}
-      batchStatusText={batchStatusText}
-      tableCoverage={tableCoverage}
       structuredTextBatch={structuredTextBatch}
-      DownloadCloudIcon={DownloadCloudIcon}
       inline={inline}
       showClose={showClose}
-      batchSessions={batchSessions}
-      stagingRecords={stagingRecords}
-      stagingSummary={stagingSummary}
-      allStagingSummary={allStagingSummary}
-      batchAvailabilityById={batchAvailabilityById}
-      onExportCurrentMp3={onExportCurrentMp3}
-      onExportCurrentZip={onExportCurrentZip}
-      onExportBatchSessions={onExportBatchSessions}
-      onClearBatchStaging={onClearBatchStaging}
-      onClearAllStaging={onClearAllStaging}
-      onDeleteBatchHistory={onDeleteBatchHistory}
-      directMp3Limit={directMp3Limit}
-    />
-);
+    />;
+  }
+  return <BatchPopup
+    batchPanelRef={batchPanelRef}
+    mode={mode}
+    setIsBatchOpen={setIsBatchOpen}
+    isBatchDownloading={isBatchDownloading}
+    batchConfig={batchConfig}
+    setBatchConfig={setBatchConfig}
+    generatorEngine={generatorEngine}
+    edgeVoice={edgeVoice}
+    edgeIndonesianVoice={edgeIndonesianVoice}
+    aiVoiceName={aiVoiceName}
+    advancedDatasetStats={advancedDatasetStats}
+    handleBatchRangeBlur={handleBatchRangeBlur}
+    runBatchDownload={runBatchDownload}
+    isBatchStopping={isBatchStopping}
+    batchStatusText={batchStatusText}
+    tableCoverage={tableCoverage}
+    structuredTextBatch={null}
+    DownloadCloudIcon={DownloadCloudIcon}
+    inline={inline}
+    showClose={showClose}
+    batchSessions={batchSessions}
+    stagingRecords={stagingRecords}
+    stagingSummary={stagingSummary}
+    allStagingSummary={allStagingSummary}
+    batchAvailabilityById={batchAvailabilityById}
+    onExportCurrentMp3={onExportCurrentMp3}
+    onExportCurrentZip={onExportCurrentZip}
+    onExportBatchSessions={onExportBatchSessions}
+    onClearBatchStaging={onClearBatchStaging}
+    onClearAllStaging={onClearAllStaging}
+    onDeleteBatchHistory={onDeleteBatchHistory}
+    directMp3Limit={directMp3Limit}
+  />;
+};
 
 export const renderControlSectionTabsView = ({ compact = false, sidebarSection, setSidebarSection }) => {
     const iconFor = (key) => {
