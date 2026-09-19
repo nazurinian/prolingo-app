@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.3';
+export const APP_VERSION = '6.0.3-beta.4';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-D3-A4-DL-B1-DATA-AUDIO-FOUNDATION';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Data/Audio Lifecycle Foundation';
-export const APP_RELEASE_NAME = 'Text Data/Audio Lifecycle Foundation';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA4-RUNTIME-HARDENING-DATA-DOWNLOAD-UX';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Runtime Hardening + DATA/Download UX';
+export const APP_RELEASE_NAME = 'Text Runtime Hardening + DATA/Download UX';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: D3-D4 add deterministic external duplicate/update/conflict reconciliation; A0-A4 add RF render identity, shared Text Staging, manifest/Folder/ZIP portability and GC; DL1-DL2/B1 add RF-deduplicated Split/Full download and Batch integration.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: runtime hardening exposes external-source change summaries, RF/storage diagnostics with safe Staging GC, and a clearer Prepare → Split → Full Card Audio workflow over the beta.3 Data/Audio foundation.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.4 hardens the beta.3 Data/Audio foundation for runtime acceptance: DATA/TRANSFER shows explicit external-source change counts and conflict choices, Runtime & Storage Diagnostics exposes DB/RF/Folder/ZIP state plus safe reference-derived Staging GC/reconnect, and Card Audio is reorganized into Prepare Audio → Split Download → Full Derived Audio with Selected Sentence helpers',
   'v6.0.3-beta.3 completes the frozen Data/Audio foundation through D3-D4, A0-A4, DL1-DL2 and B1: canonical external fingerprints/reconciliation, RF-centric shared physical audio, manifest-first cross-browser Folder/ZIP reconnect, reference-derived Text Staging GC, selected/full split downloads, derived Full Card WAV, and Batch physical-RF dedup while keeping Table frozen and Text DB/schema v1',
   'v6.0.3-beta.1 implements D0/D1 of the frozen Data+Audio contract: additive globally portable UIDs for Collection/Workspace/Card/Segment/Speaker/AudioVariant, one-time persistent backfill for existing Text data, UID-preserving ProLingo Attach/Sync, new-UID Import as Copy, and a contract regression harness while retaining Text DB/schema v1 and all legacy local IDs as IndexedDB keys',
   'v6.0.2-C-HF2 replaces atomic sentence buttons with naturally wrapping inline sentence targets, so a sentence can continue across lines without forced line breaks; Paragraph text uses inter-word justification with a normal left-aligned final line while active playback highlighting follows every wrapped fragment of the current sentence',

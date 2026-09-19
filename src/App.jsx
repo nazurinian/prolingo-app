@@ -3062,6 +3062,35 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }), [runTextLibraryUiCommand, forceStopAll, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, runStructuredTextAudioStagingGc, reconcileStructuredTextExternalAudioSources, addLog]);
 
+
+  const handleStructuredTextRuntimeHardeningAudit = useCallback(() => runTextLibraryUiCommand(async () => {
+    const snapshot = textLibrarySnapshot;
+    if (!snapshot) return null;
+    const before = { ...(structuredTextAudioStagingSummaryRef.current || { count: 0, bytes: 0, voices: {} }) };
+    const gc = await runStructuredTextAudioStagingGc(snapshot, 'manual-runtime-hardening-audit');
+    const external = await reconcileStructuredTextExternalAudioSources(snapshot);
+    const after = { ...(structuredTextAudioStagingSummaryRef.current || { count: 0, bytes: 0, voices: {} }) };
+    const result = {
+      status: 'ok',
+      auditedAt: Date.now(),
+      gc: {
+        released: Number(gc?.released || 0),
+        orphanBytes: Number(gc?.orphanBytes || 0),
+        legacyKept: Number(gc?.legacyKept || 0)
+      },
+      stagingBefore: before,
+      stagingAfter: after,
+      external: {
+        folderMatched: Number(external?.folder?.matchedCount || external?.folder?.matches?.length || 0),
+        folderOrphan: Number(external?.folder?.orphanCount || external?.folder?.orphans?.length || 0),
+        zipMatched: Number(external?.zip?.matchedCount || external?.zip?.matches?.length || 0),
+        zipOrphan: Number(external?.zip?.orphanCount || external?.zip?.orphans?.length || 0)
+      }
+    };
+    addLog('Text Audio', `Runtime audit: GC ${result.gc.released} RF • Folder ${result.external.folderMatched} match • ZIP ${result.external.zipMatched} match.`);
+    return result;
+  }), [runTextLibraryUiCommand, textLibrarySnapshot, runStructuredTextAudioStagingGc, reconcileStructuredTextExternalAudioSources, addLog]);
+
   const textLibraryShellDocumentTree = useMemo(() => ({
     ...(activeTextDocumentTree || {}),
     blocks: activeTextDocumentTree?.blocks || [],
@@ -3085,8 +3114,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       results: textLibrarySearchResults,
       onQueryChange: setTextLibrarySearchQuery,
       onAction: handleTextLibrarySearchAction
+    },
+    __runtimeHardening: {
+      database: {
+        collections: textLibrarySnapshot?.collections?.length || 0,
+        workspaces: textLibrarySnapshot?.documents?.length || 0,
+        cards: textLibrarySnapshot?.blocks?.length || 0,
+        segments: textLibrarySnapshot?.segments?.length || 0,
+        audioVariants: textLibrarySnapshot?.audioVariants?.length || 0
+      },
+      activeCoverage: structuredTextDocumentCoverage,
+      staging: structuredTextAudioStagingSummary,
+      folder: structuredTextAudioFolderState,
+      zip: structuredTextAudioZipState,
+      onAuditAndGc: handleStructuredTextRuntimeHardeningAudit
     }
-  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackAttachOrSync, handleTextPackImportCopy, handleTextExternalInitialImport, handleTextExternalImportDecision, handleTextSourceDetach, textSourceAttachments, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction]);
+  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackAttachOrSync, handleTextPackImportCopy, handleTextExternalInitialImport, handleTextExternalImportDecision, handleTextSourceDetach, textSourceAttachments, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction, textLibrarySnapshot, structuredTextDocumentCoverage, structuredTextAudioStagingSummary, structuredTextAudioFolderState, structuredTextAudioZipState, handleStructuredTextRuntimeHardeningAudit]);
 
   const handleStructuredTextAttachAudioFile = useCallback(async (segmentId, channel, file) => {
     if (!file || !segmentId || !['text', 'meaning'].includes(channel)) return null;
