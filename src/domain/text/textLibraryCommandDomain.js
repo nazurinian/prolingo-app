@@ -16,6 +16,12 @@ import {
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
 import {
+  buildTextParagraphSentenceAudioInvalidationMetadata,
+  buildTextParagraphSentenceMutationMetadata,
+  joinTextParagraphSentenceSegments,
+  normalizeTextParagraphSentenceMutationParts
+} from './textParagraphSentenceAuthoringDomain.js';
+import {
   buildTextStructuredSegmentSpeakerIdentityMetadata,
   buildTextStructuredUpsertSpeakerRegistryMetadata,
   deriveTextStructuredSpeakerId,
@@ -40,6 +46,8 @@ const COMMAND_TYPES = Object.freeze({
   UPDATE_SEGMENT: 'segment.update',
   DELETE_SEGMENT: 'segment.delete',
   REORDER_SEGMENTS: 'segment.reorder',
+  SPLIT_PARAGRAPH_SEGMENT: 'paragraphSegment.split',
+  MERGE_PARAGRAPH_SEGMENTS: 'paragraphSegments.merge',
   UPSERT_AUDIO_VARIANT: 'audioVariant.upsert',
   DELETE_AUDIO_VARIANT: 'audioVariant.delete'
 });
@@ -511,6 +519,146 @@ const reorderSegments = (snapshot, payload, now) => {
   }, { entity: 'segment', action: 'reorder', blockId: block.id, documentId: block.documentId, orderedIds: ids });
 };
 
+
+const requireParagraphSegment = (snapshot, segmentId) => {
+  const segment = requireSegment(snapshot, segmentId);
+  requireStructuredDocument(snapshot, segment.documentId);
+  const block = requireBlock(snapshot, segment.blockId);
+  if (block.blockType !== 'paragraph') {
+    throw new Error(`Paragraph sentence mutation refused for ${block.blockType} Card ${block.id}`);
+  }
+  return { segment, block };
+};
+
+const invalidateSegmentAudioVariants = (audioVariants, segmentId, reason, now) => audioVariants.map(variant =>
+  variant.segmentId === segmentId
+    ? {
+        ...variant,
+        updatedAt: now,
+        metadata: buildTextParagraphSentenceAudioInvalidationMetadata({ metadata: variant.metadata, reason, at: now })
+      }
+    : variant
+);
+
+const splitParagraphSegment = (snapshot, payload, now) => {
+  const { segment: current, block } = requireParagraphSegment(snapshot, payload?.id);
+  const parts = normalizeTextParagraphSentenceMutationParts(payload?.parts, current.joinAfter);
+  let countersSnapshot = snapshot;
+  const created = [];
+  for (let index = 1; index < parts.length; index += 1) {
+    const allocated = allocateIdentity(countersSnapshot, 'SEGMENT');
+    countersSnapshot = { ...countersSnapshot, counters: allocated.counters };
+    created.push(createTextSegmentRecord({
+      id: allocated.id,
+      documentId: current.documentId,
+      blockId: current.blockId,
+      text: parts[index].text,
+      meaning: parts[index].meaning,
+      speaker: null,
+      joinAfter: parts[index].joinAfter,
+      createdAt: now,
+      updatedAt: now,
+      metadata: buildTextParagraphSentenceMutationMetadata({
+        metadata: current.metadata,
+        operation: 'split-created',
+        sourceSegmentIds: [current.id],
+        at: now
+      })
+    }));
+  }
+
+  const retained = createTextSegmentRecord({
+    ...current,
+    text: parts[0].text,
+    meaning: parts[0].meaning,
+    speaker: null,
+    joinAfter: parts[0].joinAfter,
+    updatedAt: now,
+    metadata: buildTextParagraphSentenceMutationMetadata({
+      metadata: current.metadata,
+      operation: 'split-retained',
+      sourceSegmentIds: [current.id],
+      at: now
+    })
+  });
+
+  const siblings = sortByOrderThenId(snapshot.segments.filter(item => item.blockId === block.id));
+  const orderedIds = siblings.flatMap(item => item.id === current.id ? [retained.id, ...created.map(record => record.id)] : [item.id]);
+  const withoutCurrent = snapshot.segments.filter(item => item.id !== current.id);
+  const nextSegments = applyContiguousOrder([...withoutCurrent, retained, ...created], orderedIds, now);
+  const invalidatedAudio = invalidateSegmentAudioVariants(snapshot.audioVariants, current.id, 'paragraph-sentence-split', now);
+  return finalize({
+    ...snapshot,
+    counters: countersSnapshot.counters,
+    segments: nextSegments,
+    audioVariants: invalidatedAudio,
+    blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
+    documents: snapshot.documents.map(item => item.id === current.documentId ? { ...item, updatedAt: now } : item)
+  }, {
+    entity: 'paragraphSegment',
+    action: 'split',
+    retainedId: retained.id,
+    createdIds: created.map(record => record.id),
+    blockId: block.id,
+    documentId: current.documentId,
+    invalidatedAudioVariantIds: invalidatedAudio.filter((variant, index) => variant !== snapshot.audioVariants[index]).map(variant => variant.id)
+  });
+};
+
+const mergeParagraphSegments = (snapshot, payload, now) => {
+  const requestedIds = [...new Set((Array.isArray(payload?.ids) ? payload.ids : []).map(value => String(value || '').toUpperCase()).filter(Boolean))];
+  if (requestedIds.length < 2) throw new Error('Paragraph sentence merge requires at least two unique Segment IDs');
+  const first = requireParagraphSegment(snapshot, requestedIds[0]);
+  const block = first.block;
+  const siblings = sortByOrderThenId(snapshot.segments.filter(item => item.blockId === block.id));
+  const selected = siblings.filter(item => requestedIds.includes(item.id));
+  if (selected.length !== requestedIds.length) throw new Error('Paragraph sentence merge contains a Segment outside the target Card');
+  if (selected.some(item => item.documentId !== first.segment.documentId)) throw new Error('Paragraph sentence merge cannot cross Workspaces');
+  const positions = selected.map(item => siblings.findIndex(candidate => candidate.id === item.id));
+  const contiguous = positions.every((position, index) => index === 0 || position === positions[index - 1] + 1);
+  if (!contiguous) throw new Error('Paragraph sentence merge requires adjacent Segments');
+
+  const retainedSource = selected[0];
+  const removedIds = selected.slice(1).map(item => item.id);
+  const merged = joinTextParagraphSentenceSegments(selected);
+  const retained = createTextSegmentRecord({
+    ...retainedSource,
+    text: merged.text,
+    meaning: merged.meaning,
+    speaker: null,
+    joinAfter: merged.joinAfter,
+    updatedAt: now,
+    metadata: buildTextParagraphSentenceMutationMetadata({
+      metadata: retainedSource.metadata,
+      operation: 'merge-retained',
+      sourceSegmentIds: selected.map(item => item.id),
+      at: now
+    })
+  });
+
+  const orderedIds = siblings.filter(item => !removedIds.includes(item.id)).map(item => item.id);
+  const selectedSet = new Set(selected.map(item => item.id));
+  const baseSegments = snapshot.segments.filter(item => !selectedSet.has(item.id));
+  const nextSegments = applyContiguousOrder([...baseSegments, retained], orderedIds, now);
+  const retainedInvalidated = invalidateSegmentAudioVariants(snapshot.audioVariants, retained.id, 'paragraph-sentence-merge', now);
+  const nextAudioVariants = retainedInvalidated.filter(variant => !removedIds.includes(variant.segmentId));
+  return finalize({
+    ...snapshot,
+    segments: nextSegments,
+    audioVariants: nextAudioVariants,
+    blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
+    documents: snapshot.documents.map(item => item.id === retained.documentId ? { ...item, updatedAt: now } : item)
+  }, {
+    entity: 'paragraphSegments',
+    action: 'merge',
+    retainedId: retained.id,
+    removedIds,
+    blockId: block.id,
+    documentId: retained.documentId,
+    invalidatedAudioVariantIds: nextAudioVariants.filter(variant => variant.segmentId === retained.id && variant.metadata?.contentInvalidatedV1).map(variant => variant.id)
+  });
+};
+
 const upsertAudioVariant = (snapshot, payload, now) => {
   const segment = requireSegment(snapshot, payload?.segmentId);
   requireStructuredDocument(snapshot, segment.documentId);
@@ -591,6 +739,8 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.UPDATE_SEGMENT: return updateSegment(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_SEGMENT: return deleteSegment(snapshot, payload, now);
     case COMMAND_TYPES.REORDER_SEGMENTS: return reorderSegments(snapshot, payload, now);
+    case COMMAND_TYPES.SPLIT_PARAGRAPH_SEGMENT: return splitParagraphSegment(snapshot, payload, now);
+    case COMMAND_TYPES.MERGE_PARAGRAPH_SEGMENTS: return mergeParagraphSegments(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_AUDIO_VARIANT: return upsertAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_AUDIO_VARIANT: return deleteAudioVariant(snapshot, payload, now);
     default: throw new Error(`Unknown Text Library command: ${type || '(missing)'}`);

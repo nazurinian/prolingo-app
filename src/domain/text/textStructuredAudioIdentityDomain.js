@@ -28,10 +28,20 @@ export const buildTextStructuredAudioContentFingerprint = ({ channel = 'text', c
 };
 
 export const isTextStructuredAudioVariantContentCompatible = ({ variant, channel = 'text', content = '' } = {}) => {
-  const stored = clean(variant?.metadata?.contentFingerprint);
-  if (!stored) return { compatible: true, verified: false, currentFingerprint: buildTextStructuredAudioContentFingerprint({ channel, content }) };
   const currentFingerprint = buildTextStructuredAudioContentFingerprint({ channel, content });
-  return { compatible: stored === currentFingerprint, verified: true, currentFingerprint };
+  const invalidation = variant?.metadata?.contentInvalidatedV1;
+  if (invalidation) {
+    return {
+      compatible: false,
+      verified: true,
+      invalidated: true,
+      invalidationReason: clean(invalidation?.reason) || 'content-mutated',
+      currentFingerprint
+    };
+  }
+  const stored = clean(variant?.metadata?.contentFingerprint);
+  if (!stored) return { compatible: true, verified: false, invalidated: false, currentFingerprint };
+  return { compatible: stored === currentFingerprint, verified: true, invalidated: false, currentFingerprint };
 };
 const normalizeSource = value => lower(value) || 'file';
 const normalizeVoice = value => lower(value) || 'default';

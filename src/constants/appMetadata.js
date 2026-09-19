@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.1';
+export const APP_VERSION = '6.0.2-alpha.1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.1-DATA-CLEANUP';
-export const APP_CHECKPOINT_LABEL = 'V6.0.1 • DATA/Workspace Cleanup';
-export const APP_RELEASE_NAME = 'DATA/Workspace Cleanup';
+export const APP_CHECKPOINT_ID = 'V6.0.2-A-SENTENCE-FOUNDATION';
+export const APP_CHECKPOINT_LABEL = 'V6.0.2-A • Paragraph Sentence Foundation';
+export const APP_RELEASE_NAME = 'Paragraph Sentence Authoring Foundation';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: post-v6 DATA cleanup keeps Library content editing isolated from Create/Manage/Transfer; Text DB schema remains v1 and Table remains frozen.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • DATA-CLEANUP`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: paragraph sentence authoring foundation adds preview-safe sentence parsing plus transaction-safe split/merge commands while preserving stable Segment IDs, Text DB schema v1, and the frozen Table core.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-FOUNDATION`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.2-A adds the Paragraph Sentence Authoring foundation: conservative sentence-split proposals, strict EN/ID alignment checks, stable-ID split/merge mutation commands, existing reorder reuse, and explicit stale-audio invalidation without a Text DB schema migration',
   'v6.0.1 cleans the Text DATA workspace without changing data contracts: Card/Segment editing is visible only in LIBRARY, redundant mode summary cards are removed, Manage no longer repeats an impossible active-Collection delete action, and Workspace terminology is clarified',
   'v6.0.0 promotes the user-accepted W1–W6 Workspace/Data redesign to the major-version release identity without changing the accepted runtime architecture',
   'The v6 promotion preserves Text IndexedDB/schema v1, permanent Collection/Document/Block/Segment identities, Text Pack v1 and Text DB Backup v1 compatibility, and the frozen Table core',
