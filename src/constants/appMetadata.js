@@ -1,15 +1,18 @@
-export const APP_VERSION = '5.14.14';
+export const APP_VERSION = '5.14.15';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T15 — Runtime Blank Hotfix';
-export const APP_RELEASE_NAME = 'Final Text T15 Pre-Runtime Blank-Screen Hotfix';
-export const APP_RELEASE_DATE = '2026-09-18';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16A — Playback Audio UX';
+export const APP_RELEASE_NAME = 'Final Text T16A Playback Audio UX Refinement';
+export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T15: forward-only runtime hotfix over T14; TextStructuredAudioControls now preserves stable React hook order across Text hydration while keeping the T14 UX architecture unchanged.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T15`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16A: Text AUDIO Playback clarifies Local Audio ON/OFF + AUTO/CUSTOM, adds non-destructive speaker voice/speed sync, and reports the actual LOCAL/TTS source used during playback.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16A`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T16A replaces ambiguous LOAD ALL / CUSTOM / GLOBAL TTS playback choices with Local Audio ON/OFF plus AUTO/CUSTOM while keeping Folder/ZIP/Staging attachment under AUDIO → DOWNLOAD/SOURCES',
+  'Conversation Sync Voice/Speed is now ON/OFF and non-destructive: follower speaker settings are locked to Speaker 1 at runtime without overwriting their saved voice, speed, or custom-local choices; turning Sync OFF restores those saved values',
+  'Playback Audio now reports the actual source used by the latest channel as LOCAL (Folder/ZIP/Staging/Generated) or Browser TTS, including the effective voice and Speaker-1 sync state',
   'Final Text T15 fixes a runtime blank-screen regression introduced by T14: TextStructuredAudioControls no longer declares useState after a conditional return, preserving React hook order when Text hydration changes from no structured document to an active structured document',
   'T15 is forward-only over v5.14.13: no rollback, schema change, data migration, Table core change, audio identity change, Batch contract change or JSON lifecycle change is introduced',
   'Final Text T14 is a UX-only preflight over the sealed T13 architecture: Text Control Center is simplified to AUDIO / DATA / SYSTEM while Player Settings remains exclusively in the bottom player bar',

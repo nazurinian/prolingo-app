@@ -111,7 +111,7 @@ import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/text
 import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
-import { getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection } from './domain/text/textStructuredBatchDomain.js';
@@ -119,6 +119,7 @@ import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry 
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { buildTextStructuredLocalAudioProfileMetadata, collectTextStructuredAvailableLocalVoices, getTextStructuredLocalAudioProfile, resolveTextStructuredCustomLocalAudioVoice } from './domain/text/textStructuredLocalAudioProfileDomain.js';
+import { buildTextStructuredAudioSyncProfileMetadata, getTextStructuredAudioSyncProfile } from './domain/text/textStructuredAudioSyncProfileDomain.js';
 import { TEXT_LIBRARY_COMMAND_TYPES } from './domain/text/textLibraryCommandDomain.js';
 import { resolveTextLibrarySearchActionTarget, resolveTextLibrarySearchResults, TEXT_LIBRARY_SEARCH_ACTIONS } from './domain/text/textLibrarySearchDomain.js';
 import { executeTextLibraryBootstrapEffect, executeTextLibraryCompatibilityPersistenceEffect } from './services/persistence/textLibraryLifecycleService';
@@ -248,6 +249,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const textLibrarySearchFocusNonceRef = useRef(0);
   // P4-A10: session-only URLs for structured Text audio. IndexedDB stores metadata only.
   const [structuredTextAudioRuntimeUrls, setStructuredTextAudioRuntimeUrls] = useState({});
+  const [structuredTextPlaybackSourceStatus, setStructuredTextPlaybackSourceStatus] = useState(null);
   const structuredTextAudioRuntimeUrlsRef = useRef({});
   // Final Text C6: Text binary staging is separate from core Text DB and keeps Blob data out of React state.
   const [structuredTextAudioStagingSummary, setStructuredTextAudioStagingSummary] = useState({ count: 0, bytes: 0, voices: {} });
@@ -731,24 +733,49 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedTextIndonesianVoice = structuredTextVoiceState.meaningVoice;
   const structuredTextModeActive = mode === 'text' && activeTextEditorModel === 'structured-v1';
   useEffect(() => { if (!structuredTextModeActive) setTextPlayerWorkspaceOpen(false); }, [structuredTextModeActive]);
+  useEffect(() => { setStructuredTextPlaybackSourceStatus(null); }, [activeTextDocumentTree?.id]);
   // P4-A11: speaker profiles are document metadata, not audio identity. The requested
   // voice can differ per conversation speaker while SEGMENT_ID/TXTAUDIO identity stays stable.
   const structuredTextSpeakerVoiceMap = useMemo(
     () => getTextStructuredSpeakerVoiceMap(activeTextDocumentTree),
     [activeTextDocumentTree?.metadata]
   );
+  const structuredTextAudioSyncProfile = useMemo(
+    () => getTextStructuredAudioSyncProfile(activeTextDocumentTree),
+    [activeTextDocumentTree?.metadata]
+  );
+  const structuredTextConversationSpeakers = useMemo(
+    () => collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree),
+    [activeTextDocumentTree]
+  );
   const defaultStructuredTextVoiceId = textStructuredPreferences.browserTextVoiceName || selectedTextBrowserVoice?.name || null;
   const defaultStructuredMeaningVoiceId = textStructuredPreferences.browserMeaningVoiceName || selectedTextIndonesianVoice?.name || null;
   const resolveStructuredTextChannelVoiceState = useCallback((item, channel) => {
-    const isMeaning = channel === 'meaning';
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const isMeaning = normalizedChannel === 'meaning';
     const defaultVoice = isMeaning ? selectedTextIndonesianVoice : selectedTextBrowserVoice;
     const defaultVoiceId = isMeaning ? defaultStructuredMeaningVoiceId : defaultStructuredTextVoiceId;
-    const assignment = resolveTextStructuredEffectiveVoiceForItem({
-      documentTree: activeTextDocumentTree,
-      item,
-      channel,
-      defaultVoiceName: defaultVoiceId,
-    });
+    const syncVoice = activeTextDocumentTree?.documentType === 'conversation'
+      && structuredTextAudioSyncProfile.voice?.[normalizedChannel] === true
+      && structuredTextConversationSpeakers.length > 0;
+    let assignment;
+    if (syncVoice) {
+      const firstSpeaker = structuredTextConversationSpeakers[0];
+      const firstVoice = getTextStructuredSpeakerAssignedVoiceName({
+        documentTree: activeTextDocumentTree,
+        speaker: firstSpeaker.label,
+        speakerId: firstSpeaker.id,
+        channel: normalizedChannel
+      });
+      assignment = { voiceName: firstVoice || defaultVoiceId, source: 'sync-speaker-1' };
+    } else {
+      assignment = resolveTextStructuredEffectiveVoiceForItem({
+        documentTree: activeTextDocumentTree,
+        item,
+        channel: normalizedChannel,
+        defaultVoiceName: defaultVoiceId,
+      });
+    }
     const requestedVoiceId = assignment.voiceName || defaultVoice?.name || null;
     const pool = isMeaning ? indonesianVoices : voices;
     const exactVoice = requestedVoiceId
@@ -758,10 +785,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       requestedVoiceId,
       ttsVoice: exactVoice || defaultVoice || null,
       mappedVoiceAvailable: Boolean(exactVoice),
-      assignmentSource: assignment.source
+      assignmentSource: assignment.source,
+      syncedToFirstSpeaker: syncVoice
     };
-  }, [activeTextDocumentTree, selectedTextBrowserVoice, selectedTextIndonesianVoice, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, voices, indonesianVoices]);
+  }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, voices, indonesianVoices]);
   const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const syncRate = activeTextDocumentTree?.documentType === 'conversation'
+      && structuredTextAudioSyncProfile.rate?.[normalizedChannel] === true
+      && structuredTextConversationSpeakers.length > 0;
+    if (syncRate) {
+      const firstSpeaker = structuredTextConversationSpeakers[0];
+      const rateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
+      return rateProfile?.speakerIds?.[normalizedChannel]?.[firstSpeaker.id]
+        || rateProfile?.speakers?.[normalizedChannel]?.[String(firstSpeaker.label || '').trim().toLowerCase()]
+        || rateProfile?.channels?.[normalizedChannel]
+        || resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel);
+    }
     const blockId = item?.blockId || item?.textId;
     const segmentId = item?.segmentId || item?.id;
     const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate?.id === blockId) || null;
@@ -770,10 +810,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       documentTree: activeTextDocumentTree,
       block,
       segment,
-      channel,
-      globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, channel)
+      channel: normalizedChannel,
+      globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel)
     });
-  }, [activeTextDocumentTree, textStructuredPreferences]);
+  }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, textStructuredPreferences]);
   const structuredTextAudioRuntimeStatusMap = useMemo(() => buildTextStructuredRuntimeAudioStatusMap({
     documentTree: activeTextDocumentTree,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -1032,6 +1072,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
   const handleStructuredTextAudioSourceModeChange = (audioSourceMode) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, audioSourceMode }));
+    setStructuredTextPlaybackSourceStatus(null);
     forceStopAll();
   };
 
@@ -2147,8 +2188,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         channel,
         preferences: structuredTextAudioGenerationPreferences
       });
+      const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+      const syncLocalToFirstSpeaker = activeTextDocumentTree?.documentType === 'conversation'
+        && structuredTextAudioSyncProfile.voice?.[normalizedChannel] === true
+        && structuredTextConversationSpeakers.length > 0;
       const customLocalVoiceId = textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
-        ? resolveTextStructuredCustomLocalAudioVoice({ documentTree: activeTextDocumentTree, block, segment, channel })
+        ? (() => {
+            if (!syncLocalToFirstSpeaker) return resolveTextStructuredCustomLocalAudioVoice({ documentTree: activeTextDocumentTree, block, segment, channel: normalizedChannel });
+            const firstSpeaker = structuredTextConversationSpeakers[0];
+            const localProfile = getTextStructuredLocalAudioProfile(activeTextDocumentTree);
+            return localProfile?.speakerIds?.[normalizedChannel]?.[firstSpeaker.id]
+              || localProfile?.speakers?.[normalizedChannel]?.[String(firstSpeaker.label || '').trim().toLowerCase()]
+              || localProfile?.channels?.[normalizedChannel]
+              || null;
+          })()
         : null;
       const localAllowed = textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL || Boolean(customLocalVoiceId);
       const runtimeAudio = localAllowed ? resolveTextStructuredRuntimeAudio({
@@ -2196,6 +2249,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           } catch { /* Browser TTS remains the final fallback */ }
         }
         if (runtimeUrl) {
+          const localOrigin = runtimeAudio.runtime?.folderBacked
+            ? 'Folder'
+            : runtimeAudio.runtime?.zipBacked
+              ? 'ZIP'
+              : runtimeAudio.runtime?.stagingBacked
+                ? 'Staging'
+                : runtimeAudio.variant?.source === 'generated'
+                  ? 'Generated'
+                  : 'Local';
+          setStructuredTextPlaybackSourceStatus({
+            source: 'local',
+            origin: localOrigin,
+            channel: normalizedChannel,
+            segmentId: item?.segmentId || item?.id || null,
+            voiceId: runtimeAudio.variant?.voiceId || customLocalVoiceId || targetVoiceId || null,
+            filename: runtimeAudio.filename || null,
+            syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
+            updatedAt: Date.now()
+          });
           const result = await executeStructuredTextRuntimeAudioPlaybackService({
             url: runtimeUrl,
             currentAudioObjRef,
@@ -2212,12 +2284,30 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     if (!targetVoice) {
+      setStructuredTextPlaybackSourceStatus({
+        source: 'unavailable',
+        origin: 'Browser TTS',
+        channel: channel === 'meaning' ? 'meaning' : 'text',
+        segmentId: item?.segmentId || item?.id || null,
+        voiceId: targetVoiceId || null,
+        syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
+        updatedAt: Date.now()
+      });
       addLog('Warn', `Text Player: ${channel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS voice is not ready; channel skipped for ${item?.segmentId || item?.id || 'segment'}.`);
       return;
     }
     if (targetVoiceId && targetVoice?.name !== targetVoiceId && item?.speaker) {
       addLog('Warn', `Text Player: speaker ${item.speaker} requested ${targetVoiceId}, unavailable in Browser TTS; using ${targetVoice.name} fallback.`);
     }
+    setStructuredTextPlaybackSourceStatus({
+      source: 'tts',
+      origin: 'Browser TTS',
+      channel: channel === 'meaning' ? 'meaning' : 'text',
+      segmentId: item?.segmentId || item?.id || null,
+      voiceId: targetVoice?.name || targetVoiceId || null,
+      syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
+      updatedAt: Date.now()
+    });
     return executeBrowserTtsPlaybackService({
       textToRead,
       overrideVoice: targetVoice,
@@ -2741,42 +2831,51 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
 
-  const handleStructuredTextSyncSpeakerVoice = useCallback(async (channel = 'text') => {
+  const handleStructuredTextSyncSpeakerVoice = useCallback(async (channel = 'text', enabled = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const speakers = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
     if (speakers.length < 2) return null;
-    const profile = activeTextDocumentTree?.metadata?.speakerVoiceProfileV2 || {};
-    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
-    const first = speakers[0];
-    const firstVoice = String(profile?.[normalizedChannel]?.[first.id] || '').trim();
-    const syncCustomLocal = textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
-    const localProfile = syncCustomLocal ? getTextStructuredLocalAudioProfile(activeTextDocumentTree) : null;
-    const firstLocalVoice = syncCustomLocal ? String(localProfile?.speakerIds?.[normalizedChannel]?.[first.id] || '').trim() : '';
-    let metadata = activeTextDocumentTree.metadata || {};
-    for (const speaker of speakers) {
-      metadata = buildTextStructuredSpeakerVoiceProfileV2Metadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, voiceName: firstVoice || null });
-      if (syncCustomLocal) metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, voiceId: firstLocalVoice || null });
-    }
-    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
-    if (result) addLog('Text Audio', `Synced ${normalizedChannel} speaker voice to ${first.label}: ${firstVoice || 'Document default'}${syncCustomLocal ? ` • custom local ${firstLocalVoice || 'Global TTS'}` : ''}.`);
-    return result;
-  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog, textStructuredPreferences.audioSourceMode]);
-
-  const handleStructuredTextSyncSpeakerRate = useCallback(async (channel = 'text') => {
-    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
+    setStructuredTextPlaybackSourceStatus(null);
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const current = getTextStructuredAudioSyncProfile(activeTextDocumentTree);
+    const nextEnabled = typeof enabled === 'boolean' ? enabled : !current.voice?.[normalizedChannel];
+    const metadata = buildTextStructuredAudioSyncProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      kind: 'voice',
+      channel: normalizedChannel,
+      enabled: nextEnabled
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio', `${normalizedChannel} voice sync ${nextEnabled ? 'ON' : 'OFF'} • followers ${nextEnabled ? `use ${speakers[0].label} without overwriting their saved voices` : 'restored to their saved voices'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSyncSpeakerRate = useCallback(async (channel = 'text', enabled = null) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const speakers = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
     if (speakers.length < 2) return null;
+    forceStopAll();
+    setStructuredTextPlaybackSourceStatus(null);
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
-    const rateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
-    const first = speakers[0];
-    const firstRate = rateProfile?.speakerIds?.[normalizedChannel]?.[first.id] || rateProfile?.channels?.[normalizedChannel] || resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel);
-    let metadata = activeTextDocumentTree.metadata || {};
-    for (const speaker of speakers) metadata = buildTextStructuredPlaybackRateProfileMetadata({ metadata, speakerId: speaker.id, channel: normalizedChannel, rate: firstRate });
-    const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
-    if (result) addLog('Text Audio', `Synced ${normalizedChannel} speaker speed to ${first.label}: ${Number(firstRate).toFixed(1)}×.`);
+    const current = getTextStructuredAudioSyncProfile(activeTextDocumentTree);
+    const nextEnabled = typeof enabled === 'boolean' ? enabled : !current.rate?.[normalizedChannel];
+    const metadata = buildTextStructuredAudioSyncProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      kind: 'rate',
+      channel: normalizedChannel,
+      enabled: nextEnabled
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio', `${normalizedChannel} speed sync ${nextEnabled ? 'ON' : 'OFF'} • followers ${nextEnabled ? `use ${speakers[0].label} without overwriting their saved speeds` : 'restored to their saved speeds'}.`);
     return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog, textStructuredPreferences]);
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextDocumentLocalAudioVoiceChange = useCallback(async (voiceId, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -4538,7 +4637,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onSpeakerDownloadVoiceChange: handleStructuredTextSpeakerDownloadVoiceChange,
     edgeHealth: structuredTextEdgeHealth,
     onEdgeHealthCheck: handleStructuredTextEdgeHealthCheck,
-    audioLibrary: structuredTextAudioLibraryControls
+    audioLibrary: structuredTextAudioLibraryControls,
+    playbackSourceStatus: structuredTextPlaybackSourceStatus
   };
 
   const renderMobileTools = () => renderMobileToolsView({
