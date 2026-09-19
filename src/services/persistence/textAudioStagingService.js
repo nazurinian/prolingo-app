@@ -11,6 +11,7 @@ import {
 } from './audioStagingIndexedDbService.js';
 import { triggerBrowserZipDownload } from '../audio/browserZipService.js';
 import { buildCanonicalTextDocumentZipFilename } from '../../domain/text/textFilenameDomain.js';
+import { buildProLingoTextAudioManifest, TEXT_AUDIO_MANIFEST_FILENAME } from '../../domain/text/textAudioManifestDomain.js';
 
 export const TEXT_AUDIO_STAGING_MODE = 'text';
 export const TEXT_AUDIO_STAGING_ZIP_MAX_BYTES = 64 * 1024 * 1024;
@@ -24,6 +25,7 @@ const segmentNo = value => {
 
 export const putTextAudioStagingBlob = async ({
   audioVariantId,
+  renderFingerprint = null,
   documentId = null,
   segmentId,
   channel,
@@ -34,9 +36,10 @@ export const putTextAudioStagingBlob = async ({
   blob,
   metadata = null
 }) => {
+  const physicalKey = clean(renderFingerprint).toLowerCase() || upper(audioVariantId);
   const record = await putAudioStagingBlob({
     mode: TEXT_AUDIO_STAGING_MODE,
-    mapKey: upper(audioVariantId),
+    mapKey: physicalKey,
     part: clean(channel).toLowerCase() || 'text',
     engine: clean(engine).toLowerCase() || 'edge',
     voiceId: clean(voiceId) || null,
@@ -48,6 +51,7 @@ export const putTextAudioStagingBlob = async ({
     bookId: upper(documentId) || null,
     metadata: {
       audioVariantId: upper(audioVariantId),
+      renderFingerprint: clean(renderFingerprint).toLowerCase() || null,
       documentId: upper(documentId) || null,
       segmentId: upper(segmentId),
       channel: clean(channel).toLowerCase() || 'text',
@@ -90,7 +94,15 @@ const splitByBytes = (records, maxBytes = TEXT_AUDIO_STAGING_ZIP_MAX_BYTES) => {
   const chunks = [];
   let current = [];
   let bytes = 0;
-  for (const record of (Array.isArray(records) ? records : []).filter(record => record?.hasBlob)) {
+  const seenPhysical = new Set();
+  const uniqueRecords = (Array.isArray(records) ? records : []).filter(record => {
+    if (!record?.hasBlob) return false;
+    const key = clean(record?.metadata?.renderFingerprint || record?.mapKey || record?.id).toLowerCase();
+    if (!key || seenPhysical.has(key)) return false;
+    seenPhysical.add(key);
+    return true;
+  });
+  for (const record of uniqueRecords) {
     const size = Math.max(0, Number(record?.size || 0));
     if (current.length && bytes + size > maxBytes) {
       chunks.push({ records: current, bytes });
@@ -125,6 +137,30 @@ export const exportTextAudioStagingZipChunks = async ({
       exported.push(record);
     }
     if (!entries.length) continue;
+    const manifest = buildProLingoTextAudioManifest({
+      entries: exported
+        .filter(record => clean(record?.metadata?.renderFingerprint || record?.mapKey).toLowerCase().startsWith('rf-sha256-'))
+        .map(record => ({
+          rf: record?.metadata?.renderFingerprint || record?.mapKey,
+          filename: record.filename || `${record.mapKey}.mp3`,
+          mimeType: record.mimeType || null,
+          size: Number(record.size || 0),
+          render: record?.metadata?.audioRenderDescriptorV1 || record?.metadata?.renderDescriptor || null,
+          references: [{
+            audioVariantId: record?.metadata?.audioVariantId || null,
+            documentId: record?.metadata?.documentId || record?.bookId || null,
+            segmentId: record?.metadata?.segmentId || record?.stableId || null,
+            channel: record?.metadata?.channel || record?.part || null
+          }]
+        })),
+      source: { kind: 'text-staging-export', documentTitle }
+    });
+    if (manifest.entries.length) {
+      entries.push({
+        filename: TEXT_AUDIO_MANIFEST_FILENAME,
+        blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' })
+      });
+    }
     const voiceIds = [...new Set(exported.map(record => record.voiceId).filter(Boolean))];
     const filename = buildCanonicalTextDocumentZipFilename({
       documentTitle,

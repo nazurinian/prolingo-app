@@ -9,6 +9,8 @@ import {
 } from '../../domain/text/textDatabaseBackupDomain.js';
 import { openTextLibraryDatabase } from './textLibraryIndexedDbService.js';
 import { buildCanonicalTextDatabaseBackupFilename } from '../../domain/text/textFilenameDomain.js';
+import { backfillTextGlobalUids } from '../../domain/text/textGlobalIdentityDomain.js';
+import { normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
 
 const MAX_TEXT_DATABASE_BACKUP_BYTES = 50 * 1024 * 1024;
 
@@ -110,7 +112,9 @@ export const readProLingoTextDatabaseBackupFile = async file => {
 
 export const executeProLingoTextDatabaseReplaceRestore = async ({ backup: backupCandidate, now = Date.now() }) => {
   const prepared = validateProLingoTextDatabaseBackup(backupCandidate);
-  const { backup, snapshot } = prepared;
+  const { backup } = prepared;
+  const globalUidBackfill = backfillTextGlobalUids(prepared.snapshot);
+  const snapshot = normalizeTextLibraryRuntimeSnapshot(globalUidBackfill.snapshot);
   const db = await openTextLibraryDatabase();
   try {
     const tx = db.transaction(allStoreNames(), 'readwrite');
@@ -141,6 +145,7 @@ export const executeProLingoTextDatabaseReplaceRestore = async ({ backup: backup
       backup,
       snapshot,
       diagnostics: resolveProLingoTextDatabaseBackupDiagnostics(backup),
+      globalUidBackfill: globalUidBackfill.counts,
       restorePolicy: 'replace',
       restoredAt: new Date(now).toISOString()
     };

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Download, FileDown, Package, Play, Square, Users, Volume2, X } from 'lucide-react';
+import { CheckSquare, ChevronDown, ChevronRight, Download, FileDown, Package, Play, Square, Users, Volume2, X } from 'lucide-react';
 import {
   collectTextStructuredCardSpeakers,
   getTextStructuredVoiceOverrideLabel,
@@ -104,11 +104,13 @@ export const TextStructuredCardAudioPanel = ({
   onGenerateCardAudio,
   onCancelGeneration,
   onExportSegmentAudio,
-  onExportCardZip
+  onExportCardZip,
+  onExportFullCardAudio
 }) => {
   const [showSegments, setShowSegments] = useState(false);
   const [showParagraphOverrides, setShowParagraphOverrides] = useState(false);
   const [expandedSpeakerKey, setExpandedSpeakerKey] = useState(null);
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState([]);
   const overlayRef = useLiveOverlayViewportRef(true);
   const segments = Array.isArray(block?.segments) ? block.segments : [];
   const cardProfile = getTextStructuredVoiceOverrideProfile(block);
@@ -130,6 +132,10 @@ export const TextStructuredCardAudioPanel = ({
     });
     return result;
   }, [segments, audioCoverageMap]);
+
+  useEffect(() => {
+    setSelectedSegmentIds([]);
+  }, [block?.id]);
 
   useEffect(() => {
     const handleKeyDown = event => {
@@ -320,8 +326,17 @@ export const TextStructuredCardAudioPanel = ({
           {showSegments && <div className="divide-y divide-slate-100 dark:divide-slate-800">
             {segments.map((segment, index) => {
               const segmentProfile = getTextStructuredVoiceOverrideProfile(segment);
+              const selectedForSplitExport = selectedSegmentIds.includes(segment.id);
               return <div key={segment.id} className="p-3">
                 <div className="flex items-start gap-2 mb-2">
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setSelectedSegmentIds(current => current.includes(segment.id) ? current.filter(id => id !== segment.id) : [...current, segment.id])}
+                    className={`mt-0.5 shrink-0 rounded p-0.5 ${selectedForSplitExport ? 'text-emerald-600' : 'text-slate-300 dark:text-slate-600'} disabled:opacity-35`}
+                    title={selectedForSplitExport ? 'Remove this Sentence from Selected Split ZIP' : 'Add this Sentence to Selected Split ZIP'}
+                    aria-label={selectedForSplitExport ? 'Unselect sentence for split export' : 'Select sentence for split export'}
+                  >{selectedForSplitExport ? <CheckSquare className="h-3.5 w-3.5"/> : <Square className="h-3.5 w-3.5"/>}</button>
                   <span className="text-[8px] font-black text-slate-400">{index + 1}</span>
                   <p className="min-w-0 flex-1 text-[9px] font-semibold text-slate-700 dark:text-slate-200 truncate">{segment.speaker ? `${segment.speaker} • ` : ''}{clue(segment, 'text')}</p>
                 </div>
@@ -384,7 +399,10 @@ export const TextStructuredCardAudioPanel = ({
             <button type="button" disabled={disabled || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} className="min-h-10 px-3 py-2 rounded-xl bg-violet-600 text-white text-[9px] font-black disabled:opacity-35"><Download className="w-3 h-3 inline mr-1"/>Generate Missing</button>
             <button type="button" disabled={disabled || !cardCoverage?.total} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="min-h-10 px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-black disabled:opacity-35">Regenerate All</button>
           </>}
-          <button type="button" disabled={disabled || !cardCoverage?.total || Boolean(cardCoverage?.needDownload)} onClick={() => onExportCardZip?.(block.id)} className="min-h-10 px-2.5 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[8px] font-black disabled:opacity-35" title={cardCoverage?.needDownload ? 'Generate/reconnect every missing exact-voice slot before full Card ZIP export.' : 'Export complete Card audio ZIP'}><Package className="w-3 h-3 inline mr-1"/>CARD ZIP</button>
+          <button type="button" disabled={disabled || !cardCoverage?.total || Boolean(cardCoverage?.needDownload)} onClick={() => onExportCardZip?.(block.id)} className="min-h-10 px-2.5 py-2 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[8px] font-black disabled:opacity-35" title={cardCoverage?.needDownload ? 'Generate/reconnect every missing exact-voice slot before Split ZIP export.' : 'Export RF-deduplicated Segment audio + manifest'}><Package className="w-3 h-3 inline mr-1"/>SPLIT ZIP</button>
+          <button type="button" disabled={disabled || !selectedSegmentIds.length} onClick={() => onExportCardZip?.(block.id, { segmentIds: selectedSegmentIds })} className="min-h-10 px-2.5 py-2 rounded-xl border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-[8px] font-black disabled:opacity-35" title="Export only selected Sentence Segments. The export still requires every selected EN/ID slot with content to be exact-RF Ready."><Package className="w-3 h-3 inline mr-1"/>SELECTED ZIP • {selectedSegmentIds.length}</button>
+          <button type="button" disabled={disabled || !cardChannelCoverage.text.total || cardChannelCoverage.text.ready !== cardChannelCoverage.text.total} onClick={() => onExportFullCardAudio?.(block.id, 'text')} className="min-h-10 px-2.5 py-2 rounded-xl border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[8px] font-black disabled:opacity-35" title="Derived full EN WAV from ordered Ready Segment audio; creates no new AudioVariant"><FileDown className="w-3 h-3 inline mr-1"/>FULL EN</button>
+          <button type="button" disabled={disabled || !cardChannelCoverage.meaning.total || cardChannelCoverage.meaning.ready !== cardChannelCoverage.meaning.total} onClick={() => onExportFullCardAudio?.(block.id, 'meaning')} className="min-h-10 px-2.5 py-2 rounded-xl border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[8px] font-black disabled:opacity-35" title="Derived full ID WAV from ordered Ready Segment audio; creates no new AudioVariant"><FileDown className="w-3 h-3 inline mr-1"/>FULL ID</button>
         </div>
       </div>
     </div>

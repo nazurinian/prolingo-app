@@ -1,15 +1,20 @@
-export const APP_VERSION = '6.0.2-beta.1';
+export const APP_VERSION = '6.0.3-beta.3';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.2-B-SENTENCE-AUTHORING-UI';
-export const APP_CHECKPOINT_LABEL = 'V6.0.2-B • Sentence Authoring UI';
-export const APP_RELEASE_NAME = 'Paragraph Sentence Authoring UI';
+export const APP_CHECKPOINT_ID = 'V6.0.3-D3-A4-DL-B1-DATA-AUDIO-FOUNDATION';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Data/Audio Lifecycle Foundation';
+export const APP_RELEASE_NAME = 'Text Data/Audio Lifecycle Foundation';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Paragraph Cards expose preview-safe Auto Split, manual Split Here, adjacent Merge, and stable-ID Reorder on top of the accepted v6.0.2-A sentence mutation foundation.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: D3-D4 add deterministic external duplicate/update/conflict reconciliation; A0-A4 add RF render identity, shared Text Staging, manifest/Folder/ZIP portability and GC; DL1-DL2/B1 add RF-deduplicated Split/Full download and Batch integration.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.3 completes the frozen Data/Audio foundation through D3-D4, A0-A4, DL1-DL2 and B1: canonical external fingerprints/reconciliation, RF-centric shared physical audio, manifest-first cross-browser Folder/ZIP reconnect, reference-derived Text Staging GC, selected/full split downloads, derived Full Card WAV, and Batch physical-RF dedup while keeping Table frozen and Text DB/schema v1',
+  'v6.0.3-beta.1 implements D0/D1 of the frozen Data+Audio contract: additive globally portable UIDs for Collection/Workspace/Card/Segment/Speaker/AudioVariant, one-time persistent backfill for existing Text data, UID-preserving ProLingo Attach/Sync, new-UID Import as Copy, and a contract regression harness while retaining Text DB/schema v1 and all legacy local IDs as IndexedDB keys',
+  'v6.0.2-C-HF2 replaces atomic sentence buttons with naturally wrapping inline sentence targets, so a sentence can continue across lines without forced line breaks; Paragraph text uses inter-word justification with a normal left-aligned final line while active playback highlighting follows every wrapped fragment of the current sentence',
+  'v6.0.2-C-HF1 refines Split Mode presentation: Paragraph layout remains visually identical to normal mode, sentence click targets have no persistent boxes/borders/padding, and only the currently playing sentence receives a temporary colour highlight',
+  'v6.0.2-C keeps Paragraph content visually unified while optional Split Mode renders the same stable sentence Segments inline as clickable Segment-only playback boxes with active-sentence highlighting; detailed sentence audio controls remain available behind an explicit disclosure and no Text DB/schema contract changes',
   'v6.0.2-B exposes the accepted Paragraph Sentence foundation in the Card editor with preview-safe Auto Split, cursor-based Split Here, adjacent Merge, and explicit stable-ID Reorder controls without changing Text DB schema v1',
   'v6.0.2-A adds the Paragraph Sentence Authoring foundation: conservative sentence-split proposals, strict EN/ID alignment checks, stable-ID split/merge mutation commands, existing reorder reuse, and explicit stale-audio invalidation without a Text DB schema migration',
   'v6.0.1 cleans the Text DATA workspace without changing data contracts: Card/Segment editing is visible only in LIBRARY, redundant mode summary cards are removed, Manage no longer repeats an impossible active-Collection delete action, and Workspace terminology is clarified',

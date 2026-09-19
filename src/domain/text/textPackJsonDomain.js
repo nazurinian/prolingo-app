@@ -11,11 +11,14 @@ import {
   normalizeTextLibraryRuntimeSnapshot
 } from './textLibraryDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
+import { backfillTextGlobalUids } from './textGlobalIdentityDomain.js';
 
 export const PROLINGO_TEXT_PACK_TYPE = 'prolingo-text-pack';
 export const PROLINGO_TEXT_PACK_VERSION = 1;
 export const PROLINGO_TEXT_PACK_IMPORT_MODE = 'attach-sync';
 export const PROLINGO_TEXT_PACK_COPY_MODE = 'copy';
+export const PROLINGO_TEXT_PACK_UID_MODE_PRESERVE = 'preserve';
+export const PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY = 'new-copy';
 export const PROLINGO_TEXT_PACK_SCOPE_TYPES = Object.freeze(['document', 'collection']);
 
 const sortByOrderThenId = records => [...records].sort((a, b) => (a.order - b.order) || String(a.id).localeCompare(String(b.id)));
@@ -214,6 +217,28 @@ const createIdAssignment = ({ kind, incomingRecords, localRecords, counter, text
   return { map, highWater };
 };
 
+const stripSpeakerRegistryGlobalUids = metadata => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  const source = metadata.speakerRegistryV1;
+  const entries = Array.isArray(source) ? source : Array.isArray(source?.speakers) ? source.speakers : null;
+  if (!entries) return metadata;
+  const cleanedEntries = entries.map(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+    const next = { ...entry };
+    delete next.uid;
+    return next;
+  });
+  return {
+    ...metadata,
+    speakerRegistryV1: Array.isArray(source) ? cleanedEntries : { ...source, speakers: cleanedEntries }
+  };
+};
+
+const importedUid = (record, uidMode) => uidMode === PROLINGO_TEXT_PACK_UID_MODE_PRESERVE ? record?.uid : null;
+const importedMetadata = (record, uidMode) => uidMode === PROLINGO_TEXT_PACK_UID_MODE_PRESERVE
+  ? record?.metadata
+  : stripSpeakerRegistryGlobalUids(record?.metadata);
+
 const sourceMetadata = ({ originalMetadata, pack, sourceId, entity, now, extra = {} }) => ({
   ...(originalMetadata && typeof originalMetadata === 'object' && !Array.isArray(originalMetadata) ? originalMetadata : {}),
   prolingoTextPackSource: {
@@ -230,9 +255,10 @@ const sourceMetadata = ({ originalMetadata, pack, sourceId, entity, now, extra =
 
 const mapToObject = map => Object.fromEntries([...map.entries()]);
 
-export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: packCandidate, now = Date.now() }) => {
+export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: packCandidate, now = Date.now(), uidMode = PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY }) => {
   const local = normalizeTextLibraryRuntimeSnapshot(localCandidate);
   const { pack, snapshot: portable } = validateProLingoTextPack(packCandidate);
+  if (![PROLINGO_TEXT_PACK_UID_MODE_PRESERVE, PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY].includes(uidMode)) throw new Error(`Unsupported Text Pack UID mode: ${uidMode}`);
   const floor = computeCounterFloor(local);
 
   const collectionAssignment = createIdAssignment({ kind: 'COLLECTION', incomingRecords: portable.collections, localRecords: local.collections, counter: floor.collection });
@@ -247,8 +273,9 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
   const importedCollections = sortByOrderThenId(portable.collections).map((record, index) => createTextCollectionRecord({
     ...record,
     id: collectionAssignment.map.get(record.id),
+    uid: importedUid(record, uidMode),
     order: localCollectionMaxOrder + index + 1,
-    metadata: sourceMetadata({ originalMetadata: record.metadata, pack, sourceId: record.id, entity: 'collection', now })
+    metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'collection', now })
   }));
 
   const docsByCollection = new Map();
@@ -265,10 +292,11 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       importedDocuments.push(createTextDocumentRecord({
         ...record,
         id: documentAssignment.map.get(record.id),
+        uid: importedUid(record, uidMode),
         collectionId: mappedCollectionId,
         order: mappedCollectionId ? index + 1 : localRootDocumentMaxOrder + index + 1,
         metadata: sourceMetadata({
-          originalMetadata: record.metadata,
+          originalMetadata: importedMetadata(record, uidMode),
           pack,
           sourceId: record.id,
           entity: 'document',
@@ -293,9 +321,10 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     blocks.forEach((record, index) => importedBlocks.push(createTextBlockRecord({
       ...record,
       id: blockAssignment.map.get(record.id),
+      uid: importedUid(record, uidMode),
       documentId: documentAssignment.map.get(sourceDocumentId),
       order: index + 1,
-      metadata: sourceMetadata({ originalMetadata: record.metadata, pack, sourceId: record.id, entity: 'block', now })
+      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'block', now })
     })));
   }
 
@@ -310,19 +339,21 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     segments.forEach((record, index) => importedSegments.push(createTextSegmentRecord({
       ...record,
       id: segmentAssignment.map.get(record.id),
+      uid: importedUid(record, uidMode),
       documentId: documentAssignment.map.get(record.documentId),
       blockId: blockAssignment.map.get(sourceBlockId),
       order: index + 1,
-      metadata: sourceMetadata({ originalMetadata: record.metadata, pack, sourceId: record.id, entity: 'segment', now })
+      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'segment', now })
     })));
   }
 
   const importedAudioVariants = [...portable.audioVariants].sort((a, b) => a.id.localeCompare(b.id)).map(record => createTextAudioVariantRecord({
     ...record,
     id: audioAssignment.map.get(record.id),
+    uid: importedUid(record, uidMode),
     segmentId: segmentAssignment.map.get(record.segmentId),
     metadata: sourceMetadata({
-      originalMetadata: record.metadata,
+      originalMetadata: importedMetadata(record, uidMode),
       pack,
       sourceId: record.id,
       entity: 'audioVariant',
@@ -339,7 +370,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     audioVariant: audioAssignment.highWater
   });
 
-  const snapshot = normalizeTextLibraryRuntimeSnapshot({
+  const preliminarySnapshot = {
     ...local,
     counters,
     collections: [...local.collections, ...importedCollections],
@@ -347,10 +378,15 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     blocks: [...local.blocks, ...importedBlocks],
     segments: [...local.segments, ...importedSegments],
     audioVariants: [...local.audioVariants, ...importedAudioVariants]
-  });
+  };
+  // Backfill before runtime sorting so established local UIDs always win a rare
+  // UID collision and only the incoming copy/attachment is re-keyed globally.
+  const globalUidBackfill = backfillTextGlobalUids(preliminarySnapshot);
+  const snapshot = normalizeTextLibraryRuntimeSnapshot(globalUidBackfill.snapshot);
 
   return {
     snapshot,
+    globalUidBackfill: globalUidBackfill.counts,
     imported: {
       collectionIds: importedCollections.map(record => record.id),
       documentIds: importedDocuments.map(record => record.id),
@@ -373,6 +409,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       audioVariants: importedAudioVariants.length
     },
     packageId: pack.packageId,
-    importMode: PROLINGO_TEXT_PACK_COPY_MODE
+    importMode: PROLINGO_TEXT_PACK_COPY_MODE,
+    uidMode
   };
 };

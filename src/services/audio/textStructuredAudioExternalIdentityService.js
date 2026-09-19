@@ -31,9 +31,11 @@ export const parseTextStructuredLegacyAudioFilename = filename => {
   };
 };
 
-export const buildTextStructuredExternalAudioIdentityIndex = ({ audioVariants = [], segments = [] } = {}) => {
+export const buildTextStructuredExternalAudioIdentityIndex = ({ audioVariants = [], segments = [], requirements = [] } = {}) => {
   const variantsByCurrentId = new Map();
   const variantsBySourceId = new Map();
+  const variantsByRenderFingerprint = new Map();
+  const requirementsByRenderFingerprint = new Map();
   const segmentsByCurrentId = new Map();
   const segmentsBySourceId = new Map();
 
@@ -44,9 +46,23 @@ export const buildTextStructuredExternalAudioIdentityIndex = ({ audioVariants = 
   (Array.isArray(audioVariants) ? audioVariants : []).forEach(variant => {
     if (variant?.id) variantsByCurrentId.set(upper(variant.id), variant);
     if (sourceEntity(variant) === 'audiovariant' && sourceId(variant)) pushIndex(variantsBySourceId, sourceId(variant), variant);
+    const rf = lower(variant?.metadata?.audioRenderFingerprintV1);
+    if (rf) {
+      const list = variantsByRenderFingerprint.get(rf) || [];
+      list.push(variant);
+      variantsByRenderFingerprint.set(rf, list);
+    }
   });
 
-  return { variantsByCurrentId, variantsBySourceId, segmentsByCurrentId, segmentsBySourceId };
+  (Array.isArray(requirements) ? requirements : []).forEach(requirement => {
+    const rf = lower(requirement?.renderFingerprint);
+    if (!rf) return;
+    const list = requirementsByRenderFingerprint.get(rf) || [];
+    list.push(requirement);
+    requirementsByRenderFingerprint.set(rf, list);
+  });
+
+  return { variantsByCurrentId, variantsBySourceId, variantsByRenderFingerprint, requirementsByRenderFingerprint, segmentsByCurrentId, segmentsBySourceId };
 };
 
 const segmentMatchesParsedIdentity = ({ variant, parsed, index }) => {
@@ -67,15 +83,26 @@ const variantMatchesParsedDetails = ({ variant, parsed }) => {
 
 export const resolveTextStructuredExternalAudioVariant = ({ filename, parsed = null, index }) => {
   const identity = parsed || parseTextStructuredGeneratedFilename(filename);
-  if (!identity || !index) return { status: 'unrecognized', parsed: identity, variant: null, aliasMatched: false };
+  if (!identity || !index) return { status: 'unrecognized', parsed: identity, variant: null, variants: [], aliasMatched: false };
+
+  if (identity.version === 2 && identity.renderFingerprint) {
+    const rf = lower(identity.renderFingerprint);
+    const variants = index.variantsByRenderFingerprint.get(rf) || [];
+    const requirements = (index.requirementsByRenderFingerprint?.get(rf) || []).filter(requirement => !variants.some(variant =>
+      upper(variant?.segmentId) === upper(requirement?.segmentId)
+      && lower(variant?.channel) === lower(requirement?.channel)
+    ));
+    if (!variants.length && !requirements.length) return { status: 'unmatched-rf', parsed: identity, variant: null, variants: [], requirements: [], aliasMatched: false, rfMatched: true };
+    return { status: variants.length ? 'matched-rf' : 'matched-requirement', parsed: identity, variant: variants[0] || null, variants, requirements, aliasMatched: false, rfMatched: true };
+  }
 
   const exact = index.variantsByCurrentId.get(upper(identity.audioVariantId));
   if (exact) {
     const segmentMatch = segmentMatchesParsedIdentity({ variant: exact, parsed: identity, index });
     if (!segmentMatch.matched || !variantMatchesParsedDetails({ variant: exact, parsed: identity })) {
-      return { status: 'identity-mismatch', parsed: identity, variant: null, aliasMatched: false };
+      return { status: 'identity-mismatch', parsed: identity, variant: null, variants: [], aliasMatched: false };
     }
-    return { status: 'matched', parsed: identity, variant: exact, aliasMatched: segmentMatch.aliasMatched };
+    return { status: 'matched', parsed: identity, variant: exact, variants: [exact], aliasMatched: segmentMatch.aliasMatched };
   }
 
   const aliases = index.variantsBySourceId.get(upper(identity.audioVariantId)) || [];
@@ -83,8 +110,8 @@ export const resolveTextStructuredExternalAudioVariant = ({ filename, parsed = n
     .map(variant => ({ variant, segmentMatch: segmentMatchesParsedIdentity({ variant, parsed: identity, index }) }))
     .filter(item => item.segmentMatch.matched && variantMatchesParsedDetails({ variant: item.variant, parsed: identity }));
   if (candidates.length === 1) {
-    return { status: 'matched', parsed: identity, variant: candidates[0].variant, aliasMatched: true };
+    return { status: 'matched', parsed: identity, variant: candidates[0].variant, variants: [candidates[0].variant], aliasMatched: true };
   }
-  if (candidates.length > 1) return { status: 'alias-collision', parsed: identity, variant: null, aliasMatched: true };
-  return { status: 'missing-metadata', parsed: identity, variant: null, aliasMatched: false };
+  if (candidates.length > 1) return { status: 'alias-collision', parsed: identity, variant: null, variants: [], aliasMatched: true };
+  return { status: 'missing-metadata', parsed: identity, variant: null, variants: [], aliasMatched: false };
 };

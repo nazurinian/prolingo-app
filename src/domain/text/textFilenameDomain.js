@@ -83,3 +83,34 @@ export const buildCanonicalTextConsolidatedZipFilename = ({ documentTitle = 'Tex
   if (partNo) base.push(`PART_${String(partNo).padStart(2, '0')}`);
   return `${join(...base)}.zip`;
 };
+
+export const TEXT_AUDIO_MANIFEST_FILENAME = 'prolingo-text-audio-manifest.json';
+
+export const normalizeTextRenderFingerprint = value => {
+  const raw = clean(value).toLowerCase();
+  const match = raw.match(/^(?:rf-)?sha256-([0-9a-f]{64})$/i) || raw.match(/^rf_([0-9a-f]{64})$/i);
+  return match ? `rf-sha256-${match[1].toLowerCase()}` : null;
+};
+
+export const buildCanonicalTextRenderAudioFilename = ({ renderFingerprint, engine = null, voiceId = null, extension = 'mp3' } = {}) => {
+  const normalized = normalizeTextRenderFingerprint(renderFingerprint);
+  if (!normalized) throw new Error('Canonical Text audio filename v2 requires a valid RF SHA-256 fingerprint');
+  const hash = normalized.slice('rf-sha256-'.length).toUpperCase();
+  const ext = sanitizeTextFilenameToken(String(extension || 'mp3').replace(/^\.+/, '').toLowerCase(), 'mp3', 8);
+  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId) : null].filter(Boolean);
+  return `${join(`RF_${hash}`, ...debug)}.${ext}`;
+};
+
+export const parseCanonicalTextRenderAudioFilename = filename => {
+  const name = clean(filename).split('/').filter(Boolean).pop() || '';
+  const match = name.match(/^RF_([0-9A-F]{64})(?:__([A-Za-z0-9._-]+))?(?:__([A-Za-z0-9._+-]+))?\.(mp3|wav|ogg|webm)$/i);
+  if (!match) return null;
+  return {
+    version: 2,
+    renderFingerprint: `rf-sha256-${match[1].toLowerCase()}`,
+    engineToken: match[2] ? match[2].toLowerCase() : null,
+    voiceToken: match[3] || null,
+    extension: match[4].toLowerCase(),
+    filename: name
+  };
+};

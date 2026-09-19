@@ -11,6 +11,7 @@ import {
 } from './textLibraryDomain.js';
 import { validateProLingoTextPack } from './textPackJsonDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
+import { backfillTextGlobalUids } from './textGlobalIdentityDomain.js';
 
 export const TEXT_SOURCE_ATTACHMENT_VERSION = 1;
 export const TEXT_SOURCE_ATTACHMENT_STATUS = Object.freeze({
@@ -32,6 +33,26 @@ const stripRuntimeMetadata = metadata => {
   const next = { ...metadata };
   delete next.prolingoTextPackSource;
   return next;
+};
+
+const preserveSpeakerRegistryGlobalUids = (incomingMetadata, existingMetadata) => {
+  const incoming = incomingMetadata && typeof incomingMetadata === 'object' && !Array.isArray(incomingMetadata) ? incomingMetadata : {};
+  const existing = existingMetadata && typeof existingMetadata === 'object' && !Array.isArray(existingMetadata) ? existingMetadata : {};
+  const incomingSource = incoming.speakerRegistryV1;
+  const existingSource = existing.speakerRegistryV1;
+  const incomingEntries = Array.isArray(incomingSource) ? incomingSource : Array.isArray(incomingSource?.speakers) ? incomingSource.speakers : null;
+  const existingEntries = Array.isArray(existingSource) ? existingSource : Array.isArray(existingSource?.speakers) ? existingSource.speakers : [];
+  if (!incomingEntries) return incoming;
+  const existingUidById = new Map(existingEntries.filter(entry => entry?.id && entry?.uid).map(entry => [String(entry.id), entry.uid]));
+  const nextEntries = incomingEntries.map(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+    const preservedUid = existingUidById.get(String(entry.id));
+    return preservedUid ? { ...entry, uid: preservedUid } : entry;
+  });
+  return {
+    ...incoming,
+    speakerRegistryV1: Array.isArray(incomingSource) ? nextEntries : { ...incomingSource, speakers: nextEntries }
+  };
 };
 
 const stableValue = value => {
@@ -260,13 +281,15 @@ const buildWorkingIdMap = ({ local, pack, attachment }) => {
 };
 
 const mappedRecord = ({ group, sourceRecord, localId, idMap, pack, attachmentId, existing, now }) => {
+  const sourceMetadata = preserveSpeakerRegistryGlobalUids(sourceRecord.metadata, existing?.metadata);
   const base = {
     ...sourceRecord,
     id: localId,
+    uid: existing?.uid || sourceRecord.uid,
     createdAt: existing?.createdAt ?? sourceRecord.createdAt ?? now,
     updatedAt: now,
     metadata: sourceProvenance({
-      originalMetadata: sourceRecord.metadata,
+      originalMetadata: sourceMetadata,
       pack,
       attachmentId,
       sourceId: sourceRecord.id,
@@ -452,7 +475,16 @@ export const planTextSourceSync = ({ localSnapshot: localCandidate, pack: packCa
   if (activeDocumentId && !nextGroups.documents.some(record => record.id === activeDocumentId)) {
     activeDocumentId = [...nextGroups.documents].sort((a, b) => (a.order - b.order) || a.id.localeCompare(b.id))[0]?.id || null;
   }
-  const snapshot = normalizeTextLibraryRuntimeSnapshot({ ...local, ...nextGroups, counters, activeDocumentId });
+  const preliminarySnapshot = { ...local, ...nextGroups, counters, activeDocumentId };
+  const globalUidBackfill = backfillTextGlobalUids(preliminarySnapshot);
+  const snapshot = normalizeTextLibraryRuntimeSnapshot(globalUidBackfill.snapshot);
+  ENTITY_GROUPS.forEach(([group]) => {
+    const finalById = recordMap(snapshot[group]);
+    Object.keys(upsert[group]).forEach(localId => {
+      const record = finalById.get(localId);
+      if (record) upsert[group][localId] = record;
+    });
+  });
 
   const previousBaseline = attachment.baseline || emptyMapGroup();
   const nextBaseline = emptyMapGroup();
@@ -485,7 +517,7 @@ export const planTextSourceSync = ({ localSnapshot: localCandidate, pack: packCa
       audioVariants: pack.audioVariants.length
     }
   };
-  return { ok: true, conflict: false, snapshot, attachment: nextAttachment, upsert, remove, stats, localChanged };
+  return { ok: true, conflict: false, snapshot, attachment: nextAttachment, upsert, remove, stats, localChanged, globalUidBackfill: globalUidBackfill.counts };
 };
 
 const assertAttachmentCleanForRemoval = ({ local, attachment }) => {

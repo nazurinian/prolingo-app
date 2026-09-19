@@ -7,6 +7,7 @@ import {
 import { applyTextLibraryCommand } from '../../domain/text/textLibraryCommandDomain.js';
 import { createTextAudioVariantRecord, formatTextLibraryId, normalizeTextIdCounters, normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
 import { getTextStructuredAudioVariantKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
+import { createTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from '../../domain/text/textGlobalIdentityDomain.js';
 import { openTextLibraryDatabase } from './textLibraryIndexedDbService.js';
 
 const requestToPromise = request => new Promise((resolve, reject) => {
@@ -143,6 +144,7 @@ export const executeTextAudioVariantUpsert = async payload => {
     if (existing) {
       record = createTextAudioVariantRecord({
         ...existing,
+        uid: existing.uid || createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT),
         ...identity,
         language: payload?.language === undefined ? existing.language : payload.language,
         filename: payload?.filename === undefined ? existing.filename : payload.filename,
@@ -155,6 +157,7 @@ export const executeTextAudioVariantUpsert = async payload => {
       counters = { ...counters, audioVariant: Number(counters.audioVariant || 0) + 1 };
       record = createTextAudioVariantRecord({
         id: formatTextLibraryId('AUDIO_VARIANT', counters.audioVariant),
+        uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT),
         ...identity,
         language: payload?.language,
         filename: payload?.filename,

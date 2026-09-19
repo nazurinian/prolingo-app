@@ -15,6 +15,7 @@ import {
 } from './textLibraryDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
+import { createTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from './textGlobalIdentityDomain.js';
 import {
   buildTextParagraphSentenceAudioInvalidationMetadata,
   buildTextParagraphSentenceMutationMetadata,
@@ -62,6 +63,14 @@ const counterKeyByKind = Object.freeze({
   AUDIO_VARIANT: 'audioVariant'
 });
 
+const globalUidKindByLocalKind = Object.freeze({
+  COLLECTION: TEXT_GLOBAL_UID_KINDS.COLLECTION,
+  DOCUMENT: TEXT_GLOBAL_UID_KINDS.WORKSPACE,
+  BLOCK: TEXT_GLOBAL_UID_KINDS.CARD,
+  SEGMENT: TEXT_GLOBAL_UID_KINDS.SEGMENT,
+  AUDIO_VARIANT: TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT
+});
+
 const normalizeTitle = (value, fallback) => {
   const text = String(value ?? '').trim();
   return text || fallback;
@@ -93,11 +102,13 @@ const floorCountersFromSnapshot = snapshotCandidate => {
 
 const allocateIdentity = (snapshot, kind) => {
   const key = counterKeyByKind[kind];
-  if (!key) throw new Error(`Unsupported Text command identity kind: ${kind}`);
+  const globalKind = globalUidKindByLocalKind[kind];
+  if (!key || !globalKind) throw new Error(`Unsupported Text command identity kind: ${kind}`);
   const counters = floorCountersFromSnapshot(snapshot);
   counters[key] += 1;
   return {
     id: formatTextLibraryId(kind, counters[key]),
+    uid: createTextGlobalUid(globalKind),
     counters
   };
 };
@@ -199,6 +210,7 @@ const createCollection = (snapshot, payload, now) => {
   const allocated = allocateIdentity(snapshot, 'COLLECTION');
   const record = createTextCollectionRecord({
     id: allocated.id,
+    uid: allocated.uid,
     title: normalizeTitle(payload?.title, 'Untitled Collection'),
     order: maxOrder(snapshot.collections) + 1,
     createdAt: now,
@@ -260,6 +272,7 @@ const createDocument = (snapshot, payload, now) => {
     : (payload?.documentType || 'paragraph');
   const record = createTextDocumentRecord({
     id: allocated.id,
+    uid: allocated.uid,
     title: normalizeTitle(payload?.title, 'Untitled Text'),
     collectionId,
     order: maxOrder(siblings) + 1,
@@ -354,6 +367,7 @@ const createBlock = (snapshot, payload, now) => {
   assertBlockTypeAllowed(document, blockType);
   const record = createTextBlockRecord({
     id: allocated.id,
+    uid: allocated.uid,
     documentId: document.id,
     order: maxOrder(siblings) + 1,
     blockType,
@@ -434,6 +448,7 @@ const createSegment = (snapshot, payload, now) => {
     : document.metadata;
   const record = createTextSegmentRecord({
     id: allocated.id,
+    uid: allocated.uid,
     documentId: block.documentId,
     blockId: block.id,
     order: maxOrder(siblings) + 1,
@@ -482,12 +497,32 @@ const updateSegment = (snapshot, payload, now) => {
     updatedAt: now,
     metadata: segmentMetadata
   });
+  const textChanged = payload?.text !== undefined && String(current.text || '') !== String(record.text || '');
+  const meaningChanged = payload?.meaning !== undefined && String(current.meaning || '') !== String(record.meaning || '');
+  const nextAudioVariants = snapshot.audioVariants.map(variant => {
+    if (variant.segmentId !== record.id) return variant;
+    const channelChanged = (variant.channel === 'text' && textChanged) || (variant.channel === 'meaning' && meaningChanged);
+    if (!channelChanged) return variant;
+    return {
+      ...variant,
+      updatedAt: now,
+      metadata: buildTextParagraphSentenceAudioInvalidationMetadata({
+        metadata: variant.metadata,
+        reason: `segment-${variant.channel}-content-update`,
+        at: now
+      })
+    };
+  });
   return finalize({
     ...snapshot,
     segments: snapshot.segments.map(item => item.id === record.id ? record : item),
+    audioVariants: nextAudioVariants,
     blocks: snapshot.blocks.map(item => item.id === record.blockId ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === record.documentId ? { ...item, metadata: documentMetadata, updatedAt: now } : item)
-  }, { entity: 'segment', action: 'update', id: record.id, blockId: record.blockId, documentId: record.documentId });
+  }, {
+    entity: 'segment', action: 'update', id: record.id, blockId: record.blockId, documentId: record.documentId,
+    invalidatedAudioVariantIds: nextAudioVariants.filter((variant, index) => variant !== snapshot.audioVariants[index]).map(variant => variant.id)
+  });
 };
 
 const deleteSegment = (snapshot, payload, now) => {
@@ -550,6 +585,7 @@ const splitParagraphSegment = (snapshot, payload, now) => {
     countersSnapshot = { ...countersSnapshot, counters: allocated.counters };
     created.push(createTextSegmentRecord({
       id: allocated.id,
+      uid: allocated.uid,
       documentId: current.documentId,
       blockId: current.blockId,
       text: parts[index].text,
@@ -692,6 +728,7 @@ const upsertAudioVariant = (snapshot, payload, now) => {
   const allocated = allocateIdentity(snapshot, 'AUDIO_VARIANT');
   const record = createTextAudioVariantRecord({
     id: allocated.id,
+    uid: allocated.uid,
     ...candidateIdentity,
     language: payload?.language,
     filename: payload?.filename,

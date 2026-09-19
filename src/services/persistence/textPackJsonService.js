@@ -6,6 +6,7 @@ import {
 import {
   createProLingoTextPack,
   mergeProLingoTextPack,
+  PROLINGO_TEXT_PACK_UID_MODE_PRESERVE,
   validateProLingoTextPack
 } from '../../domain/text/textPackJsonDomain.js';
 import { normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
@@ -181,7 +182,7 @@ export const executeProLingoTextPackAttachOrSync = async ({ pack: packCandidate,
     const metaStore = tx.objectStore(TEXT_LIBRARY_STORES.META);
 
     if (!existing) {
-      const merged = mergeProLingoTextPack({ localSnapshot: before, pack, now });
+      const merged = mergeProLingoTextPack({ localSnapshot: before, pack, now, uidMode: PROLINGO_TEXT_PACK_UID_MODE_PRESERVE });
       const attached = createTextSourceAttachmentFromMerge({ pack, merged, fileName, now });
       writeImportedSnapshotRecords({ tx, snapshot: attached.snapshot, imported: attached.imported });
       putMeta(metaStore, TEXT_LIBRARY_META_KEYS.ID_COUNTERS, attached.snapshot.counters, now);

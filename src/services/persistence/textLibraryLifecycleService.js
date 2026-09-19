@@ -30,6 +30,9 @@ export const executeTextLibraryBootstrapEffect = ({
       setTextDatabaseStatus('hydrated');
       if (result.migrated) addLog('Text DB', `Legacy Text migrated to IndexedDB (${result.textIdentityState.items.length} items); hydration complete.`);
       else addLog('Text DB', `IndexedDB Text Library hydrated (${result.activeDocumentId}).`);
+      const uidCounts = result.globalUidBackfill || {};
+      const uidTotal = Object.values(uidCounts).reduce((sum, value) => sum + Number(value || 0), 0);
+      if (uidTotal > 0) addLog('Text DB', `Global UID compatibility backfill persisted (${uidTotal} identity field update${uidTotal === 1 ? '' : 's'}).`);
     })
     .catch(error => {
       if (cancelled) return;

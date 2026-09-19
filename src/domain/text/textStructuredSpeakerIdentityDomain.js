@@ -1,4 +1,5 @@
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
+import { createTextGlobalUid, normalizeTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from './textGlobalIdentityDomain.js';
 
 export const TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY = 'speakerIdentityV1';
 export const TEXT_STRUCTURED_SPEAKER_VOICE_PROFILE_V2_KEY = 'speakerVoiceProfileV2';
@@ -16,11 +17,15 @@ export const getTextStructuredSegmentSpeakerId = segment => clean(segment?.metad
 export const buildTextStructuredSegmentSpeakerIdentityMetadata = (metadata, speakerId) => ({ ...normalizeMetadataObject(metadata), [TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]: clean(speakerId) });
 export const deriveTextStructuredSpeakerId = ({ documentId, speaker }) => `SPK_${hash(`${clean(documentId)}::${normalizeTextStructuredSpeakerKey(speaker)}`)}`;
 
-const normalizeRegistryEntry = candidate => {
+const normalizeRegistryEntry = (candidate, { ensureUid = false } = {}) => {
   const id = clean(candidate?.id);
   const label = clean(candidate?.label);
   if (!id || !label) return null;
-  return { id, label };
+  const uid = normalizeTextGlobalUid(candidate?.uid, TEXT_GLOBAL_UID_KINDS.SPEAKER)
+    || (ensureUid ? createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SPEAKER) : null);
+  const externalKey = clean(candidate?.externalKey || candidate?.speakerKey);
+  const base = externalKey ? { id, label, externalKey } : { id, label };
+  return uid ? { ...base, uid } : base;
 };
 
 export const getTextStructuredSpeakerRegistry = documentLike => {
@@ -41,7 +46,7 @@ export const buildTextStructuredSpeakerRegistryMetadata = ({ metadata, speakers 
   const seenIds = new Set();
   const seenLabels = new Set();
   speakers.forEach(candidate => {
-    const entry = normalizeRegistryEntry(candidate);
+    const entry = normalizeRegistryEntry(candidate, { ensureUid: true });
     if (!entry) return;
     const labelKey = normalizeTextStructuredSpeakerKey(entry.label);
     if (!labelKey || seenIds.has(entry.id) || seenLabels.has(labelKey)) return;
@@ -70,8 +75,8 @@ export const buildTextStructuredUpsertSpeakerRegistryMetadata = ({
   const labelCollision = current.find(entry => entry.id !== id && normalizeTextStructuredSpeakerKey(entry.label) === normalizedLabel);
   if (labelCollision) throw new Error(`Speaker label “${cleanLabel}” is already registered`);
   const next = current.some(entry => entry.id === id)
-    ? current.map(entry => entry.id === id ? { id, label: cleanLabel } : entry)
-    : [...current, { id, label: cleanLabel }];
+    ? current.map(entry => entry.id === id ? { ...entry, id, label: cleanLabel } : entry)
+    : [...current, { id, uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SPEAKER), label: cleanLabel }];
   return buildTextStructuredSpeakerRegistryMetadata({ metadata, speakers: next });
 };
 

@@ -1,5 +1,6 @@
 import { initialEdgeVoices } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioFilename } from './textStructuredAudioIdentityDomain.js';
+import { buildCanonicalTextRenderAudioFilename, parseCanonicalTextRenderAudioFilename } from './textFilenameDomain.js';
 import { resolveStructuredTextPlaybackList } from './textStructuredPlaybackDomain.js';
 import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
@@ -173,21 +174,32 @@ export const buildTextStructuredGeneratedFilename = ({
   channel,
   engine,
   engineVoiceId,
+  renderFingerprint = null,
   mimeType
-}) => buildTextStructuredAudioFilename({
-  audioVariantId,
-  segmentId,
-  channel,
-  engine,
-  voiceId: engineVoiceId,
-  extension: getTextStructuredGeneratedAudioExtension(mimeType)
-});
+}) => renderFingerprint
+  ? buildCanonicalTextRenderAudioFilename({
+      renderFingerprint,
+      engine,
+      voiceId: engineVoiceId,
+      extension: getTextStructuredGeneratedAudioExtension(mimeType)
+    })
+  : buildTextStructuredAudioFilename({
+      audioVariantId,
+      segmentId,
+      channel,
+      engine,
+      voiceId: engineVoiceId,
+      extension: getTextStructuredGeneratedAudioExtension(mimeType)
+    });
 
 export const parseTextStructuredGeneratedFilename = filename => {
-  const name = clean(filename);
+  const rf = parseCanonicalTextRenderAudioFilename(filename);
+  if (rf) return rf;
+  const name = clean(filename).split('/').filter(Boolean).pop() || '';
   const match = name.match(/^(SEGMENT_\d+)__(TEXT|MEANING)__([A-Za-z0-9._-]+)__(.+?)__(TXTAUDIO_\d+)\.(mp3|wav|ogg|webm)$/i);
   if (!match) return null;
   return {
+    version: 1,
     segmentId: match[1].toUpperCase(),
     channel: match[2].toLowerCase(),
     engine: match[3].toLowerCase(),

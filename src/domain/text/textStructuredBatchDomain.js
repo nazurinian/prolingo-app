@@ -117,13 +117,21 @@ export const buildTextStructuredBatchWorkspaceSelection = ({
       coverageMap: coverageMapsByDocument?.[documentTree.id] || {},
       scope: isActiveDocument ? activeScope : null
     });
-    const annotatedSlots = (selection.slots || []).map(slot => ({
-      ...slot,
-      documentId: documentTree.id,
-      documentTitle: documentTree.title || 'Text Document',
-      collectionId: documentTree.collectionId || null,
-      documentType: documentTree.documentType || 'mixed'
-    }));
+    const blockById = new Map((documentTree?.blocks || []).map(block => [block.id, block]));
+    const annotatedSlots = (selection.slots || []).map(slot => {
+      const block = blockById.get(slot.blockId) || null;
+      const segment = (block?.segments || []).find(item => item.id === slot.segmentId) || null;
+      return {
+        ...slot,
+        documentId: documentTree.id,
+        documentUid: documentTree.uid || null,
+        documentTitle: documentTree.title || 'Text Document',
+        collectionId: documentTree.collectionId || null,
+        documentType: documentTree.documentType || 'mixed',
+        cardUid: block?.uid || null,
+        segmentUid: segment?.uid || null
+      };
+    });
     const slotByKey = new Map(annotatedSlots.map(slot => [slot.key, slot]));
     const annotatedJobs = (selection.jobs || []).map(job => {
       const key = buildTextStructuredRuntimeAudioKey(job.segmentId, job.channel);
@@ -143,6 +151,7 @@ export const buildTextStructuredBatchWorkspaceSelection = ({
     Object.keys(totalCoverage).forEach(key => { totalCoverage[key] += Number(selection.coverage?.[key] || 0); });
     documents.push({
       id: documentTree.id,
+      uid: documentTree.uid || null,
       title: documentTree.title || 'Text Workspace',
       collectionId: documentTree.collectionId || null,
       documentType: documentTree.documentType || 'mixed',

@@ -170,16 +170,16 @@ export const TextBatchPopup = ({
 
         {liveTelemetry?.sessionId && <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-live-batch-telemetry="text">
           <div className="flex items-center justify-between gap-2 font-black text-cyan-700 dark:text-cyan-300"><span>Live Text Batch • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span><span>{liveTelemetry.processed || 0}/{liveTelemetry.total || 0}</span></div>
-          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Need est.: {liveTelemetry.missingEstimate || 0}</span><span>Generated: {liveTelemetry.generated || 0}</span><span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span><span>Remaining: {liveTelemetry.remaining || 0}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Need est.: {liveTelemetry.missingEstimate || 0}</span><span>Generated RF: {liveTelemetry.generated || 0}</span><span>RF reused: {liveTelemetry.reusedPhysical || 0}</span><span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span><span>Remaining: {liveTelemetry.remaining || 0}</span></div>
           <p className="mt-1 text-[8px] text-cyan-600/80 dark:text-cyan-300/80">Counter UI only • no per-audio IndexedDB inventory scan{liveTelemetry.reconciled ? ' • final durable commit reconciled' : ''}.</p>
         </div>}
 
         <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2.5 space-y-2" data-text-batch-export="true">
           <button type="button" disabled={running || !(coverage?.ready > 0)} onClick={() => setDirectMp3ConfirmOpen(true)} className="w-full rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>EXPORT READY MP3 • {coverage?.ready || 0}</button>
-          <p className="text-[8px] leading-relaxed text-slate-400">Exports all Ready exact-voice slots in waves of max {directMp3Limit}. Missing/Other/Stale are skipped; no TTS starts.</p>
+          <p className="text-[8px] leading-relaxed text-slate-400">Exports Ready physical RF files once in waves of max {directMp3Limit}. Multiple logical Segments sharing the same RF do not create duplicate downloads. Missing/Other/Stale are skipped; no TTS starts.</p>
           <button type="button" disabled={running || !(coverage?.total > 0) || coverage?.ready !== coverage?.total} onClick={() => setConsolidatedZipConfirmOpen(true)} className="w-full rounded border border-sky-200 dark:border-sky-800 py-2 text-[10px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>{coverage?.ready === coverage?.total && coverage?.total > 0 ? `BUILD FULL CONSOLIDATED ZIP • ${coverage.ready}/${coverage.total}` : `FULL ZIP PENDING • ${coverage?.needDownload || 0} need source`}</button>
           {coverage?.ready > 0 && coverage?.ready < coverage?.total && <button type="button" disabled={running} onClick={() => setPartialZipConfirmOpen(true)} className="w-full rounded border border-amber-200 dark:border-amber-800 py-2 text-[9px] font-black text-amber-700 dark:text-amber-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>EXPORT PARTIAL ZIP • {coverage.ready}/{coverage.total} READY</button>}
-          <p className="text-[8px] leading-relaxed text-slate-400">Consolidation lazily combines Ready Text Staging + Folder + mounted ZIP binaries without TTS. Full output stays locked until the selected scope is complete.</p>
+          <p className="text-[8px] leading-relaxed text-slate-400">Consolidation lazily combines Ready Text Staging + Folder + mounted ZIP binaries without TTS, deduplicates physical RF files, and writes a Text Audio Manifest with logical references. Full output stays locked until the selected scope is complete.</p>
         </div>
 
         {running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BATCH'}</button> : <>
@@ -207,7 +207,7 @@ export const TextBatchPopup = ({
       <SafetyConfirmDialog
         open={directMp3ConfirmOpen}
         title="Export all Ready Text audio as direct MP3?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. All Ready exact-voice Text audio downloads directly in waves of max ${directMp3Limit} files. Missing/Other/Stale are skipped and never generated.`}
+        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. Ready exact-voice Text audio downloads by unique physical RF in waves of max ${directMp3Limit} files. Shared RF renders are exported once; Missing/Other/Stale are skipped and never generated.`}
         confirmLabel={`Export ${coverage?.ready || 0} MP3`}
         onCancel={() => setDirectMp3ConfirmOpen(false)}
         onConfirm={() => { setDirectMp3ConfirmOpen(false); structuredTextBatch?.exportReadyMp3?.(); }}

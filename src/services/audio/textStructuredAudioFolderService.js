@@ -1,4 +1,5 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import { TEXT_AUDIO_MANIFEST_FILENAME, parseProLingoTextAudioManifestJson } from '../../domain/text/textAudioManifestDomain.js';
 import {
   buildTextStructuredExternalAudioIdentityIndex,
   parseTextStructuredLegacyAudioFilename,
@@ -98,26 +99,47 @@ const collectFiles = async directoryHandle => {
   return files;
 };
 
-export const scanTextStructuredAudioFolderFiles = ({ files, audioVariants, segments = [] }) => {
-  const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments });
+export const scanTextStructuredAudioFolderFiles = async ({ files, audioVariants, segments = [], requirements = [] }) => {
+  const sourceFiles = Array.from(files || []);
+  const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments, requirements });
   const matches = [];
   const orphans = [];
   const legacy = [];
-  (Array.from(files || [])).forEach(file => {
-    const parsed = parseTextStructuredGeneratedFilename(file?.name);
+  let manifest = null;
+  let manifestError = null;
+  const manifestFile = sourceFiles.find(file => String(file?.name || '').toLowerCase() === TEXT_AUDIO_MANIFEST_FILENAME.toLowerCase()) || null;
+  if (manifestFile?.text) {
+    try { manifest = parseProLingoTextAudioManifestJson(await manifestFile.text()); }
+    catch (error) { manifestError = error?.message || String(error); }
+  }
+  const manifestByFilename = new Map((manifest?.entries || []).map(entry => [String(entry.filename || '').toLowerCase(), entry]));
+
+  sourceFiles.forEach(file => {
+    if (String(file?.name || '').toLowerCase() === TEXT_AUDIO_MANIFEST_FILENAME.toLowerCase()) return;
+    const manifestEntry = manifestByFilename.get(String(file?.name || '').toLowerCase()) || null;
+    const parsed = manifestEntry
+      ? { version: 2, renderFingerprint: manifestEntry.rf, extension: String(file?.name || '').split('.').pop()?.toLowerCase() || null, manifestBacked: true }
+      : parseTextStructuredGeneratedFilename(file?.name);
     if (!parsed) {
       const legacyParsed = parseTextStructuredLegacyAudioFilename(file?.name);
       if (legacyParsed) legacy.push({ file, parsed: legacyParsed, reason: 'legacy-unresolved' });
       return;
     }
-    const resolved = resolveTextStructuredExternalAudioVariant({ filename: file?.name, parsed, index });
-    if (resolved.status !== 'matched' || !resolved.variant) {
-      orphans.push({ file, parsed, reason: resolved.status });
+    if (manifestEntry?.size && Number(file?.size || 0) !== Number(manifestEntry.size)) {
+      orphans.push({ file, parsed, reason: 'manifest-size-mismatch', renderFingerprint: manifestEntry.rf });
       return;
     }
-    matches.push({ file, parsed, variant: resolved.variant, aliasMatched: resolved.aliasMatched });
+    const resolved = resolveTextStructuredExternalAudioVariant({ filename: file?.name, parsed, index });
+    const resolvedVariants = Array.isArray(resolved.variants) && resolved.variants.length ? resolved.variants : resolved.variant ? [resolved.variant] : [];
+    const resolvedRequirements = Array.isArray(resolved.requirements) ? resolved.requirements : [];
+    if (!['matched', 'matched-rf', 'matched-requirement'].includes(resolved.status) || (!resolvedVariants.length && !resolvedRequirements.length)) {
+      orphans.push({ file, parsed, reason: resolved.status, renderFingerprint: parsed?.renderFingerprint || null });
+      return;
+    }
+    resolvedVariants.forEach(variant => matches.push({ file, parsed, variant, requirement: null, aliasMatched: resolved.aliasMatched, rfMatched: Boolean(resolved.rfMatched), manifestBacked: Boolean(manifestEntry), renderFingerprint: parsed?.renderFingerprint || variant?.metadata?.audioRenderFingerprintV1 || null }));
+    resolvedRequirements.forEach(requirement => matches.push({ file, parsed, variant: null, requirement, aliasMatched: false, rfMatched: true, manifestBacked: Boolean(manifestEntry), renderFingerprint: parsed?.renderFingerprint || requirement.renderFingerprint }));
   });
-  return { matches, orphans, legacy };
+  return { matches, orphans, legacy, manifest, manifestError };
 };
 
 export const executeTextStructuredAudioFolderChoose = async () => {

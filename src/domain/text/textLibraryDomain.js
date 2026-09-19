@@ -16,6 +16,7 @@ import {
   normalizeTextIdentityState
 } from './textIdentityDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
+import { createTextGlobalUid, normalizeTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from './textGlobalIdentityDomain.js';
 
 const normalizePositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(value, 10);
@@ -27,6 +28,11 @@ const normalizeText = (value) => String(value ?? '').trim();
 const normalizeOptionalText = (value) => {
   const text = normalizeText(value);
   return text || null;
+};
+
+const withOptionalGlobalUid = (record, uid, kind) => {
+  const normalized = normalizeTextGlobalUid(uid, kind);
+  return normalized ? { ...record, uid: normalized } : record;
 };
 
 export const createDefaultTextIdCounters = () => ({
@@ -63,6 +69,7 @@ export const getTextLibraryIdSequence = (kind, id) => {
 
 export const createTextCollectionRecord = ({
   id,
+  uid = null,
   title = 'Untitled Collection',
   order = 1,
   createdAt = Date.now(),
@@ -70,18 +77,19 @@ export const createTextCollectionRecord = ({
   metadata = {}
 }) => {
   if (!getTextLibraryIdSequence('COLLECTION', id)) throw new Error(`Invalid COLLECTION_ID: ${id}`);
-  return {
+  return withOptionalGlobalUid({
     id,
     order: normalizeOrder(order),
     title: normalizeText(title) || 'Untitled Collection',
     createdAt,
     updatedAt,
     metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
-  };
+  }, uid, TEXT_GLOBAL_UID_KINDS.COLLECTION);
 };
 
 export const createTextDocumentRecord = ({
   id,
+  uid = null,
   title = DEFAULT_TEXT_DOCUMENT_TITLE,
   collectionId = null,
   order = 1,
@@ -95,7 +103,7 @@ export const createTextDocumentRecord = ({
 }) => {
   if (!getTextLibraryIdSequence('DOCUMENT', id)) throw new Error(`Invalid DOC_ID: ${id}`);
   if (!TEXT_DOCUMENT_TYPES.includes(documentType)) throw new Error(`Invalid Text document type: ${documentType}`);
-  return {
+  return withOptionalGlobalUid({
     id,
     collectionId: collectionId || null,
     order: normalizeOrder(order),
@@ -107,11 +115,12 @@ export const createTextDocumentRecord = ({
     createdAt,
     updatedAt,
     metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
-  };
+  }, uid, TEXT_GLOBAL_UID_KINDS.WORKSPACE);
 };
 
 export const createTextBlockRecord = ({
   id,
+  uid = null,
   documentId,
   order = 1,
   blockType = 'paragraph',
@@ -123,7 +132,7 @@ export const createTextBlockRecord = ({
   if (!getTextIdSequence(id)) throw new Error(`Invalid TEXT_ID: ${id}`);
   if (!getTextLibraryIdSequence('DOCUMENT', documentId)) throw new Error(`Invalid block DOC_ID: ${documentId}`);
   if (!TEXT_BLOCK_TYPES.includes(blockType)) throw new Error(`Invalid Text block type: ${blockType}`);
-  return {
+  return withOptionalGlobalUid({
     id: String(id).toUpperCase(),
     documentId,
     order: normalizeOrder(order),
@@ -132,11 +141,12 @@ export const createTextBlockRecord = ({
     createdAt,
     updatedAt,
     metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
-  };
+  }, uid, TEXT_GLOBAL_UID_KINDS.CARD);
 };
 
 export const createTextSegmentRecord = ({
   id,
+  uid = null,
   documentId,
   blockId,
   order = 1,
@@ -153,7 +163,7 @@ export const createTextSegmentRecord = ({
   if (!getTextIdSequence(blockId)) throw new Error(`Invalid segment TEXT_ID: ${blockId}`);
   const normalizedText = normalizeText(text);
   if (!normalizedText) throw new Error(`SEGMENT_ID ${id} requires non-empty text`);
-  return {
+  return withOptionalGlobalUid({
     id,
     documentId,
     blockId: String(blockId).toUpperCase(),
@@ -165,11 +175,12 @@ export const createTextSegmentRecord = ({
     createdAt,
     updatedAt,
     metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
-  };
+  }, uid, TEXT_GLOBAL_UID_KINDS.SEGMENT);
 };
 
 export const createTextAudioVariantRecord = ({
   id,
+  uid = null,
   segmentId,
   channel = 'text',
   engine = 'local',
@@ -185,7 +196,7 @@ export const createTextAudioVariantRecord = ({
   if (!getTextLibraryIdSequence('AUDIO_VARIANT', id)) throw new Error(`Invalid Text audio variant ID: ${id}`);
   if (!getTextLibraryIdSequence('SEGMENT', segmentId)) throw new Error(`Invalid audio SEGMENT_ID: ${segmentId}`);
   if (!TEXT_AUDIO_CHANNELS.includes(channel)) throw new Error(`Invalid Text audio channel: ${channel}`);
-  return {
+  return withOptionalGlobalUid({
     id,
     segmentId,
     channel,
@@ -198,7 +209,7 @@ export const createTextAudioVariantRecord = ({
     createdAt,
     updatedAt,
     metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
-  };
+  }, uid, TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT);
 };
 
 export const createLegacyTextMigrationPlan = (legacyCandidate, now = Date.now()) => {
@@ -206,6 +217,7 @@ export const createLegacyTextMigrationPlan = (legacyCandidate, now = Date.now())
   const documentId = formatTextLibraryId('DOCUMENT', 1);
   const document = createTextDocumentRecord({
     id: documentId,
+    uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.WORKSPACE),
     title: DEFAULT_TEXT_DOCUMENT_TITLE,
     collectionId: null,
     order: 1,
@@ -226,6 +238,7 @@ export const createLegacyTextMigrationPlan = (legacyCandidate, now = Date.now())
     segmentHighWater += 1;
     const block = createTextBlockRecord({
       id: item.id,
+      uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CARD),
       documentId,
       order: index + 1,
       blockType: 'paragraph',
@@ -235,6 +248,7 @@ export const createLegacyTextMigrationPlan = (legacyCandidate, now = Date.now())
     });
     const segment = createTextSegmentRecord({
       id: formatTextLibraryId('SEGMENT', segmentHighWater),
+      uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SEGMENT),
       documentId,
       blockId: item.id,
       order: 1,
@@ -448,6 +462,7 @@ export const createLegacyCompatibilitySyncPlan = ({
     upsertBlocks.push(createTextBlockRecord({
       ...(currentBlock || {}),
       id,
+      uid: currentBlock?.uid || createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CARD),
       documentId: document.id,
       order: index + 1,
       blockType: currentBlock?.blockType || 'paragraph',
@@ -463,6 +478,7 @@ export const createLegacyCompatibilitySyncPlan = ({
     upsertSegments.push(createTextSegmentRecord({
       ...(existing || {}),
       id: segmentId,
+      uid: existing?.uid || createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SEGMENT),
       documentId: document.id,
       blockId: id,
       order: 1,

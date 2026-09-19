@@ -5,6 +5,7 @@ const EMPTY = Object.freeze({
   total: 0,
   processed: 0,
   generated: 0,
+  reusedPhysical: 0,
   skippedReady: 0,
   failed: 0,
   remaining: 0,

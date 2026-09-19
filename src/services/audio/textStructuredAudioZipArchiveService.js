@@ -1,4 +1,5 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import { TEXT_AUDIO_MANIFEST_FILENAME, parseProLingoTextAudioManifestJson } from '../../domain/text/textAudioManifestDomain.js';
 import {
   buildTextStructuredExternalAudioIdentityIndex,
   parseTextStructuredLegacyAudioFilename,
@@ -75,11 +76,35 @@ export const parseTextStructuredAudioZipCentralDirectory = async file => {
   return entries;
 };
 
+const readZipEntryBlobFromFile = async ({ file, entry, mimeType = null }) => {
+  if (!file || !entry) throw new Error('Text ZIP entry is missing its archive reference.');
+  if ((entry.flags & 0x0001) !== 0) throw new Error('Encrypted ZIP entry is not supported.');
+  const headerBytes = await readBlobBytes(file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30));
+  if (headerBytes.length < 30) throw new Error('ZIP local header is truncated.');
+  const view = new DataView(headerBytes.buffer, headerBytes.byteOffset, headerBytes.byteLength);
+  if (view.getUint32(0, true) !== LOCAL_SIGNATURE) throw new Error('ZIP local header signature is invalid.');
+  const filenameLength = view.getUint16(26, true);
+  const extraLength = view.getUint16(28, true);
+  const dataStart = entry.localHeaderOffset + 30 + filenameLength + extraLength;
+  const dataEnd = dataStart + entry.compressedSize;
+  if (dataEnd > file.size) throw new Error('ZIP entry is out of bounds.');
+  const compressed = file.slice(dataStart, dataEnd);
+  const mime = mimeType || mimeFromFilename(entry.filename);
+  if (entry.compressionMethod === 0) return compressed.slice(0, compressed.size, mime);
+  if (entry.compressionMethod === 8) {
+    if (typeof DecompressionStream !== 'function') throw new Error('This browser cannot read deflated Text ZIP entries directly.');
+    const stream = compressed.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    const blob = await new Response(stream).blob();
+    return blob.slice(0, blob.size, mime);
+  }
+  throw new Error(`ZIP compression method ${entry.compressionMethod} is not supported.`);
+};
+
 const archiveIdFor = (file, index) => [clean(file?.name) || `text-audio-${index + 1}.zip`, Number(file?.size || 0), Number(file?.lastModified || 0)].join(':');
 
-export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [], segments = [] } = {}) => {
+export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [], segments = [], requirements = [] } = {}) => {
   const selected = [...(files || [])].filter(file => /\.zip$/i.test(file?.name || '') || file?.type === 'application/zip' || file?.type === 'application/x-zip-compressed');
-  const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments });
+  const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments, requirements });
   const matches = [];
   const orphans = [];
   const legacy = [];
@@ -90,6 +115,16 @@ export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [
     const file = selected[archiveIndex];
     const archiveId = archiveIdFor(file, archiveIndex);
     const entries = await parseTextStructuredAudioZipCentralDirectory(file);
+    let manifest = null;
+    let manifestError = null;
+    const manifestZipEntry = entries.find(entry => basename(entry.filename).toLowerCase() === TEXT_AUDIO_MANIFEST_FILENAME.toLowerCase()) || null;
+    if (manifestZipEntry && (manifestZipEntry.flags & 0x0001) === 0 && [0, 8].includes(manifestZipEntry.compressionMethod)) {
+      try {
+        const manifestBlob = await readZipEntryBlobFromFile({ file, entry: manifestZipEntry, mimeType: 'application/json' });
+        manifest = parseProLingoTextAudioManifestJson(await manifestBlob.text());
+      } catch (error) { manifestError = error?.message || String(error); }
+    }
+    const manifestByFilename = new Map((manifest?.entries || []).flatMap(entry => [[String(entry.filename || '').toLowerCase(), entry], [basename(entry.filename).toLowerCase(), entry]]));
     let matchedCount = 0;
     let audioFileCount = 0;
     let legacyCount = 0;
@@ -106,7 +141,11 @@ export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [
         return;
       }
       const filename = basename(entry.filename);
-      const parsed = parseTextStructuredGeneratedFilename(filename);
+      if (filename.toLowerCase() === TEXT_AUDIO_MANIFEST_FILENAME.toLowerCase()) return;
+      const manifestEntry = manifestByFilename.get(String(entry.filename || '').toLowerCase()) || manifestByFilename.get(filename.toLowerCase()) || null;
+      const parsed = manifestEntry
+        ? { version: 2, renderFingerprint: manifestEntry.rf, extension: filename.split('.').pop()?.toLowerCase() || null, manifestBacked: true }
+        : parseTextStructuredGeneratedFilename(filename);
       if (!parsed) {
         const legacyParsed = parseTextStructuredLegacyAudioFilename(filename);
         if (legacyParsed) {
@@ -115,29 +154,27 @@ export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [
         }
         return;
       }
+      if (manifestEntry?.size && Number(entry.uncompressedSize || 0) !== Number(manifestEntry.size)) {
+        orphans.push({ archiveId, archiveName: file.name, filename, parsed, reason: 'manifest-size-mismatch', renderFingerprint: manifestEntry.rf });
+        orphanCount += 1;
+        return;
+      }
       const resolved = resolveTextStructuredExternalAudioVariant({ filename, parsed, index });
-      if (resolved.status !== 'matched' || !resolved.variant) {
-        orphans.push({ archiveId, archiveName: file.name, filename, parsed, reason: resolved.status });
+      const resolvedVariants = Array.isArray(resolved.variants) && resolved.variants.length ? resolved.variants : resolved.variant ? [resolved.variant] : [];
+      const resolvedRequirements = Array.isArray(resolved.requirements) ? resolved.requirements : [];
+      if (!['matched', 'matched-rf', 'matched-requirement'].includes(resolved.status) || (!resolvedVariants.length && !resolvedRequirements.length)) {
+        orphans.push({ archiveId, archiveName: file.name, filename, parsed, reason: resolved.status, renderFingerprint: parsed?.renderFingerprint || null });
         orphanCount += 1;
         return;
       }
       if (resolved.aliasMatched) aliasMatchedCount += 1;
-      matches.push({
-        archiveId,
-        archiveName: file.name,
-        archiveFile: file,
-        entryId: `${archiveId}:${entry.localHeaderOffset}:${entryIndex}`,
-        entry,
-        filename,
-        parsed,
-        variant: resolved.variant,
-        aliasMatched: resolved.aliasMatched,
-        mimeType: mimeFromFilename(filename)
-      });
-      matchedCount += 1;
+      const common = { archiveId, archiveName: file.name, archiveFile: file, entryId: `${archiveId}:${entry.localHeaderOffset}:${entryIndex}`, entry, filename, parsed, aliasMatched: resolved.aliasMatched, rfMatched: Boolean(resolved.rfMatched), manifestBacked: Boolean(manifestEntry), renderFingerprint: parsed?.renderFingerprint || null, mimeType: mimeFromFilename(filename) };
+      resolvedVariants.forEach(variant => matches.push({ ...common, variant, requirement: null, renderFingerprint: common.renderFingerprint || variant?.metadata?.audioRenderFingerprintV1 || null }));
+      resolvedRequirements.forEach(requirement => matches.push({ ...common, variant: null, requirement, renderFingerprint: common.renderFingerprint || requirement.renderFingerprint }));
+      matchedCount += resolvedVariants.length + resolvedRequirements.length;
     });
 
-    archives.push({ id: archiveId, name: file.name, size: file.size, entryCount: entries.length, audioFileCount, matchedCount, orphanCount, legacyCount, aliasMatchedCount, unsupportedCount: unsupported });
+    archives.push({ id: archiveId, name: file.name, size: file.size, archiveFile: file, entryCount: entries.length, audioFileCount, matchedCount, orphanCount, legacyCount, aliasMatchedCount, unsupportedCount: unsupported, manifestPresent: Boolean(manifest), manifestError });
   }
 
   return {
@@ -175,28 +212,7 @@ export const readTextStructuredAudioZipRuntimeBlob = async runtime => {
   const file = runtime?.archiveFile;
   const entry = runtime?.zipEntry;
   if (!file || !entry) throw new Error('Text ZIP audio entry is missing its archive reference.');
-  if ((entry.flags & 0x0001) !== 0) throw new Error('Encrypted ZIP audio is not supported.');
-
-  const headerBytes = await readBlobBytes(file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30));
-  if (headerBytes.length < 30) throw new Error('ZIP local header is truncated.');
-  const view = new DataView(headerBytes.buffer, headerBytes.byteOffset, headerBytes.byteLength);
-  if (view.getUint32(0, true) !== LOCAL_SIGNATURE) throw new Error('ZIP local header signature is invalid.');
-  const filenameLength = view.getUint16(26, true);
-  const extraLength = view.getUint16(28, true);
-  const dataStart = entry.localHeaderOffset + 30 + filenameLength + extraLength;
-  const dataEnd = dataStart + entry.compressedSize;
-  if (dataEnd > file.size) throw new Error('ZIP audio entry is out of bounds.');
-  const compressed = file.slice(dataStart, dataEnd);
-  const mime = runtime?.mimeType || mimeFromFilename(runtime?.filename || entry.filename);
-
-  if (entry.compressionMethod === 0) return compressed.slice(0, compressed.size, mime);
-  if (entry.compressionMethod === 8) {
-    if (typeof DecompressionStream !== 'function') throw new Error('This browser cannot read deflated Text ZIP audio directly. Use a ProLingo stored ZIP or Audio Folder.');
-    const stream = compressed.stream().pipeThrough(new DecompressionStream('deflate-raw'));
-    const blob = await new Response(stream).blob();
-    return blob.slice(0, blob.size, mime);
-  }
-  throw new Error(`ZIP compression method ${entry.compressionMethod} is not supported.`);
+  return readZipEntryBlobFromFile({ file, entry, mimeType: runtime?.mimeType || mimeFromFilename(runtime?.filename || entry.filename) });
 };
 
 export const getTextStructuredAudioZipRuntimeObjectUrl = async runtime => {

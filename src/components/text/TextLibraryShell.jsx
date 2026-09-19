@@ -38,11 +38,13 @@ export const TextLibraryShell = ({
   const [renameTitle, setRenameTitle] = useState('');
   const sourceAttachInputRef = useRef(null);
   const sourceCopyInputRef = useRef(null);
+  const externalJsonInputRef = useRef(null);
   const databaseBackupInputRef = useRef(null);
   const packActions = activeDocumentTree?.__packActions || null;
   const databaseBackupActions = activeDocumentTree?.__databaseBackupActions || null;
   const search = activeDocumentTree?.__search || null;
   const [packStatus, setPackStatus] = useState(null);
+  const [pendingExternalImport, setPendingExternalImport] = useState(null);
   const [databaseBackupStatus, setDatabaseBackupStatus] = useState(null);
   const [preparedDatabaseBackup, setPreparedDatabaseBackup] = useState(null);
   const [databaseRestoreArmed, setDatabaseRestoreArmed] = useState(false);
@@ -202,6 +204,46 @@ export const TextLibraryShell = ({
     if (!result) return;
     const counts = result.counts || {};
     setPackStatus(`Imported independent copy: ${counts.documents || 0} workspace(s), ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
+  };
+
+  const handleExternalJsonImportFile = async event => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file || !packActions?.importExternalJson || isBusy) return;
+    setPackStatus(null);
+    setPendingExternalImport(null);
+    const result = await packActions.importExternalJson(file);
+    if (!result) return;
+    if (result.inspectionStatus === 'up-to-date' || result.mode === 'external-up-to-date') {
+      setPackStatus(`${result.externalSourceKey}: already up to date. Exact duplicate skipped.`);
+      return;
+    }
+    if (result.mode === 'external-decision-required' || result.inspectionStatus === 'decision-required') {
+      setPendingExternalImport({ file, inspection: result });
+      const summary = result.summary || {};
+      setPackStatus(`${result.externalSourceKey}: changed source detected. Review Update / New Copy / Keep Existing below.`);
+      return;
+    }
+    const counts = result.counts || {};
+    setPackStatus(`Imported AI/external source ${result.externalSourceKey}: ${counts.documents || 0} workspace, ${counts.blocks || 0} card(s), ${counts.segments || 0} segment(s).`);
+  };
+
+  const applyExternalImportDecision = async decision => {
+    if (!pendingExternalImport?.file || !packActions?.applyExternalJsonDecision || isBusy) return;
+    const inspection = pendingExternalImport.inspection || {};
+    const result = await packActions.applyExternalJsonDecision(pendingExternalImport.file, decision);
+    if (!result) return;
+    setPendingExternalImport(null);
+    if (decision === 'keep-existing') {
+      setPackStatus(`${inspection.externalSourceKey}: kept existing local data; incoming import cancelled.`);
+      return;
+    }
+    if (decision === 'import-as-copy') {
+      setPackStatus(`${inspection.externalSourceKey}: imported as an independent copy.`);
+      return;
+    }
+    const stats = result.stats || {};
+    setPackStatus(`${inspection.externalSourceKey}: updated existing Workspace (+${stats.created || 0}, ~${stats.updated || 0}, -${stats.deleted || 0}, local kept ${stats.preservedLocal || 0}).`);
   };
 
   const runSourceDetach = async (attachment, removeData) => {
@@ -402,17 +444,30 @@ export const TextLibraryShell = ({
               <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Sources / JSON</p>
               <span className="text-[7px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">ATTACH • SYNC • DETACH</span>
             </div>
-            <p className="text-[8px] text-slate-400 mt-1 break-words">Canonical load keeps one attached source. Loading the same package again Syncs in place. Import as Copy remains an explicit independent-copy path.</p>
+            <p className="text-[8px] text-slate-400 mt-1 break-words">AI JSON imports external authoring packages. ProLingo Text Pack Attach/Sync is reserved for ProLingo-originated canonical sources; Import as Copy remains an explicit independent-copy path.</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-1.5">
+          <button type="button" disabled={isBusy || !packActions.importExternalJson} onClick={() => externalJsonInputRef.current?.click()} className="min-w-0 px-2 py-2 rounded bg-emerald-600 text-white text-[9px] font-bold disabled:opacity-40" title="Import AI-authored prolingo-text-external JSON. Exact duplicates are skipped; changed sources require an explicit update/copy/keep decision."><Upload className="w-3 h-3 inline mr-1"/>AI JSON</button>
           <button type="button" disabled={isBusy || activeDocument?.editorModel !== 'structured-v1' || !packActions.exportDocument} onClick={() => runPackAction(packActions.exportDocument, result => `Exported ${result.filename}.`)} className="min-w-0 px-2 py-2 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title="Export active structured Workspace"><Download className="w-3 h-3 inline mr-1"/>Workspace JSON</button>
           <button type="button" disabled={isBusy || !activeDocument?.collectionId || !packActions.exportCollection} onClick={() => runPackAction(packActions.exportCollection, result => `Exported ${result.filename}.`)} className="min-w-0 px-2 py-2 rounded border border-indigo-200 dark:border-indigo-800 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-40" title={activeDocument?.collectionId ? 'Export active Book Collection' : 'Move this Workspace into a Book Collection to export a Book Collection pack'}><Layers className="w-3 h-3 inline mr-1"/>Book Collection JSON</button>
-          <button type="button" disabled={isBusy || !packActions.attachOrSync} onClick={() => sourceAttachInputRef.current?.click()} className="min-w-0 px-2 py-2 rounded bg-indigo-600 text-white text-[9px] font-bold disabled:opacity-40" title="Attach a new canonical Text source, or Sync/Replace an already attached package"><Link2 className="w-3 h-3 inline mr-1"/>Attach / Sync</button>
-          <button type="button" disabled={isBusy || !packActions.importCopy} onClick={() => sourceCopyInputRef.current?.click()} className="min-w-0 px-2 py-2 rounded border border-slate-300 dark:border-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-40" title="Create a separate independent local copy using legacy merge/remap semantics"><Copy className="w-3 h-3 inline mr-1"/>Import as Copy</button>
+          <button type="button" disabled={isBusy || !packActions.attachOrSync} onClick={() => sourceAttachInputRef.current?.click()} className="min-w-0 px-2 py-2 rounded bg-indigo-600 text-white text-[9px] font-bold disabled:opacity-40" title="Attach a ProLingo-originated canonical Text Pack source, or Sync/Replace an already attached package"><Link2 className="w-3 h-3 inline mr-1"/>Attach / Sync</button>
+          <button type="button" disabled={isBusy || !packActions.importCopy} onClick={() => sourceCopyInputRef.current?.click()} className="min-w-0 px-2 py-2 rounded border border-slate-300 dark:border-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-40" title="Create a separate independent local copy from a ProLingo Text Pack"><Copy className="w-3 h-3 inline mr-1"/>Import as Copy</button>
         </div>
+        <input ref={externalJsonInputRef} type="file" accept=".json,application/json" onChange={handleExternalJsonImportFile} className="hidden" />
         <input ref={sourceAttachInputRef} type="file" accept=".json,application/json" onChange={handleSourceAttachOrSyncFile} className="hidden" />
         <input ref={sourceCopyInputRef} type="file" accept=".json,application/json" onChange={handleSourceImportCopyFile} className="hidden" />
+
+        {pendingExternalImport && <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/20 p-2.5 space-y-2" data-text-external-import-decision="true">
+          <div className="flex items-start gap-2"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 text-amber-600 shrink-0"/><div className="min-w-0"><p className="text-[9px] font-black text-amber-800 dark:text-amber-300">External source changed</p><p className="text-[8px] text-slate-500 dark:text-slate-400 break-all">{pendingExternalImport.inspection?.externalSourceKey}</p></div></div>
+          <p className="text-[8px] text-slate-500 dark:text-slate-400">Incoming: +{pendingExternalImport.inspection?.summary?.added || 0} / ~{pendingExternalImport.inspection?.summary?.updated || 0} / -{pendingExternalImport.inspection?.summary?.removed || 0} • conflicts {pendingExternalImport.inspection?.summary?.conflicts || 0}. Update preserves stable internal UIDs for matched external keys.</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5">
+            <button type="button" disabled={isBusy} onClick={() => applyExternalImportDecision('update-keep-local')} className="min-h-10 rounded-lg bg-indigo-600 text-white px-2 text-[8px] font-black">Update • Keep Local Conflicts</button>
+            <button type="button" disabled={isBusy} onClick={() => applyExternalImportDecision('update-use-incoming')} className="min-h-10 rounded-lg border border-amber-400 text-amber-700 dark:text-amber-300 px-2 text-[8px] font-black">Update • Use Incoming</button>
+            <button type="button" disabled={isBusy} onClick={() => applyExternalImportDecision('import-as-copy')} className="min-h-10 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-2 text-[8px] font-black">Import as New Copy</button>
+            <button type="button" disabled={isBusy} onClick={() => applyExternalImportDecision('keep-existing')} className="min-h-10 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-500 px-2 text-[8px] font-black">Keep Existing</button>
+          </div>
+        </div>}
 
         <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 p-2 space-y-1.5" data-text-source-registry="true">
           <div className="flex items-center justify-between gap-2"><p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Attached sources</p><span className="text-[8px] text-slate-400">{sourceAttachments.length}</span></div>

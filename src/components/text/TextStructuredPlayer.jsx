@@ -28,6 +28,7 @@ import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssi
 import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx';
 import { TEXT_PARAGRAPH_CARD_ROLES, getTextParagraphCardRoleLabel, resolveTextParagraphCardRole } from '../../domain/text/textParagraphRoleDomain.js';
+import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -133,6 +134,7 @@ const StructuredPlayerCard = ({
   onCancelGeneration,
   onExportSegmentAudio,
   onExportCardZip,
+  onExportFullCardAudio,
   playbackBusy = false,
   focusTarget = null,
   onFocusConsumed,
@@ -141,6 +143,8 @@ const StructuredPlayerCard = ({
   const [manualExpanded, setManualExpanded] = useState(false);
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
   const [segmentToolsId, setSegmentToolsId] = useState(null);
+  const [paragraphSplitMode, setParagraphSplitMode] = useState(false);
+  const [paragraphSentenceDetailsOpen, setParagraphSentenceDetailsOpen] = useState(false);
   const cardRef = useRef(null);
   const segments = block.segments || [];
   const isParagraphCard = block.blockType === 'paragraph';
@@ -151,10 +155,16 @@ const StructuredPlayerCard = ({
   const isFocusCard = focusTarget?.documentId === documentTree?.id && focusTarget?.blockId === block.id;
   const expanded = manualExpanded || isActiveCard || isFocusCard;
 
+
+  useEffect(() => {
+    if (isParagraphCard && segments.length <= 1 && paragraphSplitMode) setParagraphSplitMode(false);
+  }, [isParagraphCard, segments.length, paragraphSplitMode]);
+
   useEffect(() => {
     if (!cardRef.current) return undefined;
     if (isFocusCard) {
       setManualExpanded(true);
+      if (isParagraphCard && focusTarget?.segmentId) setParagraphSplitMode(true);
       const frame = window.requestAnimationFrame(() => {
         const target = focusTarget?.segmentId
           ? cardRef.current?.querySelector(`[data-text-player-segment="${focusTarget.segmentId}"]`)
@@ -174,16 +184,18 @@ const StructuredPlayerCard = ({
       ensureTextTargetVisible(target, cardRef.current?.closest('[data-text-structured-player]'));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [isActiveCard, playingIndex, isFocusCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, userNavigationRef]);
+  }, [isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, userNavigationRef]);
 
   const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
   const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
   const firstSegment = segments[0] || null;
   const collapsedDisplay = resolveStructuredTextDisplayState({ displayMode, isActive: false });
   const cardHasPlayableSegment = segments.some(segment => hasStructuredTextPlayableChannel(segment, manualCardChannelMode));
-  const preview = collapsedDisplay.showText
-    ? (firstSegment?.text || 'No segment yet.')
-    : (firstSegment?.meaning || 'No meaning yet.');
+  const paragraphPlayableSegmentIds = new Set(segments.filter(segment => hasStructuredTextPlayableChannel(segment, manualSegmentChannelMode)).map(segment => segment.id));
+  const paragraphPreview = segments.map(segment => collapsedDisplay.showText ? segment.text : segment.meaning).map(value => String(value || '').trim()).filter(Boolean).join(' ');
+  const preview = isParagraphCard
+    ? (paragraphPreview || (collapsedDisplay.showText ? 'No Text yet.' : 'No Meaning yet.'))
+    : (collapsedDisplay.showText ? (firstSegment?.text || 'No segment yet.') : (firstSegment?.meaning || 'No meaning yet.'));
   const cardCoverage = useMemo(() => summarizeTextStructuredAudioCoverage({
     documentTree,
     coverageMap: audioCoverageMap,
@@ -207,6 +219,7 @@ const StructuredPlayerCard = ({
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
+          {isParagraphCard && segments.length > 1 && <button type="button" onClick={() => { setParagraphSplitMode(value => !value); setManualExpanded(true); }} className={`min-h-10 sm:min-h-9 px-2 sm:px-2.5 rounded-lg border text-[8px] sm:text-[9px] font-black transition-all duration-150 active:scale-95 ${paragraphSplitMode ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/35 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`} aria-pressed={paragraphSplitMode} data-text-paragraph-split-toggle="true" title="Toggle sentence split reading mode"><span className="hidden sm:inline">Split </span>{paragraphSplitMode ? 'ON' : 'OFF'}</button>}
           <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
             <Volume2 className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1"/><span className="hidden sm:inline">Audio</span>
           </button>
@@ -218,7 +231,26 @@ const StructuredPlayerCard = ({
 
       {expanded && <div className="p-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
         {segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No segments in this card.</div>}
-        {segments.map((segment, segmentIndex) => {
+        {isParagraphCard && segments.length > 0 && <>
+          <TextParagraphUnifiedReading
+            segments={segments}
+            splitMode={paragraphSplitMode}
+            displayMode={displayMode}
+            activeSegmentId={isActiveCard ? playingIndex : null}
+            isPlaybackActive={isActiveCard}
+            speakingPart={speakingPart}
+            focusSegmentId={isFocusCard ? focusTarget?.segmentId : null}
+            audioCoverageMap={audioCoverageMap}
+            playableSegmentIds={paragraphPlayableSegmentIds}
+            disabled={generationBusy}
+            onPlaySegment={onPlaySegment}
+          />
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <p className="text-[8px] text-slate-400">Card Play reads the full Paragraph in Segment order. Split Mode only changes the reading surface and sentence click behaviour.</p>
+            <button type="button" onClick={() => setParagraphSentenceDetailsOpen(value => !value)} className={`shrink-0 min-h-9 px-2.5 rounded-lg border text-[8px] font-black ${paragraphSentenceDetailsOpen ? 'border-violet-400 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'}`} aria-expanded={paragraphSentenceDetailsOpen}>{paragraphSentenceDetailsOpen ? 'Hide' : 'Sentence'} Audio</button>
+          </div>
+        </>}
+        {(!isParagraphCard || paragraphSentenceDetailsOpen) && segments.map((segment, segmentIndex) => {
           const active = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && segment.id === playingIndex && (isPlaying || isPaused);
           const display = resolveStructuredTextDisplayState({ displayMode, isActive: active });
           const textSpeaking = active && speakingPart === 'text';
@@ -323,6 +355,7 @@ const StructuredPlayerCard = ({
       onCancelGeneration={onCancelGeneration}
       onExportSegmentAudio={onExportSegmentAudio}
       onExportCardZip={onExportCardZip}
+      onExportFullCardAudio={onExportFullCardAudio}
     />, document.body)}
   </>);
 };
@@ -383,6 +416,7 @@ export const TextStructuredPlayer = ({
   onGenerateAudio,
   onExportSegmentAudio,
   onExportCardZip,
+  onExportFullCardAudio,
   focusTarget = null,
   onFocusConsumed,
   controlsWorkspaceOpen = false,
@@ -495,6 +529,7 @@ export const TextStructuredPlayer = ({
           onCancelGeneration={onCancelGeneration}
           onExportSegmentAudio={onExportSegmentAudio}
           onExportCardZip={onExportCardZip}
+          onExportFullCardAudio={onExportFullCardAudio}
           focusTarget={focusTarget}
           onFocusConsumed={onFocusConsumed}
           userNavigationRef={userNavigationRef}

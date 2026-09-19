@@ -15,6 +15,7 @@ import {
   resolveLegacyTextIdentityProjection
 } from '../../domain/text/textLibraryDomain.js';
 import { createEmptyTextIdentityState } from '../../domain/text/textIdentityDomain.js';
+import { backfillTextGlobalUids } from '../../domain/text/textGlobalIdentityDomain.js';
 
 const requestToPromise = request => new Promise((resolve, reject) => {
   request.onsuccess = () => resolve(request.result);
@@ -184,6 +185,26 @@ const writeMigrationPlan = async (db, plan) => {
   await done;
 };
 
+const persistTextGlobalUidBackfill = async (db, snapshotCandidate) => {
+  const backfill = backfillTextGlobalUids(snapshotCandidate);
+  if (!backfill.changed) return backfill;
+  const tx = db.transaction([
+    TEXT_LIBRARY_STORES.COLLECTIONS,
+    TEXT_LIBRARY_STORES.DOCUMENTS,
+    TEXT_LIBRARY_STORES.BLOCKS,
+    TEXT_LIBRARY_STORES.SEGMENTS,
+    TEXT_LIBRARY_STORES.AUDIO_VARIANTS
+  ], 'readwrite');
+  const done = transactionDone(tx);
+  backfill.snapshot.collections.forEach(record => tx.objectStore(TEXT_LIBRARY_STORES.COLLECTIONS).put(record));
+  backfill.snapshot.documents.forEach(record => tx.objectStore(TEXT_LIBRARY_STORES.DOCUMENTS).put(record));
+  backfill.snapshot.blocks.forEach(record => tx.objectStore(TEXT_LIBRARY_STORES.BLOCKS).put(record));
+  backfill.snapshot.segments.forEach(record => tx.objectStore(TEXT_LIBRARY_STORES.SEGMENTS).put(record));
+  backfill.snapshot.audioVariants.forEach(record => tx.objectStore(TEXT_LIBRARY_STORES.AUDIO_VARIANTS).put(record));
+  await done;
+  return backfill;
+};
+
 export const initializeTextLibraryFromLegacy = async (legacyState) => {
   const db = await openTextLibraryDatabase();
   try {
@@ -194,7 +215,11 @@ export const initializeTextLibraryFromLegacy = async (legacyState) => {
       await writeMigrationPlan(db, plan);
       activeDocumentId = plan.activeDocumentId;
     }
-    const librarySnapshot = await readTextLibrarySnapshotFromDb(db);
+    let librarySnapshot = await readTextLibrarySnapshotFromDb(db);
+    const globalUidBackfill = await persistTextGlobalUidBackfill(db, librarySnapshot);
+    if (globalUidBackfill.changed) {
+      librarySnapshot = normalizeTextLibraryRuntimeSnapshot(globalUidBackfill.snapshot);
+    }
     if (!activeDocumentId && librarySnapshot.documents.length) {
       activeDocumentId = librarySnapshot.documents[0].id;
       const tx = db.transaction(TEXT_LIBRARY_STORES.META, 'readwrite');
@@ -222,6 +247,7 @@ export const initializeTextLibraryFromLegacy = async (legacyState) => {
       counters: librarySnapshot.counters,
       librarySnapshot,
       migrated: !initialized,
+      globalUidBackfill: globalUidBackfill.counts,
       schemaVersion: TEXT_LIBRARY_SCHEMA_VERSION
     };
   } finally {
