@@ -124,7 +124,9 @@ const StructuredPlayerCard = ({
   onCardVoiceChange,
   onSegmentVoiceChange,
   onCardDownloadVoiceChange,
+  onCardDownloadModeChange,
   onSegmentDownloadVoiceChange,
+  onSegmentDownloadModeChange,
   onPreviewTts,
   onGenerateCardAudio,
   onGenerateSpeakerAudio,
@@ -312,7 +314,9 @@ const StructuredPlayerCard = ({
       onCardVoiceChange={onCardVoiceChange}
       onSegmentVoiceChange={onSegmentVoiceChange}
       onCardDownloadVoiceChange={onCardDownloadVoiceChange}
+      onCardDownloadModeChange={onCardDownloadModeChange}
       onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}
+      onSegmentDownloadModeChange={onSegmentDownloadModeChange}
       onPreviewTts={onPreviewTts}
       onGenerateCardAudio={onGenerateCardAudio}
       onGenerateSpeakerAudio={onGenerateSpeakerAudio}
@@ -358,7 +362,9 @@ export const TextStructuredPlayer = ({
   onCardVoiceChange,
   onSegmentVoiceChange,
   onCardDownloadVoiceChange,
+  onCardDownloadModeChange,
   onSegmentDownloadVoiceChange,
+  onSegmentDownloadModeChange,
   onPreviewTts,
   generationPreferences = {},
   onGenerationPreferencesChange,
@@ -412,11 +418,11 @@ export const TextStructuredPlayer = ({
       <div className="mb-2 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/90 dark:bg-slate-800/90 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
         <div className="flex items-center gap-2 p-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">
-            {documentTree?.documentType === 'conversation' ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
+            {['conversation', 'mixed'].includes(documentTree?.documentType) ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Player settings via bottom bar</p>
-            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : ' • single narrator'} • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
+            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'} • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
           </div>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Workspace"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
@@ -480,7 +486,9 @@ export const TextStructuredPlayer = ({
           onCardVoiceChange={onCardVoiceChange}
           onSegmentVoiceChange={onSegmentVoiceChange}
           onCardDownloadVoiceChange={onCardDownloadVoiceChange}
+          onCardDownloadModeChange={onCardDownloadModeChange}
           onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}
+          onSegmentDownloadModeChange={onSegmentDownloadModeChange}
           onPreviewTts={onPreviewTts}
           onGenerateCardAudio={onGenerateCardAudio}
           onGenerateSpeakerAudio={onGenerateSpeakerAudio}

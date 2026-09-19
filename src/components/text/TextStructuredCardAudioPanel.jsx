@@ -8,7 +8,7 @@ import {
 } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { normalizeTextStructuredSpeakerKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
-import { getTextStructuredAudioDownloadProfile, resolveTextStructuredEffectiveDownloadVoice } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
+import { getTextStructuredAudioDownloadChannelMode, getTextStructuredAudioDownloadProfile, resolveTextStructuredEffectiveDownloadVoice, TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { useLiveOverlayViewportRef } from '../../hooks/useStableOverlayViewport.js';
 
 const clean = value => String(value ?? '').trim();
@@ -74,6 +74,12 @@ const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', di
   </select>;
 };
 
+const DownloadPresetSelect = ({ value, disabled, onChange, testId }) => <select value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT} disabled={disabled} onChange={event => onChange?.(event.target.value)} className="w-full min-w-0 min-h-10 rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 py-2 text-[9px] text-violet-800 dark:text-violet-200 disabled:opacity-50" data-text-card-download-preset={testId}>
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}>DEFAULT • inherit</option>
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER}>FOLLOW PLAYER</option>
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM}>CUSTOM • Edge voice</option>
+</select>;
+
 export const TextStructuredCardAudioPanel = ({
   documentTree,
   block,
@@ -91,7 +97,9 @@ export const TextStructuredCardAudioPanel = ({
   onCardVoiceChange,
   onSegmentVoiceChange,
   onCardDownloadVoiceChange,
+  onCardDownloadModeChange,
   onSegmentDownloadVoiceChange,
+  onSegmentDownloadModeChange,
   onPreviewTts,
   onGenerateCardAudio,
   onCancelGeneration,
@@ -204,28 +212,27 @@ export const TextStructuredCardAudioPanel = ({
             <Download className="w-4 h-4 text-violet-500"/>
             <div className="min-w-0 flex-1">
               <p className="text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Edge Download Profile</p>
-              <p className="text-[8px] text-slate-400">Independent from Browser/Sidebar playback voices.</p>
+              <p className="text-[8px] text-slate-400">DEFAULT inherits. FOLLOW PLAYER maps playback voice → Edge. CUSTOM pins Edge without changing playback.</p>
             </div>
             {cardCoverage && <span className={`shrink-0 rounded-lg px-2 py-1 text-[8px] font-black ${cardCoverage.needDownload ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300' : 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'}`}>{cardCoverage.covered}/{cardCoverage.total}</span>}
           </div>
 
-          {!isConversation && <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2 md:grid-cols-2" data-text-card-download-presets="true">
             {['text', 'meaning'].map(channel => {
               const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block: { ...block, metadata: {} }, segment: firstSegment, channel, preferences: generationPreferences });
+              const mode = getTextStructuredAudioDownloadChannelMode(block, channel);
               const value = cardDownloadProfile.channels?.[channel] || '';
-              return <label key={channel} className="block min-w-0">
-                <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download voice' : 'EN download voice'}</span>
-                <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, null)} testId={`${block.id}:download:${channel}`}/>
-              </label>;
+              return <div key={channel} className="rounded-lg border border-violet-100 dark:border-violet-900 bg-white/70 dark:bg-slate-900/30 p-2">
+                <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download preset' : 'EN download preset'}</span>
+                <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onCardDownloadModeChange?.(block.id, channel, next)} testId={`${block.id}:${channel}`}/>
+                {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, null)} testId={`${block.id}:download:${channel}`}/></div>}
+                {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[7px] font-semibold text-sky-600 dark:text-sky-300">Maps each Segment's effective TTS playback voice to Edge.</p>}
+              </div>;
             })}
-          </div>}
+          </div>
 
-          {isConversation && <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <VoiceSummary label="Global Edge EN" value={generationPreferences?.edgeTextVoiceId} accent="sky"/>
-              <VoiceSummary label="Global Edge ID" value={generationPreferences?.edgeMeaningVoiceId} accent="sky"/>
-            </div>
-            <p className="text-[8px] text-slate-400">Each detected speaker inherits these Edge defaults unless a speaker download override is set below.</p>
+          {isConversation && <div className="mt-2 space-y-2">
+            <p className="text-[8px] text-slate-400">Speaker Edge overrides are optional and take priority over the Card preset for that speaker.</p>
             {speakers.map(({ id, key, label }) => {
               const sample = segments.find(segment => segment?.metadata?.speakerIdentityV1 === id) || segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || firstSegment;
               return <div key={`download-${id}`} className="rounded-lg border border-violet-100 dark:border-violet-900 bg-white/70 dark:bg-slate-900/30 p-2">
@@ -235,7 +242,7 @@ export const TextStructuredCardAudioPanel = ({
                     const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block: { ...block, metadata: { ...block.metadata, audioDownloadProfileV1: { ...cardDownloadProfile, speakers: { text: {}, meaning: {} }, speakerIds: { text: {}, meaning: {} } } } }, segment: sample, channel, preferences: generationPreferences });
                     const value = cardDownloadProfile.speakerIds?.[channel]?.[id] || cardDownloadProfile.speakers?.[channel]?.[key] || '';
                     return <label key={channel} className="block min-w-0">
-                      <span className="mb-1 block text-[8px] font-bold text-slate-500">{channel === 'meaning' ? 'ID Edge' : 'EN Edge'}</span>
+                      <span className="mb-1 block text-[8px] font-bold text-slate-500">{channel === 'meaning' ? 'ID custom Edge' : 'EN custom Edge'}</span>
                       <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, { id, label })} testId={`${block.id}:${id}:download:${channel}`}/>
                     </label>;
                   })}
@@ -351,11 +358,14 @@ export const TextStructuredCardAudioPanel = ({
                 <div className="mt-2 grid gap-2 border-t border-violet-100 dark:border-violet-900 pt-2 md:grid-cols-2" data-text-segment-download-overrides="true">
                   {['text', 'meaning'].map(channel => {
                     const segmentDownload = getTextStructuredAudioDownloadProfile(segment);
+                    const mode = getTextStructuredAudioDownloadChannelMode(segment, channel);
                     const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment: { ...segment, metadata: { ...(segment.metadata?.speakerIdentityV1 ? { speakerIdentityV1: segment.metadata.speakerIdentityV1 } : {}) } }, channel, preferences: generationPreferences });
-                    return <label key={`download-${channel}`} className="block min-w-0">
-                      <span className="mb-1 block text-[8px] font-bold text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID Edge download' : 'EN Edge download'}</span>
-                      <EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onSegmentDownloadVoiceChange?.(segment.id, channel, voiceId)} testId={`${segment.id}:download:${channel}`}/>
-                    </label>;
+                    return <div key={`download-${channel}`} className="block min-w-0">
+                      <span className="mb-1 block text-[8px] font-bold text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download preset' : 'EN download preset'}</span>
+                      <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onSegmentDownloadModeChange?.(segment.id, channel, next)} testId={`${segment.id}:${channel}`}/>
+                      {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onSegmentDownloadVoiceChange?.(segment.id, channel, voiceId)} testId={`${segment.id}:download:${channel}`}/></div>}
+                      {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[7px] font-semibold text-sky-600 dark:text-sky-300">Follows this Segment's effective playback voice.</p>}
+                    </div>;
                   })}
                 </div>
               </div>;

@@ -298,6 +298,15 @@ export const TextLibraryShell = ({
         </div> : <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-3 text-center" data-text-library-empty-filter="true"><p className="text-[10px] font-black text-slate-600 dark:text-slate-300">No {libraryFilter === 'all' ? 'Text' : typeLabel({ editorModel: libraryFilter === 'legacy' ? 'legacy-line-v1' : 'structured-v1', documentType: libraryFilter })} workspaces</p><p className="mt-1 text-[8px] text-slate-400">Create fresh data in CREATE, import an existing JSON source in TRANSFER, or load a starter demo.</p></div>}
       </div>}
 
+      {dataSection === 'create' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-text-create-actions="true">
+        <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'document' ? null : 'document')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'document' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
+          <span className="block text-[10px] font-black"><Plus className="w-3 h-3 inline mr-1"/>Create Workspace</span><span className={`mt-0.5 block text-[8px] ${createMode === 'document' ? 'text-indigo-100' : 'text-slate-400'}`}>Legacy, Paragraph, Conversation, or Conversation MIX</span>
+        </button>
+        <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'collection' ? null : 'collection')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'collection' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
+          <span className="block text-[10px] font-black"><Layers className="w-3 h-3 inline mr-1"/>Create Book Collection</span><span className={`mt-0.5 block text-[8px] ${createMode === 'collection' ? 'text-indigo-100' : 'text-slate-400'}`}>Optional organiser; Workspaces may stay Unfiled</span>
+        </button>
+      </div>}
+
       {dataSection === 'create' && <div className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5" data-text-library-demos="true">
         <div className="flex items-center justify-between gap-2"><div><p className="text-[9px] font-black text-violet-700 dark:text-violet-300">Starter Demos</p><p className="text-[8px] text-slate-400">Create isolated local samples for Player/Audio testing.</p></div><PlayCircle className="w-4 h-4 text-violet-500"/></div>
         <div className="mt-2 grid grid-cols-3 gap-1.5">{[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation • 3']].map(([key,label]) => <button key={key} type="button" disabled={isBusy || Boolean(demoBusy)} onClick={() => createDemo(key)} className="min-h-10 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-1 py-2 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-40">{demoBusy === key ? 'Creating…' : label}</button>)}</div>
@@ -526,14 +535,15 @@ export const TextLibraryShell = ({
         <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">New Structured Workspace</p>
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Workspace title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">
-            {[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation']].map(([key,label]) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">
+            {[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation'],['mixed','Conversation MIX']].map(([key,label]) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
           </div>
           <select value={newDocumentCollectionId} onChange={event => setNewDocumentCollectionId(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
             <option value="">Unfiled / Library Root</option>
             {(catalog?.collections || []).map(collection => <option key={collection.id} value={collection.id}>{collection.title}</option>)}
           </select>
         </div>
+        {newDocumentType === 'mixed' && <p className="text-[8px] leading-relaxed text-sky-600 dark:text-sky-300">Conversation MIX can order Paragraph TITLE/PARAGRAPH Cards and Conversation Cards inside one Workspace. Paragraph uses narrator rules; each Conversation Card uses only its referenced speakers.</p>}
         <button type="button" disabled={isBusy || !newDocumentTitle.trim()} onClick={submitDocument} className="w-full flex items-center justify-center gap-1 py-1.5 rounded bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40"><Plus className="w-3 h-3"/>Create & Open</button>
       </div>}
 

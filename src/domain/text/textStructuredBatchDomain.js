@@ -10,14 +10,55 @@ const clamp = (value, min, max, fallback) => {
 };
 
 export const normalizeTextStructuredBatchScope = ({ documentTree, scope = null } = {}) => {
-  const cardCount = Math.max(0, Array.isArray(documentTree?.blocks) ? documentTree.blocks.length : 0);
-  if (!cardCount) return { startCard: 0, endCard: 0, cardCount: 0, blockIds: [] };
+  const blocks = Array.isArray(documentTree?.blocks) ? documentTree.blocks : [];
+  const cardCount = Math.max(0, blocks.length);
+  if (!cardCount) return { startCard: 0, endCard: 0, cardCount: 0, blockIds: [], cardId: null };
+
+  const requestedCardId = clean(scope?.cardId);
+  if (requestedCardId) {
+    const index = blocks.findIndex(block => clean(block?.id) === requestedCardId);
+    if (index >= 0) {
+      return {
+        startCard: index + 1,
+        endCard: index + 1,
+        cardCount,
+        blockIds: [blocks[index].id],
+        cardId: blocks[index].id
+      };
+    }
+  }
+
+  // Backward-compatible card-range support is intentionally retained in the
+  // domain so older callers remain valid. W5 UI uses either one Card or the
+  // complete Workspace instead of exposing arbitrary ranges.
   const startCard = clamp(scope?.startCard, 1, cardCount, 1);
   const endCard = clamp(scope?.endCard, 1, cardCount, cardCount);
   const start = Math.min(startCard, endCard);
   const end = Math.max(startCard, endCard);
-  const blockIds = documentTree.blocks.slice(start - 1, end).map(block => block?.id).filter(Boolean);
-  return { startCard: start, endCard: end, cardCount, blockIds };
+  const blockIds = blocks.slice(start - 1, end).map(block => block?.id).filter(Boolean);
+  return { startCard: start, endCard: end, cardCount, blockIds, cardId: blockIds.length === 1 ? blockIds[0] : null };
+};
+
+
+export const resolveTextStructuredBatchTargetWorkspaceIds = ({
+  workspaceOptions = [],
+  activeWorkspaceId = null,
+  activeCollectionId = null,
+  scope = null
+} = {}) => {
+  const options = Array.isArray(workspaceOptions) ? workspaceOptions.filter(item => clean(item?.id)) : [];
+  const validIds = new Set(options.map(item => item.id));
+  const mode = clean(scope?.scopeMode) || 'workspace';
+
+  if (mode === 'all') return options.map(item => item.id);
+  if (mode === 'selected') {
+    return (Array.isArray(scope?.selectedDocumentIds) ? scope.selectedDocumentIds : []).filter(id => validIds.has(id));
+  }
+  if (mode === 'collection') {
+    if (!activeCollectionId) return activeWorkspaceId && validIds.has(activeWorkspaceId) ? [activeWorkspaceId] : [];
+    return options.filter(item => item.collectionId === activeCollectionId).map(item => item.id);
+  }
+  return activeWorkspaceId && validIds.has(activeWorkspaceId) ? [activeWorkspaceId] : [];
 };
 
 const countStatus = (counts, status) => {
@@ -102,7 +143,7 @@ export const buildTextStructuredBatchWorkspaceSelection = ({
     Object.keys(totalCoverage).forEach(key => { totalCoverage[key] += Number(selection.coverage?.[key] || 0); });
     documents.push({
       id: documentTree.id,
-      title: documentTree.title || 'Text Document',
+      title: documentTree.title || 'Text Workspace',
       collectionId: documentTree.collectionId || null,
       documentType: documentTree.documentType || 'mixed',
       cardCount: selection.scope?.blockIds?.length || 0,
@@ -114,8 +155,12 @@ export const buildTextStructuredBatchWorkspaceSelection = ({
   }
 
   return {
+    // `documents` remains the internal/wire-compatible name. `workspaces` is
+    // the W5 UI alias and deliberately points at the same immutable result.
     documents,
+    workspaces: documents,
     documentCount: documents.length,
+    workspaceCount: documents.length,
     jobs,
     slots,
     coverage: totalCoverage,

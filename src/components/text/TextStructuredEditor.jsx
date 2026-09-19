@@ -22,6 +22,13 @@ import {
   getTextParagraphCardRoleLabel,
   resolveTextParagraphCardRole
 } from '../../domain/text/textParagraphRoleDomain.js';
+import {
+  buildTextStructuredSegmentSpeakerIdentityMetadata,
+  collectTextStructuredWorkspaceSpeakerRegistry,
+  deriveTextStructuredSpeakerId,
+  getTextStructuredSegmentSpeakerId
+} from '../../domain/text/textStructuredSpeakerIdentityDomain.js';
+import TextStructuredSpeakerRegistry from './TextStructuredSpeakerRegistry.jsx';
 
 const normalize = value => String(value ?? '').trim();
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
@@ -39,30 +46,53 @@ const coverageTone = status => ({
   [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-900'
 }[status] || 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700');
 
-const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = false }) => {
+const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = false, documentTree, speakerRegistry = [] }) => {
   const [text, setText] = useState(segment?.text || '');
   const [meaning, setMeaning] = useState(segment?.meaning || '');
   const [speaker, setSpeaker] = useState(segment?.speaker || '');
   const isConversation = block.blockType === 'conversation';
   const unitLabel = isConversation ? 'Segment' : 'Sentence';
+  const resolveInitialSpeakerChoice = candidate => {
+    if (!isConversation || !candidate?.speaker) return '';
+    const stableId = getTextStructuredSegmentSpeakerId(candidate) || deriveTextStructuredSpeakerId({ documentId: documentTree?.id, speaker: candidate.speaker });
+    return speakerRegistry.some(entry => entry.id === stableId) ? stableId : '__new__';
+  };
+  const [speakerChoice, setSpeakerChoice] = useState(() => segment ? resolveInitialSpeakerChoice(segment) : (speakerRegistry.length ? '' : '__new__'));
 
   useEffect(() => {
     setText(segment?.text || '');
     setMeaning(segment?.meaning || '');
     setSpeaker(segment?.speaker || '');
-  }, [segment?.id]);
+    setSpeakerChoice(segment ? resolveInitialSpeakerChoice(segment) : (speakerRegistry.length ? '' : '__new__'));
+  }, [segment?.id, documentTree?.id]);
+
+  const selectSpeaker = value => {
+    setSpeakerChoice(value);
+    if (!value) { setSpeaker(''); return; }
+    if (value === '__new__') { setSpeaker(''); return; }
+    const selected = speakerRegistry.find(entry => entry.id === value);
+    if (selected) setSpeaker(selected.label);
+  };
 
   const save = async () => {
     const cleanText = normalize(text);
-    const cleanSpeaker = normalize(speaker);
+    const selectedSpeaker = isConversation && speakerChoice && speakerChoice !== '__new__' ? speakerRegistry.find(entry => entry.id === speakerChoice) || null : null;
+    const cleanSpeaker = isConversation ? normalize(selectedSpeaker?.label || speaker) : '';
     if (!cleanText || isBusy || (isConversation && !cleanSpeaker)) return;
+    const speakerId = isConversation
+      ? (selectedSpeaker?.id || deriveTextStructuredSpeakerId({ documentId: documentTree?.id, speaker: cleanSpeaker }))
+      : null;
+    const metadata = isConversation
+      ? buildTextStructuredSegmentSpeakerIdentityMetadata(segment?.metadata, speakerId)
+      : segment?.metadata;
     const command = segment ? {
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
       payload: {
         id: segment.id,
         text: cleanText,
         meaning: normalize(meaning),
-        speaker: isConversation ? cleanSpeaker : null
+        speaker: isConversation ? cleanSpeaker : null,
+        metadata
       }
     } : {
       type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
@@ -71,7 +101,8 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
         text: cleanText,
         meaning: normalize(meaning),
         speaker: isConversation ? cleanSpeaker : null,
-        joinAfter: isConversation ? 'line' : 'space'
+        joinAfter: isConversation ? 'line' : 'space',
+        metadata
       }
     };
     const result = await onCommand?.(command);
@@ -80,13 +111,21 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
 
   return (
     <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 space-y-2 scroll-mb-32" data-text-editor-keyboard-safe={compact ? 'true' : undefined}>
-      {isConversation && <input
-        value={speaker}
-        onChange={event => setSpeaker(event.target.value)}
-        placeholder="Speaker (required)"
-        disabled={isBusy}
-        className="w-full min-h-11 text-sm md:text-[10px] px-2 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white"
-      />}
+      {isConversation && <div className="space-y-1.5">
+        <select value={speakerChoice} onChange={event => selectSpeaker(event.target.value)} disabled={isBusy} className="w-full min-h-11 text-sm md:text-[10px] px-2 py-2 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900 dark:text-white">
+          <option value="">Select registered speaker…</option>
+          {speakerRegistry.map(entry => <option key={entry.id} value={entry.id}>{entry.label}{entry.registered ? '' : ' • detected'}</option>)}
+          <option value="__new__">+ New speaker…</option>
+        </select>
+        {speakerChoice === '__new__' && <input
+          value={speaker}
+          onChange={event => setSpeaker(event.target.value)}
+          placeholder="New speaker name"
+          disabled={isBusy}
+          className="w-full min-h-11 text-sm md:text-[10px] px-2 py-2 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900 dark:text-white"
+        />}
+        <p className="text-[7px] leading-relaxed text-slate-400">Speaker identity is stored as a stable SPK_* reference. New speakers are added to this Workspace registry automatically.</p>
+      </div>}
       <textarea
         value={text}
         onChange={event => setText(event.target.value)}
@@ -106,13 +145,13 @@ const SegmentEditor = ({ block, segment, isBusy, onCommand, onClose, compact = f
       />
       <div className={`${compact ? 'sticky bottom-0 z-10 -mx-1 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 px-2 py-2 shadow-sm backdrop-blur' : ''} flex justify-end gap-1.5`} data-text-mobile-editor-savebar={compact ? 'true' : undefined}>
         <button type="button" disabled={isBusy} onClick={onClose} className="min-h-10 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 active:scale-95 transition"><X className="w-3 h-3 inline mr-1"/>Cancel</button>
-        <button type="button" disabled={isBusy || !normalize(text) || (isConversation && !normalize(speaker))} onClick={save} className="min-h-10 px-3 py-2 rounded-lg bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40 active:scale-95 transition"><Save className="w-3 h-3 inline mr-1"/>{segment ? `Save ${unitLabel}` : `Add ${unitLabel}`}</button>
+        <button type="button" disabled={isBusy || !normalize(text) || (isConversation && !(speakerChoice && (speakerChoice !== '__new__' || normalize(speaker))))} onClick={save} className="min-h-10 px-3 py-2 rounded-lg bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40 active:scale-95 transition"><Save className="w-3 h-3 inline mr-1"/>{segment ? `Save ${unitLabel}` : `Add ${unitLabel}`}</button>
       </div>
     </div>
   );
 };
 
-const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = false, documentTree, audioCoverageMap }) => {
+const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = false, documentTree, audioCoverageMap, speakerRegistry = [] }) => {
   const [expanded, setExpanded] = useState(() => !compact);
   const [editingTitle, setEditingTitle] = useState(false);
   const [title, setTitle] = useState(block.title || '');
@@ -227,7 +266,7 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
 
         <div className="space-y-2">
           {segments.map((segment, segmentIndex) => <div key={segment.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-2.5">
-            {segmentEditor?.mode === 'edit' && segmentEditor.id === segment.id ? <SegmentEditor block={block} segment={segment} isBusy={isBusy} onCommand={onCommand} onClose={() => setSegmentEditor(null)} compact={compact} /> : <>
+            {segmentEditor?.mode === 'edit' && segmentEditor.id === segment.id ? <SegmentEditor block={block} segment={segment} isBusy={isBusy} onCommand={onCommand} onClose={() => setSegmentEditor(null)} compact={compact} documentTree={documentTree} speakerRegistry={speakerRegistry} /> : <>
               <div className={compact ? "block" : "flex items-start gap-2"}>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap mb-1">
@@ -257,7 +296,7 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
           </div>)}
         </div>
 
-        {segmentEditor?.mode === 'create' ? <SegmentEditor block={block} isBusy={isBusy} onCommand={onCommand} onClose={() => setSegmentEditor(null)} compact={compact} /> : <button type="button" disabled={isBusy} onClick={() => setSegmentEditor({ mode: 'create' })} className="w-full min-h-10 py-2 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-[10px] font-black disabled:opacity-40 active:scale-[0.99] transition"><Plus className="w-3 h-3 inline mr-1"/>Add {isParagraphCard ? 'Sentence' : 'Segment'}</button>}
+        {segmentEditor?.mode === 'create' ? <SegmentEditor block={block} isBusy={isBusy} onCommand={onCommand} onClose={() => setSegmentEditor(null)} compact={compact} documentTree={documentTree} speakerRegistry={speakerRegistry} /> : <button type="button" disabled={isBusy} onClick={() => setSegmentEditor({ mode: 'create' })} className="w-full min-h-10 py-2 rounded-xl border border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-[10px] font-black disabled:opacity-40 active:scale-[0.99] transition"><Plus className="w-3 h-3 inline mr-1"/>Add {isParagraphCard ? 'Sentence' : 'Segment'}</button>}
       </div>}
     </article>
   );
@@ -272,6 +311,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
   const documentType = documentTree?.documentType || 'mixed';
   const segmentCount = useMemo(() => blocks.reduce((sum, block) => sum + (block.segments?.length || 0), 0), [blocks]);
   const documentAudio = useMemo(() => summarizeTextStructuredAudioCoverage({ documentTree, coverageMap: audioCoverageMap }), [documentTree, audioCoverageMap]);
+  const speakerRegistry = useMemo(() => collectTextStructuredWorkspaceSpeakerRegistry(documentTree), [documentTree]);
 
   useEffect(() => {
     setCreatingCard(false);
@@ -305,13 +345,15 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
               <h3 className="text-xs font-black text-slate-800 dark:text-white">{documentType === 'paragraph' ? (compact ? 'Cards & Sentences' : 'Structured Card / Sentence Editor') : (compact ? 'Cards & Segments' : 'Structured Card / Segment Editor')}</h3>
               {!compact && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">DIRECT INDEXEDDB</span>}
             </div>
-            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • {documentType === 'conversation' ? 'Multi-speaker • Text + Meaning' : documentType === 'paragraph' ? 'Single narrator • Text + Meaning' : 'Compatibility cards • Text + Meaning + optional Speaker'}</p>
+            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • {documentType === 'conversation' ? 'Multi-speaker • Text + Meaning' : documentType === 'paragraph' ? 'Single narrator • Text + Meaning' : 'Conversation MIX • Paragraph narrator + actual Card speakers'}</p>
             {documentAudio.total > 0 && <p className={`mt-1 text-[8px] font-bold ${documentAudio.needDownload ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>Audio coverage {documentAudio.covered}/{documentAudio.total}{documentAudio.needDownload ? ` • ${documentAudio.needDownload} need download` : ' • complete'}</p>}
           </div>
           <button type="button" disabled={isBusy} onClick={() => setCreatingCard(value => !value)} className="min-h-10 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[10px] font-black disabled:opacity-40 active:scale-95 transition"><Plus className="w-3 h-3 inline mr-1"/>Card</button>
         </div>
         {error && <p className="mt-2 text-[9px] font-bold text-red-500" role="alert">{error}</p>}
       </div>
+
+      {['conversation', 'mixed'].includes(documentType) && <TextStructuredSpeakerRegistry documentTree={documentTree} isBusy={isBusy} onCommand={onCommand} compact={compact} />}
 
       {creatingCard && <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-800 p-3 space-y-2">
         <p className="text-[9px] font-black uppercase tracking-wide text-emerald-600 dark:text-emerald-300">New Card</p>
@@ -334,7 +376,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
         <FileText className="w-6 h-6 mx-auto text-slate-300 dark:text-slate-600"/>
         <p className="mt-2 text-xs font-bold text-slate-500">Belum ada Card</p>
         <p className="mt-1 text-[9px] text-slate-400">Buat Card pertama. Paragraph memakai sentence-level Segment; Conversation tetap memakai Segment per line.</p>
-      </div> : <div className="space-y-3">{blocks.map((block, index) => <StructuredCard key={block.id} block={{ ...block, __siblings: siblings }} index={index} total={blocks.length} isBusy={isBusy} onCommand={onCommand} compact={compact} documentTree={documentTree} audioCoverageMap={audioCoverageMap} />)}</div>}
+      </div> : <div className="space-y-3">{blocks.map((block, index) => <StructuredCard key={block.id} block={{ ...block, __siblings: siblings }} index={index} total={blocks.length} isBusy={isBusy} onCommand={onCommand} compact={compact} documentTree={documentTree} audioCoverageMap={audioCoverageMap} speakerRegistry={speakerRegistry} />)}</div>}
     </section>
   );
 };

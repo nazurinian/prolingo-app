@@ -1,15 +1,23 @@
-export const APP_VERSION = '5.14.17';
+export const APP_VERSION = '6.0.0';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16B-HF1 — Data-Dependent Text Blank Fix';
-export const APP_RELEASE_NAME = 'Final Text T16B-HF1 Data-Dependent Text Blank Fix';
+export const APP_CHECKPOINT_ID = 'V6-FINAL';
+export const APP_CHECKPOINT_LABEL = 'V6-FINAL • Workspace/Data Redesign';
+export const APP_RELEASE_NAME = 'Workspace/Data Redesign Final';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16B-HF1: T16B manual playback/audio-availability UX plus the data-dependent Text Card render blank-screen fix.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16B-HF1`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: W1–W6 Workspace/Data, Paragraph, MIX, Download and Batch redesign are user-accepted; Text DB schema remains v1 and Table remains frozen.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • V6-FINAL`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.0 promotes the user-accepted W1–W6 Workspace/Data redesign to the major-version release identity without changing the accepted runtime architecture',
+  'The v6 promotion preserves Text IndexedDB/schema v1, permanent Collection/Document/Block/Segment identities, Text Pack v1 and Text DB Backup v1 compatibility, and the frozen Table core',
+  'W6-RC aligns release metadata with the user-accepted W1–W5 source state and opens the final regression gate before any major-version promotion',
+  'Workspace/Data redesign keeps IndexedDB v1 and existing Document/Block/Segment permanent identities: UI Workspace maps to Document, Book Collection remains optional, and JSON v1 wire terminology remains unchanged',
+  'Paragraph Cards support TITLE/PARAGRAPH roles on existing metadata and existing stable Segments serve as sentence identities with scope-preserving Segment/Card/Start From Here/Workspace playback',
+  'Conversation MIX reuses structured mixed Documents with Workspace speakerRegistryV1 and stable SPK_* identities; Paragraph narrator and Conversation speaker behavior remain segment-driven',
+  'Audio Download uses DEFAULT/FOLLOW PLAYER/CUSTOM inheritance and Text Batch is Book Collection-first with explicit Current Card/Workspace/Selected/All scopes while reusing the same resolved download voice contract',
+  'W6 regression preserves Text Pack v1, Text DB Backup v1, folder audio identity reconnect, Legacy compatibility, Unfiled Workspaces, and the frozen Table core',
   'T16B-HF1 fixes a data-dependent Text blank screen: TextStructuredPlayer now declares manual Segment/Card playback channel modes before card playability is evaluated, eliminating the runtime temporal-dead-zone failure that only appeared when structured Cards were present',
   'No Text DB/schema migration or demo-data lifecycle behavior is changed in T16B-HF1; Starter Demo persistence must be re-tested on the same normal browser origin after this runtime fix because private browsing intentionally uses separate storage',
   'Final Text T16B keeps AUDIO → DOWNLOAD untouched and refines only AUDIO → PLAYBACK plus body/player manual-play UX',

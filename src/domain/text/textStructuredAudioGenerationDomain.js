@@ -2,6 +2,7 @@ import { initialEdgeVoices } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioFilename } from './textStructuredAudioIdentityDomain.js';
 import { resolveStructuredTextPlaybackList } from './textStructuredPlaybackDomain.js';
 import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
+import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 
 export const TEXT_STRUCTURED_GENERATOR_ENGINES = Object.freeze({ EDGE: 'edge', GEMINI: 'gemini' });
 export const TEXT_STRUCTURED_GENERATION_FEATURES = Object.freeze({ EDGE: true, GEMINI: false });
@@ -121,6 +122,12 @@ export const buildTextStructuredGenerationJobs = ({
   channels = null
 }) => {
   const prefs = normalizeTextStructuredAudioGenerationPreferences(preferences);
+  const resolutionPreferences = {
+    ...prefs,
+    playbackTextVoiceName: preferences?.playbackTextVoiceName || null,
+    playbackMeaningVoiceName: preferences?.playbackMeaningVoiceName || null,
+    edgeVoices: Array.isArray(preferences?.edgeVoices) ? preferences.edgeVoices : undefined
+  };
   const requestedSegmentIds = Array.isArray(segmentIds) && segmentIds.length
     ? new Set(segmentIds.map(value => String(value || '').toUpperCase()))
     : null;
@@ -141,12 +148,12 @@ export const buildTextStructuredGenerationJobs = ({
     const block = (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate.id === item.blockId) || null;
     const segment = (Array.isArray(block?.segments) ? block.segments : []).find(candidate => candidate.id === (item.segmentId || item.id)) || item;
     if (allowText && clean(item?.text)) {
-      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'text', preferences: prefs });
-      jobs.push({ segmentId: item.segmentId || item.id, channel: 'text', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'text', preferences: resolutionPreferences });
+      jobs.push({ segmentId: item.segmentId || item.id, channel: 'text', blockId: item.blockId, speaker: item.speaker || null, speakerId: getTextStructuredSegmentSpeakerId(segment) || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
     if (allowMeaning && clean(item?.meaning)) {
-      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'meaning', preferences: prefs });
-      jobs.push({ segmentId: item.segmentId || item.id, channel: 'meaning', blockId: item.blockId, speaker: item.speaker || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
+      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: 'meaning', preferences: resolutionPreferences });
+      jobs.push({ segmentId: item.segmentId || item.id, channel: 'meaning', blockId: item.blockId, speaker: item.speaker || null, speakerId: getTextStructuredSegmentSpeakerId(segment) || null, downloadVoiceId: download.voiceId, downloadVoiceSource: download.source });
     }
   });
   return jobs;

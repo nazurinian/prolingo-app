@@ -15,6 +15,12 @@ import {
 } from './textLibraryDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
+import {
+  buildTextStructuredSegmentSpeakerIdentityMetadata,
+  buildTextStructuredUpsertSpeakerRegistryMetadata,
+  deriveTextStructuredSpeakerId,
+  getTextStructuredSegmentSpeakerId
+} from './textStructuredSpeakerIdentityDomain.js';
 
 const COMMAND_TYPES = Object.freeze({
   CREATE_COLLECTION: 'collection.create',
@@ -405,9 +411,19 @@ const reorderBlocks = (snapshot, payload, now) => {
 
 const createSegment = (snapshot, payload, now) => {
   const block = requireBlock(snapshot, payload?.blockId);
-  requireStructuredDocument(snapshot, block.documentId);
+  const document = requireStructuredDocument(snapshot, block.documentId);
   const allocated = allocateIdentity(snapshot, 'SEGMENT');
   const siblings = snapshot.segments.filter(item => item.blockId === block.id);
+  const speakerLabel = block.blockType === 'conversation' ? String(payload?.speaker || '').trim() : '';
+  const speakerId = speakerLabel
+    ? (String(payload?.metadata?.speakerIdentityV1 || '').trim() || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: speakerLabel }))
+    : null;
+  const segmentMetadata = speakerId
+    ? buildTextStructuredSegmentSpeakerIdentityMetadata(payload?.metadata, speakerId)
+    : payload?.metadata;
+  const documentMetadata = speakerId
+    ? buildTextStructuredUpsertSpeakerRegistryMetadata({ metadata: document.metadata, documentId: document.id, speakerId, label: speakerLabel })
+    : document.metadata;
   const record = createTextSegmentRecord({
     id: allocated.id,
     documentId: block.documentId,
@@ -419,34 +435,50 @@ const createSegment = (snapshot, payload, now) => {
     joinAfter: payload?.joinAfter,
     createdAt: now,
     updatedAt: now,
-    metadata: payload?.metadata
+    metadata: segmentMetadata
   });
   return finalize({
     ...snapshot,
     counters: allocated.counters,
     segments: [...snapshot.segments, record],
     blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
-    documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, updatedAt: now } : item)
+    documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, metadata: documentMetadata, updatedAt: now } : item)
   }, { entity: 'segment', action: 'create', id: record.id, blockId: block.id, documentId: block.documentId });
 };
 
 const updateSegment = (snapshot, payload, now) => {
   const current = requireSegment(snapshot, payload?.id);
-  requireStructuredDocument(snapshot, current.documentId);
+  const document = requireStructuredDocument(snapshot, current.documentId);
+  const block = requireBlock(snapshot, current.blockId);
+  const nextSpeaker = payload?.speaker === undefined ? current.speaker : payload.speaker;
+  const speakerLabel = block.blockType === 'conversation' ? String(nextSpeaker || '').trim() : '';
+  const candidateMetadata = payload?.metadata === undefined ? current.metadata : payload.metadata;
+  const speakerChanged = payload?.speaker !== undefined
+    && String(current.speaker || '').trim().toLowerCase().replace(/\s+/g, ' ') !== speakerLabel.toLowerCase().replace(/\s+/g, ' ');
+  const explicitSpeakerId = payload?.metadata === undefined ? null : String(candidateMetadata?.speakerIdentityV1 || '').trim() || null;
+  const speakerId = speakerLabel
+    ? (explicitSpeakerId || (!speakerChanged ? getTextStructuredSegmentSpeakerId(current) : null) || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: speakerLabel }))
+    : null;
+  const segmentMetadata = speakerId
+    ? buildTextStructuredSegmentSpeakerIdentityMetadata(candidateMetadata, speakerId)
+    : candidateMetadata;
+  const documentMetadata = speakerId
+    ? buildTextStructuredUpsertSpeakerRegistryMetadata({ metadata: document.metadata, documentId: document.id, speakerId, label: speakerLabel })
+    : document.metadata;
   const record = createTextSegmentRecord({
     ...current,
     text: payload?.text === undefined ? current.text : payload.text,
     meaning: payload?.meaning === undefined ? current.meaning : payload.meaning,
-    speaker: payload?.speaker === undefined ? current.speaker : payload.speaker,
+    speaker: nextSpeaker,
     joinAfter: payload?.joinAfter === undefined ? current.joinAfter : payload.joinAfter,
     updatedAt: now,
-    metadata: payload?.metadata === undefined ? current.metadata : payload.metadata
+    metadata: segmentMetadata
   });
   return finalize({
     ...snapshot,
     segments: snapshot.segments.map(item => item.id === record.id ? record : item),
     blocks: snapshot.blocks.map(item => item.id === record.blockId ? { ...item, updatedAt: now } : item),
-    documents: snapshot.documents.map(item => item.id === record.documentId ? { ...item, updatedAt: now } : item)
+    documents: snapshot.documents.map(item => item.id === record.documentId ? { ...item, metadata: documentMetadata, updatedAt: now } : item)
   }, { entity: 'segment', action: 'update', id: record.id, blockId: record.blockId, documentId: record.documentId });
 };
 

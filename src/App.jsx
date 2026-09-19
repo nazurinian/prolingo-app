@@ -112,9 +112,9 @@ import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCovera
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
 import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
-import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
+import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, buildTextStructuredUpsertSpeakerRegistryMetadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
-import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection } from './domain/text/textStructuredBatchDomain.js';
+import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection, resolveTextStructuredBatchTargetWorkspaceIds } from './domain/text/textStructuredBatchDomain.js';
 import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
@@ -262,7 +262,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // P4-A12: Text-owned generator/folder state. These preferences never read Table generator settings.
   const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(loadTextStructuredAudioGenerationPreferences);
   const [structuredTextAudioGenerationState, setStructuredTextAudioGenerationState] = useState({ running: false, completed: 0, total: 0, current: null, failedJobs: [], lastStatus: null, processed: 0, generated: 0, skippedReady: 0, failed: 0, remaining: 0, readyEstimate: 0, missingEstimate: 0 });
-  const [structuredTextBatchScope, setStructuredTextBatchScope] = useState({ scopeMode: 'document', documentId: null, collectionId: null, selectedDocumentIds: [], startCard: 1, endCard: 1 });
+  const [structuredTextBatchScope, setStructuredTextBatchScope] = useState({ scopeMode: 'collection', documentId: null, collectionId: null, selectedDocumentIds: [], cardId: null, startCard: 1, endCard: 1 });
   const [structuredTextEdgeHealth, setStructuredTextEdgeHealth] = useState({ status: 'idle', message: 'Not tested' });
   const [structuredTextAudioFolderState, setStructuredTextAudioFolderState] = useState({ status: 'idle', name: null, matchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0 });
   // C3.4.2 Text-only: ZIP audio archives are additive to the remembered Folder.
@@ -750,12 +750,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   );
   const defaultStructuredTextVoiceId = textStructuredPreferences.browserTextVoiceName || selectedTextBrowserVoice?.name || null;
   const defaultStructuredMeaningVoiceId = textStructuredPreferences.browserMeaningVoiceName || selectedTextIndonesianVoice?.name || null;
+  const structuredTextDownloadResolutionPreferences = useMemo(() => ({
+    ...structuredTextAudioGenerationPreferences,
+    playbackTextVoiceName: defaultStructuredTextVoiceId,
+    playbackMeaningVoiceName: defaultStructuredMeaningVoiceId,
+    edgeVoices: initialEdgeVoices
+  }), [structuredTextAudioGenerationPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId]);
   const resolveStructuredTextChannelVoiceState = useCallback((item, channel) => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const isMeaning = normalizedChannel === 'meaning';
     const defaultVoice = isMeaning ? selectedTextIndonesianVoice : selectedTextBrowserVoice;
     const defaultVoiceId = isMeaning ? defaultStructuredMeaningVoiceId : defaultStructuredTextVoiceId;
-    const syncVoice = activeTextDocumentTree?.documentType === 'conversation'
+    const syncVoice = item?.blockType === 'conversation'
       && structuredTextAudioSyncProfile.voice?.[normalizedChannel] === true
       && structuredTextConversationSpeakers.length > 0;
     let assignment;
@@ -791,7 +797,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, voices, indonesianVoices]);
   const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
-    const syncRate = activeTextDocumentTree?.documentType === 'conversation'
+    const syncRate = item?.blockType === 'conversation'
       && structuredTextAudioSyncProfile.rate?.[normalizedChannel] === true
       && structuredTextConversationSpeakers.length > 0;
     if (syncRate) {
@@ -822,14 +828,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     meaningVoiceId: defaultStructuredMeaningVoiceId,
     speakerVoiceMap: structuredTextSpeakerVoiceMap,
     preferredGeneratedEngine: 'edge',
-    downloadPreferences: structuredTextAudioGenerationPreferences
-  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextAudioGenerationPreferences]);
+    downloadPreferences: structuredTextDownloadResolutionPreferences
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextDownloadResolutionPreferences]);
   const structuredTextAudioCoverageMap = useMemo(() => buildTextStructuredAudioCoverageMap({
     documentTree: activeTextDocumentTree,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
     runtimeAudioUrls: structuredTextAudioRuntimeUrls,
-    preferences: structuredTextAudioGenerationPreferences
-  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextAudioGenerationPreferences]);
+    preferences: structuredTextDownloadResolutionPreferences
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextDownloadResolutionPreferences]);
   const structuredTextAvailableLocalVoices = useMemo(() => collectTextStructuredAvailableLocalVoices({
     documentTree: activeTextDocumentTree,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -845,41 +851,66 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channels
     });
   }, [activeTextDocumentTree, structuredTextAudioCoverageMap, structuredTextAudioGenerationPreferences?.generateText, structuredTextAudioGenerationPreferences?.generateMeaning]);
+  const structuredTextBatchCollectionOptions = useMemo(() => {
+    if (!textLibrarySnapshot) return [];
+    const structuredCounts = new Map();
+    (textLibrarySnapshot.documents || []).filter(document => document?.editorModel === 'structured-v1').forEach(document => {
+      const key = document.collectionId || '__root__';
+      structuredCounts.set(key, (structuredCounts.get(key) || 0) + 1);
+    });
+    return (textLibrarySnapshot.collections || []).map(collection => ({
+      id: collection.id,
+      title: collection.title || 'Book Collection',
+      workspaceCount: structuredCounts.get(collection.id) || 0
+    }));
+  }, [textLibrarySnapshot]);
+
   const structuredTextBatchDocumentOptions = useMemo(() => {
     if (!textLibrarySnapshot) return [];
+    const collectionTitleById = new Map((textLibrarySnapshot.collections || []).map(collection => [collection.id, collection.title || 'Book Collection']));
     return (textLibrarySnapshot.documents || [])
       .filter(document => document?.editorModel === 'structured-v1')
       .map(document => ({
         id: document.id,
-        title: document.title || 'Text Document',
+        title: document.title || 'Text Workspace',
         collectionId: document.collectionId || null,
+        collectionTitle: document.collectionId ? (collectionTitleById.get(document.collectionId) || 'Book Collection') : 'Unfiled / Library Root',
         documentType: document.documentType || 'mixed'
       }));
   }, [textLibrarySnapshot]);
+
+  const structuredTextBatchCardOptions = useMemo(() => (activeTextDocumentTree?.blocks || []).map((block, index) => ({
+    id: block.id,
+    index: index + 1,
+    title: block.title || `Card ${index + 1}`,
+    blockType: block.blockType || 'paragraph'
+  })), [activeTextDocumentTree?.blocks]);
 
   useEffect(() => {
     const documentId = activeTextDocumentTree?.id || null;
     const collectionId = activeTextDocumentTree?.collectionId || null;
     const cardCount = Math.max(1, activeTextDocumentTree?.blocks?.length || 1);
+    const cardIds = new Set((activeTextDocumentTree?.blocks || []).map(block => block?.id).filter(Boolean));
     setStructuredTextBatchScope(prev => {
       const startCard = Math.min(cardCount, Math.max(1, Number(prev?.startCard || 1)));
       const endCard = Math.min(cardCount, Math.max(startCard, Number(prev?.endCard || cardCount)));
       const validSelected = (prev?.selectedDocumentIds || []).filter(id => structuredTextBatchDocumentOptions.some(document => document.id === id));
-      if (prev?.documentId === documentId && prev?.collectionId === collectionId && startCard === prev.startCard && endCard === prev.endCard && validSelected.length === (prev?.selectedDocumentIds || []).length) return prev;
-      return { ...prev, documentId, collectionId, startCard, endCard, selectedDocumentIds: validSelected };
+      const documentChanged = prev?.documentId !== documentId;
+      const cardId = !documentChanged && prev?.cardId && cardIds.has(prev.cardId)
+        ? prev.cardId
+        : (activeTextDocumentTree?.blocks?.[0]?.id || null);
+      const scopeMode = prev?.scopeMode === 'collection' && !collectionId ? 'workspace' : (prev?.scopeMode || (collectionId ? 'collection' : 'workspace'));
+      if (prev?.documentId === documentId && prev?.collectionId === collectionId && prev?.cardId === cardId && prev?.scopeMode === scopeMode && startCard === prev.startCard && endCard === prev.endCard && validSelected.length === (prev?.selectedDocumentIds || []).length) return prev;
+      return { ...prev, documentId, collectionId, cardId, scopeMode, startCard, endCard, selectedDocumentIds: validSelected };
     });
-  }, [activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId, activeTextDocumentTree?.blocks?.length, structuredTextBatchDocumentOptions]);
+  }, [activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId, activeTextDocumentTree?.blocks, structuredTextBatchDocumentOptions]);
 
-  const structuredTextBatchTargetDocumentIds = useMemo(() => {
-    const modeValue = structuredTextBatchScope?.scopeMode || 'document';
-    if (modeValue === 'all') return structuredTextBatchDocumentOptions.map(document => document.id);
-    if (modeValue === 'selected') return (structuredTextBatchScope?.selectedDocumentIds || []).filter(id => structuredTextBatchDocumentOptions.some(document => document.id === id));
-    if (modeValue === 'collection') {
-      const collectionId = activeTextDocumentTree?.collectionId || null;
-      return structuredTextBatchDocumentOptions.filter(document => (document.collectionId || null) === collectionId).map(document => document.id);
-    }
-    return activeTextDocumentTree?.id ? [activeTextDocumentTree.id] : [];
-  }, [structuredTextBatchScope?.scopeMode, structuredTextBatchScope?.selectedDocumentIds, structuredTextBatchDocumentOptions, activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId]);
+  const structuredTextBatchTargetDocumentIds = useMemo(() => resolveTextStructuredBatchTargetWorkspaceIds({
+    workspaceOptions: structuredTextBatchDocumentOptions,
+    activeWorkspaceId: activeTextDocumentTree?.id || null,
+    activeCollectionId: activeTextDocumentTree?.collectionId || null,
+    scope: structuredTextBatchScope
+  }), [structuredTextBatchScope, structuredTextBatchDocumentOptions, activeTextDocumentTree?.id, activeTextDocumentTree?.collectionId]);
 
   const structuredTextBatchTargetTrees = useMemo(() => {
     if (!textLibrarySnapshot) return [];
@@ -895,19 +926,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         documentTree,
         audioVariants: textLibrarySnapshot?.audioVariants || [],
         runtimeAudioUrls: structuredTextAudioRuntimeUrls,
-        preferences: structuredTextAudioGenerationPreferences
+        preferences: structuredTextDownloadResolutionPreferences
       });
     });
     return maps;
-  }, [structuredTextBatchTargetTrees, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextAudioGenerationPreferences]);
+  }, [structuredTextBatchTargetTrees, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextDownloadResolutionPreferences]);
 
   const structuredTextBatchSelection = useMemo(() => buildTextStructuredBatchWorkspaceSelection({
     documentTrees: structuredTextBatchTargetTrees,
-    preferences: structuredTextAudioGenerationPreferences,
+    preferences: structuredTextDownloadResolutionPreferences,
     coverageMapsByDocument: structuredTextBatchCoverageMaps,
     activeDocumentId: activeTextDocumentTree?.id || null,
-    activeScope: (structuredTextBatchScope?.scopeMode || 'document') === 'document' ? structuredTextBatchScope : null
-  }), [structuredTextBatchTargetTrees, structuredTextAudioGenerationPreferences, structuredTextBatchCoverageMaps, activeTextDocumentTree?.id, structuredTextBatchScope]);
+    activeScope: (structuredTextBatchScope?.scopeMode || 'workspace') === 'card' ? { cardId: structuredTextBatchScope?.cardId || null } : null
+  }), [structuredTextBatchTargetTrees, structuredTextDownloadResolutionPreferences, structuredTextBatchCoverageMaps, activeTextDocumentTree?.id, structuredTextBatchScope?.scopeMode, structuredTextBatchScope?.cardId]);
   const activeTableAudioStagingRecords = useMemo(
     () => filterTableAudioStagingRecordsForPlaylist(tableAudioStagingRecords, playlist),
     [tableAudioStagingRecords, playlist]
@@ -1944,7 +1975,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const segment = (block?.segments || []).find(candidate => candidate.id === segmentId) || item;
     const resolvedDownloadVoice = downloadVoiceId
       ? { voiceId: downloadVoiceId, source: downloadVoiceSource || 'job-download' }
-      : resolveTextStructuredEffectiveDownloadVoice({ documentTree: jobDocumentTree, block, segment, channel, preferences: structuredTextAudioGenerationPreferences });
+      : resolveTextStructuredEffectiveDownloadVoice({ documentTree: jobDocumentTree, block, segment, channel, preferences: structuredTextDownloadResolutionPreferences });
     const generationVoiceState = {
       ...resolveTextStructuredGenerationVoiceState({
         channel,
@@ -1993,7 +2024,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, registerStructuredTextGeneratedBlob, addLog]);
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, registerStructuredTextGeneratedBlob, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
@@ -2186,7 +2217,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         block,
         segment,
         channel,
-        preferences: structuredTextAudioGenerationPreferences
+        preferences: structuredTextDownloadResolutionPreferences
       });
       const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
       const syncLocalToFirstSpeaker = activeTextDocumentTree?.documentType === 'conversation'
@@ -2804,6 +2835,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         payload: { id: segment.id, metadata: buildTextStructuredSegmentSpeakerIdentityMetadata(segment.metadata, identity.id) }
       });
     }
+    const registryMetadata = buildTextStructuredUpsertSpeakerRegistryMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      documentId: activeTextDocumentTree.id,
+      speakerId: identity.id,
+      label: identity.label
+    });
+    await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata: registryMetadata }
+    });
     return identity;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand]);
 
@@ -2851,6 +2892,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       payload: { id: activeTextDocumentTree.id, metadata }
     });
     if (result) addLog('Text Download', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} → ${voiceId || 'Global Edge default'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentDownloadModeChange = useCallback(async (mode, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      mode
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Download', `Workspace • ${channel} preset → ${mode || 'default'}.`);
     return result;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
 
@@ -3038,6 +3094,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
 
+  const handleStructuredTextCardDownloadModeChange = useCallback(async (blockId, channel = 'text', mode = 'default') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
+    if (!block) return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({ metadata: block.metadata, channel, mode });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
+      payload: { id: block.id, metadata }
+    });
+    if (result) addLog('Text Download', `${block.id} • ${channel} preset → ${mode}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
   const handleStructuredTextSegmentDownloadVoiceChange = useCallback(async (segmentId, channel = 'text', voiceId = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const block = (activeTextDocumentTree.blocks || []).find(candidate => (candidate.segments || []).some(segment => segment.id === segmentId));
@@ -3049,6 +3118,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       payload: { id: segment.id, metadata }
     });
     if (result) addLog('Text Download', `${segment.id} • ${channel} → ${voiceId || 'inherit'}.`);
+    return result;
+  }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextSegmentDownloadModeChange = useCallback(async (segmentId, channel = 'text', mode = 'default') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const block = (activeTextDocumentTree.blocks || []).find(candidate => (candidate.segments || []).some(segment => segment.id === segmentId));
+    const segment = (block?.segments || []).find(item => item.id === segmentId);
+    if (!segment) return null;
+    const metadata = buildTextStructuredAudioDownloadProfileMetadata({ metadata: segment.metadata, channel, mode });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+      payload: { id: segment.id, metadata }
+    });
+    if (result) addLog('Text Download', `${segment.id} • ${channel} preset → ${mode}.`);
     return result;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
 
@@ -3086,25 +3169,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (!activeTextDocumentTree) return null;
     const jobs = buildTextStructuredGenerationJobs({
       documentTree: activeTextDocumentTree,
-      preferences: structuredTextAudioGenerationPreferences,
+      preferences: structuredTextDownloadResolutionPreferences,
       blockId,
       channels,
       segmentIds: options.segmentIds || null
     });
     return runStructuredTextAudioGenerationBatch(jobs, { missingOnly: options.missingOnly !== false });
-  }, [activeTextDocumentTree, structuredTextAudioGenerationPreferences, runStructuredTextAudioGenerationBatch]);
+  }, [activeTextDocumentTree, structuredTextDownloadResolutionPreferences, runStructuredTextAudioGenerationBatch]);
 
   const handleStructuredTextGenerateSpeakerAudio = useCallback((blockId, speaker, channels = null, options = {}) => {
     if (!activeTextDocumentTree) return null;
     const jobs = buildTextStructuredGenerationJobs({
       documentTree: activeTextDocumentTree,
-      preferences: structuredTextAudioGenerationPreferences,
+      preferences: structuredTextDownloadResolutionPreferences,
       blockId,
       speaker,
       channels
     });
     return runStructuredTextAudioGenerationBatch(jobs, { missingOnly: options.missingOnly !== false });
-  }, [activeTextDocumentTree, structuredTextAudioGenerationPreferences, runStructuredTextAudioGenerationBatch]);
+  }, [activeTextDocumentTree, structuredTextDownloadResolutionPreferences, runStructuredTextAudioGenerationBatch]);
 
   const resolveStructuredTextManualReadySlot = useCallback((segmentId, channel = 'text') => {
     const key = buildTextStructuredRuntimeAudioKey(segmentId, channel);
@@ -4567,11 +4650,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     coverage: structuredTextBatchSelection?.coverage || structuredTextDocumentCoverage,
     scope: structuredTextBatchScope,
     cardCount: activeTextDocumentTree?.blocks?.length || 0,
-    documentTitle: activeTextDocumentTree?.title || 'Text Document',
+    workspaceTitle: activeTextDocumentTree?.title || 'Text Workspace',
+    documentTitle: activeTextDocumentTree?.title || 'Text Workspace',
+    activeWorkspaceId: activeTextDocumentTree?.id || null,
     activeDocumentId: activeTextDocumentTree?.id || null,
     activeCollectionId: activeTextDocumentTree?.collectionId || null,
+    activeCollectionTitle: structuredTextBatchDocumentOptions.find(document => document.id === activeTextDocumentTree?.id)?.collectionTitle || 'Unfiled / Library Root',
+    cardOptions: structuredTextBatchCardOptions,
+    workspaceOptions: structuredTextBatchDocumentOptions,
     documentOptions: structuredTextBatchDocumentOptions,
+    collectionOptions: structuredTextBatchCollectionOptions,
+    workspacesResolved: structuredTextBatchSelection?.workspaces || structuredTextBatchSelection?.documents || [],
     documentsResolved: structuredTextBatchSelection?.documents || [],
+    targetWorkspaceIds: structuredTextBatchTargetDocumentIds,
     targetDocumentIds: structuredTextBatchTargetDocumentIds,
     voicesResolved: structuredTextBatchSelection?.voices || [],
     speakersResolved: structuredTextBatchSelection?.speakers || [],
@@ -4691,10 +4782,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onSyncSpeakerRate: handleStructuredTextSyncSpeakerRate,
     onDocumentLocalAudioVoiceChange: handleStructuredTextDocumentLocalAudioVoiceChange,
     onSpeakerLocalAudioVoiceChange: handleStructuredTextSpeakerLocalAudioVoiceChange,
-    generationPreferences: structuredTextAudioGenerationPreferences,
+    generationPreferences: structuredTextDownloadResolutionPreferences,
     edgeGenerationVoices: initialEdgeVoices,
     onGenerationPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
     onDocumentDownloadVoiceChange: handleStructuredTextDocumentDownloadVoiceChange,
+    onDocumentDownloadModeChange: handleStructuredTextDocumentDownloadModeChange,
     onSpeakerDownloadVoiceChange: handleStructuredTextSpeakerDownloadVoiceChange,
     edgeHealth: structuredTextEdgeHealth,
     onEdgeHealthCheck: handleStructuredTextEdgeHealthCheck,
@@ -4788,14 +4880,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         speakerVoiceMap={structuredTextSpeakerVoiceMap}
         onDocumentVoiceChange={handleStructuredTextDocumentVoiceChange}
         onDocumentDownloadVoiceChange={handleStructuredTextDocumentDownloadVoiceChange}
+        onDocumentDownloadModeChange={handleStructuredTextDocumentDownloadModeChange}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}
         onSegmentVoiceChange={handleStructuredTextSegmentVoiceChange}
         onCardDownloadVoiceChange={handleStructuredTextCardDownloadVoiceChange}
+        onCardDownloadModeChange={handleStructuredTextCardDownloadModeChange}
         onSegmentDownloadVoiceChange={handleStructuredTextSegmentDownloadVoiceChange}
+        onSegmentDownloadModeChange={handleStructuredTextSegmentDownloadModeChange}
         onPreviewTts={handleStructuredTextPreviewTts}
-        generationPreferences={structuredTextAudioGenerationPreferences}
+        generationPreferences={structuredTextDownloadResolutionPreferences}
         onGenerationPreferencesChange={handleStructuredTextAudioGenerationPreferenceChange}
         edgeGenerationVoices={initialEdgeVoices}
         edgeHealth={structuredTextEdgeHealth}

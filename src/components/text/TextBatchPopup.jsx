@@ -45,35 +45,36 @@ export const TextBatchPopup = ({
     getTextStructuredBatchTelemetrySnapshot
   );
   const coverage = structuredTextBatch?.coverage || {};
-  const textScope = structuredTextBatch?.scope || { scopeMode: 'document', startCard: 0, endCard: 0, cardCount: 0 };
-  const scopeMode = textScope?.scopeMode || 'document';
-  const textCardMax = Math.max(1, Number(structuredTextBatch?.cardCount || textScope?.cardCount || 1));
+  const textScope = structuredTextBatch?.scope || { scopeMode: 'workspace', cardId: null };
+  const scopeMode = textScope?.scopeMode || 'workspace';
   const textVoiceSummary = (structuredTextBatch?.voicesResolved || []).map(compactVoiceLabel);
   const textSpeakerSummary = structuredTextBatch?.speakersResolved || [];
-  const documentOptions = structuredTextBatch?.documentOptions || [];
-  const selectedDocumentIds = textScope?.selectedDocumentIds || [];
-  const resolvedDocuments = structuredTextBatch?.documentsResolved || [];
+  const cardOptions = structuredTextBatch?.cardOptions || [];
+  const workspaceOptions = structuredTextBatch?.workspaceOptions || structuredTextBatch?.documentOptions || [];
+  const selectedWorkspaceIds = textScope?.selectedDocumentIds || [];
+  const resolvedWorkspaces = structuredTextBatch?.workspacesResolved || structuredTextBatch?.documentsResolved || [];
   const running = Boolean(structuredTextBatch?.running);
   const directMp3Limit = Number(structuredTextBatch?.directMp3Limit || 10);
-  const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && documentOptions.some(document => (document.collectionId || null) === structuredTextBatch.activeCollectionId);
+  const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && workspaceOptions.some(workspace => workspace.collectionId === structuredTextBatch.activeCollectionId);
+  const selectedCard = cardOptions.find(card => card.id === textScope?.cardId) || cardOptions[0] || null;
 
-  const updateTextScope = (field, rawValue) => {
-    const number = Math.min(textCardMax, Math.max(1, Math.round(Number(rawValue || 1))));
-    const next = field === 'startCard'
-      ? { startCard: Math.min(number, Number(textScope?.endCard || textCardMax)) }
-      : { endCard: Math.max(number, Number(textScope?.startCard || 1)) };
-    structuredTextBatch?.onScopeChange?.(next);
-  };
   const setScopeMode = nextMode => structuredTextBatch?.onScopeChange?.({ scopeMode: nextMode });
-  const toggleSelectedDocument = documentId => {
-    const next = selectedDocumentIds.includes(documentId)
-      ? selectedDocumentIds.filter(id => id !== documentId)
-      : [...selectedDocumentIds, documentId];
+  const selectCard = cardId => structuredTextBatch?.onScopeChange?.({ scopeMode: 'card', cardId });
+  const toggleSelectedWorkspace = workspaceId => {
+    const next = selectedWorkspaceIds.includes(workspaceId)
+      ? selectedWorkspaceIds.filter(id => id !== workspaceId)
+      : [...selectedWorkspaceIds, workspaceId];
     structuredTextBatch?.onScopeChange?.({ selectedDocumentIds: next });
   };
-  const scopeSummary = scopeMode === 'document'
-    ? `${structuredTextBatch?.documentTitle || 'Text Document'} • Cards ${textScope?.startCard || 1}–${textScope?.endCard || textCardMax}`
-    : `${resolvedDocuments.length} Document${resolvedDocuments.length === 1 ? '' : 's'} • ${coverage?.total || 0} audio slots`;
+  const scopeSummary = scopeMode === 'card'
+    ? `${structuredTextBatch?.workspaceTitle || 'Text Workspace'} • Card ${selectedCard?.index || '—'}${selectedCard?.title ? ` • ${selectedCard.title}` : ''}`
+    : scopeMode === 'workspace'
+      ? `${structuredTextBatch?.workspaceTitle || 'Text Workspace'} • full Workspace`
+      : scopeMode === 'collection'
+        ? `${structuredTextBatch?.activeCollectionTitle || 'Book Collection'} • ${resolvedWorkspaces.length} Workspace${resolvedWorkspaces.length === 1 ? '' : 's'}`
+        : scopeMode === 'selected'
+          ? `${resolvedWorkspaces.length} selected Workspace${resolvedWorkspaces.length === 1 ? '' : 's'} • ${coverage?.total || 0} audio slots`
+          : `All Book Collections + Unfiled • ${resolvedWorkspaces.length} Workspaces • ${coverage?.total || 0} audio slots`;
   const panelClass = inline
     ? 'w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col animate-in fade-in duration-150'
     : 'absolute top-full left-0 mt-2 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl z-[100] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200';
@@ -82,42 +83,51 @@ export const TextBatchPopup = ({
     <div ref={batchPanelRef} className={panelClass} data-text-batch-workspace="true">
       <div className="bg-slate-800 text-white px-3 py-2 text-xs font-bold flex items-center justify-between gap-2">
         <span>Batch Audio (Structured Text)</span>
-        <span className="ml-auto rounded-full bg-teal-500/25 px-2 py-0.5 text-[8px] font-black uppercase text-teal-100">Edge • Multi-Document</span>
+        <span className="ml-auto rounded-full bg-teal-500/25 px-2 py-0.5 text-[8px] font-black uppercase text-teal-100">Edge • Workspace-aware</span>
         {showClose && <button type="button" onClick={() => setIsBatchOpen(false)} className="rounded p-1 hover:bg-white/10" aria-label="Close Text Batch"><X className="w-3.5 h-3.5"/></button>}
       </div>
 
       <div className="p-3 space-y-3">
         <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/50 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-text-batch-scope="true">
-          <div className="flex items-center gap-2"><FolderTree className="h-3.5 w-3.5 text-cyan-600"/><span className="font-black uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Batch Scope</span><span className="ml-auto text-[8px] font-bold text-slate-400">{resolvedDocuments.length} doc</span></div>
+          <div className="flex items-center gap-2"><FolderTree className="h-3.5 w-3.5 text-cyan-600"/><span className="font-black uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Batch Scope</span><span className="ml-auto text-[8px] font-bold text-slate-400">{resolvedWorkspaces.length} workspace</span></div>
           <div className="mt-2 grid grid-cols-2 gap-1" data-text-batch-scope-tabs="true">
-            <ScopeButton active={scopeMode === 'document'} disabled={running || !structuredTextBatch?.activeDocumentId} onClick={() => setScopeMode('document')}>ACTIVE DOCUMENT</ScopeButton>
-            <ScopeButton active={scopeMode === 'collection'} disabled={running || !hasCollectionScope} onClick={() => setScopeMode('collection')}>CURRENT COLLECTION</ScopeButton>
-            <ScopeButton active={scopeMode === 'selected'} disabled={running || !documentOptions.length} onClick={() => setScopeMode('selected')}>SELECTED DOCS</ScopeButton>
-            <ScopeButton active={scopeMode === 'all'} disabled={running || !documentOptions.length} onClick={() => setScopeMode('all')}>ALL STRUCTURED</ScopeButton>
+            <ScopeButton active={scopeMode === 'card'} disabled={running || !structuredTextBatch?.activeWorkspaceId || !cardOptions.length} onClick={() => setScopeMode('card')}>CURRENT CARD</ScopeButton>
+            <ScopeButton active={scopeMode === 'workspace'} disabled={running || !structuredTextBatch?.activeWorkspaceId} onClick={() => setScopeMode('workspace')}>CURRENT WORKSPACE</ScopeButton>
+            <ScopeButton active={scopeMode === 'collection'} disabled={running || !hasCollectionScope} onClick={() => setScopeMode('collection')}>BOOK COLLECTION</ScopeButton>
+            <ScopeButton active={scopeMode === 'selected'} disabled={running || !workspaceOptions.length} onClick={() => setScopeMode('selected')}>SELECTED WORKSPACES</ScopeButton>
           </div>
 
-          {scopeMode === 'document' && <div className="mt-2" data-text-batch-card-range="true">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500">Cards</span>
-              <input type="number" min={1} max={textCardMax} value={textScope?.startCard || 1} disabled={running} onChange={event => updateTextScope('startCard', event.target.value)} className="w-16 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 text-xs dark:text-white"/>
-              <span className="text-slate-400">–</span>
-              <input type="number" min={1} max={textCardMax} value={textScope?.endCard || textCardMax} disabled={running} onChange={event => updateTextScope('endCard', event.target.value)} className="w-16 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 text-xs dark:text-white"/>
-              <span className="ml-auto text-[8px] font-bold text-slate-400">1–{textCardMax}</span>
-            </div>
-            <p className="mt-1.5 truncate text-[8px] text-slate-400" title={structuredTextBatch?.documentTitle || ''}>Active: {structuredTextBatch?.documentTitle || 'Text Document'} • range affects this Document only.</p>
+          {scopeMode === 'card' && <div className="mt-2" data-text-batch-card-select="true">
+            <label className="text-[8px] font-black text-slate-500">Card in current Workspace
+              <select disabled={running || !cardOptions.length} value={selectedCard?.id || ''} onChange={event => selectCard(event.target.value)} className="mt-1 w-full rounded border border-cyan-100 dark:border-cyan-900 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
+                {cardOptions.map(card => <option key={card.id} value={card.id}>Card {card.index} • {card.title} • {card.blockType === 'conversation' ? 'Conversation' : 'Paragraph'}</option>)}
+              </select>
+            </label>
+            <p className="mt-1.5 text-[8px] text-slate-400">Only this Card is selected. Segment IDs and per-Segment/per-speaker AUDIO download profiles stay authoritative.</p>
           </div>}
 
-          {scopeMode === 'selected' && <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-cyan-100 dark:border-cyan-900 bg-white/70 dark:bg-slate-900/40 p-2" data-text-batch-selected-documents="true">
-            {documentOptions.map(document => <ToggleRow key={document.id} checked={selectedDocumentIds.includes(document.id)} disabled={running} onClick={() => toggleSelectedDocument(document.id)}>
-              {document.title} • {document.documentType || 'text'}
+          {scopeMode === 'workspace' && <p className="mt-2 text-[8px] text-slate-400">Uses every Card in the active Workspace. Paragraph narrator and Conversation speakers resolve independently per Segment.</p>}
+          {scopeMode === 'collection' && <p className="mt-2 text-[8px] text-slate-400">Book Collection-first scope: every structured Workspace in <span className="font-bold">{structuredTextBatch?.activeCollectionTitle || 'the active Book Collection'}</span> is included.</p>}
+
+          {scopeMode === 'selected' && <div className="mt-2 max-h-44 space-y-1 overflow-y-auto rounded-lg border border-cyan-100 dark:border-cyan-900 bg-white/70 dark:bg-slate-900/40 p-2" data-text-batch-selected-workspaces="true">
+            {workspaceOptions.map(workspace => <ToggleRow key={workspace.id} checked={selectedWorkspaceIds.includes(workspace.id)} disabled={running} onClick={() => toggleSelectedWorkspace(workspace.id)}>
+              {workspace.title} • {workspace.collectionTitle || 'Unfiled / Library Root'} • {workspace.documentType === 'mixed' ? 'Conversation MIX' : workspace.documentType || 'text'}
             </ToggleRow>)}
+            {!workspaceOptions.length && <p className="text-[8px] text-slate-400">No structured Workspaces available.</p>}
           </div>}
 
-          {scopeMode !== 'document' && scopeMode !== 'selected' && <p className="mt-2 text-[8px] text-slate-400">Every targeted Document uses its full Card range. Each job keeps its own DOC_ID / SEGMENT_ID and resolved download voice.</p>}
-          <div className="mt-2 rounded-md bg-white/70 dark:bg-slate-900/40 p-2 text-[8px] text-slate-500" data-text-batch-document-summary="true">
+          <details className="mt-2 rounded-md border border-slate-200/80 dark:border-slate-700 bg-white/60 dark:bg-slate-900/30 p-2" data-text-batch-advanced-scope="true">
+            <summary className="cursor-pointer text-[8px] font-black uppercase tracking-wide text-slate-500">Advanced scope</summary>
+            <div className="mt-2">
+              <ScopeButton active={scopeMode === 'all'} disabled={running || !workspaceOptions.length} onClick={() => setScopeMode('all')}>ALL BOOK COLLECTIONS + UNFILED</ScopeButton>
+              <p className="mt-1.5 text-[8px] text-slate-400">Explicit global Text scope. It includes every structured Workspace, including Unfiled / Library Root. Legacy Workspaces remain outside structured Batch.</p>
+            </div>
+          </details>
+
+          <div className="mt-2 rounded-md bg-white/70 dark:bg-slate-900/40 p-2 text-[8px] text-slate-500" data-text-batch-workspace-summary="true">
             <div className="font-black text-cyan-700 dark:text-cyan-300">{scopeSummary}</div>
-            {resolvedDocuments.slice(0, 4).map(document => <div key={document.id} className="mt-0.5 flex gap-2"><span className="truncate">{document.title}</span><span className="ml-auto shrink-0 text-slate-400">{document.jobCount || 0} jobs</span></div>)}
-            {resolvedDocuments.length > 4 && <div className="mt-0.5 text-slate-400">+{resolvedDocuments.length - 4} more Documents</div>}
+            {resolvedWorkspaces.slice(0, 4).map(workspace => <div key={workspace.id} className="mt-0.5 flex gap-2"><span className="truncate">{workspace.title}</span><span className="ml-auto shrink-0 text-slate-400">{workspace.jobCount || 0} jobs</span></div>)}
+            {resolvedWorkspaces.length > 4 && <div className="mt-0.5 text-slate-400">+{resolvedWorkspaces.length - 4} more Workspaces</div>}
           </div>
         </div>
 
@@ -132,7 +142,7 @@ export const TextBatchPopup = ({
               {(structuredTextBatch?.voices || []).filter(v => !String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
             </select>
           </label>
-          <p className="text-[8px] text-slate-400">Document / speaker / Card / Segment download profiles configured in AUDIO remain higher priority; these are global fallbacks.</p>
+          <p className="text-[8px] text-slate-400">Workspace / speaker / Card / Segment download profiles configured in AUDIO remain higher priority; these are global fallbacks.</p>
         </div>
 
         <div className="flex gap-3 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
@@ -144,7 +154,7 @@ export const TextBatchPopup = ({
           <div className="font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Resolved Multi-Voice Plan</div>
           <p className="mt-1 text-slate-500 dark:text-slate-400">Voices: {textVoiceSummary.length ? textVoiceSummary.join(' + ') : '—'}</p>
           <p className="mt-0.5 text-slate-500 dark:text-slate-400">Speakers: {textSpeakerSummary.length ? textSpeakerSummary.join(', ') : 'single narrator / no speaker labels'}</p>
-          <p className="mt-1 text-[8px] text-slate-400">Conversation keeps each Segment's exact speaker/channel download voice. Paragraph narrator defaults stay independent. Multi-Document output is separated again by Document during ZIP packaging.</p>
+          <p className="mt-1 text-[8px] text-slate-400">Conversation keeps each Segment's exact speaker/channel download voice. Paragraph narrator defaults stay independent. Multi-Workspace output is separated again by Workspace during ZIP packaging.</p>
           <p className="mt-1 text-[8px] font-bold text-sky-600/80 dark:text-sky-300/80">Batch follows AUDIO download profiles. Bottom Player Settings never changes generated/downloaded voice, rate, or pitch.</p>
         </div>
 
@@ -181,7 +191,7 @@ export const TextBatchPopup = ({
       <SafetyConfirmDialog
         open={consolidatedZipConfirmOpen}
         title="Build complete Text consolidated ZIP?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. ProLingo lazily reads exact Ready binaries from Text Staging, Folder, and mounted ZIP sources and creates resource-bounded ZIP group(s) separated by Document. No TTS is generated and source ZIP files are not modified.`}
+        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. ProLingo lazily reads exact Ready binaries from Text Staging, Folder, and mounted ZIP sources and creates resource-bounded ZIP group(s) separated by Workspace. No TTS is generated and source ZIP files are not modified.`}
         confirmLabel="Build Full ZIP"
         onCancel={() => setConsolidatedZipConfirmOpen(false)}
         onConfirm={() => { setConsolidatedZipConfirmOpen(false); structuredTextBatch?.exportFullZip?.(); }}
@@ -189,7 +199,7 @@ export const TextBatchPopup = ({
       <SafetyConfirmDialog
         open={partialZipConfirmOpen}
         title="Export explicitly partial Text ZIP?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0}. Only currently readable exact-voice binaries are included, separated by Document. Archive filenames are marked PARTIAL. No TTS is generated.`}
+        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0}. Only currently readable exact-voice binaries are included, separated by Workspace. Archive filenames are marked PARTIAL. No TTS is generated.`}
         confirmLabel={`Export PARTIAL ${coverage?.ready || 0}/${coverage?.total || 0}`}
         onCancel={() => setPartialZipConfirmOpen(false)}
         onConfirm={() => { setPartialZipConfirmOpen(false); structuredTextBatch?.exportPartialZip?.(); }}

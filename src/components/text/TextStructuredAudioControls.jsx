@@ -4,7 +4,7 @@ import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssi
 import { getTextStructuredVoiceOverrideProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { getTextStructuredPlaybackRateProfile } from '../../domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { getTextStructuredLocalAudioProfile } from '../../domain/text/textStructuredLocalAudioProfileDomain.js';
-import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
+import { getTextStructuredAudioDownloadChannelMode, getTextStructuredAudioDownloadProfile, TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { getTextStructuredAudioSyncProfile } from '../../domain/text/textStructuredAudioSyncProfileDomain.js';
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
@@ -37,6 +37,12 @@ const VoiceSelect = ({ label, value, options, fallbackLabel, disabled, helper = 
   </select>
   {helper && <span className="mt-1 block text-[7px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
 </label>;
+
+const DownloadPresetSelect = ({ value, disabled, onChange }) => <select value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT} disabled={disabled} onChange={event => onChange?.(event.target.value)} className="w-full rounded-md border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px] text-violet-800 dark:text-violet-200 disabled:opacity-55" data-text-download-preset-select="true">
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}>DEFAULT • inherit download profile</option>
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER}>FOLLOW PLAYER • map TTS voice to Edge</option>
+  <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM}>CUSTOM • choose Edge voice</option>
+</select>;
 
 const LocalVoiceSelect = ({ label, value, options, disabled, helper = null, onChange }) => <label className="block rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2 text-[8px] font-bold text-emerald-700 dark:text-emerald-300">
   {label}
@@ -83,6 +89,7 @@ export default function TextStructuredAudioControls({
   edgeGenerationVoices = [],
   onGenerationPreferencesChange,
   onDocumentDownloadVoiceChange,
+  onDocumentDownloadModeChange,
   onSpeakerDownloadVoiceChange,
   edgeHealth = null,
   onEdgeHealthCheck,
@@ -108,7 +115,8 @@ export default function TextStructuredAudioControls({
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
   const sourceMode = preferences.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
-  const isConversation = documentTree.documentType === 'conversation';
+  const hasParagraphCards = documentTree.documentType === 'paragraph' || documentTree.documentType === 'mixed' || (documentTree.blocks || []).some(block => block?.blockType === 'paragraph');
+  const hasConversationCards = documentTree.documentType === 'conversation' || documentTree.documentType === 'mixed' || (documentTree.blocks || []).some(block => block?.blockType === 'conversation');
   const localAudioEnabled = sourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
   const customLocal = localAudioEnabled && sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
   const firstSpeaker = speakers[0] || null;
@@ -159,13 +167,13 @@ export default function TextStructuredAudioControls({
       </div>
       <SourceStatus status={playbackSourceStatus}/>
 
-      {!isConversation && <div className="space-y-2" data-text-audio-paragraph="true">
+      {hasParagraphCards && <div className="space-y-2" data-text-audio-paragraph="true">
         <div className="flex items-center gap-1.5"><Volume2 className="w-3.5 h-3.5 text-indigo-500"/><span className="text-[9px] font-black text-slate-600 dark:text-slate-300">Paragraph narrator</span></div>
         {renderDocumentChannel('text', 'EN / Text', englishNames, defaultTextVoiceName, globalTextRate, availableLocalVoices?.channels?.text || [])}
         {renderDocumentChannel('meaning', 'ID / Meaning', indonesianNames, defaultMeaningVoiceName, globalMeaningRate, availableLocalVoices?.channels?.meaning || [])}
       </div>}
 
-      {isConversation && <div className="space-y-2" data-text-audio-conversation="true">
+      {hasConversationCards && <div className="space-y-2" data-text-audio-conversation="true">
         <div className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-sky-500"/><span className="text-[9px] font-black text-slate-600 dark:text-slate-300">Detected speakers ({speakers.length})</span></div>
         {speakers.length > 1 && <div className="grid grid-cols-2 gap-1" data-text-audio-sync-grid="true">
           {[
@@ -233,7 +241,7 @@ export default function TextStructuredAudioControls({
     </section>}
 
     {audioSurface === 'download' && <section className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/35 dark:bg-violet-950/15 p-3" data-text-download-defaults="true">
-      <div className="flex items-center gap-2 mb-2"><Server className="w-4 h-4 text-violet-600 dark:text-violet-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Download Defaults & Sources</p><p className="text-[8px] text-slate-400">Manual generation lives on each Card. Batch lives in Data.</p></div><button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="ml-auto min-h-9 px-2 rounded-lg border border-violet-200 dark:border-violet-800 text-[8px] font-black text-violet-700 dark:text-violet-300">TEST EDGE</button></div>
+      <div className="flex items-center gap-2 mb-2"><Server className="w-4 h-4 text-violet-600 dark:text-violet-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Download Defaults & Sources</p><p className="text-[8px] text-slate-400">Preset/inheritance lives here. Manual generation stays on each Card; physical Batch UI remains in Data until W5.</p></div><button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="ml-auto min-h-9 px-2 rounded-lg border border-violet-200 dark:border-violet-800 text-[8px] font-black text-violet-700 dark:text-violet-300">TEST EDGE</button></div>
       <div className="grid gap-2 md:grid-cols-2">
         <label className="text-[8px] font-bold text-slate-500">Global Edge EN<select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]">{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
         <label className="text-[8px] font-bold text-slate-500">Global Edge ID<select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]">{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
@@ -241,12 +249,23 @@ export default function TextStructuredAudioControls({
         <label className="text-[8px] text-slate-500">Download pitch ({Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz)<input disabled={disabled} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/></label>
       </div>
       <div className="mt-3 rounded-lg border border-violet-100 dark:border-violet-900 bg-white dark:bg-slate-900/30 p-2">
-        <p className="mb-2 text-[8px] font-black uppercase text-violet-600 dark:text-violet-300">Document download profile</p>
+        <p className="text-[8px] font-black uppercase text-violet-600 dark:text-violet-300">Workspace download preset</p>
+        <p className="mt-0.5 mb-2 text-[7px] leading-relaxed text-slate-400">DEFAULT inherits the global Edge fallback. FOLLOW PLAYER maps the effective Browser TTS voice to the closest Edge voice without changing playback. CUSTOM pins an Edge voice for this Workspace.</p>
         <div className="grid gap-2 md:grid-cols-2">
-          <label className="text-[8px] text-slate-500">EN<select value={downloadProfile.channels?.text || ''} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, 'text')} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">Global Edge</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
-          <label className="text-[8px] text-slate-500">ID<select value={downloadProfile.channels?.meaning || ''} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, 'meaning')} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">Global Edge</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
+          {['text', 'meaning'].map(channel => {
+            const isMeaning = channel === 'meaning';
+            const mode = getTextStructuredAudioDownloadChannelMode(documentTree, channel);
+            const pool = isMeaning ? edgeMeaning : edgeEnglish;
+            const voice = downloadProfile.channels?.[channel] || '';
+            return <div key={channel} className="rounded-lg border border-violet-100 dark:border-violet-900 p-2">
+              <p className="mb-1 text-[8px] font-black text-slate-500">{isMeaning ? 'ID / Meaning' : 'EN / Text'}</p>
+              <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onDocumentDownloadModeChange?.(next, channel)}/>
+              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <select value={voice} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, channel)} className="mt-1.5 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">Choose Edge voice…</option>{pool.map(item => <option key={item.id} value={item.id}>{item.label || compactVoiceLabel(item.id)}</option>)}</select>}
+              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[7px] font-semibold text-sky-600 dark:text-sky-300">Uses the effective playback voice at Segment runtime; no permanent playback override is created.</p>}
+            </div>;
+          })}
         </div>
-        {isConversation && speakers.length > 0 && <div className="mt-2 space-y-1.5">{speakers.map(({ id, label }) => <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[8px] font-black text-slate-500 truncate">{label}</span><select value={downloadProfile.speakerIds?.text?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">EN • Document/Global</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={downloadProfile.speakerIds?.meaning?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">ID • Document/Global</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>)}</div>}
+        {hasConversationCards && speakers.length > 0 && <div className="mt-2 space-y-1.5"><p className="text-[7px] font-black uppercase text-slate-400">Optional speaker custom Edge overrides</p>{speakers.map(({ id, label }) => <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[8px] font-black text-slate-500 truncate">{label}</span><select value={downloadProfile.speakerIds?.text?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">EN • Workspace preset</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={downloadProfile.speakerIds?.meaning?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">ID • Workspace preset</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>)}</div>}
       </div>
       <div className="mt-3"><TextAudioDataPanel audioLibrary={audioLibrary} compact={false} disabled={disabled}/></div>
     </section>}
