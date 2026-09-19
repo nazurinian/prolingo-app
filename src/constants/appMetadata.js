@@ -1,15 +1,17 @@
-export const APP_VERSION = '5.14.16';
+export const APP_VERSION = '5.14.17';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16B — Manual Playback + Audio Availability UX';
-export const APP_RELEASE_NAME = 'Final Text T16B Manual Playback and Audio Availability UX';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16B-HF1 — Data-Dependent Text Blank Fix';
+export const APP_RELEASE_NAME = 'Final Text T16B-HF1 Data-Dependent Text Blank Fix';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16B: manual Card/Segment playback gets its own channel/repeat controls, Segment Only becomes Stop while active, body cards show EN/ID local-audio coverage, and AUDIO Playback adds compact expandable local-ready details per detected speaker.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16B`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16B-HF1: T16B manual playback/audio-availability UX plus the data-dependent Text Card render blank-screen fix.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16B-HF1`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'T16B-HF1 fixes a data-dependent Text blank screen: TextStructuredPlayer now declares manual Segment/Card playback channel modes before card playability is evaluated, eliminating the runtime temporal-dead-zone failure that only appeared when structured Cards were present',
+  'No Text DB/schema migration or demo-data lifecycle behavior is changed in T16B-HF1; Starter Demo persistence must be re-tested on the same normal browser origin after this runtime fix because private browsing intentionally uses separate storage',
   'Final Text T16B keeps AUDIO → DOWNLOAD untouched and refines only AUDIO → PLAYBACK plus body/player manual-play UX',
   'Conversation sync follower notes move below the fixed-size voice/speed controls so enabling Sync no longer changes individual control-box height; follower values remain non-destructive and restore when Sync is OFF',
   'Each detected Conversation speaker now has an expandable LOCAL READY inventory showing linked EN/ID local voices per Segment, while CUSTOM continues to select a preferred local voice with the selected TTS voice as fallback',

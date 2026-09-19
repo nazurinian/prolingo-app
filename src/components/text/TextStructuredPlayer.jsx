@@ -170,6 +170,8 @@ const StructuredPlayerCard = ({
     return () => window.cancelAnimationFrame(frame);
   }, [isActiveCard, playingIndex, isFocusCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, userNavigationRef]);
 
+  const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
+  const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
   const firstSegment = segments[0] || null;
   const collapsedDisplay = resolveStructuredTextDisplayState({ displayMode, isActive: false });
   const cardHasPlayableSegment = segments.some(segment => hasStructuredTextPlayableChannel(segment, manualCardChannelMode));
@@ -181,8 +183,6 @@ const StructuredPlayerCard = ({
     coverageMap: audioCoverageMap,
     blockId: block.id
   }), [documentTree, audioCoverageMap, block.id]);
-  const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
-  const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
 
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50 shadow-indigo-100/40 dark:shadow-none' : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
