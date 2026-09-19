@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.0';
+export const APP_VERSION = '6.0.1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6-FINAL';
-export const APP_CHECKPOINT_LABEL = 'V6-FINAL • Workspace/Data Redesign';
-export const APP_RELEASE_NAME = 'Workspace/Data Redesign Final';
+export const APP_CHECKPOINT_ID = 'V6.0.1-DATA-CLEANUP';
+export const APP_CHECKPOINT_LABEL = 'V6.0.1 • DATA/Workspace Cleanup';
+export const APP_RELEASE_NAME = 'DATA/Workspace Cleanup';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: W1–W6 Workspace/Data, Paragraph, MIX, Download and Batch redesign are user-accepted; Text DB schema remains v1 and Table remains frozen.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • V6-FINAL`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: post-v6 DATA cleanup keeps Library content editing isolated from Create/Manage/Transfer; Text DB schema remains v1 and Table remains frozen.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • DATA-CLEANUP`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.1 cleans the Text DATA workspace without changing data contracts: Card/Segment editing is visible only in LIBRARY, redundant mode summary cards are removed, Manage no longer repeats an impossible active-Collection delete action, and Workspace terminology is clarified',
   'v6.0.0 promotes the user-accepted W1–W6 Workspace/Data redesign to the major-version release identity without changing the accepted runtime architecture',
   'The v6 promotion preserves Text IndexedDB/schema v1, permanent Collection/Document/Block/Segment identities, Text Pack v1 and Text DB Backup v1 compatibility, and the frozen Table core',
   'W6-RC aligns release metadata with the user-accepted W1–W5 source state and opens the final regression gate before any major-version promotion',

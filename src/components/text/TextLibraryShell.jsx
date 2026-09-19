@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
 import { AlertTriangle, BookOpen, ChevronRight, Copy, Database, Download, Edit3, FileText, Layers, Link2, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Trash2, Unlink, Upload, X } from 'lucide-react';
 
@@ -21,6 +21,7 @@ export const TextLibraryShell = ({
   onRenameCollection,
   onDeleteCollection,
   onStructuredCommand,
+  onSectionChange,
   compact = false
 }) => {
   const [createMode, setCreateMode] = useState(null);
@@ -34,7 +35,6 @@ export const TextLibraryShell = ({
   const [collectionRenameOpen, setCollectionRenameOpen] = useState(false);
   const [collectionRenameTitle, setCollectionRenameTitle] = useState('');
   const [deleteDocumentArmed, setDeleteDocumentArmed] = useState(false);
-  const [deleteCollectionArmed, setDeleteCollectionArmed] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
   const sourceAttachInputRef = useRef(null);
   const sourceCopyInputRef = useRef(null);
@@ -52,6 +52,10 @@ export const TextLibraryShell = ({
   const [libraryFilter, setLibraryFilter] = useState('all');
   const [demoBusy, setDemoBusy] = useState(null);
 
+  useEffect(() => {
+    onSectionChange?.(dataSection);
+  }, [dataSection, onSectionChange]);
+
   const blockCount = activeDocumentTree?.blocks?.length || 0;
   const segmentCount = useMemo(
     () => (activeDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0),
@@ -62,7 +66,6 @@ export const TextLibraryShell = ({
   const activeCollection = activeDocument?.collectionId ? (catalog?.collections || []).find(item => item.id === activeDocument.collectionId) || null : null;
   const sourceAttachments = Array.isArray(packActions?.sourceAttachments) ? packActions.sourceAttachments : [];
   const activeDocumentAttachment = activeDocument?.id ? sourceAttachments.find(item => Object.values(item.idMap?.documents || {}).includes(activeDocument.id)) || null : null;
-  const activeCollectionAttachment = activeCollection?.id ? sourceAttachments.find(item => Object.values(item.idMap?.collections || {}).includes(activeCollection.id)) || null : null;
   const allDocuments = useMemo(() => [
     ...(catalog?.rootDocuments || []).map(document => ({ ...document, collectionTitle: 'Unfiled / Library Root' })),
     ...(catalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
@@ -164,16 +167,6 @@ export const TextLibraryShell = ({
     }
     const result = await onDeleteDocument?.(activeDocument.id);
     if (result) setDeleteDocumentArmed(false);
-  };
-
-  const requestDeleteCollection = async () => {
-    if (!activeCollection?.id || isBusy) return;
-    if (!deleteCollectionArmed) {
-      setDeleteCollectionArmed(true);
-      return;
-    }
-    const result = await onDeleteCollection?.(activeCollection.id);
-    if (result) setDeleteCollectionArmed(false);
   };
 
   const runPackAction = async (action, successLabel) => {
@@ -492,8 +485,8 @@ export const TextLibraryShell = ({
         </div>
         {activeCollection && <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
           <div className="min-w-0 flex-1"><p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Book Collection</p><p className="text-[8px] text-slate-400 truncate">{activeCollection.title} • {activeCollection.id}</p></div>
-          <button type="button" disabled={isBusy} onClick={() => { setCollectionRenameTitle(activeCollection.title || ''); setCollectionRenameOpen(value => !value); setDeleteCollectionArmed(false); }} className="min-h-10 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300">Rename</button>
-          <button type="button" disabled={isBusy || Boolean(activeCollectionAttachment) || (activeCollection.documents?.length || 0) > 0} onClick={requestDeleteCollection} className={`min-h-10 px-2 rounded-lg border text-[8px] font-black disabled:opacity-40 ${deleteCollectionArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`} title={(activeCollection.documents?.length || 0) > 0 ? 'Book Collection must be empty before deletion' : 'Delete empty Book Collection'}>{deleteCollectionArmed ? 'Confirm' : 'Delete'}</button>
+          <button type="button" disabled={isBusy} onClick={() => { setCollectionRenameTitle(activeCollection.title || ''); setCollectionRenameOpen(value => !value); }} className="min-h-10 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300">Rename</button>
+          <span className="text-[7px] text-slate-400">Delete is available below only when a Book Collection is empty.</span>
         </div>}
       </div>}
 
