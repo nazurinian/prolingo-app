@@ -1,0 +1,141 @@
+{
+  "packageType": "prolingo-text-external",
+  "packageVersion": 1,
+  "externalSourceKey": "bp1-page-146-147-restaurant-conversation",
+  "collectionHint": {
+    "collectionKey": "bp1",
+    "title": "BP1"
+  },
+  "source": {
+    "sourceKind": "image-extraction",
+    "title": "BP1 pages 146-147 — Restaurant Conversation",
+    "reference": "BP1 pages 146-147",
+    "notes": "Example of the most complex supported external Text shape: Conversation MIX."
+  },
+  "workspace": {
+    "workspaceKey": "main",
+    "title": "Restaurant Conversation",
+    "workspaceType": "conversation",
+    "conversationMode": "mix",
+    "textLanguage": "en-GB",
+    "meaningLanguage": "id",
+    "speakers": [
+      {
+        "speakerKey": "speaker-a",
+        "order": 1,
+        "displayName": "Speaker A"
+      },
+      {
+        "speakerKey": "speaker-b",
+        "order": 2,
+        "displayName": "Speaker B"
+      }
+    ],
+    "cards": [
+      {
+        "cardKey": "title",
+        "order": 1,
+        "type": "paragraph",
+        "role": "title",
+        "title": null,
+        "segments": [
+          {
+            "segmentKey": "title-001",
+            "order": 1,
+            "text": "At the Restaurant",
+            "meaning": "Di Restoran"
+          }
+        ]
+      },
+      {
+        "cardKey": "intro",
+        "order": 2,
+        "type": "paragraph",
+        "role": "paragraph",
+        "title": "Introduction",
+        "segments": [
+          {
+            "segmentKey": "intro-sentence-001",
+            "order": 1,
+            "text": "Two friends are choosing a table and ordering their meal.",
+            "meaning": "Dua orang teman sedang memilih meja dan memesan makanan mereka."
+          }
+        ]
+      },
+      {
+        "cardKey": "conversation-01",
+        "order": 3,
+        "type": "conversation",
+        "title": "Choosing a table",
+        "segments": [
+          {
+            "segmentKey": "conversation-01-line-001",
+            "order": 1,
+            "speakerKey": "speaker-a",
+            "text": "Shall we sit here, or do you prefer that table?",
+            "meaning": "Apakah kita duduk di sini, atau kamu lebih memilih meja itu?"
+          },
+          {
+            "segmentKey": "conversation-01-line-002",
+            "order": 2,
+            "speakerKey": "speaker-b",
+            "text": "It's fine here.",
+            "meaning": "Di sini tidak apa-apa."
+          }
+        ]
+      },
+      {
+        "cardKey": "bridge-01",
+        "order": 4,
+        "type": "paragraph",
+        "role": "paragraph",
+        "title": null,
+        "segments": [
+          {
+            "segmentKey": "bridge-01-sentence-001",
+            "order": 1,
+            "text": "After sitting down, they ask for the menu.",
+            "meaning": "Setelah duduk, mereka meminta menu."
+          }
+        ]
+      },
+      {
+        "cardKey": "conversation-02",
+        "order": 5,
+        "type": "conversation",
+        "title": "Asking for the menu",
+        "segments": [
+          {
+            "segmentKey": "conversation-02-line-001",
+            "order": 1,
+            "speakerKey": "speaker-a",
+            "text": "Waiter, bring us the menu, please.",
+            "meaning": "Pelayan, tolong bawakan kami menu."
+          },
+          {
+            "segmentKey": "conversation-02-line-002",
+            "order": 2,
+            "speakerKey": "speaker-b",
+            "text": "Yes, I'm ready to order.",
+            "meaning": "Ya, saya siap memesan."
+          }
+        ]
+      },
+      {
+        "cardKey": "closing",
+        "order": 6,
+        "type": "paragraph",
+        "role": "paragraph",
+        "title": null,
+        "segments": [
+          {
+            "segmentKey": "closing-sentence-001",
+            "order": 1,
+            "text": "They continue by choosing their food and drinks.",
+            "meaning": "Mereka melanjutkan dengan memilih makanan dan minuman."
+          }
+        ]
+      }
+    ]
+  }
+}

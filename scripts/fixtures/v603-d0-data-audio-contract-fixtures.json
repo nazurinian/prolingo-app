@@ -1,0 +1,21 @@
+{
+  "fixtureVersion": 1,
+  "workspaceFamilies": {
+    "legacy": {"workspaceType":"legacy","workspaceKey":"main","entries":[{"entryKey":"entry-001","order":1,"text":"Good morning."}]},
+    "paragraph": {"workspaceType":"paragraph","workspaceKey":"main","cards":[{"cardKey":"paragraph-01","order":1,"type":"paragraph","role":"paragraph","segments":[{"segmentKey":"paragraph-01-sentence-001","order":1,"text":"Good morning.","meaning":"Selamat pagi."}]}]},
+    "conversation": {"workspaceType":"conversation","conversationMode":"conversation-only","workspaceKey":"main","speakers":[{"speakerKey":"speaker-a","displayName":"A"}],"cards":[{"cardKey":"conversation-01","order":1,"type":"conversation","segments":[{"segmentKey":"conversation-01-line-001","order":1,"speakerKey":"speaker-a","text":"Good morning.","meaning":"Selamat pagi."}]}]},
+    "mix": {"workspaceType":"conversation","conversationMode":"mix","workspaceKey":"main","speakers":[{"speakerKey":"speaker-a","displayName":"A"}],"cards":[{"cardKey":"title","order":1,"type":"paragraph","role":"title","segments":[{"segmentKey":"title-001","order":1,"text":"Morning","meaning":"Pagi"}]},{"cardKey":"conversation-01","order":2,"type":"conversation","segments":[{"segmentKey":"conversation-01-line-001","order":1,"speakerKey":"speaker-a","text":"Good morning.","meaning":"Selamat pagi."}]}]}
+  },
+  "externalImportCases": {
+    "base": {"packageType":"prolingo-text-external","packageVersion":1,"externalSourceKey":"d0-restaurant-conversation","source":{"sourceKind":"conversation-transcript","title":"D0 Restaurant Conversation"},"workspace":{"workspaceKey":"main","title":"Restaurant Conversation","workspaceType":"conversation","conversationMode":"conversation-only","textLanguage":"en","meaningLanguage":"id","speakers":[{"speakerKey":"speaker-a","displayName":"A"},{"speakerKey":"speaker-b","displayName":"B"}],"cards":[{"cardKey":"conversation-01","order":1,"type":"conversation","segments":[{"segmentKey":"conversation-01-line-001","order":1,"speakerKey":"speaker-a","text":"Good morning.","meaning":"Selamat pagi."},{"segmentKey":"conversation-01-line-002","order":2,"speakerKey":"speaker-b","text":"How are you?","meaning":"Apa kabar?"}]}]}},
+    "exactDuplicate": "same-as-base",
+    "update": {"sameExternalSourceKey":true,"changedSegmentKey":"conversation-01-line-002","incomingText":"How are you today?"},
+    "conflict": {"sameExternalSourceKey":true,"segmentKey":"conversation-01-line-001","baselineText":"Good morning.","localText":"Morning!","incomingText":"Good morning, David."},
+    "newCopy": {"sameContentAsBase":true,"externalSourceKey":"d0-restaurant-conversation-copy"}
+  },
+  "browserPortability": {
+    "browserA": {"internalSegmentUidMayDiffer":true,"renderRequest":{"text":"Good morning.","channel":"text","language":"en-GB","engine":"edge","voiceId":"en-GB-RyanNeural","rate":0,"pitch":0,"rendererProfile":"edge-v1"}},
+    "browserB": {"internalSegmentUidMayDiffer":true,"renderRequestMustMatchBrowserA":true},
+    "expectedFutureResult":"same render fingerprint; one compatible external audio binary can be reused"
+  }
+}
