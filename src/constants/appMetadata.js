@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.2-alpha.1';
+export const APP_VERSION = '6.0.2-beta.1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.2-A-SENTENCE-FOUNDATION';
-export const APP_CHECKPOINT_LABEL = 'V6.0.2-A • Paragraph Sentence Foundation';
-export const APP_RELEASE_NAME = 'Paragraph Sentence Authoring Foundation';
+export const APP_CHECKPOINT_ID = 'V6.0.2-B-SENTENCE-AUTHORING-UI';
+export const APP_CHECKPOINT_LABEL = 'V6.0.2-B • Sentence Authoring UI';
+export const APP_RELEASE_NAME = 'Paragraph Sentence Authoring UI';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: paragraph sentence authoring foundation adds preview-safe sentence parsing plus transaction-safe split/merge commands while preserving stable Segment IDs, Text DB schema v1, and the frozen Table core.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-FOUNDATION`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Paragraph Cards expose preview-safe Auto Split, manual Split Here, adjacent Merge, and stable-ID Reorder on top of the accepted v6.0.2-A sentence mutation foundation.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.2-B exposes the accepted Paragraph Sentence foundation in the Card editor with preview-safe Auto Split, cursor-based Split Here, adjacent Merge, and explicit stable-ID Reorder controls without changing Text DB schema v1',
   'v6.0.2-A adds the Paragraph Sentence Authoring foundation: conservative sentence-split proposals, strict EN/ID alignment checks, stable-ID split/merge mutation commands, existing reorder reuse, and explicit stale-audio invalidation without a Text DB schema migration',
   'v6.0.1 cleans the Text DATA workspace without changing data contracts: Card/Segment editing is visible only in LIBRARY, redundant mode summary cards are removed, Manage no longer repeats an impossible active-Collection delete action, and Workspace terminology is clarified',
   'v6.0.0 promotes the user-accepted W1–W6 Workspace/Data redesign to the major-version release identity without changing the accepted runtime architecture',

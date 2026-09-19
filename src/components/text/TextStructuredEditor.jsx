@@ -29,6 +29,7 @@ import {
   getTextStructuredSegmentSpeakerId
 } from '../../domain/text/textStructuredSpeakerIdentityDomain.js';
 import TextStructuredSpeakerRegistry from './TextStructuredSpeakerRegistry.jsx';
+import TextParagraphSentenceAuthoring from './TextParagraphSentenceAuthoring.jsx';
 
 const normalize = value => String(value ?? '').trim();
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
@@ -261,6 +262,8 @@ const StructuredCard = ({ block, index, total, isBusy, onCommand, compact = fals
             </div>
           </div>
         </div>}
+
+        {isParagraphCard && segments.length > 0 && <TextParagraphSentenceAuthoring block={block} segments={segments} isBusy={isBusy} onCommand={onCommand} compact={compact} />}
 
         {segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 py-5 text-center text-[10px] text-slate-400">Card masih kosong. Tambahkan playable {isParagraphCard ? 'sentence' : 'segment'} pertama.</div>}
 
