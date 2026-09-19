@@ -27,6 +27,7 @@ const waitPlaybackFeelDelay = async ({ durationMs, waitWhilePaused, stopSignalRe
 export const executeStructuredTextPlaybackSessionService = ({
   documentTree,
   startSegmentId = null,
+  cursorSegmentId = null,
   blockId = null,
   scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
   playbackChannelMode,
@@ -56,10 +57,14 @@ export const executeStructuredTextPlaybackSessionService = ({
   const resolved = resolveStructuredTextPlaybackScopeList({
     documentTree,
     startSegmentId,
+    cursorSegmentId,
     blockId,
     scope
   });
   const scopedList = resolved.playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode));
+  const cursorId = cursorSegmentId || startSegmentId || null;
+  const resolvedCursorIndex = cursorId ? scopedList.findIndex(item => item.id === cursorId) : 0;
+  const initialCursorIndex = resolvedCursorIndex >= 0 ? resolvedCursorIndex : 0;
   if (!scopedList.length) {
     addLog?.('Text Player', 'Playback not started: no Segment in this scope has content for the selected Text Play mode.');
     return false;
@@ -89,7 +94,7 @@ export const executeStructuredTextPlaybackSessionService = ({
       const orderedList = resolveStructuredTextPlaybackOrder({
         list: scopedList,
         orderMode: playbackOrderMode,
-        anchorId: pass === 0 ? startSegmentId : null,
+        anchorId: pass === 0 ? cursorId : null,
         random
       });
       if (playbackContextRef) {
@@ -100,6 +105,9 @@ export const executeStructuredTextPlaybackSessionService = ({
           documentId: documentTree.id,
           documentTitle: documentTree.title,
           scope,
+          scopeStartSegmentId: startSegmentId || null,
+          cursorSegmentId: cursorId,
+          blockId: blockId || scopedList[0]?.blockId || null,
           playbackChannelMode,
           playbackOrderMode,
           repeatMode,
@@ -112,7 +120,8 @@ export const executeStructuredTextPlaybackSessionService = ({
         };
       }
 
-      for (let itemIndex = 0; itemIndex < orderedList.length; itemIndex += 1) {
+      const firstItemIndex = pass === 0 && playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL ? initialCursorIndex : 0;
+      for (let itemIndex = firstItemIndex; itemIndex < orderedList.length; itemIndex += 1) {
         const item = orderedList[itemIndex];
         if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
         await waitWhilePaused();

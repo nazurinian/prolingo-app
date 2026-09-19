@@ -2326,6 +2326,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const startStructuredTextPlayback = ({
     startSegmentId = null,
+    cursorSegmentId = null,
     blockId = null,
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
     playbackChannelMode = textStructuredPreferences.playbackChannelMode,
@@ -2337,6 +2338,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return executeStructuredTextPlaybackSessionService({
       documentTree: activeTextDocumentTree,
       startSegmentId,
+      cursorSegmentId,
       blockId,
       scope,
       safePlayTransition,
@@ -2427,11 +2429,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       handleSmartNav(direction);
       return;
     }
-    const activeSessionOrder = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      && Array.isArray(playbackContextRef.current?.orderedList)
-      && playbackContextRef.current.orderedList.length
-        ? playbackContextRef.current.orderedList
-        : structuredTextActivePlaybackList;
+    const playbackContext = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+      ? playbackContextRef.current
+      : null;
+    const activeSessionOrder = Array.isArray(playbackContext?.orderedList) && playbackContext.orderedList.length
+      ? playbackContext.orderedList
+      : structuredTextActivePlaybackList;
     const anchorId = activeSessionOrder.some(item => item.id === playingIndex)
       ? playingIndex
       : activeSessionOrder[0]?.id;
@@ -2441,9 +2444,37 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       direction
     });
     if (!target) return;
+
+    const currentScope = playbackContext?.scope || TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT;
+    const preservedPlayback = playbackContext ? {
+      playbackChannelMode: playbackContext.playbackChannelMode,
+      playbackOrderMode: playbackContext.playbackOrderMode,
+      repeatMode: playbackContext.repeatMode,
+      repeatCount: playbackContext.repeatCount
+    } : {};
+    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT) return;
+    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD) {
+      startStructuredTextPlayback({
+        blockId: playbackContext?.blockId || target.blockId,
+        cursorSegmentId: target.id,
+        scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
+        ...preservedPlayback
+      });
+      return;
+    }
+    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE) {
+      startStructuredTextPlayback({
+        startSegmentId: playbackContext?.scopeStartSegmentId || activeSessionOrder[0]?.id || target.id,
+        cursorSegmentId: target.id,
+        scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+        ...preservedPlayback
+      });
+      return;
+    }
     startStructuredTextPlayback({
-      startSegmentId: target.id,
-      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+      cursorSegmentId: target.id,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
+      ...preservedPlayback
     });
   };
 

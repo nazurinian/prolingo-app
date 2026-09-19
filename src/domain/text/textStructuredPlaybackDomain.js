@@ -1,3 +1,5 @@
+import { TEXT_PARAGRAPH_CARD_ROLES, resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
+
 export const TEXT_STRUCTURED_PLAYBACK_CONTEXT = 'text-structured';
 export const TEXT_STRUCTURED_PLAYBACK_SCOPES = Object.freeze({
   SEGMENT: 'segment',
@@ -23,6 +25,7 @@ export const resolveStructuredTextPlaybackList = documentTree => {
         blockId: block.id,
         blockTitle: block.title || null,
         blockType: block.blockType,
+        paragraphRole: resolveTextParagraphCardRole(block),
         documentId: documentTree.id,
         documentTitle: documentTree.title,
         documentType: documentTree.documentType,
@@ -45,34 +48,41 @@ export const resolveStructuredTextPlaybackList = documentTree => {
 export const resolveStructuredTextPlaybackScopeList = ({
   documentTree,
   startSegmentId = null,
+  cursorSegmentId = null,
   blockId = null,
   scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
 }) => {
   const fullList = resolveStructuredTextPlaybackList(documentTree);
   if (!fullList.length) return { fullList, playbackList: [], startIndex: -1 };
+  const cursorId = cursorSegmentId || startSegmentId || null;
 
   if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT) {
-    return { fullList, playbackList: fullList, startIndex: 0 };
+    const cursorIndex = cursorId ? fullList.findIndex(item => item.id === cursorId) : 0;
+    return { fullList, playbackList: fullList, startIndex: cursorIndex >= 0 ? cursorIndex : 0 };
   }
 
   if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD) {
-    const targetBlockId = blockId || fullList.find(item => item.id === startSegmentId)?.blockId || null;
+    const targetBlockId = blockId || fullList.find(item => item.id === (startSegmentId || cursorId))?.blockId || null;
     const playbackList = fullList.filter(item => item.blockId === targetBlockId);
-    return { fullList, playbackList, startIndex: playbackList.length ? 0 : -1 };
+    const cursorIndex = cursorId ? playbackList.findIndex(item => item.id === cursorId) : 0;
+    return { fullList, playbackList, startIndex: playbackList.length ? (cursorIndex >= 0 ? cursorIndex : 0) : -1 };
   }
 
-  const requestedIndex = startSegmentId ? fullList.findIndex(item => item.id === startSegmentId) : 0;
-  const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
-
   if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT) {
+    const requestedIndex = cursorId ? fullList.findIndex(item => item.id === cursorId) : 0;
+    const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
     const item = fullList[safeIndex];
     return { fullList, playbackList: item ? [item] : [], startIndex: item ? 0 : -1 };
   }
 
+  const requestedIndex = startSegmentId ? fullList.findIndex(item => item.id === startSegmentId) : 0;
+  const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
+  const playbackList = fullList.slice(safeIndex);
+  const cursorIndex = cursorId ? playbackList.findIndex(item => item.id === cursorId) : 0;
   return {
     fullList,
-    playbackList: fullList.slice(safeIndex),
-    startIndex: 0
+    playbackList,
+    startIndex: playbackList.length ? (cursorIndex >= 0 ? cursorIndex : 0) : -1
   };
 };
 
@@ -120,9 +130,9 @@ export const resolveStructuredTextAdjacentSegment = ({ list, currentId, directio
 export const resolveStructuredTextPlayerTitle = item => {
   if (!item?.isTextStructuredSegment) return null;
   const segmentLabel = `Segment ${Number(item.displayId) || 1}`;
-  const detail = item.speaker || item.blockTitle || (item.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
+  const detail = item.speaker || (item.blockType === 'paragraph' && item.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title' : item.blockTitle) || (item.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
   return {
-    title: item.documentTitle || 'Text Document',
+    title: item.documentTitle || 'Text Workspace',
     artist: [detail, segmentLabel].filter(Boolean).join(' • '),
     album: 'ProLingo Text Library'
   };

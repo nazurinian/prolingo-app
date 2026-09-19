@@ -27,6 +27,7 @@ import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
 import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx';
+import { TEXT_PARAGRAPH_CARD_ROLES, getTextParagraphCardRoleLabel, resolveTextParagraphCardRole } from '../../domain/text/textParagraphRoleDomain.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -140,6 +141,9 @@ const StructuredPlayerCard = ({
   const [segmentToolsId, setSegmentToolsId] = useState(null);
   const cardRef = useRef(null);
   const segments = block.segments || [];
+  const isParagraphCard = block.blockType === 'paragraph';
+  const paragraphRole = resolveTextParagraphCardRole(block);
+  const paragraphRoleLabel = isParagraphCard ? getTextParagraphCardRoleLabel(paragraphRole) : null;
   const activeSegment = segments.find(segment => segment.id === playingIndex) || null;
   const isActiveCard = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && Boolean(activeSegment) && (isPlaying || isPaused);
   const isFocusCard = focusTarget?.documentId === documentTree?.id && focusTarget?.blockId === block.id;
@@ -193,11 +197,11 @@ const StructuredPlayerCard = ({
         <div className="min-w-0 flex-1 py-0.5">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-[9px] font-black text-slate-400 shrink-0">#{index + 1}</span>
-            <span className="text-xs font-black text-slate-800 dark:text-white truncate">{block.title || `${blockLabel(block.blockType)} Card`}</span>
-            <span className={`hidden sm:inline-flex text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'}`}>{blockLabel(block.blockType).toUpperCase()}</span>
+            <span className="text-xs font-black text-slate-800 dark:text-white truncate">{block.title || (isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title Card' : `${blockLabel(block.blockType)} Card`)}</span>
+            <span className={`hidden sm:inline-flex text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300' : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'}`}>{block.blockType === 'conversation' ? 'CONVERSATION' : paragraphRoleLabel?.toUpperCase()}</span>
             {isActiveCard && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shrink-0">ACTIVE</span>}
           </div>
-          <p className="mt-0.5 text-[8px] text-slate-400">{segments.length} segment{segments.length === 1 ? '' : 's'} • Audio {cardCoverage.covered}/{cardCoverage.total}{cardCoverage.needDownload ? ` • ${cardCoverage.needDownload} need download` : ' • ready'}</p>
+          <p className="mt-0.5 text-[8px] text-slate-400">{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'} • Audio {cardCoverage.covered}/{cardCoverage.total}{cardCoverage.needDownload ? ` • ${cardCoverage.needDownload} need download` : ' • ready'}</p>
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
@@ -233,7 +237,7 @@ const StructuredPlayerCard = ({
           return (
             <div key={segment.id} className={`rounded-xl border p-3 transition-all duration-200 ease-out ${active ? 'border-indigo-400 bg-indigo-50/70 dark:border-indigo-700 dark:bg-indigo-950/25 shadow-sm' : (isFocusCard && focusTarget?.segmentId === segment.id) ? 'border-amber-400 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20 ring-1 ring-amber-200 dark:ring-amber-900' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30'}`} data-text-player-segment={segment.id} data-text-player-segment-active={active ? 'true' : undefined} data-text-search-focus-segment={isFocusCard && focusTarget?.segmentId === segment.id ? 'true' : undefined}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                <div className="hidden sm:block mt-0.5 text-[9px] font-black text-slate-400 min-w-[24px]">{segmentIndex + 1}</div>
+                <div className="hidden sm:block mt-0.5 text-[9px] font-black text-slate-400 min-w-[24px]">{isParagraphCard ? `S${segmentIndex + 1}` : segmentIndex + 1}</div>
                 <div className="min-w-0 flex-1">
                   {block.blockType === 'conversation' && segment.speaker && <div className="mb-1 flex items-center gap-1.5 flex-wrap" data-text-speaker-voice={segment.speaker}>
                     <p className="text-[9px] font-black uppercase tracking-wide text-sky-600 dark:text-sky-300">{segment.speaker}</p>
@@ -394,7 +398,7 @@ export const TextStructuredPlayer = ({
   const indonesianVoiceNames = useMemo(() => [...new Set((Array.isArray(indonesianVoices) ? indonesianVoices : []).map(voice => String(voice?.name || '').trim()).filter(Boolean))], [indonesianVoices]);
   const documentVoiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
   const documentDownloadProfile = useMemo(() => getTextStructuredAudioDownloadProfile(documentTree), [documentTree?.metadata]);
-  const documentModeLabel = documentTree?.documentType === 'conversation' ? 'Conversation' : documentTree?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility';
+  const documentModeLabel = documentTree?.documentType === 'conversation' ? 'Conversation' : documentTree?.documentType === 'paragraph' ? 'Paragraph' : 'Conversation • MIX';
 
   useEffect(() => {
     if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
@@ -414,7 +418,7 @@ export const TextStructuredPlayer = ({
             <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Player settings via bottom bar</p>
             <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : ' • single narrator'} • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
           </div>
-          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Document"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
+          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Workspace"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
 
         {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
@@ -422,7 +426,7 @@ export const TextStructuredPlayer = ({
             <div className="w-full max-w-2xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
               <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
                 <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><PlayCircle className="w-4 h-4"/></div>
-                <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Player Settings</h2><p className="text-[9px] text-slate-400 truncate">{documentTree?.title || 'Text Document'} • order • repeat • delay • resume</p></div>
+                <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Player Settings</h2><p className="text-[9px] text-slate-400 truncate">{documentTree?.title || 'Text Workspace'} • order • repeat • delay • resume</p></div>
                 <button type="button" onClick={() => onCloseControlsWorkspace?.()} className="min-h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-[9px] font-black text-slate-500 hover:text-red-500"><X className="w-4 h-4 inline mr-1"/>Close</button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3 md:p-4">
@@ -440,7 +444,7 @@ export const TextStructuredPlayer = ({
       </div>
 
       <div className="space-y-3 animate-in fade-in duration-200">
-        {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Document belum memiliki Card. Buka Data untuk membuat Card pertama.</div>}
+        {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Workspace belum memiliki Card. Buka DATA → CREATE untuk membuat Card pertama.</div>}
         {blocks.map((block, index) => <StructuredPlayerCard
           key={block.id}
           block={block}
