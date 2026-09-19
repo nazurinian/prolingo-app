@@ -32,6 +32,7 @@ export const executeStructuredTextPlaybackSessionService = ({
   playbackChannelMode,
   playbackOrderMode = TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
   repeatMode = TEXT_STRUCTURED_REPEAT_MODES.ONCE,
+  repeatCount = null,
   channelDelayMs = 0,
   segmentDelayMs = 0,
   safePlayTransition,
@@ -66,15 +67,19 @@ export const executeStructuredTextPlaybackSessionService = ({
 
   safePlayTransition(async () => {
     const playbackSession = playbackSessionRef.current;
+    const repeatCountProvided = repeatCount !== null && repeatCount !== undefined && repeatCount !== '';
+    const requestedRepeatCount = repeatCountProvided ? Number(repeatCount) : Number.NaN;
+    const finiteRepeatCount = Number.isFinite(requestedRepeatCount) ? Math.min(20, Math.max(1, Math.round(requestedRepeatCount))) : null;
     const repeatLimit = repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP
       ? Number.POSITIVE_INFINITY
-      : repeatMode === TEXT_STRUCTURED_REPEAT_MODES.TWICE ? 2 : 1;
+      : finiteRepeatCount || (repeatMode === TEXT_STRUCTURED_REPEAT_MODES.TWICE ? 2 : 1);
 
     setPlayingContext(TEXT_STRUCTURED_PLAYBACK_CONTEXT);
     setIsPlaying(true);
     setIsPaused(false);
     pauseStateRef.current = false;
-    addLog?.('Text Player', `${documentTree.title || documentTree.id} • ${scope} • ${scopedList.length} segment${scopedList.length === 1 ? '' : 's'} • ${playbackChannelMode} • ${playbackOrderMode} • ${repeatMode}.`);
+    const repeatLabel = repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP ? repeatMode : `${repeatLimit}×`;
+    addLog?.('Text Player', `${documentTree.title || documentTree.id} • ${scope} • ${scopedList.length} segment${scopedList.length === 1 ? '' : 's'} • ${playbackChannelMode} • ${playbackOrderMode} • ${repeatLabel}.`);
 
     if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -98,6 +103,7 @@ export const executeStructuredTextPlaybackSessionService = ({
           playbackChannelMode,
           playbackOrderMode,
           repeatMode,
+          repeatCount: repeatLimit === Number.POSITIVE_INFINITY ? null : repeatLimit,
           channelDelayMs,
           segmentDelayMs,
           repeatPass: pass + 1,

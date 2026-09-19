@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Eye, FileDown, FileText, FolderOpen, Loader2, MessageSquare, Play, PlayCircle, RotateCcw, Server, SkipForward, Square, Upload, Users, Volume2, Wand2, X } from 'lucide-react';
 import {
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
+  TEXT_STRUCTURED_PLAYBACK_SCOPES,
   resolveStructuredTextPlaybackList
 } from '../../domain/text/textStructuredPlaybackDomain.js';
 import {
@@ -20,7 +21,7 @@ import {
   resolveStructuredTextDisplayState
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
-import { summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
+import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../domain/text/textStructuredAudioCoverageDomain.js';
 import { getTextStructuredVoiceOverrideProfile, resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
@@ -69,6 +70,22 @@ const PLAY_OPTIONS = [
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY
 ];
 
+
+const coverageBadgeClass = status => {
+  if (status === TEXT_AUDIO_COVERAGE_STATUS.READY) return 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300';
+  if (status === TEXT_AUDIO_COVERAGE_STATUS.STALE) return 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300';
+  if (status === TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE) return 'border-violet-200 dark:border-violet-900 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300';
+  if (status === TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED) return 'border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300';
+  return 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/35 text-slate-400';
+};
+const coverageBadgeLabel = status => ({
+  [TEXT_AUDIO_COVERAGE_STATUS.READY]: 'READY',
+  [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'STALE',
+  [TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE]: 'OTHER',
+  [TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED]: 'HISTORY',
+  [TEXT_AUDIO_COVERAGE_STATUS.MISSING]: 'MISSING'
+}[status] || 'MISSING');
+
 const ORDER_OPTIONS = [TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL, TEXT_STRUCTURED_ORDER_MODES.SHUFFLE];
 const REPEAT_OPTIONS = [TEXT_STRUCTURED_REPEAT_MODES.ONCE, TEXT_STRUCTURED_REPEAT_MODES.TWICE, TEXT_STRUCTURED_REPEAT_MODES.LOOP];
 const RESUME_OPTIONS = [TEXT_STRUCTURED_RESUME_MODES.CONTINUE, TEXT_STRUCTURED_RESUME_MODES.RESTART];
@@ -80,9 +97,11 @@ const StructuredPlayerCard = ({
   isPaused,
   speakingPart,
   playingContext,
+  playingScope,
   playingIndex,
   displayMode,
   playbackChannelMode,
+  playbackPreferences = {},
   onPlayCard,
   onPlaySegment,
   onStartFromSegment,
@@ -153,7 +172,7 @@ const StructuredPlayerCard = ({
 
   const firstSegment = segments[0] || null;
   const collapsedDisplay = resolveStructuredTextDisplayState({ displayMode, isActive: false });
-  const cardHasPlayableSegment = segments.some(segment => hasStructuredTextPlayableChannel(segment, playbackChannelMode));
+  const cardHasPlayableSegment = segments.some(segment => hasStructuredTextPlayableChannel(segment, manualCardChannelMode));
   const preview = collapsedDisplay.showText
     ? (firstSegment?.text || 'No segment yet.')
     : (firstSegment?.meaning || 'No meaning yet.');
@@ -162,6 +181,8 @@ const StructuredPlayerCard = ({
     coverageMap: audioCoverageMap,
     blockId: block.id
   }), [documentTree, audioCoverageMap, block.id]);
+  const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
+  const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
 
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50 shadow-indigo-100/40 dark:shadow-none' : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
@@ -196,7 +217,10 @@ const StructuredPlayerCard = ({
           const display = resolveStructuredTextDisplayState({ displayMode, isActive: active });
           const textSpeaking = active && speakingPart === 'text';
           const meaningSpeaking = active && speakingPart === 'meaning';
-          const segmentPlayable = hasStructuredTextPlayableChannel(segment, playbackChannelMode);
+          const segmentPlayable = hasStructuredTextPlayableChannel(segment, manualSegmentChannelMode);
+          const manualOnlyActive = active && playingScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT;
+          const textCoverage = segment.text ? (audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, 'text')] || { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING }) : null;
+          const meaningCoverage = segment.meaning ? (audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, 'meaning')] || { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING }) : null;
           const speakerVoiceName = block.blockType === 'conversation' && segment.speaker
             ? resolveTextStructuredEffectiveVoiceProfile({
                 documentTree,
@@ -215,6 +239,10 @@ const StructuredPlayerCard = ({
                     <p className="text-[9px] font-black uppercase tracking-wide text-sky-600 dark:text-sky-300">{segment.speaker}</p>
                     {speakerVoiceName && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/40 text-sky-500 dark:text-sky-300">{compactVoiceLabel(speakerVoiceName)}</span>}
                   </div>}
+                  <div className="mb-2 flex flex-wrap items-center gap-1" data-text-segment-audio-availability={segment.id}>
+                    {textCoverage && <span className={`rounded-md border px-1.5 py-0.5 text-[7px] font-black ${coverageBadgeClass(textCoverage.status)}`} title={textCoverage.requiredVoiceId || textCoverage.voiceId || ''}>EN • {coverageBadgeLabel(textCoverage.status)}</span>}
+                    {meaningCoverage && <span className={`rounded-md border px-1.5 py-0.5 text-[7px] font-black ${coverageBadgeClass(meaningCoverage.status)}`} title={meaningCoverage.requiredVoiceId || meaningCoverage.voiceId || ''}>ID • {coverageBadgeLabel(meaningCoverage.status)}</span>}
+                  </div>
 
                   {display.showText && <div className={`rounded-lg transition ${textSpeaking ? 'bg-indigo-100/80 dark:bg-indigo-900/35 px-2.5 py-2' : ''}`} data-text-channel="text">
                     {textSpeaking && <p className="text-[8px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300 mb-0.5">Playing Text</p>}
@@ -253,7 +281,7 @@ const StructuredPlayerCard = ({
                   </div>}
                 </div>
                 <div className="w-full sm:w-auto flex flex-row flex-wrap gap-1 sm:flex-col sm:shrink-0">
-                  <button type="button" disabled={!segmentPlayable || generationBusy} onClick={() => onPlaySegment?.(segment.id)} className="min-h-9 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-[9px] font-bold disabled:opacity-35" title="Play only this segment"><PlayCircle className="w-3 h-3 inline mr-1"/>Only</button>
+                  <button type="button" disabled={!segmentPlayable || generationBusy} onClick={() => onPlaySegment?.(segment.id)} className={`min-h-9 px-2.5 py-1.5 rounded-lg text-[9px] font-bold disabled:opacity-35 ${manualOnlyActive ? 'bg-red-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200'}`} title={manualOnlyActive ? 'Stop this Segment-only playback' : 'Play only this segment with Manual Play settings'}>{manualOnlyActive ? <Square className="w-3 h-3 inline mr-1 fill-current"/> : <PlayCircle className="w-3 h-3 inline mr-1"/>}{manualOnlyActive ? 'Stop' : 'Only'}</button>
                   <button type="button" disabled={generationBusy} onClick={() => onStartFromSegment?.(segment.id)} className="min-h-9 px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[9px] font-bold" title="Start from here and continue"><SkipForward className="w-3 h-3 inline mr-1"/>From here</button>
                   <button type="button" onClick={() => setSegmentToolsId(current => current === segment.id ? null : segment.id)} className={`min-h-10 sm:min-h-9 px-2.5 py-1.5 rounded-lg border text-[9px] font-bold ${segmentToolsId === segment.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'}`} aria-expanded={segmentToolsId === segment.id} title="Segment audio tools"><Volume2 className="w-3 h-3 inline mr-1"/>Audio</button>
                 </div>
@@ -297,6 +325,7 @@ export const TextStructuredPlayer = ({
   isPaused,
   speakingPart,
   playingContext,
+  playingScope,
   playingIndex,
   displayMode,
   playbackChannelMode,
@@ -420,9 +449,11 @@ export const TextStructuredPlayer = ({
           isPaused={isPaused}
           speakingPart={speakingPart}
           playingContext={playingContext}
+          playingScope={playingScope}
           playingIndex={playingIndex}
           displayMode={displayMode}
           playbackChannelMode={playbackChannelMode}
+          playbackPreferences={playbackPreferences}
           onPlayCard={onPlayCard}
           onPlaySegment={onPlaySegment}
           onStartFromSegment={onStartFromSegment}

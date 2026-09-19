@@ -1,4 +1,4 @@
-import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
+import { isTextStructuredAudioVariantContentCompatible, normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 
 export const TEXT_STRUCTURED_LOCAL_AUDIO_PROFILE_KEY = 'localAudioPlaybackProfileV1';
@@ -59,7 +59,7 @@ export const resolveTextStructuredCustomLocalAudioVoice = ({ documentTree, block
 };
 
 export const collectTextStructuredAvailableLocalVoices = ({ documentTree, audioVariants = [], runtimeAudioUrls = {} }) => {
-  const result = { channels: { text: new Set(), meaning: new Set() }, speakerIds: {} };
+  const result = { channels: { text: new Set(), meaning: new Set() }, speakerIds: {}, segments: {} };
   const segmentMap = new Map();
   (documentTree?.blocks || []).forEach(block => (block?.segments || []).forEach(segment => segmentMap.set(segment.id, { block, segment })));
   for (const variant of Array.isArray(audioVariants) ? audioVariants : []) {
@@ -68,17 +68,26 @@ export const collectTextStructuredAvailableLocalVoices = ({ documentTree, audioV
     const runtime = runtimeAudioUrls?.[variant.id];
     if (!runtime?.url && !runtime?.folderBacked && !runtime?.zipBacked && !runtime?.stagingBacked) continue;
     const channel = variant?.channel === 'meaning' ? 'meaning' : 'text';
+    const content = channel === 'meaning' ? info.segment?.meaning : info.segment?.text;
+    if (!isTextStructuredAudioVariantContentCompatible({ variant, channel, content }).compatible) continue;
     const voiceId = clean(variant?.voiceId);
     if (!voiceId) continue;
     result.channels[channel].add(voiceId);
+    result.segments[variant.segmentId] ||= { text: new Set(), meaning: new Set() };
+    result.segments[variant.segmentId][channel].add(voiceId);
     const speakerId = getTextStructuredSegmentSpeakerId(info.segment);
     if (speakerId) {
-      result.speakerIds[speakerId] ||= { text: new Set(), meaning: new Set() };
+      result.speakerIds[speakerId] ||= { text: new Set(), meaning: new Set(), segments: {} };
       result.speakerIds[speakerId][channel].add(voiceId);
+      result.speakerIds[speakerId].segments[variant.segmentId] ||= { text: new Set(), meaning: new Set() };
+      result.speakerIds[speakerId].segments[variant.segmentId][channel].add(voiceId);
     }
   }
+  const finalizeChannels = channels => ({ text: [...(channels?.text || [])].sort(), meaning: [...(channels?.meaning || [])].sort() });
+  const finalizeSegments = segments => Object.fromEntries(Object.entries(segments || {}).map(([segmentId, channels]) => [segmentId, finalizeChannels(channels)]));
   return {
-    channels: { text: [...result.channels.text].sort(), meaning: [...result.channels.meaning].sort() },
-    speakerIds: Object.fromEntries(Object.entries(result.speakerIds).map(([id, channels]) => [id, { text: [...channels.text].sort(), meaning: [...channels.meaning].sort() }]))
+    channels: finalizeChannels(result.channels),
+    segments: finalizeSegments(result.segments),
+    speakerIds: Object.fromEntries(Object.entries(result.speakerIds).map(([id, channels]) => [id, { ...finalizeChannels(channels), segments: finalizeSegments(channels.segments) }]))
   };
 };

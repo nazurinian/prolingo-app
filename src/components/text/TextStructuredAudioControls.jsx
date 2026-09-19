@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Headphones, Link2, MessageSquare, Server, Users, Volume2 } from 'lucide-react';
+import { ChevronDown, Headphones, Link2, MessageSquare, Server, Users, Volume2 } from 'lucide-react';
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { getTextStructuredVoiceOverrideProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { getTextStructuredPlaybackRateProfile } from '../../domain/text/textStructuredPlaybackRateProfileDomain.js';
@@ -95,11 +95,16 @@ export default function TextStructuredAudioControls({
   const localProfile = useMemo(() => getTextStructuredLocalAudioProfile(documentTree), [documentTree?.metadata]);
   const downloadProfile = useMemo(() => getTextStructuredAudioDownloadProfile(documentTree), [documentTree?.metadata]);
   const syncProfile = useMemo(() => getTextStructuredAudioSyncProfile(documentTree), [documentTree?.metadata]);
+  const orderedSegments = useMemo(() => {
+    let displayIndex = 0;
+    return (documentTree?.blocks || []).flatMap(block => (block?.segments || []).map(segment => ({ segment, displayIndex: ++displayIndex })));
+  }, [documentTree?.blocks]);
   const englishNames = useMemo(() => uniqueNames(englishVoices), [englishVoices]);
   const indonesianNames = useMemo(() => uniqueNames(indonesianVoices), [indonesianVoices]);
   const edgeEnglish = useMemo(() => (edgeGenerationVoices || []).filter(voice => String(voice?.lang || '').startsWith('en-')), [edgeGenerationVoices]);
   const edgeMeaning = useMemo(() => (edgeGenerationVoices || []).filter(voice => !String(voice?.lang || '').startsWith('en-')), [edgeGenerationVoices]);
   const [audioSurface, setAudioSurface] = useState('playback');
+  const [localReadyExpanded, setLocalReadyExpanded] = useState({});
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
   const sourceMode = preferences.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
@@ -191,16 +196,36 @@ export default function TextStructuredAudioControls({
           const effectiveIdRate = idRateFollower ? firstIdRate : savedIdRate;
           const effectiveLocalEn = enVoiceFollower ? firstLocalEn : savedLocalEn;
           const effectiveLocalId = idVoiceFollower ? firstLocalId : savedLocalId;
-          const enVoiceHelper = enVoiceFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedEnVoice || defaultTextVoiceName)}` : null;
-          const idVoiceHelper = idVoiceFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedIdVoice || defaultMeaningVoiceName)}` : null;
-          const enRateHelper = enRateFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${Number(savedEnRate).toFixed(1)}×` : null;
-          const idRateHelper = idRateFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${Number(savedIdRate).toFixed(1)}×` : null;
+          const syncNotes = [
+            enVoiceFollower ? `EN voice follows 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedEnVoice || defaultTextVoiceName)}` : null,
+            enRateFollower ? `EN speed follows 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${Number(savedEnRate).toFixed(1)}×` : null,
+            idVoiceFollower ? `ID voice follows 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedIdVoice || defaultMeaningVoiceName)}` : null,
+            idRateFollower ? `ID speed follows 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${Number(savedIdRate).toFixed(1)}×` : null
+          ].filter(Boolean);
+          const localSegments = local.segments || {};
+          const localSegmentRows = orderedSegments.filter(({ segment }) => localSegments[segment.id]).map(({ segment, displayIndex }) => ({
+            segment,
+            segmentIndex: displayIndex,
+            channels: localSegments[segment.id]
+          }));
+          const localReadyOpen = Boolean(localReadyExpanded[id]);
           return <div key={id} className={`rounded-xl border bg-white/90 dark:bg-slate-900/40 p-2.5 ${index === 0 ? 'border-indigo-200 dark:border-indigo-900' : 'border-sky-100 dark:border-sky-900'}`} data-text-audio-speaker={id}>
             <div className="mb-2 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-500"/><span className="text-[9px] font-black text-slate-700 dark:text-slate-200">{index + 1}. {label}</span>{index === 0 && speakers.length > 1 && <span className="ml-auto rounded bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.5 text-[7px] font-black text-indigo-600 dark:text-indigo-300">SYNC MASTER</span>}</div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2"><VoiceSelect label="EN • TTS voice" value={effectiveEnVoice} options={englishNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} helper={enVoiceHelper} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN speed" value={effectiveEnRate} disabled={disabled || enRateFollower} helper={enRateHelper} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} helper={enVoiceFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedLocalEn)}` : null} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
-              <div className="space-y-2"><VoiceSelect label="ID • TTS voice" value={effectiveIdVoice} options={indonesianNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} helper={idVoiceHelper} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID speed" value={effectiveIdRate} disabled={disabled || idRateFollower} helper={idRateHelper} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} helper={idVoiceFollower ? `Following 1. ${firstSpeaker?.label || 'Speaker 1'} • saved ${compactVoiceLabel(savedLocalId)}` : null} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="EN • TTS voice" value={effectiveEnVoice} options={englishNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="ID • TTS voice" value={effectiveIdVoice} options={indonesianNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
             </div>
+            {syncNotes.length > 0 && <div className="mt-2 space-y-0.5 px-0.5" data-text-audio-sync-notes={id}>{syncNotes.map(note => <p key={note} className="text-[7px] font-semibold leading-relaxed text-sky-600 dark:text-sky-300">{note}</p>)}</div>}
+            <button type="button" onClick={() => setLocalReadyExpanded(current => ({ ...current, [id]: !current[id] }))} className="mt-2 flex min-h-9 w-full items-center justify-between rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/45 dark:bg-emerald-950/15 px-2.5 text-left text-[8px] font-black text-emerald-700 dark:text-emerald-300" aria-expanded={localReadyOpen}>
+              <span>LOCAL READY • {localSegmentRows.length} segment{localSegmentRows.length === 1 ? '' : 's'} • EN {(local.text || []).length} voice{(local.text || []).length === 1 ? '' : 's'} • ID {(local.meaning || []).length} voice{(local.meaning || []).length === 1 ? '' : 's'}</span><ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${localReadyOpen ? 'rotate-180' : ''}`}/>
+            </button>
+            {localReadyOpen && <div className="mt-1.5 max-h-44 space-y-1 overflow-y-auto rounded-lg border border-emerald-100 dark:border-emerald-900 bg-white/80 dark:bg-slate-900/45 p-2" data-text-local-ready-list={id}>
+              {localSegmentRows.length === 0 && <p className="text-[7px] text-slate-400">No linked local audio is ready for this speaker yet.</p>}
+              {localSegmentRows.map(({ segment, segmentIndex, channels }) => <div key={segment.id} className="rounded-md border border-slate-100 dark:border-slate-800 px-2 py-1.5">
+                <p className="text-[7px] font-black text-slate-500">Segment {segmentIndex} • {segment.id}</p>
+                <p className="mt-0.5 text-[7px] text-slate-400">EN: {(channels.text || []).map(compactVoiceLabel).join(', ') || '—'} • ID: {(channels.meaning || []).map(compactVoiceLabel).join(', ') || '—'}</p>
+              </div>)}
+            </div>}
           </div>;
         })}
         {speakers.length === 0 && <p className="text-[8px] text-amber-600 dark:text-amber-300">No speaker identity detected yet. Add Conversation segments first.</p>}

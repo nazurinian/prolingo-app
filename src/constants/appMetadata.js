@@ -1,15 +1,21 @@
-export const APP_VERSION = '5.14.15';
+export const APP_VERSION = '5.14.16';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
 export const APP_CHECKPOINT_ID = 'P4-TEXT-FINAL';
-export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16A — Playback Audio UX';
-export const APP_RELEASE_NAME = 'Final Text T16A Playback Audio UX Refinement';
+export const APP_CHECKPOINT_LABEL = 'P4-TEXT-FINAL • T16B — Manual Playback + Audio Availability UX';
+export const APP_RELEASE_NAME = 'Final Text T16B Manual Playback and Audio Availability UX';
 export const APP_RELEASE_DATE = '2026-09-19';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16A: Text AUDIO Playback clarifies Local Audio ON/OFF + AUTO/CUSTOM, adds non-destructive speaker voice/speed sync, and reports the actual LOCAL/TTS source used during playback.`;
-export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16A`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL} Final Text T16B: manual Card/Segment playback gets its own channel/repeat controls, Segment Only becomes Stop while active, body cards show EN/ID local-audio coverage, and AUDIO Playback adds compact expandable local-ready details per detected speaker.`;
+export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • P4-TEXT-FINAL T16B`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'Final Text T16B keeps AUDIO → DOWNLOAD untouched and refines only AUDIO → PLAYBACK plus body/player manual-play UX',
+  'Conversation sync follower notes move below the fixed-size voice/speed controls so enabling Sync no longer changes individual control-box height; follower values remain non-destructive and restore when Sync is OFF',
+  'Each detected Conversation speaker now has an expandable LOCAL READY inventory showing linked EN/ID local voices per Segment, while CUSTOM continues to select a preferred local voice with the selected TTS voice as fallback',
+  'Player Settings adds a separate Manual Play section for Segment Only and Card Play with EN / ID / EN→ID / ID→EN plus Once / 2× / Custom count / Loop',
+  'Segment Only uses Manual Play settings and becomes a Stop button while that exact Segment-only session is active; Card Play remains a one-shot Play action and Pause/Stop remains on the bottom player',
+  'Expanded Segment cards always show compact EN/ID audio availability badges (Ready / History / Other / Stale / Missing) so downloaded/local coverage is visible without opening Segment Audio tools',
   'Final Text T16A replaces ambiguous LOAD ALL / CUSTOM / GLOBAL TTS playback choices with Local Audio ON/OFF plus AUTO/CUSTOM while keeping Folder/ZIP/Staging attachment under AUDIO → DOWNLOAD/SOURCES',
   'Conversation Sync Voice/Speed is now ON/OFF and non-destructive: follower speaker settings are locked to Speaker 1 at runtime without overwriting their saved voice, speed, or custom-local choices; turning Sync OFF restores those saved values',
   'Playback Audio now reports the actual source used by the latest channel as LOCAL (Folder/ZIP/Staging/Generated) or Browser TTS, including the effective voice and Speaker-1 sync state',

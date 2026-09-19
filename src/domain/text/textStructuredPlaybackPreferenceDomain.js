@@ -31,6 +31,13 @@ export const TEXT_STRUCTURED_REPEAT_MODES = Object.freeze({
   LOOP: 'loop'
 });
 
+export const TEXT_STRUCTURED_MANUAL_REPEAT_MODES = Object.freeze({
+  ONCE: 'once',
+  TWICE: 'twice',
+  CUSTOM: 'custom',
+  LOOP: 'loop'
+});
+
 export const TEXT_STRUCTURED_RESUME_MODES = Object.freeze({
   CONTINUE: 'continue',
   RESTART: 'restart'
@@ -51,6 +58,12 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
   audioSourceMode: TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
   playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
   repeatMode: TEXT_STRUCTURED_REPEAT_MODES.ONCE,
+  manualSegmentPlaybackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
+  manualSegmentRepeatMode: TEXT_STRUCTURED_MANUAL_REPEAT_MODES.ONCE,
+  manualSegmentRepeatCount: 3,
+  manualCardPlaybackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
+  manualCardRepeatMode: TEXT_STRUCTURED_MANUAL_REPEAT_MODES.ONCE,
+  manualCardRepeatCount: 3,
   resumeMode: TEXT_STRUCTURED_RESUME_MODES.CONTINUE,
   channelDelayMs: 0,
   segmentDelayMs: 0
@@ -60,6 +73,7 @@ const displayModes = new Set(Object.values(TEXT_STRUCTURED_DISPLAY_MODES));
 const playbackModes = new Set(Object.values(TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES));
 const orderModes = new Set(Object.values(TEXT_STRUCTURED_ORDER_MODES));
 const repeatModes = new Set(Object.values(TEXT_STRUCTURED_REPEAT_MODES));
+const manualRepeatModes = new Set(Object.values(TEXT_STRUCTURED_MANUAL_REPEAT_MODES));
 const resumeModes = new Set(Object.values(TEXT_STRUCTURED_RESUME_MODES));
 const normalizeText = value => String(value ?? '').trim();
 const normalizeVoiceName = value => normalizeText(value) || null;
@@ -72,6 +86,11 @@ const normalizeDelay = value => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 0;
   return Math.min(5000, Math.max(0, Math.round(numeric / 50) * 50));
+};
+const normalizeManualRepeatCount = value => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 3;
+  return Math.min(20, Math.max(1, Math.round(numeric)));
 };
 
 export const normalizeTextStructuredPreferences = candidate => {
@@ -106,6 +125,20 @@ export const normalizeTextStructuredPreferences = candidate => {
     repeatMode: repeatModes.has(candidate?.repeatMode)
       ? candidate.repeatMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.repeatMode,
+    manualSegmentPlaybackChannelMode: playbackModes.has(candidate?.manualSegmentPlaybackChannelMode)
+      ? candidate.manualSegmentPlaybackChannelMode
+      : (playbackModes.has(candidate?.playbackChannelMode) ? candidate.playbackChannelMode : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualSegmentPlaybackChannelMode),
+    manualSegmentRepeatMode: manualRepeatModes.has(candidate?.manualSegmentRepeatMode)
+      ? candidate.manualSegmentRepeatMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualSegmentRepeatMode,
+    manualSegmentRepeatCount: normalizeManualRepeatCount(candidate?.manualSegmentRepeatCount),
+    manualCardPlaybackChannelMode: playbackModes.has(candidate?.manualCardPlaybackChannelMode)
+      ? candidate.manualCardPlaybackChannelMode
+      : (playbackModes.has(candidate?.playbackChannelMode) ? candidate.playbackChannelMode : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualCardPlaybackChannelMode),
+    manualCardRepeatMode: manualRepeatModes.has(candidate?.manualCardRepeatMode)
+      ? candidate.manualCardRepeatMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualCardRepeatMode,
+    manualCardRepeatCount: normalizeManualRepeatCount(candidate?.manualCardRepeatCount),
     resumeMode: resumeModes.has(candidate?.resumeMode)
       ? candidate.resumeMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.resumeMode,
@@ -182,3 +215,12 @@ export const getStructuredTextResumeModeLabel = mode => ({
   [TEXT_STRUCTURED_RESUME_MODES.CONTINUE]: 'Continue',
   [TEXT_STRUCTURED_RESUME_MODES.RESTART]: 'Restart'
 }[mode] || 'Continue');
+
+export const resolveTextStructuredManualPlaybackProfile = (preferences, target = 'segment') => {
+  const normalized = normalizeTextStructuredPreferences(preferences || {});
+  const isCard = target === 'card';
+  const playbackChannelMode = isCard ? normalized.manualCardPlaybackChannelMode : normalized.manualSegmentPlaybackChannelMode;
+  const manualRepeatMode = isCard ? normalized.manualCardRepeatMode : normalized.manualSegmentRepeatMode;
+  const repeatCount = isCard ? normalized.manualCardRepeatCount : normalized.manualSegmentRepeatCount;
+  return { playbackChannelMode, repeatMode: manualRepeatMode, repeatCount };
+};

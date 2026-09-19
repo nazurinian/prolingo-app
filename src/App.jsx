@@ -104,7 +104,7 @@ import { executeRecordStudyActivity } from './services/progress/studyTrackingInt
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
-import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredManualPlaybackProfile, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_ORDER_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
@@ -2324,7 +2324,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const startStructuredTextPlayback = ({ startSegmentId = null, blockId = null, scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE } = {}) => {
+  const startStructuredTextPlayback = ({
+    startSegmentId = null,
+    blockId = null,
+    scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+    playbackChannelMode = textStructuredPreferences.playbackChannelMode,
+    playbackOrderMode = textStructuredPreferences.playbackOrderMode,
+    repeatMode = textStructuredPreferences.repeatMode,
+    repeatCount = null
+  } = {}) => {
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1' || !activeTextDocumentTree) return false;
     return executeStructuredTextPlaybackSessionService({
       documentTree: activeTextDocumentTree,
@@ -2344,9 +2352,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setPlayingIndex,
       setCurrentIndex,
       setSpeakingPart,
-      playbackChannelMode: textStructuredPreferences.playbackChannelMode,
-      playbackOrderMode: textStructuredPreferences.playbackOrderMode,
-      repeatMode: textStructuredPreferences.repeatMode,
+      playbackChannelMode,
+      playbackOrderMode,
+      repeatMode,
+      repeatCount,
       channelDelayMs: textStructuredPreferences.channelDelayMs,
       segmentDelayMs: textStructuredPreferences.segmentDelayMs,
       playStructuredChannel: playStructuredTextChannel,
@@ -2355,15 +2364,36 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const handleStructuredTextPlaySegment = (segmentId) => startStructuredTextPlayback({
-    startSegmentId: segmentId,
-    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
-  });
+  const handleStructuredTextPlaySegment = (segmentId) => {
+    const currentScope = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+      ? playbackContextRef.current?.scope
+      : null;
+    if ((isPlaying || isPaused) && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT && playingIndex === segmentId) {
+      forceStopAll();
+      return true;
+    }
+    const manual = resolveTextStructuredManualPlaybackProfile(textStructuredPreferences, 'segment');
+    return startStructuredTextPlayback({
+      startSegmentId: segmentId,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT,
+      playbackChannelMode: manual.playbackChannelMode,
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
+      repeatMode: manual.repeatMode,
+      repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
+    });
+  };
 
-  const handleStructuredTextPlayCard = (blockId) => startStructuredTextPlayback({
-    blockId,
-    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD
-  });
+  const handleStructuredTextPlayCard = (blockId) => {
+    const manual = resolveTextStructuredManualPlaybackProfile(textStructuredPreferences, 'card');
+    return startStructuredTextPlayback({
+      blockId,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
+      playbackChannelMode: manual.playbackChannelMode,
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
+      repeatMode: manual.repeatMode,
+      repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
+    });
+  };
 
   const handleStructuredTextStartFromSegment = (segmentId) => startStructuredTextPlayback({
     startSegmentId: segmentId,
@@ -4703,6 +4733,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         isPaused={isPaused}
         speakingPart={speakingPart}
         playingContext={playingContext}
+        playingScope={playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT ? playbackContextRef.current?.scope || null : null}
         playingIndex={playingIndex}
         displayMode={textStructuredPreferences.displayMode}
         playbackChannelMode={textStructuredPreferences.playbackChannelMode}
