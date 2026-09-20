@@ -209,7 +209,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
   includeDocumentSpeakerProfile = true,
   simpleCardSpeakerMode = false,
   preferredGeneratedEngine = 'edge',
-  downloadPreferences = null
+  downloadPreferences = null,
+  globalPlaybackOrder = null
 }) => {
   const map = {};
   const blocks = Array.isArray(documentTree?.blocks) ? documentTree.blocks : [];
@@ -242,6 +243,7 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
           documentTree,
           block,
           channel,
+          globalProfiles: globalPlaybackOrder?.channels?.[channel] || [],
           fallbackProfiles: [{
             engine: preferredGeneratedEngine || 'edge',
             voiceId: downloadVoice.voiceId,

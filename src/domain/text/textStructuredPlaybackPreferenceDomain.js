@@ -1,3 +1,4 @@
+import { getTextStructuredGlobalAudioPlaybackOrder } from './textStructuredAudioPlaybackOrderDomain.js';
 export const TEXT_STRUCTURED_DISPLAY_MODES = Object.freeze({
   TEXT_ONLY: 'text-only',
   MEANING_ONLY: 'meaning-only',
@@ -63,6 +64,9 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
   browserRatesLinked: true,
   browserTtsRate: 1,
   audioSourceMode: TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+  // beta.8/P7-HF2: true app-global local playback priority. The shape mirrors
+  // audioPlaybackOrderV1 channels but deliberately excludes TTS Only state.
+  globalAudioPlaybackOrderV1: { version: 1, channels: { text: [], meaning: [] }, ttsOnly: null },
   playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
   playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
   repeatMode: TEXT_STRUCTURED_REPEAT_MODES.ONCE,
@@ -128,6 +132,7 @@ export const normalizeTextStructuredPreferences = candidate => {
       : candidate?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
         ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
         : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+    globalAudioPlaybackOrderV1: getTextStructuredGlobalAudioPlaybackOrder(candidate || {}),
     playbackRepresentationMode: representationModes.has(candidate?.playbackRepresentationMode)
       ? candidate.playbackRepresentationMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackRepresentationMode,

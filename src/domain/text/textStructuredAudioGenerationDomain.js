@@ -8,10 +8,11 @@ import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdenti
 export const TEXT_STRUCTURED_GENERATOR_ENGINES = Object.freeze({ EDGE: 'edge', GEMINI: 'gemini' });
 export const TEXT_STRUCTURED_GENERATION_FEATURES = Object.freeze({ EDGE: true, GEMINI: false });
 export const TEXT_STRUCTURED_GENERATION_CHANNELS = Object.freeze({ TEXT: 'text', MEANING: 'meaning' });
+export const TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION = 2;
 
 export const TEXT_STRUCTURED_GENERATION_DEFAULTS = Object.freeze({
   engine: TEXT_STRUCTURED_GENERATOR_ENGINES.EDGE,
-  edgeTextVoiceId: 'en-GB-LibbyNeural',
+  edgeTextVoiceId: 'en-GB-SoniaNeural',
   edgeMeaningVoiceId: 'su-ID-TutiNeural',
   geminiVoiceName: 'Kore',
   edgeRate: 0,
@@ -45,6 +46,7 @@ const clampInteger = (value, min, max, fallback = 0) => {
 };
 
 export const normalizeTextStructuredAudioGenerationPreferences = candidate => ({
+  defaultsVersion: TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION,
   // A12.1 is deliberately Edge-first. Preserve the Gemini fields for the later
   // provider patch, but do not allow a stale preference to route generation there.
   engine: TEXT_STRUCTURED_GENERATOR_ENGINES.EDGE,
@@ -55,16 +57,17 @@ export const normalizeTextStructuredAudioGenerationPreferences = candidate => ({
   edgePitch: clampInteger(candidate?.edgePitch, -20, 20, 0),
   generateText: candidate?.generateText !== false,
   generateMeaning: candidate?.generateMeaning !== false,
-  bulkTextVoiceIds: normalizeVoiceIds(candidate?.bulkTextVoiceIds, clean(candidate?.edgeTextVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId),
-  bulkMeaningVoiceIds: normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, clean(candidate?.edgeMeaningVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId),
+  // Bulk defaults are deliberately independent from normal/manual Edge defaults.
+  bulkTextVoiceIds: normalizeVoiceIds(candidate?.bulkTextVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds[0]),
+  bulkMeaningVoiceIds: normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds[0]),
   // Keep at least one representation selected. Full-only is valid; both-off falls back to Split.
   bulkGenerateSplit: candidate?.bulkGenerateSplit !== false || candidate?.bulkGenerateFull !== true,
   bulkGenerateFull: candidate?.bulkGenerateFull === true,
   bulkAutoExport: candidate?.bulkAutoExport === true,
   bulkExportFormat: ['audio-only-direct', 'audio-only-zip', 'portable-zip'].includes(candidate?.bulkExportFormat) ? candidate.bulkExportFormat : 'portable-zip',
   bulkExportVoicePolicy: ['preferred', 'selected', 'all-selected'].includes(candidate?.bulkExportVoicePolicy) ? candidate.bulkExportVoicePolicy : 'all-selected',
-  bulkExportTextVoiceId: clean(candidate?.bulkExportTextVoiceId) || normalizeVoiceIds(candidate?.bulkTextVoiceIds, clean(candidate?.edgeTextVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId)[0],
-  bulkExportMeaningVoiceId: clean(candidate?.bulkExportMeaningVoiceId) || normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, clean(candidate?.edgeMeaningVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId)[0],
+  bulkExportTextVoiceId: clean(candidate?.bulkExportTextVoiceId) || normalizeVoiceIds(candidate?.bulkTextVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds[0])[0],
+  bulkExportMeaningVoiceId: clean(candidate?.bulkExportMeaningVoiceId) || normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds[0])[0],
   bulkExportRepresentation: ['split', 'full', 'both'].includes(candidate?.bulkExportRepresentation) ? candidate.bulkExportRepresentation : 'split'
 });
 

@@ -18,9 +18,27 @@ const BottomPlayerBar = ({
   setPlaybackMode,
   playingContext,
   structuredTextModeActive = false,
+  textPlaybackRepresentationMode = 'split',
+  textTtsOnly = false,
+  textPlaybackOrder = null,
+  onTextPlaybackRepresentationModeChange,
+  onTextTtsOnlyChange,
   onOpenTextPlayer
 }) => {
   const isStructuredText = structuredTextModeActive || playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT;
+  const compactVoiceLabel = value => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const tail = raw.split('-').pop() || raw;
+    return tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw;
+  };
+  const globalOrderLabel = channel => {
+    const profiles = Array.isArray(textPlaybackOrder?.channels?.[channel]) ? textPlaybackOrder.channels[channel] : [];
+    return profiles.map(profile => compactVoiceLabel(profile?.voiceId || profile)).filter(Boolean).join(' > ') || 'Auto';
+  };
+  const representationIsFull = textPlaybackRepresentationMode === 'full';
+  const toggleRepresentation = () => onTextPlaybackRepresentationModeChange?.(representationIsFull ? 'split' : 'full');
+
   const getMobileItemLabel = item => {
     if (!item) return 'Ready';
     if (item.isTextStructuredSegment) {
@@ -70,10 +88,11 @@ const BottomPlayerBar = ({
            </div>
            <div className="flex justify-end gap-1 pl-1">
               {isStructuredText ? (
-                <button type="button" onClick={onOpenTextPlayer} className="flex flex-col items-center justify-center gap-0.5 min-w-[52px] p-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-indigo-600 dark:text-indigo-300" title="Open Text Player settings">
-                  <SlidersHorizontal className="w-5 h-5"/>
-                  <span className="text-[9px] font-bold uppercase">Player</span>
-                </button>
+                <div className="flex items-center gap-1" data-text-global-player-controls="true">
+                  <button type="button" onClick={toggleRepresentation} className="min-h-9 min-w-[44px] rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-1 text-[8px] font-black text-indigo-700 dark:text-indigo-300" title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
+                  <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 min-w-[42px] rounded-md border px-1 text-[8px] font-black ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS' : 'LOCAL'}</button>
+                  <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 min-w-9 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/30" title="Open Text Player settings"><SlidersHorizontal className="w-4 h-4"/></button>
+                </div>
               ) : (
                 <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700">
                     {playbackMode === 'once' && <span className="text-xs font-mono border border-slate-500 rounded px-1 text-slate-600 dark:text-slate-400">1</span>}
@@ -117,9 +136,14 @@ const BottomPlayerBar = ({
 
            <div className="w-64 flex flex-col items-end gap-1">
              {isStructuredText ? (
-               <button type="button" onClick={onOpenTextPlayer} className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/30 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-3 py-2 rounded-lg text-xs font-black transition" title="Open Text Player settings">
-                 <SlidersHorizontal className="w-4 h-4"/> PLAYER SETTINGS
-               </button>
+               <>
+                 <div className="flex items-center gap-1.5" data-text-global-player-controls="true">
+                   <button type="button" onClick={toggleRepresentation} className="min-h-9 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-3 text-[9px] font-black text-indigo-700 dark:text-indigo-300" title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
+                   <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 rounded-lg border px-3 text-[9px] font-black ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}</button>
+                   <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-[9px] font-black text-slate-500 hover:text-indigo-600 dark:text-slate-300" title="Open Text Player settings"><SlidersHorizontal className="w-3.5 h-3.5"/>SETTINGS</button>
+                 </div>
+                 <p className="max-w-64 truncate text-[7px] font-bold text-slate-400" title={`EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>EN {globalOrderLabel('text')} • ID {globalOrderLabel('meaning')}</p>
+               </>
              ) : (
                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
                   <select className="bg-transparent text-xs font-bold text-slate-600 dark:text-slate-300 outline-none p-1 cursor-pointer dark:bg-slate-700" value={playbackMode} onChange={(e) => setPlaybackMode(e.target.value)}>

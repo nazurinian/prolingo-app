@@ -36,11 +36,13 @@ export const resolveTextStructuredRuntimePlaybackOrder = ({
   fallbackVoiceId = null,
   fallbackEngine = 'edge',
   fallbackRate = 0,
-  fallbackPitch = 0
+  fallbackPitch = 0,
+  globalPlaybackOrder = null
 } = {}) => resolveTextStructuredEffectivePlaybackOrder({
   documentTree,
   block,
   channel,
+  globalProfiles: globalPlaybackOrder?.channels?.[normalizeChannel(channel)] || [],
   fallbackProfiles: resolveFallbackProfile({ fallbackVoiceId, fallbackEngine, fallbackRate, fallbackPitch })
 });
 
@@ -83,6 +85,7 @@ export const buildTextStructuredSplitRuntimePlan = ({
   fallbackEngine = 'edge',
   fallbackRate = 0,
   fallbackPitch = 0,
+  globalPlaybackOrder = null,
   globalTtsOnly = false,
   highlight = true
 } = {}) => {
@@ -94,7 +97,8 @@ export const buildTextStructuredSplitRuntimePlan = ({
     fallbackVoiceId,
     fallbackEngine,
     fallbackRate,
-    fallbackPitch
+    fallbackPitch,
+    globalPlaybackOrder
   });
   const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly });
   const steps = [];
@@ -178,6 +182,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   fallbackRate = 0,
   fallbackPitch = 0,
   language = null,
+  globalPlaybackOrder = null,
   globalTtsOnly = false,
   allowFullArtifact = true
 } = {}) => {
@@ -200,6 +205,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         fallbackEngine,
         fallbackRate,
         fallbackPitch,
+        globalPlaybackOrder,
         globalTtsOnly,
         highlight: true
       })
@@ -214,7 +220,8 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     fallbackVoiceId,
     fallbackEngine,
     fallbackRate,
-    fallbackPitch
+    fallbackPitch,
+    globalPlaybackOrder
   });
   const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly });
 
@@ -304,6 +311,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     fallbackEngine,
     fallbackRate,
     fallbackPitch,
+    globalPlaybackOrder,
     globalTtsOnly: false,
     highlight: false
   });

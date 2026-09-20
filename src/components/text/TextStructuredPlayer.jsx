@@ -383,8 +383,8 @@ export const TextStructuredPlayer = ({
   onDisplayModeChange,
   onPlaybackChannelModeChange,
   onPlaybackRepresentationModeChange,
-  onDocumentPlaybackOrderChange,
-  onDocumentTtsOnlyChange,
+  onGlobalPlaybackOrderChange,
+  onGlobalTtsOnlyChange,
   onCardPlaybackOrderChange,
   onPlaybackFeelChange,
   onPlayDocument,
@@ -468,7 +468,7 @@ export const TextStructuredPlayer = ({
             {['conversation', 'mixed'].includes(documentTree?.documentType) ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Player settings via bottom bar</p>
+            <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Global Player settings via bottom bar</p>
             <div className="flex min-w-0 flex-wrap items-center gap-1 text-[8px] text-slate-400" data-text-workspace-compact-readiness="true"><span className="truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'}</span><span className="rounded bg-emerald-100 dark:bg-emerald-950/30 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}</span>{documentCoverage?.needDownload ? <span className="rounded bg-amber-100 dark:bg-amber-950/30 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {documentCoverage.needDownload}</span> : null}</div>
           </div>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Workspace"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
@@ -493,8 +493,8 @@ export const TextStructuredPlayer = ({
                   onDisplayModeChange={onDisplayModeChange}
                   onPlaybackChannelModeChange={onPlaybackChannelModeChange}
                   onPlaybackRepresentationModeChange={onPlaybackRepresentationModeChange}
-                  onDocumentPlaybackOrderChange={onDocumentPlaybackOrderChange}
-                  onDocumentTtsOnlyChange={onDocumentTtsOnlyChange}
+                  onGlobalPlaybackOrderChange={onGlobalPlaybackOrderChange}
+                  onGlobalTtsOnlyChange={onGlobalTtsOnlyChange}
                   onPlaybackFeelChange={onPlaybackFeelChange}
                 />
               </div>

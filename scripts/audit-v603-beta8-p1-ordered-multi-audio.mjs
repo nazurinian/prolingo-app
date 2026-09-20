@@ -63,7 +63,7 @@ check('Workspace order normalizes and deduplicates profiles', () => {
 
 check('Document order resolves when Card has no override', () => {
   const order = resolveTextStructuredEffectivePlaybackOrder({ documentTree, block, channel: 'text' });
-  assert.equal(order.source, 'document-order');
+  assert.equal(order.source, 'document-order-legacy');
   assert.equal(order.explicit, true);
   assert.equal(order.profiles[0].voiceId, 'en-GB-LibbyNeural');
 });
@@ -122,12 +122,12 @@ check('profile rate/pitch may pin an exact render profile', () => {
   assert.equal(doesTextStructuredVariantMatchPlaybackProfile({ variant: libby, profile: { ...pinned, rate: 0 } }), true);
 });
 
-check('Workspace TTS Only is stored without changing audio order', () => {
+check('Legacy document TTS Only remains readable only through explicit compatibility mode', () => {
   const metadata = buildTextStructuredAudioPlaybackOrderMetadata({ metadata: orderedMeta, ttsOnly: true });
   const settings = getTextStructuredAudioPlaybackOrder({ metadata });
   assert.equal(settings.ttsOnly, true);
   assert.equal(settings.channels.text.length, 2);
-  assert.deepEqual(resolveTextStructuredEffectiveTtsOnly({ documentTree: { ...documentTree, metadata }, block }).enabled, true);
+  assert.deepEqual(resolveTextStructuredEffectiveTtsOnly({ documentTree: { ...documentTree, metadata }, block, allowLegacyMetadata: true }).enabled, true);
 });
 
 check('global TTS Only always wins', () => {

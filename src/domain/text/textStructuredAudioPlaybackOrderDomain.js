@@ -1,4 +1,5 @@
 export const TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_KEY = 'audioPlaybackOrderV1';
+export const TEXT_STRUCTURED_GLOBAL_AUDIO_PLAYBACK_ORDER_PREFERENCE_KEY = 'globalAudioPlaybackOrderV1';
 export const TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_VERSION = 1;
 
 const clean = value => String(value ?? '').trim();
@@ -62,7 +63,7 @@ export const normalizeTextStructuredPlaybackProfiles = candidates => {
   return result;
 };
 
-const normalizeSettings = source => ({
+export const normalizeTextStructuredAudioPlaybackOrderSettings = source => ({
   version: TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_VERSION,
   channels: {
     text: normalizeTextStructuredPlaybackProfiles(source?.channels?.text),
@@ -75,7 +76,37 @@ export const getTextStructuredAudioPlaybackOrder = record => {
   const source = record?.metadata?.[TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_KEY]
     || record?.[TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_KEY]
     || {};
-  return normalizeSettings(source);
+  return normalizeTextStructuredAudioPlaybackOrderSettings(source);
+};
+
+// beta.8/P7-HF2: this is the true app-global Structured Text local playback order.
+// It lives in Structured Text preferences/localStorage and is intentionally separate
+// from per-document compatibility metadata and Card Advanced overrides.
+export const getTextStructuredGlobalAudioPlaybackOrder = preferences =>
+  normalizeTextStructuredAudioPlaybackOrderSettings(preferences?.[TEXT_STRUCTURED_GLOBAL_AUDIO_PLAYBACK_ORDER_PREFERENCE_KEY] || {});
+
+export const buildTextStructuredGlobalAudioPlaybackOrderPreference = ({
+  preferences,
+  channel = 'text',
+  profiles = undefined
+} = {}) => {
+  const normalizedChannel = normalizeChannel(channel);
+  const current = getTextStructuredGlobalAudioPlaybackOrder(preferences);
+  const next = {
+    version: TEXT_STRUCTURED_AUDIO_PLAYBACK_ORDER_VERSION,
+    channels: {
+      text: [...current.channels.text],
+      meaning: [...current.channels.meaning]
+    },
+    // TTS Only is deliberately NOT stored here in HF2. The one source of truth is
+    // preferences.audioSourceMode so changing documents can never toggle TTS Only.
+    ttsOnly: null
+  };
+  if (profiles !== undefined) next.channels[normalizedChannel] = normalizeTextStructuredPlaybackProfiles(profiles);
+  return {
+    ...(preferences || {}),
+    [TEXT_STRUCTURED_GLOBAL_AUDIO_PLAYBACK_ORDER_PREFERENCE_KEY]: next
+  };
 };
 
 export const buildTextStructuredAudioPlaybackOrderMetadata = ({
@@ -110,6 +141,7 @@ export const resolveTextStructuredEffectivePlaybackOrder = ({
   documentTree = null,
   block = null,
   channel = 'text',
+  globalProfiles = [],
   fallbackProfiles = []
 } = {}) => {
   const normalizedChannel = normalizeChannel(channel);
@@ -117,9 +149,18 @@ export const resolveTextStructuredEffectivePlaybackOrder = ({
   if (cardProfiles.length) {
     return { profiles: cardProfiles, source: 'card-order', explicit: true };
   }
+
+  // HF2: global order wins over legacy document metadata. This makes the normal
+  // player genuinely global across document switches while preserving old metadata
+  // as a compatibility fallback when no global order has been configured.
+  const normalizedGlobalProfiles = normalizeTextStructuredPlaybackProfiles(globalProfiles);
+  if (normalizedGlobalProfiles.length) {
+    return { profiles: normalizedGlobalProfiles, source: 'global-order', explicit: true };
+  }
+
   const documentProfiles = getTextStructuredAudioPlaybackOrder(documentTree).channels[normalizedChannel];
   if (documentProfiles.length) {
-    return { profiles: documentProfiles, source: 'document-order', explicit: true };
+    return { profiles: documentProfiles, source: 'document-order-legacy', explicit: true };
   }
   return {
     profiles: normalizeTextStructuredPlaybackProfiles(fallbackProfiles),
@@ -131,14 +172,17 @@ export const resolveTextStructuredEffectivePlaybackOrder = ({
 export const resolveTextStructuredEffectiveTtsOnly = ({
   documentTree = null,
   block = null,
-  globalTtsOnly = false
+  globalTtsOnly = false,
+  allowLegacyMetadata = false
 } = {}) => {
   if (globalTtsOnly) return { enabled: true, source: 'global' };
-  const card = getTextStructuredAudioPlaybackOrder(block);
-  if (typeof card.ttsOnly === 'boolean') return { enabled: card.ttsOnly, source: 'card' };
-  const document = getTextStructuredAudioPlaybackOrder(documentTree);
-  if (typeof document.ttsOnly === 'boolean') return { enabled: document.ttsOnly, source: 'document' };
-  return { enabled: false, source: 'default' };
+  if (allowLegacyMetadata) {
+    const card = getTextStructuredAudioPlaybackOrder(block);
+    if (typeof card.ttsOnly === 'boolean') return { enabled: card.ttsOnly, source: 'card-legacy' };
+    const document = getTextStructuredAudioPlaybackOrder(documentTree);
+    if (typeof document.ttsOnly === 'boolean') return { enabled: document.ttsOnly, source: 'document-legacy' };
+  }
+  return { enabled: false, source: 'global' };
 };
 
 export const doesTextStructuredVariantMatchPlaybackProfile = ({ variant, profile } = {}) => {

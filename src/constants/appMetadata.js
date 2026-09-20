@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.8-p7-hf1';
+export const APP_VERSION = '6.0.3-beta.8-p7-hf2';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P7-HF1-RUNTIME-BOOT';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P7 HF1 • Runtime Boot Recovery';
-export const APP_RELEASE_NAME = 'beta.8 P7 HF1 Runtime Boot Recovery';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P7-HF2-GLOBAL-PLAYER-DEFAULTS';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P7 HF2 • Global Player + Voice Defaults Alignment';
+export const APP_RELEASE_NAME = 'beta.8 P7 HF2 Global Player + Voice Defaults Alignment';
 export const APP_RELEASE_DATE = '2026-09-20';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: P7 HF1 repairs two runtime blockers without changing the frozen P1-P7 domain contract: App boot no longer reads forceStopAll through a pre-declaration hook dependency, and Card Audio restores its compact channel coverage derivation. Text DB remains v1 and Table is untouched.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: P7 HF2 closes the remaining beta.8 global-player contract gaps on top of boot-safe HF1: Split remains the default global representation, EN/ID local playback priority is truly app-global across Documents, TTS Only has one global source of truth, bottom Global Player exposes Split/Full + TTS state + effective voice order, normal/manual Edge defaults are Sonia EN and Tuti ID, Browser EN prefers UK Female, while Bulk EN remains Libby. Text DB remains v1 and Table is untouched.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.8-p7-hf2 aligns the frozen beta.8 global-player contract on top of boot-safe HF1: Structured Text local playback order is persisted globally across Documents with Card override > Global > legacy Document fallback precedence, TTS Only uses the global audio-source preference instead of per-Document state, Split/Full and local/TTS state plus EN/ID order are visible in the bottom Global Player, Browser EN prefers a UK female voice, normal/manual Edge defaults to Sonia EN + Tuti ID, and Bulk generation/export keeps Libby EN independently; Text DB stays v1 and Table/Conversation are untouched',
   'v6.0.3-beta.8-p7-hf1 fixes the runtime blank-screen regression inherited from P3 by removing the pre-declaration forceStopAll dependency from the playback-representation callback, restores the P7 Card Audio cardChannelCoverage derivation that was accidentally removed during UI simplification, and adds an explicit runtime-boot guard audit; no P1-P7 domain behavior, Text DB schema, or Table code is intentionally changed',
   'v6.0.3-beta.8-p7 completes beta.8 Paragraph UI simplification: Player Settings now exposes the already-implemented global Split / Full representation, TTS Only bypass, and explicit Workspace EN/ID local playback order; Card headers show compact Ready/Missing state, Card Audio keeps quick Generate Missing plus Advanced regeneration while scope exports are centralized in Bulk Audio, Bulk labels are phase-neutral Generate / Export, and duplicated legacy Split MP3/consolidated export controls are removed from the normal workflow without changing playback/generation/export domain contracts',
   'v6.0.3-beta.8-p6 adds Paragraph Bulk Export / Auto Export: Ready current-profile Split and Full binaries are selected from canonical IndexedDB Staging, Audio-Only supports human-readable direct files or ZIP, Portable ProLingo ZIP remains machine-reimportable with manifest + AUDIO_INDEX.csv, Preferred / Selected / All-selected voice policies and Split / Full / Both do not mutate playback order, physical identities are exported once even when shared by many logical consumers, stale text/profile artifacts fail closed, and Auto Export remains OFF by default and waits for durable Staging reconciliation',

@@ -162,7 +162,7 @@ export const resolveTextStructuredEffectiveDownloadVoice = ({
 }) => {
   const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
   const defaultVoiceId = clean(normalizedChannel === 'meaning' ? preferences?.edgeMeaningVoiceId : preferences?.edgeTextVoiceId)
-    || (normalizedChannel === 'meaning' ? 'su-ID-TutiNeural' : 'en-GB-LibbyNeural');
+    || (normalizedChannel === 'meaning' ? 'su-ID-TutiNeural' : 'en-GB-SoniaNeural');
   const defaultPlaybackVoiceName = clean(normalizedChannel === 'meaning' ? preferences?.playbackMeaningVoiceName : preferences?.playbackTextVoiceName) || null;
   const edgeVoices = Array.isArray(preferences?.edgeVoices) && preferences.edgeVoices.length ? preferences.edgeVoices : initialEdgeVoices;
 

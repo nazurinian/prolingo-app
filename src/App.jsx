@@ -110,7 +110,7 @@ import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStat
 import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
 import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
-import { buildTextStructuredAudioPlaybackOrderMetadata, getTextStructuredAudioPlaybackOrder, resolveTextStructuredEffectivePlaybackOrder, resolveTextStructuredEffectiveTtsOnly } from './domain/text/textStructuredAudioPlaybackOrderDomain.js';
+import { buildTextStructuredAudioPlaybackOrderMetadata, buildTextStructuredGlobalAudioPlaybackOrderPreference, getTextStructuredGlobalAudioPlaybackOrder, resolveTextStructuredEffectivePlaybackOrder, resolveTextStructuredEffectiveTtsOnly } from './domain/text/textStructuredAudioPlaybackOrderDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
 import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, buildTextStructuredUpsertSpeakerRegistryMetadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
@@ -861,10 +861,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     () => getTextStructuredAudioSyncProfile(activeTextDocumentTree),
     [activeTextDocumentTree?.metadata]
   );
-  const structuredTextAudioPlaybackOrder = useMemo(
-    () => getTextStructuredAudioPlaybackOrder(activeTextDocumentTree),
-    [activeTextDocumentTree?.metadata]
+  const structuredTextGlobalAudioPlaybackOrder = useMemo(
+    () => getTextStructuredGlobalAudioPlaybackOrder(textStructuredPreferences),
+    [textStructuredPreferences.globalAudioPlaybackOrderV1]
   );
+  const structuredTextAudioPlaybackOrder = useMemo(() => ({
+    ...structuredTextGlobalAudioPlaybackOrder,
+    ttsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
+  }), [structuredTextGlobalAudioPlaybackOrder, textStructuredPreferences.audioSourceMode]);
   const structuredTextConversationSpeakers = useMemo(
     () => collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree),
     [activeTextDocumentTree]
@@ -949,8 +953,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     meaningVoiceId: defaultStructuredMeaningVoiceId,
     speakerVoiceMap: structuredTextSpeakerVoiceMap,
     preferredGeneratedEngine: 'edge',
-    downloadPreferences: structuredTextDownloadResolutionPreferences
-  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextDownloadResolutionPreferences]);
+    downloadPreferences: structuredTextDownloadResolutionPreferences,
+    globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder
+  }), [activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextDownloadResolutionPreferences, structuredTextGlobalAudioPlaybackOrder]);
   const structuredTextAudioCoverageMap = useMemo(() => buildTextStructuredAudioCoverageMap({
     documentTree: activeTextDocumentTree,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -1080,8 +1085,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     selection: structuredTextBatchSelection,
     preferences: structuredTextAudioGenerationPreferences,
     audioVariants: textLibrarySnapshot?.audioVariants || [],
-    stagingRecords: [...structuredTextAudioStagingRecordsRef.current.values()]
-  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, textLibrarySnapshot?.audioVariants, structuredTextAudioStagingSummary]);
+    stagingRecords: [...structuredTextAudioStagingRecordsRef.current.values()],
+    globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder
+  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, textLibrarySnapshot?.audioVariants, structuredTextAudioStagingSummary, structuredTextGlobalAudioPlaybackOrder]);
   const activeTableAudioStagingRecords = useMemo(
     () => filterTableAudioStagingRecordsForPlaylist(tableAudioStagingRecords, playlist),
     [tableAudioStagingRecords, playlist]
@@ -3244,6 +3250,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       fallbackRate: structuredTextAudioGenerationPreferences.edgeRate,
       fallbackPitch: structuredTextAudioGenerationPreferences.edgePitch,
       language: normalizedChannel === 'meaning' ? activeTextDocumentTree?.meaningLanguage : activeTextDocumentTree?.textLanguage,
+      globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder,
       globalTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
       allowFullArtifact
     });
@@ -3375,6 +3382,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         documentTree: activeTextDocumentTree,
         block,
         channel,
+        globalProfiles: structuredTextGlobalAudioPlaybackOrder?.channels?.[channel === 'meaning' ? 'meaning' : 'text'] || [],
         fallbackProfiles: [{
           engine: 'edge',
           voiceId: generatedVoice.voiceId,
@@ -4184,36 +4192,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
 
-  const handleStructuredTextDocumentPlaybackOrderChange = useCallback(async (profiles, channel = 'text') => {
-    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+  const handleStructuredTextGlobalPlaybackOrderChange = useCallback((profiles, channel = 'text') => {
     forceStopAll();
-    const metadata = buildTextStructuredAudioPlaybackOrderMetadata({
-      metadata: activeTextDocumentTree.metadata,
-      channel,
-      profiles
-    });
-    const result = await handleTextLibraryStructuredCommand({
-      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
-      payload: { id: activeTextDocumentTree.id, metadata }
-    });
-    if (result) addLog('Text Audio Order', `Workspace • ${channel} → ${(Array.isArray(profiles) ? profiles : []).map(item => typeof item === 'string' ? item : item?.voiceId).filter(Boolean).join(' > ') || 'compatibility fallback'}.`);
-    return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences(
+      buildTextStructuredGlobalAudioPlaybackOrderPreference({ preferences: prev, channel, profiles })
+    ));
+    addLog('Text Audio Order', `Global • ${channel} → ${(Array.isArray(profiles) ? profiles : []).map(item => typeof item === 'string' ? item : item?.voiceId).filter(Boolean).join(' > ') || 'compatibility fallback'}.`);
+    return true;
+  }, [forceStopAll, addLog]);
 
-  const handleStructuredTextDocumentTtsOnlyChange = useCallback(async (enabled) => {
-    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+  const handleStructuredTextGlobalTtsOnlyChange = useCallback((enabled) => {
     forceStopAll();
-    const metadata = buildTextStructuredAudioPlaybackOrderMetadata({
-      metadata: activeTextDocumentTree.metadata,
-      ttsOnly: Boolean(enabled)
-    });
-    const result = await handleTextLibraryStructuredCommand({
-      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
-      payload: { id: activeTextDocumentTree.id, metadata }
-    });
-    if (result) addLog('Text Audio Order', `Workspace TTS Only → ${enabled ? 'ON' : 'OFF'}.`);
-    return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({
+      ...prev,
+      audioSourceMode: enabled ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST
+    }));
+    setStructuredTextPlaybackSourceStatus(null);
+    addLog('Text Audio Order', `Global TTS Only → ${enabled ? 'ON' : 'OFF'}.`);
+    return true;
+  }, [forceStopAll, addLog]);
 
   const handleStructuredTextCardPlaybackOrderChange = useCallback(async (blockId, profiles, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1' || !blockId) return null;
@@ -6422,8 +6419,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onDocumentDownloadVoiceChange: handleStructuredTextDocumentDownloadVoiceChange,
     onDocumentDownloadModeChange: handleStructuredTextDocumentDownloadModeChange,
     playbackOrder: structuredTextAudioPlaybackOrder,
-    onDocumentPlaybackOrderChange: handleStructuredTextDocumentPlaybackOrderChange,
-    onDocumentTtsOnlyChange: handleStructuredTextDocumentTtsOnlyChange,
+    onGlobalPlaybackOrderChange: handleStructuredTextGlobalPlaybackOrderChange,
+    onGlobalTtsOnlyChange: handleStructuredTextGlobalTtsOnlyChange,
     onCardPlaybackOrderChange: handleStructuredTextCardPlaybackOrderChange,
     onSpeakerDownloadVoiceChange: handleStructuredTextSpeakerDownloadVoiceChange,
     edgeHealth: structuredTextEdgeHealth,
@@ -6523,8 +6520,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onDocumentDownloadModeChange={handleStructuredTextDocumentDownloadModeChange}
         playbackOrder={structuredTextAudioPlaybackOrder}
         availableLocalVoices={structuredTextAvailableLocalVoices}
-        onDocumentPlaybackOrderChange={handleStructuredTextDocumentPlaybackOrderChange}
-        onDocumentTtsOnlyChange={handleStructuredTextDocumentTtsOnlyChange}
+        onGlobalPlaybackOrderChange={handleStructuredTextGlobalPlaybackOrderChange}
+        onGlobalTtsOnlyChange={handleStructuredTextGlobalTtsOnlyChange}
         onCardPlaybackOrderChange={handleStructuredTextCardPlaybackOrderChange}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
@@ -6658,6 +6655,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex, speakingPart,
     activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
     cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive,
+    textPlaybackRepresentationMode: textStructuredPreferences.playbackRepresentationMode,
+    textTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
+    textPlaybackOrder: structuredTextAudioPlaybackOrder,
+    onTextPlaybackRepresentationModeChange: handleStructuredTextPlaybackRepresentationModeChange,
+    onTextTtsOnlyChange: handleStructuredTextGlobalTtsOnlyChange,
     onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true),
     isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen,

@@ -23,29 +23,29 @@ check('App wires global representation mode into Structured Text Player', () => 
   assert.match(app, /playbackRepresentationMode=\{textStructuredPreferences\.playbackRepresentationMode\}/);
   assert.match(app, /onPlaybackRepresentationModeChange=\{handleStructuredTextPlaybackRepresentationModeChange\}/);
 });
-check('App wires Workspace local playback order + TTS Only + local voice inventory', () => {
+check('App wires Global local playback order + TTS Only + local voice inventory', () => {
   assert.match(app, /playbackOrder=\{structuredTextAudioPlaybackOrder\}/);
   assert.match(app, /availableLocalVoices=\{structuredTextAvailableLocalVoices\}/);
-  assert.match(app, /onDocumentPlaybackOrderChange=\{handleStructuredTextDocumentPlaybackOrderChange\}/);
-  assert.match(app, /onDocumentTtsOnlyChange=\{handleStructuredTextDocumentTtsOnlyChange\}/);
+  assert.match(app, /onGlobalPlaybackOrderChange=\{handleStructuredTextGlobalPlaybackOrderChange\}/);
+  assert.match(app, /onGlobalTtsOnlyChange=\{handleStructuredTextGlobalTtsOnlyChange\}/);
 });
 check('TextStructuredPlayer accepts and forwards global playback controls', () => {
   assert.match(player, /playbackRepresentationMode,/);
   assert.match(player, /playbackOrder = null,/);
   assert.match(player, /availableLocalVoices = null,/);
-  assert.match(player, /<TextStructuredPlaybackControls[\s\S]*playbackRepresentationMode=\{playbackRepresentationMode\}[\s\S]*onDocumentTtsOnlyChange=\{onDocumentTtsOnlyChange\}/);
+  assert.match(player, /<TextStructuredPlaybackControls[\s\S]*playbackRepresentationMode=\{playbackRepresentationMode\}[\s\S]*onGlobalTtsOnlyChange=\{onGlobalTtsOnlyChange\}/);
 });
 check('Player Settings exposes Split / Full as one global representation control', () => {
   assert.match(controls, /data-text-global-playback-mode="true"/);
   assert.match(controls, /TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES\.SPLIT/);
   assert.match(controls, /TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES\.FULL/);
 });
-check('Player Settings exposes Workspace TTS Only bypass without deleting audio', () => {
+check('Player Settings exposes Global TTS Only bypass without deleting audio', () => {
   assert.match(controls, /data-text-global-tts-only="true"/);
   assert.match(controls, /local audio bypassed/);
-  assert.match(controls, /onDocumentTtsOnlyChange/);
+  assert.match(controls, /onGlobalTtsOnlyChange/);
 });
-check('Workspace EN and ID local voice priority editors are explicit and ordered', () => {
+check('Global EN and ID local voice priority editors are explicit and ordered', () => {
   assert.match(controls, /data-text-global-playback-order-editor="true"/);
   assert.match(controls, /first Ready wins/);
   assert.match(controls, /channel="text"/);
@@ -60,7 +60,7 @@ check('Generation/export selection remains described as independent from playbac
 check('Advanced Card playback order override is wired without becoming a normal per-Card requirement', () => {
   assert.match(player, /onCardPlaybackOrderChange=\{onCardPlaybackOrderChange\}/);
   assert.match(cardAudio, /data-text-card-playback-advanced="true"/);
-  assert.match(cardAudio, /INHERIT WORKSPACE/);
+  assert.match(cardAudio, /INHERIT GLOBAL/);
   assert.match(cardAudio, /onCardPlaybackOrderChange\?\.\(block\.id, profiles, channel\)/);
 });
 check('Card surface exposes compact Ready/Missing state', () => {

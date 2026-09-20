@@ -148,7 +148,7 @@ export const useMainAppPrimaryState = () => {
   // EDGE VOICE STATES (Expanded)
   // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
-  const [edgeVoice, setEdgeVoice] = useState("en-GB-LibbyNeural"); // Preferred Edge generator UK default
+  const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Normal/manual Edge EN default; Bulk Text remains Libby
   const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("su-ID-TutiNeural"); // Preferred Edge generator Indonesian-region default
 
   const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)

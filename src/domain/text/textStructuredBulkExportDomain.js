@@ -63,25 +63,25 @@ const normalizeRepresentationSelection = preferences => {
   return { split: true, full: false };
 };
 
-const requestedVoiceForChannel = ({ channel, policy, preferences, documentTree, block }) => {
+const requestedVoiceForChannel = ({ channel, policy, preferences, documentTree, block, globalPlaybackOrder }) => {
   const selected = channel === 'meaning'
     ? clean(preferences?.bulkExportMeaningVoiceId || preferences?.bulkMeaningVoiceIds?.[0] || preferences?.edgeMeaningVoiceId)
     : clean(preferences?.bulkExportTextVoiceId || preferences?.bulkTextVoiceIds?.[0] || preferences?.edgeTextVoiceId);
   if (policy === TEXT_STRUCTURED_BULK_EXPORT_VOICE_POLICIES.SELECTED) return selected;
   if (policy !== TEXT_STRUCTURED_BULK_EXPORT_VOICE_POLICIES.PREFERRED) return null;
   const fallbackProfiles = selected ? [{ voiceId: selected, engine: 'edge' }] : [];
-  const order = resolveTextStructuredEffectivePlaybackOrder({ documentTree, block, channel, fallbackProfiles });
+  const order = resolveTextStructuredEffectivePlaybackOrder({ documentTree, block, channel, globalProfiles: globalPlaybackOrder?.channels?.[channel] || [], fallbackProfiles });
   return clean(order?.profiles?.[0]?.voiceId) || selected;
 };
 
-const isVoiceIncluded = ({ channel, voiceId, policy, preferences, documentTree, block }) => {
+const isVoiceIncluded = ({ channel, voiceId, policy, preferences, documentTree, block, globalPlaybackOrder }) => {
   const voice = lower(voiceId);
   if (!voice) return false;
   if (policy === TEXT_STRUCTURED_BULK_EXPORT_VOICE_POLICIES.ALL_SELECTED) {
     const selected = normalizeVoiceList(channel === 'meaning' ? preferences?.bulkMeaningVoiceIds : preferences?.bulkTextVoiceIds);
     return selected.some(item => lower(item) === voice);
   }
-  return lower(requestedVoiceForChannel({ channel, policy, preferences, documentTree, block })) === voice;
+  return lower(requestedVoiceForChannel({ channel, policy, preferences, documentTree, block, globalPlaybackOrder })) === voice;
 };
 
 const addPhysicalCandidate = (physicalMap, candidate) => {
@@ -113,7 +113,8 @@ export const buildTextStructuredBulkExportPlan = ({
   selection = null,
   preferences = {},
   audioVariants = [],
-  stagingRecords = []
+  stagingRecords = [],
+  globalPlaybackOrder = null
 } = {}) => {
   const selectedDocumentIds = new Set((selection?.documents || []).map(document => upper(document?.id)).filter(Boolean));
   const blocksByDocument = scopeByDocument(selection);
@@ -162,7 +163,7 @@ export const buildTextStructuredBulkExportPlan = ({
               const physicalKey = lower(variant?.metadata?.audioRenderFingerprintV1);
               const stagingRecord = stagingByPhysical.get(physicalKey) || null;
               if (!physicalKey || !stagingRecord) continue;
-              if (!isVoiceIncluded({ channel, voiceId: variant?.voiceId, policy, preferences, documentTree, block })) continue;
+              if (!isVoiceIncluded({ channel, voiceId: variant?.voiceId, policy, preferences, documentTree, block, globalPlaybackOrder })) continue;
               const reference = {
                 scope: 'bulk-audio',
                 collectionId: documentTree.collectionId || null,
@@ -197,7 +198,7 @@ export const buildTextStructuredBulkExportPlan = ({
             const stagingRecord = stagingByPhysical.get(physicalKey) || null;
             if (!physicalKey || !stagingRecord) continue;
             const voiceId = artifact?.descriptor?.voiceId;
-            if (!isVoiceIncluded({ channel, voiceId, policy, preferences, documentTree, block })) continue;
+            if (!isVoiceIncluded({ channel, voiceId, policy, preferences, documentTree, block, globalPlaybackOrder })) continue;
             const reference = {
               scope: 'bulk-audio',
               collectionId: documentTree.collectionId || null,
