@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.4';
+export const APP_VERSION = '6.0.3-beta.5';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA4-RUNTIME-HARDENING-DATA-DOWNLOAD-UX';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Runtime Hardening + DATA/Download UX';
-export const APP_RELEASE_NAME = 'Text Runtime Hardening + DATA/Download UX';
-export const APP_RELEASE_DATE = '2026-09-19';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA5-TESTING-CLARITY-RF-REUSE-HARDENING';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Testing Clarity + RF Reuse Hardening';
+export const APP_RELEASE_NAME = 'Testing Clarity + RF Reuse Hardening';
+export const APP_RELEASE_DATE = '2026-09-20';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: runtime hardening exposes external-source change summaries, RF/storage diagnostics with safe Staging GC, and a clearer Prepare → Split → Full Card Audio workflow over the beta.3 Data/Audio foundation.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: testing hardening fixes exact-RF reuse from Folder/ZIP, adds playback session safety after async local-audio resolution, clarifies Text Pack/DB Backup cleanup semantics, and separates audio setup from Segment/Card/Batch export surfaces.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.5 fixes Folder/ZIP exact-RF reuse during generation, adds async playback session guards, confirms destructive Staging/ZIP clears, clarifies Workspace/Collection/Text Pack cleanup semantics, collapses Card Generate & Export workflow, and renames scope-level Batch Audio to Bulk Audio with Retry Failed wiring for structured runtime testing',
   'v6.0.3-beta.4 hardens the beta.3 Data/Audio foundation for runtime acceptance: DATA/TRANSFER shows explicit external-source change counts and conflict choices, Runtime & Storage Diagnostics exposes DB/RF/Folder/ZIP state plus safe reference-derived Staging GC/reconnect, and Card Audio is reorganized into Prepare Audio → Split Download → Full Derived Audio with Selected Sentence helpers',
   'v6.0.3-beta.3 completes the frozen Data/Audio foundation through D3-D4, A0-A4, DL1-DL2 and B1: canonical external fingerprints/reconciliation, RF-centric shared physical audio, manifest-first cross-browser Folder/ZIP reconnect, reference-derived Text Staging GC, selected/full split downloads, derived Full Card WAV, and Batch physical-RF dedup while keeping Table frozen and Text DB/schema v1',
   'v6.0.3-beta.1 implements D0/D1 of the frozen Data+Audio contract: additive globally portable UIDs for Collection/Workspace/Card/Segment/Speaker/AudioVariant, one-time persistent backfill for existing Text data, UID-preserving ProLingo Attach/Sync, new-UID Import as Copy, and a contract regression harness while retaining Text DB/schema v1 and all legacy local IDs as IndexedDB keys',

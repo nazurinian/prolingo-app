@@ -1980,7 +1980,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           folderBacked: true,
           folderFile: writeResult.file,
           folderFileHandle: writeResult.fileHandle,
-          folderCacheKey: `${first.id}|${filename}|${writeResult.file?.size || blob.size}|${writeResult.file?.lastModified || Date.now()}`,
+          folderCacheKey: `${generationVoiceState.renderFingerprint || first.id}|${filename}|${writeResult.file?.size || blob.size}|${writeResult.file?.lastModified || Date.now()}`,
+          renderFingerprint: generationVoiceState.renderFingerprint || null,
           variantId: first.id,
           generated: true,
           ...(previousRuntime?.zipBacked ? { zipFallback: previousRuntime } : previousRuntime?.zipFallback ? { zipFallback: previousRuntime.zipFallback } : {})
@@ -2243,6 +2244,99 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       };
     }
 
+
+    // A3/B1 hardening: an exact RF may already live in the user-owned Folder
+    // or mounted ZIP even when no staged Blob exists. Reuse that physical render
+    // by creating only the logical AudioVariant for this Segment; never call TTS.
+    const currentExternalRuntimeEntries = Object.values(structuredTextAudioRuntimeUrlsRef.current || {});
+    const reusableExternalRuntime = currentExternalRuntimeEntries.find(entry =>
+      entry?.folderBacked
+      && String(entry?.renderFingerprint || '').toLowerCase() === String(render.renderFingerprint || '').toLowerCase()
+    ) || currentExternalRuntimeEntries.find(entry =>
+      entry?.zipBacked
+      && String(entry?.renderFingerprint || '').toLowerCase() === String(render.renderFingerprint || '').toLowerCase()
+    ) || null;
+    if (reusableExternalRuntime) {
+      const externalOrigin = reusableExternalRuntime.folderBacked ? 'folder' : 'zip';
+      const filename = reusableExternalRuntime.filename || buildTextStructuredGeneratedFilename({
+        audioVariantId: null,
+        segmentId,
+        channel,
+        engine: generationVoiceState.engine,
+        engineVoiceId: generationVoiceState.engineVoiceId,
+        renderFingerprint: render.renderFingerprint,
+        mimeType: reusableExternalRuntime.mimeType || 'audio/mpeg'
+      });
+      const reused = await executeTextLibraryStructuredCommand({
+        command: {
+          type: TEXT_LIBRARY_COMMAND_TYPES.UPSERT_AUDIO_VARIANT,
+          payload: {
+            segmentId,
+            channel,
+            source: 'generated',
+            engine: generationVoiceState.engine,
+            voiceId: generationVoiceState.engineVoiceId,
+            language: channel === 'meaning' ? 'id' : 'en',
+            filename,
+            mimeType: reusableExternalRuntime.mimeType || null,
+            metadata: {
+              generatedBy: 'TEXT_RF_EXTERNAL_REUSE_V1',
+              generatedAt: null,
+              engineVoiceId: generationVoiceState.engineVoiceId,
+              downloadProfileVoiceId: generationVoiceState.downloadProfileVoiceId || generationVoiceState.engineVoiceId,
+              playbackProfileVoiceId: generationVoiceState.playbackProfileVoiceId || null,
+              assignmentSource: generationVoiceState.assignmentSource || 'global-download',
+              contentFingerprint: buildTextStructuredAudioContentFingerprint({ channel, content }),
+              contentFingerprintV2: render.contentFingerprintV2,
+              audioRenderFingerprintV1: render.renderFingerprint,
+              audioRenderDescriptorV1: render.descriptor,
+              speaker: item?.speaker || null,
+              profileMatched: Boolean(generationVoiceState.matchedProfile),
+              reusedPhysicalRender: true,
+              externalRfReconnected: true,
+              deliveryStatus: `${externalOrigin}-rf-reused`
+            }
+          }
+        },
+        setTextLibrarySnapshot,
+        addLog,
+        deferSnapshot: Boolean(options.batch)
+      });
+      const variant = reused?.audioVariant || null;
+      if (options.batch && variant) {
+        structuredTextAudioPendingVariantRef.current.set(variant.id, variant);
+        structuredTextAudioPendingCountersRef.current = reused.counters || structuredTextAudioPendingCountersRef.current;
+      }
+      if (variant) {
+        queueStructuredTextRuntimeEntry(variant.id, {
+          ...reusableExternalRuntime,
+          filename,
+          mimeType: reusableExternalRuntime.mimeType || variant.mimeType || null,
+          variantId: variant.id,
+          renderFingerprint: render.renderFingerprint,
+          generated: true,
+          reusedPhysicalRender: true
+        }, { immediate: !options.batch });
+      }
+      if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} reused ${externalOrigin.toUpperCase()} RF ${String(render.renderFingerprint).slice(-12)}; TTS skipped.`);
+      return {
+        status: 'reused-rf',
+        documentId: item.documentId,
+        segmentId,
+        channel,
+        ...(reused || {}),
+        filename,
+        engine: generationVoiceState.engine,
+        engineVoiceId: generationVoiceState.engineVoiceId,
+        downloadProfileVoiceId: generationVoiceState.downloadProfileVoiceId || generationVoiceState.engineVoiceId,
+        deliveryStatus: `${externalOrigin}-rf-reused`,
+        packagePending: false,
+        stagingRecord: null,
+        reusedPhysicalRender: true,
+        externalOrigin
+      };
+    }
+
     const controller = new AbortController();
     structuredTextAudioGenerationAbortRef.current = controller;
     if (!options.batch || options.renderProgress) {
@@ -2470,6 +2564,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const voiceState = resolveStructuredTextChannelVoiceState(item, channel);
     const targetVoice = voiceState.ttsVoice;
     const targetVoiceId = voiceState.requestedVoiceId;
+    const playbackSessionId = playbackSessionRef.current;
+    const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
 
     if (textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY) {
       const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
@@ -2541,6 +2637,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             runtimeUrl = await getTextStructuredAudioZipRuntimeObjectUrl(runtimeAudio.runtime.zipFallback);
           } catch { /* Browser TTS remains the final fallback */ }
         }
+        // Session safety: Folder/ZIP/Staging resolution is asynchronous. A newer
+        // playback session may have started while the binary was being resolved.
+        // Never allow the older session to start audio afterwards.
+        if (!playbackStillCurrent()) return;
         if (runtimeUrl) {
           const localOrigin = runtimeAudio.runtime?.folderBacked
             ? 'Folder'
@@ -2576,6 +2676,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       }
     }
 
+    if (!playbackStillCurrent()) return;
     if (!targetVoice) {
       setStructuredTextPlaybackSourceStatus({
         source: 'unavailable',
@@ -5176,7 +5277,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     exportFullZip: () => handleStructuredTextBatchExportConsolidatedZip({ partial: false }),
     exportPartialZip: () => handleStructuredTextBatchExportConsolidatedZip({ partial: true }),
     directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
-    cancel: handleStructuredTextCancelGeneration
+    cancel: handleStructuredTextCancelGeneration,
+    retryFailed: handleStructuredTextRetryFailedGeneration
   } : null;
 
   const renderBatchPopup = (options = {}) => renderBatchPopupView({

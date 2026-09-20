@@ -55,7 +55,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
             <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Text Staging (IndexedDB)</p>
             <p className="text-[8px] text-slate-400 truncate">{staging.count || 0} binary • {formatBytes(staging.bytes || 0)} • generated audio is committed here before runtime Blob release</p>
           </div>
-          <button type="button" disabled={disabled || !(staging.count > 0)} onClick={audioLibrary.onClearStaging} className="min-h-10 px-2.5 py-2 rounded-lg border border-red-200 dark:border-red-900 text-[8px] font-black text-red-500 disabled:opacity-35" title="Release Text Staging binary but keep Text metadata/history"><Trash2 className="w-3 h-3 inline mr-1"/>Clear Staging</button>
+          <button type="button" disabled={disabled || !(staging.count > 0)} onClick={() => { if (typeof window !== 'undefined' && !window.confirm(`Clear ${staging.count || 0} app-owned staged audio file(s) (${formatBytes(staging.bytes || 0)})? This does not delete Audio Folder or ZIP files.`)) return; audioLibrary.onClearStaging?.(); }} className="min-h-10 px-2.5 py-2 rounded-lg border border-red-200 dark:border-red-900 text-[8px] font-black text-red-500 disabled:opacity-35" title="Release Text Staging binary but keep Text metadata/history"><Trash2 className="w-3 h-3 inline mr-1"/>Clear Staging</button>
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-2">
           <p className="text-[8px] leading-relaxed text-slate-400">Ready requires an actual binary in Staging, Folder, ZIP, or a live manual attachment. Download/export history alone is not Ready.</p>
@@ -87,7 +87,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
             if (files.length) await audioLibrary.onAddZipFiles?.(files);
           }}/>
           <button type="button" disabled={disabled} onClick={() => zipInputRef.current?.click()} className="min-h-10 px-2.5 py-2 rounded-lg bg-violet-600 text-white text-[8px] font-black disabled:opacity-40"><Upload className="w-3 h-3 inline mr-1"/>Add ZIP</button>
-          {archiveCount > 0 && <button type="button" disabled={disabled} onClick={audioLibrary.onClearZip} className="w-10 h-10 flex items-center justify-center rounded-lg border border-red-100 dark:border-red-900 text-red-500 disabled:opacity-40" title="Clear Text ZIP archives"><X className="w-3.5 h-3.5"/></button>}
+          {archiveCount > 0 && <button type="button" disabled={disabled} onClick={() => { if (typeof window !== 'undefined' && !window.confirm(`Detach ${archiveCount} mounted Text Audio ZIP archive(s)? Original ZIP files will not be deleted.`)) return; audioLibrary.onClearZip?.(); }} className="w-10 h-10 flex items-center justify-center rounded-lg border border-red-100 dark:border-red-900 text-red-500 disabled:opacity-40" title="Clear Text ZIP archives"><X className="w-3.5 h-3.5"/></button>}
         </div>
         {archiveCount > 0 && <div className="max-h-24 overflow-y-auto custom-scrollbar space-y-1">
           {(zip.archives || []).map(archive => <div key={archive.id} className="flex items-center gap-2 rounded-md bg-violet-50/60 dark:bg-violet-950/20 px-2 py-1 text-[8px]">

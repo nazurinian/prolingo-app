@@ -57,6 +57,7 @@ export const TextBatchPopup = ({
   const directMp3Limit = Number(structuredTextBatch?.directMp3Limit || 10);
   const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && workspaceOptions.some(workspace => workspace.collectionId === structuredTextBatch.activeCollectionId);
   const selectedCard = cardOptions.find(card => card.id === textScope?.cardId) || cardOptions[0] || null;
+  const failedJobs = structuredTextBatch?.generationState?.failedJobs || [];
 
   const setScopeMode = nextMode => structuredTextBatch?.onScopeChange?.({ scopeMode: nextMode });
   const selectCard = cardId => structuredTextBatch?.onScopeChange?.({ scopeMode: 'card', cardId });
@@ -82,14 +83,14 @@ export const TextBatchPopup = ({
   return (
     <div ref={batchPanelRef} className={panelClass} data-text-batch-workspace="true">
       <div className="bg-slate-800 text-white px-3 py-2 text-xs font-bold flex items-center justify-between gap-2">
-        <span>Batch Audio (Structured Text)</span>
+        <span>Bulk Audio • Structured Text</span>
         <span className="ml-auto rounded-full bg-teal-500/25 px-2 py-0.5 text-[8px] font-black uppercase text-teal-100">Edge • Workspace-aware</span>
         {showClose && <button type="button" onClick={() => setIsBatchOpen(false)} className="rounded p-1 hover:bg-white/10" aria-label="Close Text Batch"><X className="w-3.5 h-3.5"/></button>}
       </div>
 
       <div className="p-3 space-y-3">
         <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/50 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-text-batch-scope="true">
-          <div className="flex items-center gap-2"><FolderTree className="h-3.5 w-3.5 text-cyan-600"/><span className="font-black uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Batch Scope</span><span className="ml-auto text-[8px] font-bold text-slate-400">{resolvedWorkspaces.length} workspace</span></div>
+          <div className="flex items-center gap-2"><FolderTree className="h-3.5 w-3.5 text-cyan-600"/><span className="font-black uppercase tracking-wide text-cyan-700 dark:text-cyan-300">Bulk Scope</span><span className="ml-auto text-[8px] font-bold text-slate-400">{resolvedWorkspaces.length} workspace</span></div>
           <div className="mt-2 grid grid-cols-2 gap-1" data-text-batch-scope-tabs="true">
             <ScopeButton active={scopeMode === 'card'} disabled={running || !structuredTextBatch?.activeWorkspaceId || !cardOptions.length} onClick={() => setScopeMode('card')}>CURRENT CARD</ScopeButton>
             <ScopeButton active={scopeMode === 'workspace'} disabled={running || !structuredTextBatch?.activeWorkspaceId} onClick={() => setScopeMode('workspace')}>CURRENT WORKSPACE</ScopeButton>
@@ -137,9 +138,9 @@ export const TextBatchPopup = ({
               {(structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
             </select>
           </label>
-          <label className="text-[9px] font-bold text-slate-500">Global Edge ID / Meaning download fallback
+          <label className="text-[9px] font-bold text-slate-500">Global Edge ID / Meaning fallback (Indonesia locales)
             <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
-              {(structuredTextBatch?.voices || []).filter(v => !String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+              {(structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || ''))).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
             </select>
           </label>
           <p className="text-[8px] text-slate-400">Workspace / speaker / Card / Segment download profiles configured in AUDIO remain higher priority; these are global fallbacks.</p>
@@ -155,7 +156,7 @@ export const TextBatchPopup = ({
           <p className="mt-1 text-slate-500 dark:text-slate-400">Voices: {textVoiceSummary.length ? textVoiceSummary.join(' + ') : '—'}</p>
           <p className="mt-0.5 text-slate-500 dark:text-slate-400">Speakers: {textSpeakerSummary.length ? textSpeakerSummary.join(', ') : 'single narrator / no speaker labels'}</p>
           <p className="mt-1 text-[8px] text-slate-400">Conversation keeps each Segment's exact speaker/channel download voice. Paragraph narrator defaults stay independent. Multi-Workspace output is separated again by Workspace during ZIP packaging.</p>
-          <p className="mt-1 text-[8px] font-bold text-sky-600/80 dark:text-sky-300/80">Batch follows AUDIO download profiles. Bottom Player Settings never changes generated/downloaded voice, rate, or pitch.</p>
+          <p className="mt-1 text-[8px] font-bold text-sky-600/80 dark:text-sky-300/80">Bulk Audio follows AUDIO Setup & Sources profiles. Bottom Player Settings never changes generated/downloaded voice, rate, or pitch.</p>
         </div>
 
         <div className="rounded-lg border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="text">
@@ -169,10 +170,21 @@ export const TextBatchPopup = ({
         </div>
 
         {liveTelemetry?.sessionId && <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-live-batch-telemetry="text">
-          <div className="flex items-center justify-between gap-2 font-black text-cyan-700 dark:text-cyan-300"><span>Live Text Batch • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span><span>{liveTelemetry.processed || 0}/{liveTelemetry.total || 0}</span></div>
+          <div className="flex items-center justify-between gap-2 font-black text-cyan-700 dark:text-cyan-300"><span>Live Bulk Audio • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span><span>{liveTelemetry.processed || 0}/{liveTelemetry.total || 0}</span></div>
           <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Need est.: {liveTelemetry.missingEstimate || 0}</span><span>Generated RF: {liveTelemetry.generated || 0}</span><span>RF reused: {liveTelemetry.reusedPhysical || 0}</span><span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span><span>Remaining: {liveTelemetry.remaining || 0}</span></div>
           <p className="mt-1 text-[8px] text-cyan-600/80 dark:text-cyan-300/80">Counter UI only • no per-audio IndexedDB inventory scan{liveTelemetry.reconciled ? ' • final durable commit reconciled' : ''}.</p>
         </div>}
+
+        {failedJobs.length > 0 && <details className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50/60 dark:bg-red-950/15 p-2.5 text-[9px]" data-text-bulk-failures="true">
+          <summary className="cursor-pointer font-black text-red-700 dark:text-red-300">Failed items • {failedJobs.length}</summary>
+          <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
+            {failedJobs.map((job, index) => <div key={`${job?.segmentId || job?.id || 'job'}-${job?.channel || 'text'}-${index}`} className="rounded border border-red-100 dark:border-red-900/70 bg-white/70 dark:bg-slate-900/40 px-2 py-1.5">
+              <p className="font-bold text-slate-700 dark:text-slate-200">{job?.segmentId || job?.id || 'Unknown Segment'} • {job?.channel === 'meaning' ? 'ID / Meaning' : 'EN / Text'} • {compactVoiceLabel(job?.voiceId || job?.resolvedVoiceId)}</p>
+              <p className="mt-0.5 text-[8px] text-red-600/80 dark:text-red-300/80">{job?.error || job?.reason || 'Generation failed. Retry uses the same resolved job.'}</p>
+            </div>)}
+          </div>
+          <button type="button" disabled={running || !structuredTextBatch?.retryFailed} onClick={structuredTextBatch?.retryFailed} className="mt-2 w-full rounded border border-red-300 dark:border-red-800 py-2 text-[9px] font-black text-red-700 dark:text-red-300 disabled:opacity-35">RETRY FAILED ONLY ({failedJobs.length})</button>
+        </details>}
 
         <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2.5 space-y-2" data-text-batch-export="true">
           <button type="button" disabled={running || !(coverage?.ready > 0)} onClick={() => setDirectMp3ConfirmOpen(true)} className="w-full rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>EXPORT READY MP3 • {coverage?.ready || 0}</button>
@@ -182,9 +194,9 @@ export const TextBatchPopup = ({
           <p className="text-[8px] leading-relaxed text-slate-400">Consolidation lazily combines Ready Text Staging + Folder + mounted ZIP binaries without TTS, deduplicates physical RF files, and writes a Text Audio Manifest with logical references. Full output stays locked until the selected scope is complete.</p>
         </div>
 
-        {running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BATCH'}</button> : <>
-          <button type="button" disabled={!(coverage?.needDownload || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white disabled:opacity-35"><Download className="mr-1 inline h-3 w-3"/>DOWNLOAD MISSING ({coverage?.needDownload || 0})</button>
-          <button type="button" disabled={!(coverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>
+        {running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BULK JOB'}</button> : <>
+          <button type="button" disabled={!(coverage?.needDownload || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white disabled:opacity-35"><Download className="mr-1 inline h-3 w-3"/>GENERATE MISSING ({coverage?.needDownload || 0})</button>
+          <button type="button" disabled={!(coverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REGENERATE SELECTED ({coverage?.total || 0})</button>
         </>}
       </div>
 
