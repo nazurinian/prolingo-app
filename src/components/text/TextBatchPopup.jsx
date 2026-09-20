@@ -166,7 +166,7 @@ export const TextBatchPopup = ({
             <span>Other voice: {coverage?.otherVoice || 0}</span><span>Stale: {coverage?.stale || 0}</span>
             <span>Missing: {coverage?.missing || 0}</span><span className="font-black text-amber-600 dark:text-amber-300">Need: {coverage?.needDownload || 0}</span>
           </div>
-          <p className="mt-1.5 text-[8px] text-slate-400">Only binary currently readable from Staging, Folder, mounted ZIP, or runtime is Ready. Export history never suppresses regeneration.</p>
+          <p className="mt-1.5 text-[8px] text-slate-400">Only binary currently readable from Text Staging (including Portable ZIP imports) or active runtime is Ready. Folder is deprecated/locked. Export history never suppresses regeneration.</p>
         </div>
 
         {liveTelemetry?.sessionId && <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-live-batch-telemetry="text">
@@ -191,7 +191,7 @@ export const TextBatchPopup = ({
           <p className="text-[8px] leading-relaxed text-slate-400">Exports Ready physical RF files once in waves of max {directMp3Limit}. Multiple logical Segments sharing the same RF do not create duplicate downloads. Missing/Other/Stale are skipped; no TTS starts.</p>
           <button type="button" disabled={running || !(coverage?.total > 0) || coverage?.ready !== coverage?.total} onClick={() => setConsolidatedZipConfirmOpen(true)} className="w-full rounded border border-sky-200 dark:border-sky-800 py-2 text-[10px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>{coverage?.ready === coverage?.total && coverage?.total > 0 ? `BUILD FULL CONSOLIDATED ZIP • ${coverage.ready}/${coverage.total}` : `FULL ZIP PENDING • ${coverage?.needDownload || 0} need source`}</button>
           {coverage?.ready > 0 && coverage?.ready < coverage?.total && <button type="button" disabled={running} onClick={() => setPartialZipConfirmOpen(true)} className="w-full rounded border border-amber-200 dark:border-amber-800 py-2 text-[9px] font-black text-amber-700 dark:text-amber-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>EXPORT PARTIAL ZIP • {coverage.ready}/{coverage.total} READY</button>}
-          <p className="text-[8px] leading-relaxed text-slate-400">Consolidation lazily combines Ready Text Staging + Folder + mounted ZIP binaries without TTS, deduplicates physical RF files, and writes a Text Audio Manifest with logical references. Full output stays locked until the selected scope is complete.</p>
+          <p className="text-[8px] leading-relaxed text-slate-400">Consolidation uses Ready Text Staging binaries (including Portable ZIP imports) without TTS, deduplicates physical identities, and writes a Text Audio Manifest with logical references. Folder is deprecated/locked. Full output stays locked until the selected scope is complete.</p>
         </div>
 
         {running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BULK JOB'}</button> : <>
@@ -203,7 +203,7 @@ export const TextBatchPopup = ({
       <SafetyConfirmDialog
         open={consolidatedZipConfirmOpen}
         title="Build complete Text consolidated ZIP?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. ProLingo lazily reads exact Ready binaries from Text Staging, Folder, and mounted ZIP sources and creates resource-bounded ZIP group(s) separated by Workspace. No TTS is generated and source ZIP files are not modified.`}
+        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. ProLingo reads exact Ready binaries from Text Staging (including Portable ZIP imports) and creates resource-bounded ZIP group(s) separated by Workspace. No TTS is generated and source ZIP files are not modified.`}
         confirmLabel="Build Full ZIP"
         onCancel={() => setConsolidatedZipConfirmOpen(false)}
         onConfirm={() => { setConsolidatedZipConfirmOpen(false); structuredTextBatch?.exportFullZip?.(); }}

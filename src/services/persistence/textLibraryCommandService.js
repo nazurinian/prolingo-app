@@ -7,6 +7,7 @@ import {
 import { applyTextLibraryCommand } from '../../domain/text/textLibraryCommandDomain.js';
 import { createTextAudioVariantRecord, formatTextLibraryId, normalizeTextIdCounters, normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
 import { getTextStructuredAudioVariantKey } from '../../domain/text/textStructuredAudioIdentityDomain.js';
+import { buildTextStructuredFullAudioArtifactsMetadata, normalizeTextStructuredFullArtifactRecord } from '../../domain/text/textStructuredSplitFullDomain.js';
 import { createTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from '../../domain/text/textGlobalIdentityDomain.js';
 import { openTextLibraryDatabase } from './textLibraryIndexedDbService.js';
 
@@ -269,6 +270,71 @@ export const executeTextAudioVariantBulkUpsert = async payloadsCandidate => {
     putMeta(metaStore, TEXT_LIBRARY_META_KEYS.ID_COUNTERS, counters, now);
     await done;
     return { audioVariants: records, counters, created, updated };
+  } finally {
+    db.close();
+  }
+};
+
+
+// beta.8/P4: Portable ZIP may materialize multiple Full Artifacts at once.
+// Persist them in one transaction so a large ZIP never opens one IndexedDB
+// transaction per Card/profile match.
+export const executeTextFullAudioArtifactBulkUpsert = async payloadsCandidate => {
+  const payloads = (Array.isArray(payloadsCandidate) ? payloadsCandidate : []).filter(payload => payload?.blockId && payload?.artifact);
+  if (!payloads.length) return { artifacts: [], blocks: [], updated: 0 };
+
+  const db = await openTextLibraryDatabase();
+  try {
+    const tx = db.transaction([
+      TEXT_LIBRARY_STORES.DOCUMENTS,
+      TEXT_LIBRARY_STORES.BLOCKS
+    ], 'readwrite');
+    const done = transactionDone(tx);
+    const blockStore = tx.objectStore(TEXT_LIBRARY_STORES.BLOCKS);
+    const documentStore = tx.objectStore(TEXT_LIBRARY_STORES.DOCUMENTS);
+    const [blocks, documents] = await Promise.all([
+      requestToPromise(blockStore.getAll()),
+      requestToPromise(documentStore.getAll())
+    ]);
+    const blocksById = new Map((blocks || []).map(record => [String(record?.id || '').toUpperCase(), record]));
+    const documentsById = new Map((documents || []).map(record => [String(record?.id || '').toUpperCase(), record]));
+    const updatedBlocks = new Map();
+    const touchedDocuments = new Set();
+    const artifacts = [];
+    const now = Date.now();
+
+    for (const payload of payloads) {
+      const blockId = String(payload.blockId || '').toUpperCase();
+      const current = updatedBlocks.get(blockId) || blocksById.get(blockId);
+      if (!current) throw new Error(`Unknown Text block: ${blockId}`);
+      const document = documentsById.get(String(current.documentId || '').toUpperCase());
+      if (!document || document.editorModel !== TEXT_STRUCTURED_EDITOR_MODEL) {
+        throw new Error(`Full Text audio requires a structured Document: ${current.documentId}`);
+      }
+      const artifact = normalizeTextStructuredFullArtifactRecord(payload.artifact);
+      if (!artifact) throw new Error(`Invalid Full Audio Artifact for ${blockId}`);
+      const normalizedArtifact = {
+        ...artifact,
+        createdAt: artifact.createdAt || now,
+        updatedAt: now
+      };
+      const next = {
+        ...current,
+        metadata: buildTextStructuredFullAudioArtifactsMetadata({ metadata: current.metadata, artifact: normalizedArtifact }),
+        updatedAt: now
+      };
+      updatedBlocks.set(blockId, next);
+      touchedDocuments.add(String(current.documentId || '').toUpperCase());
+      artifacts.push({ blockId, artifact: normalizedArtifact });
+    }
+
+    updatedBlocks.forEach(record => blockStore.put(record));
+    touchedDocuments.forEach(documentId => {
+      const current = documentsById.get(documentId);
+      if (current) documentStore.put({ ...current, updatedAt: now });
+    });
+    await done;
+    return { artifacts, blocks: [...updatedBlocks.values()], updated: artifacts.length };
   } finally {
     db.close();
   }

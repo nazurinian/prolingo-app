@@ -12,6 +12,7 @@ import {
 import { triggerBrowserZipDownload } from '../audio/browserZipService.js';
 import { buildCanonicalTextDocumentZipFilename } from '../../domain/text/textFilenameDomain.js';
 import { buildProLingoTextAudioManifest, TEXT_AUDIO_MANIFEST_FILENAME } from '../../domain/text/textAudioManifestDomain.js';
+import { buildTextAudioIndexCsv, TEXT_AUDIO_INDEX_FILENAME } from '../../domain/text/textAudioIndexDomain.js';
 
 export const TEXT_AUDIO_STAGING_MODE = 'text';
 export const TEXT_AUDIO_STAGING_ZIP_MAX_BYTES = 64 * 1024 * 1024;
@@ -58,10 +59,60 @@ export const putTextAudioStagingBlob = async ({
       ...(metadata || {})
     }
   });
-  // A regeneration of the same TXTAUDIO variant overwrites the staged Blob.
+  // A regeneration of the same physical RF overwrites the staged Blob.
   // Revoke only that Text cache entry so playback can never reuse the old Blob.
   clearAudioStagingRuntimeCacheForIds(record?.id);
   return record;
+};
+
+
+export const putTextFullAudioStagingBlob = async ({
+  fullArtifactFingerprint,
+  documentId = null,
+  blockId,
+  channel,
+  engine,
+  voiceId,
+  filename,
+  mimeType = null,
+  blob,
+  descriptor = null,
+  metadata = null
+}) => {
+  const fingerprint = clean(fullArtifactFingerprint).toLowerCase();
+  if (!fingerprint.startsWith('full-sha256-')) throw new Error('Full Text Staging requires a valid Full Artifact fingerprint.');
+  const record = await putAudioStagingBlob({
+    mode: TEXT_AUDIO_STAGING_MODE,
+    mapKey: fingerprint,
+    part: clean(channel).toLowerCase() || 'text',
+    engine: clean(engine).toLowerCase() || 'edge',
+    voiceId: clean(voiceId) || null,
+    filename: clean(filename) || null,
+    mimeType: mimeType || blob?.type || null,
+    blob,
+    stableId: upper(blockId),
+    displayId: null,
+    bookId: upper(documentId) || null,
+    metadata: {
+      representation: 'full',
+      fullArtifactFingerprint: fingerprint,
+      documentId: upper(documentId) || null,
+      blockId: upper(blockId),
+      channel: clean(channel).toLowerCase() || 'text',
+      fullArtifactDescriptorV1: descriptor && typeof descriptor === 'object' ? { ...descriptor } : null,
+      ...(metadata || {})
+    }
+  });
+  clearAudioStagingRuntimeCacheForIds(record?.id);
+  return record;
+};
+
+export const resolveTextAudioStagingPhysicalIdentity = record => {
+  const full = clean(record?.metadata?.fullArtifactFingerprint || '').toLowerCase();
+  if (full.startsWith('full-sha256-')) return { representation: 'full', identity: full };
+  const split = clean(record?.metadata?.renderFingerprint || record?.mapKey || '').toLowerCase();
+  if (split.startsWith('rf-sha256-')) return { representation: 'split', identity: split };
+  return { representation: 'legacy', identity: clean(record?.mapKey || record?.id).toLowerCase() || null };
 };
 
 export const listTextAudioStagingMetadata = async ({ includeReleased = false } = {}) =>
@@ -97,7 +148,7 @@ const splitByBytes = (records, maxBytes = TEXT_AUDIO_STAGING_ZIP_MAX_BYTES) => {
   const seenPhysical = new Set();
   const uniqueRecords = (Array.isArray(records) ? records : []).filter(record => {
     if (!record?.hasBlob) return false;
-    const key = clean(record?.metadata?.renderFingerprint || record?.mapKey || record?.id).toLowerCase();
+    const key = resolveTextAudioStagingPhysicalIdentity(record).identity || clean(record?.id).toLowerCase();
     if (!key || seenPhysical.has(key)) return false;
     seenPhysical.add(key);
     return true;
@@ -138,27 +189,42 @@ export const exportTextAudioStagingZipChunks = async ({
     }
     if (!entries.length) continue;
     const manifest = buildProLingoTextAudioManifest({
-      entries: exported
-        .filter(record => clean(record?.metadata?.renderFingerprint || record?.mapKey).toLowerCase().startsWith('rf-sha256-'))
-        .map(record => ({
-          rf: record?.metadata?.renderFingerprint || record?.mapKey,
+      entries: exported.map(record => {
+        const physical = resolveTextAudioStagingPhysicalIdentity(record);
+        if (!['split', 'full'].includes(physical.representation)) return null;
+        const isFull = physical.representation === 'full';
+        return {
+          representation: physical.representation,
+          identity: physical.identity,
+          rf: isFull ? null : physical.identity,
+          fullArtifactFingerprint: isFull ? physical.identity : null,
           filename: record.filename || `${record.mapKey}.mp3`,
           mimeType: record.mimeType || null,
           size: Number(record.size || 0),
-          render: record?.metadata?.audioRenderDescriptorV1 || record?.metadata?.renderDescriptor || null,
+          render: isFull
+            ? record?.metadata?.fullArtifactDescriptorV1 || null
+            : record?.metadata?.audioRenderDescriptorV1 || record?.metadata?.renderDescriptor || null,
           references: [{
-            audioVariantId: record?.metadata?.audioVariantId || null,
             documentId: record?.metadata?.documentId || record?.bookId || null,
-            segmentId: record?.metadata?.segmentId || record?.stableId || null,
-            channel: record?.metadata?.channel || record?.part || null
+            blockId: isFull ? (record?.metadata?.blockId || record?.stableId || null) : null,
+            segmentId: isFull ? null : (record?.metadata?.segmentId || record?.stableId || null),
+            audioVariantId: isFull ? null : (record?.metadata?.audioVariantId || null),
+            channel: record?.metadata?.channel || record?.part || null,
+            voiceId: record?.voiceId || null,
+            representation: physical.representation
           }]
-        })),
+        };
+      }).filter(Boolean),
       source: { kind: 'text-staging-export', documentTitle }
     });
     if (manifest.entries.length) {
       entries.push({
         filename: TEXT_AUDIO_MANIFEST_FILENAME,
         blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' })
+      });
+      entries.push({
+        filename: TEXT_AUDIO_INDEX_FILENAME,
+        blob: new Blob([buildTextAudioIndexCsv(manifest)], { type: 'text/csv;charset=utf-8' })
       });
     }
     const voiceIds = [...new Set(exported.map(record => record.voiceId).filter(Boolean))];

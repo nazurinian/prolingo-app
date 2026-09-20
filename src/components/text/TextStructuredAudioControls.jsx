@@ -126,7 +126,7 @@ export default function TextStructuredAudioControls({
   const firstIdRate = firstSpeaker ? (rateProfile.speakerIds?.meaning?.[firstSpeaker.id] || rateProfile.speakers?.meaning?.[String(firstSpeaker.label || '').trim().toLowerCase()] || rateProfile.channels?.meaning || globalMeaningRate || 1) : (rateProfile.channels?.meaning || globalMeaningRate || 1);
   const firstLocalEn = firstSpeaker ? (localProfile.speakerIds?.text?.[firstSpeaker.id] || localProfile.speakers?.text?.[String(firstSpeaker.label || '').trim().toLowerCase()] || localProfile.channels?.text || '') : (localProfile.channels?.text || '');
   const firstLocalId = firstSpeaker ? (localProfile.speakerIds?.meaning?.[firstSpeaker.id] || localProfile.speakers?.meaning?.[String(firstSpeaker.label || '').trim().toLowerCase()] || localProfile.channels?.meaning || '') : (localProfile.channels?.meaning || '');
-  const folderReady = Boolean(audioLibrary?.folderState?.matchedCount > 0 || audioLibrary?.folderState?.status === 'ready' || audioLibrary?.folderState?.status === 'connected');
+  const folderLocked = audioLibrary?.folderState?.locked === true || audioLibrary?.folderState?.status === 'deprecated-locked';
   const zipCount = Array.isArray(audioLibrary?.zipState?.archives) ? audioLibrary.zipState.archives.length : 0;
   const stagingCount = Number(audioLibrary?.staging?.count || 0);
   const localVoiceCountEn = (availableLocalVoices?.channels?.text || []).length;
@@ -147,7 +147,7 @@ export default function TextStructuredAudioControls({
       <button type="button" role="tab" aria-selected={audioSurface === 'playback'} onClick={() => setAudioSurface('playback')} className={`min-h-10 rounded-lg px-2 text-[9px] font-black transition ${audioSurface === 'playback' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>PLAYBACK</button>
       <button type="button" role="tab" aria-selected={audioSurface === 'download'} onClick={() => setAudioSurface('download')} className={`min-h-10 rounded-lg px-2 text-[9px] font-black transition ${audioSurface === 'download' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>SETUP & SOURCES</button>
     </div>
-    <p className="px-1 text-[8px] leading-relaxed text-slate-400">PLAYBACK = how audio is heard. SETUP & SOURCES = Edge generation/download defaults plus Staging / Folder / ZIP. Actual exports live in Segment MP3, Card Audio, or Batch.</p>
+    <p className="px-1 text-[8px] leading-relaxed text-slate-400">PLAYBACK = how audio is heard. SETUP & SOURCES = Edge generation/download defaults plus Staging / Portable ZIP. Actual exports live in Segment MP3, Card Audio, or Batch.</p>
     {audioSurface === 'playback' && <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-3" data-text-playback-audio-settings="true">
       <div className="flex items-center gap-2 mb-2"><Headphones className="w-4 h-4 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Playback Audio</p><p className="text-[8px] text-slate-400">Voice + speed only. Repeat/order/delay stay in bottom Player Settings.</p></div></div>
       <div className="mb-3 space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-local-audio-mode="true">
@@ -158,12 +158,12 @@ export default function TextStructuredAudioControls({
           <button type="button" disabled={disabled || !localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)} className={`min-h-9 rounded-lg border px-2 text-[8px] font-black disabled:opacity-40 ${sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}`}>AUTO</button>
           <button type="button" disabled={disabled || !localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL)} className={`min-h-9 rounded-lg border px-2 text-[8px] font-black disabled:opacity-40 ${sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}`}>CUSTOM</button>
         </div>
-        <p className="text-[8px] leading-relaxed text-slate-400">{!localAudioEnabled ? 'OFF = Browser TTS only.' : customLocal ? 'CUSTOM = use the selected local voice for each narrator/speaker. If that local file is unavailable, playback falls back to its Browser TTS voice.' : 'AUTO = use compatible Folder / ZIP / Staging audio when available, then fall back to Browser TTS.'}</p>
+        <p className="text-[8px] leading-relaxed text-slate-400">{!localAudioEnabled ? 'OFF = Browser TTS only.' : customLocal ? 'CUSTOM = use the selected local voice for each narrator/speaker. If that local file is unavailable, playback falls back to its Browser TTS voice.' : 'AUTO = use compatible Staging audio first (including audio imported from Portable ZIP), then fall back to Browser TTS.'}</p>
         <div className="grid grid-cols-2 gap-1 text-[7px] font-bold text-slate-500 dark:text-slate-300">
-          <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5">Sources • Folder {folderReady ? 'ready' : '—'} • ZIP {zipCount} • Staging {stagingCount}</div>
+          <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5">Sources • Staging {stagingCount} • ZIP {zipCount} • Folder {folderLocked ? 'LOCKED' : 'legacy'}</div>
           <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5">Local voices • EN {localVoiceCountEn} • ID {localVoiceCountId}</div>
         </div>
-        <p className="text-[7px] leading-relaxed text-slate-400">Attach or reconnect Folder / ZIP from <b>SETUP & SOURCES</b>. Playback does not import files from this switch; it only decides whether linked local audio may be used.</p>
+        <p className="text-[7px] leading-relaxed text-slate-400">Add Portable ZIP from <b>SETUP & SOURCES</b>; matching Split/Full audio is merged into Staging. Folder is deprecated/locked in beta.8.</p>
       </div>
       <SourceStatus status={playbackSourceStatus}/>
 

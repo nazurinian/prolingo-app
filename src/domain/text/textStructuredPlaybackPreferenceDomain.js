@@ -18,6 +18,13 @@ export const TEXT_STRUCTURED_AUDIO_SOURCE_MODES = Object.freeze({
   TTS_ONLY: 'tts-only'
 });
 
+// beta.8/P3: Split is the primary learning representation. Full is a
+// secondary uninterrupted-listening representation and may fall back to Split.
+export const TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES = Object.freeze({
+  SPLIT: 'split',
+  FULL: 'full'
+});
+
 // P4-A13: playback feel belongs to Structured Text only. These values must never
 // read or mirror Table playbackMode / vocabularyPlayOrder / playbackDelays.
 export const TEXT_STRUCTURED_ORDER_MODES = Object.freeze({
@@ -56,6 +63,7 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
   browserRatesLinked: true,
   browserTtsRate: 1,
   audioSourceMode: TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+  playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
   playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
   repeatMode: TEXT_STRUCTURED_REPEAT_MODES.ONCE,
   manualSegmentPlaybackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
@@ -72,6 +80,7 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
 const displayModes = new Set(Object.values(TEXT_STRUCTURED_DISPLAY_MODES));
 const playbackModes = new Set(Object.values(TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES));
 const orderModes = new Set(Object.values(TEXT_STRUCTURED_ORDER_MODES));
+const representationModes = new Set(Object.values(TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES));
 const repeatModes = new Set(Object.values(TEXT_STRUCTURED_REPEAT_MODES));
 const manualRepeatModes = new Set(Object.values(TEXT_STRUCTURED_MANUAL_REPEAT_MODES));
 const resumeModes = new Set(Object.values(TEXT_STRUCTURED_RESUME_MODES));
@@ -119,6 +128,9 @@ export const normalizeTextStructuredPreferences = candidate => {
       : candidate?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
         ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
         : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+    playbackRepresentationMode: representationModes.has(candidate?.playbackRepresentationMode)
+      ? candidate.playbackRepresentationMode
+      : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackRepresentationMode,
     playbackOrderMode: orderModes.has(candidate?.playbackOrderMode)
       ? candidate.playbackOrderMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.playbackOrderMode,
@@ -162,6 +174,14 @@ export const resolveStructuredTextDisplayState = ({ displayMode, isActive = fals
       || (normalized === TEXT_STRUCTURED_DISPLAY_MODES.TEXT_ACTIVE_MEANING && isActive),
     meaningIsActiveOnly: normalized === TEXT_STRUCTURED_DISPLAY_MODES.TEXT_ACTIVE_MEANING
   };
+};
+
+export const resolveStructuredTextPlaybackChannelOrder = playbackChannelMode => {
+  const mode = normalizeTextStructuredPreferences({ playbackChannelMode }).playbackChannelMode;
+  if (mode === TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY) return ['meaning'];
+  if (mode === TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_THEN_MEANING) return ['text', 'meaning'];
+  if (mode === TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_THEN_TEXT) return ['meaning', 'text'];
+  return ['text'];
 };
 
 export const resolveStructuredTextPlaybackChannelSteps = (item, playbackChannelMode) => {

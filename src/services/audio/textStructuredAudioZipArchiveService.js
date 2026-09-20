@@ -1,5 +1,11 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import { buildTextStructuredAudioRenderFingerprint } from '../../domain/text/textStructuredAudioRenderFingerprintDomain.js';
 import { TEXT_AUDIO_MANIFEST_FILENAME, parseProLingoTextAudioManifestJson } from '../../domain/text/textAudioManifestDomain.js';
+import { parseCanonicalTextFullArtifactFilename } from '../../domain/text/textFilenameDomain.js';
+import {
+  buildTextStructuredFullArtifactRecord,
+  buildTextStructuredFullRepresentation
+} from '../../domain/text/textStructuredSplitFullDomain.js';
 import {
   buildTextStructuredExternalAudioIdentityIndex,
   parseTextStructuredLegacyAudioFilename,
@@ -102,14 +108,130 @@ const readZipEntryBlobFromFile = async ({ file, entry, mimeType = null }) => {
 
 const archiveIdFor = (file, index) => [clean(file?.name) || `text-audio-${index + 1}.zip`, Number(file?.size || 0), Number(file?.lastModified || 0)].join(':');
 
-export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [], segments = [], requirements = [] } = {}) => {
+export const scanTextStructuredAudioZipFiles = async ({
+  files,
+  audioVariants = [],
+  segments = [],
+  requirements = [],
+  blocks = [],
+  documents = []
+} = {}) => {
   const selected = [...(files || [])].filter(file => /\.zip$/i.test(file?.name || '') || file?.type === 'application/zip' || file?.type === 'application/x-zip-compressed');
   const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments, requirements });
   const matches = [];
+  const fullMatches = [];
   const orphans = [];
   const legacy = [];
   const archives = [];
   let unsupportedCount = 0;
+
+  const segmentsByBlock = new Map();
+  (segments || []).forEach(segment => {
+    const blockId = String(segment?.blockId || '').toUpperCase();
+    if (!blockId) return;
+    const list = segmentsByBlock.get(blockId) || [];
+    list.push(segment);
+    segmentsByBlock.set(blockId, list);
+  });
+  const documentsById = new Map((documents || []).map(document => [String(document?.id || '').toUpperCase(), document]));
+  const blockTrees = (blocks || []).map(block => ({
+    ...block,
+    segments: [...(segmentsByBlock.get(String(block?.id || '').toUpperCase()) || [])].sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0))
+  }));
+
+  const resolveSplitManifestRequirements = ({ manifestEntry, renderFingerprint }) => {
+    const descriptor = manifestEntry?.render && typeof manifestEntry.render === 'object' ? manifestEntry.render : null;
+    const fingerprint = String(renderFingerprint || manifestEntry?.rf || manifestEntry?.identity || '').toLowerCase();
+    if (!descriptor || !fingerprint.startsWith('rf-sha256-') || !descriptor.voiceId || !descriptor.contentFingerprint) return [];
+    const channel = String(descriptor.channel || '').toLowerCase() === 'meaning' ? 'meaning' : 'text';
+    const results = [];
+    for (const segment of (segments || [])) {
+      const content = channel === 'meaning' ? clean(segment?.meaning) : clean(segment?.text);
+      if (!content) continue;
+      try {
+        const expected = buildTextStructuredAudioRenderFingerprint({
+          channel,
+          content,
+          language: descriptor.language,
+          engine: descriptor.engine,
+          voiceId: descriptor.voiceId,
+          rate: descriptor.rate,
+          pitch: descriptor.pitch,
+          rendererVersion: descriptor.rendererVersion,
+          codecProfile: descriptor.codecProfile
+        });
+        if (expected.renderFingerprint !== fingerprint || expected.descriptor.contentFingerprint !== descriptor.contentFingerprint) continue;
+        results.push({
+          documentId: segment?.documentId || null,
+          blockId: segment?.blockId || null,
+          segmentId: segment?.id,
+          channel,
+          content,
+          language: expected.descriptor.language,
+          engine: expected.descriptor.engine,
+          voiceId: expected.descriptor.voiceId,
+          rate: expected.descriptor.rate,
+          pitch: expected.descriptor.pitch,
+          renderFingerprint: expected.renderFingerprint,
+          contentFingerprintV2: expected.contentFingerprintV2,
+          renderDescriptor: expected.descriptor,
+          portableZipDerived: true
+        });
+      } catch {
+        // Invalid descriptor or Segment content is not a match.
+      }
+    }
+    return results;
+  };
+
+  const resolveFullMatches = ({ manifestEntry, parsed, common }) => {
+    const fingerprint = String(manifestEntry?.fullArtifactFingerprint || manifestEntry?.identity || parsed?.fullArtifactFingerprint || '').toLowerCase();
+    const descriptor = manifestEntry?.render && typeof manifestEntry.render === 'object' ? manifestEntry.render : null;
+    if (!fingerprint.startsWith('full-sha256-') || !descriptor) return { matches: [], reason: 'full-metadata-required' };
+    // Manifest references are explanatory/logical provenance, not an exclusive
+    // binding key. Full physical identity is content/profile-addressed, so the
+    // same portable Full Artifact may fan out to every current Card whose
+    // derived Full content produces the exact fingerprint (same principle as
+    // Split RF sharing across identical Segments).
+    const candidates = blockTrees;
+    const resolved = [];
+    for (const block of candidates) {
+      const representation = buildTextStructuredFullRepresentation({ block, channel: descriptor.channel });
+      if (!representation.content || representation.contentFingerprint !== descriptor.contentFingerprint) continue;
+      try {
+        const artifact = buildTextStructuredFullArtifactRecord({
+          block,
+          channel: descriptor.channel,
+          language: descriptor.language,
+          engine: descriptor.engine,
+          voiceId: descriptor.voiceId,
+          rate: descriptor.rate,
+          pitch: descriptor.pitch,
+          rendererVersion: descriptor.rendererVersion,
+          codecProfile: descriptor.codecProfile,
+          derivationVersion: descriptor.derivationVersion,
+          filename: common.filename,
+          mimeType: common.mimeType,
+          source: 'zip',
+          metadata: { importedFromPortableZip: true, archiveId: common.archiveId }
+        });
+        if (artifact.fullArtifactFingerprint !== fingerprint) continue;
+        const document = documentsById.get(String(block?.documentId || '').toUpperCase()) || null;
+        resolved.push({
+          ...common,
+          representation: 'full',
+          fullArtifactFingerprint: fingerprint,
+          block,
+          document,
+          artifact,
+          manifestEntry
+        });
+      } catch {
+        // Ignore invalid candidate; another block may still match exactly.
+      }
+    }
+    return { matches: resolved, reason: resolved.length ? null : 'full-no-current-content-match' };
+  };
 
   for (let archiveIndex = 0; archiveIndex < selected.length; archiveIndex += 1) {
     const file = selected[archiveIndex];
@@ -126,6 +248,8 @@ export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [
     }
     const manifestByFilename = new Map((manifest?.entries || []).flatMap(entry => [[String(entry.filename || '').toLowerCase(), entry], [basename(entry.filename).toLowerCase(), entry]]));
     let matchedCount = 0;
+    let splitMatchedCount = 0;
+    let fullMatchedCount = 0;
     let audioFileCount = 0;
     let legacyCount = 0;
     let orphanCount = 0;
@@ -141,49 +265,115 @@ export const scanTextStructuredAudioZipFiles = async ({ files, audioVariants = [
         return;
       }
       const filename = basename(entry.filename);
-      if (filename.toLowerCase() === TEXT_AUDIO_MANIFEST_FILENAME.toLowerCase()) return;
       const manifestEntry = manifestByFilename.get(String(entry.filename || '').toLowerCase()) || manifestByFilename.get(filename.toLowerCase()) || null;
+      const fullParsed = manifestEntry?.representation === 'full'
+        ? { representation: 'full', fullArtifactFingerprint: manifestEntry.fullArtifactFingerprint || manifestEntry.identity, manifestBacked: true }
+        : parseCanonicalTextFullArtifactFilename(filename);
+      const common = {
+        archiveId,
+        archiveName: file.name,
+        archiveFile: file,
+        entryId: `${archiveId}:${entry.localHeaderOffset}:${entryIndex}`,
+        entry,
+        filename,
+        manifestBacked: Boolean(manifestEntry),
+        mimeType: mimeFromFilename(filename)
+      };
+
+      if (manifestEntry?.size && Number(entry.uncompressedSize || 0) !== Number(manifestEntry.size)) {
+        orphans.push({ ...common, parsed: fullParsed, reason: 'manifest-size-mismatch', identity: manifestEntry.identity || manifestEntry.rf || manifestEntry.fullArtifactFingerprint || null });
+        orphanCount += 1;
+        return;
+      }
+
+      if (fullParsed) {
+        const resolvedFull = resolveFullMatches({ manifestEntry, parsed: fullParsed, common });
+        if (!resolvedFull.matches.length) {
+          orphans.push({ ...common, parsed: fullParsed, reason: resolvedFull.reason, fullArtifactFingerprint: fullParsed.fullArtifactFingerprint || manifestEntry?.fullArtifactFingerprint || null });
+          orphanCount += 1;
+          return;
+        }
+        fullMatches.push(...resolvedFull.matches);
+        matchedCount += resolvedFull.matches.length;
+        fullMatchedCount += resolvedFull.matches.length;
+        return;
+      }
+
       const parsed = manifestEntry
-        ? { version: 2, renderFingerprint: manifestEntry.rf, extension: filename.split('.').pop()?.toLowerCase() || null, manifestBacked: true }
+        ? { version: 2, renderFingerprint: manifestEntry.rf || manifestEntry.identity, extension: filename.split('.').pop()?.toLowerCase() || null, manifestBacked: true }
         : parseTextStructuredGeneratedFilename(filename);
       if (!parsed) {
         const legacyParsed = parseTextStructuredLegacyAudioFilename(filename);
         if (legacyParsed) {
-          legacy.push({ archiveId, archiveName: file.name, archiveFile: file, entry, entryIndex, filename, parsed: legacyParsed, reason: 'legacy-unresolved' });
+          legacy.push({ ...common, parsed: legacyParsed, reason: 'legacy-unresolved' });
           legacyCount += 1;
         }
         return;
       }
-      if (manifestEntry?.size && Number(entry.uncompressedSize || 0) !== Number(manifestEntry.size)) {
-        orphans.push({ archiveId, archiveName: file.name, filename, parsed, reason: 'manifest-size-mismatch', renderFingerprint: manifestEntry.rf });
-        orphanCount += 1;
-        return;
-      }
       const resolved = resolveTextStructuredExternalAudioVariant({ filename, parsed, index });
       const resolvedVariants = Array.isArray(resolved.variants) && resolved.variants.length ? resolved.variants : resolved.variant ? [resolved.variant] : [];
-      const resolvedRequirements = Array.isArray(resolved.requirements) ? resolved.requirements : [];
-      if (!['matched', 'matched-rf', 'matched-requirement'].includes(resolved.status) || (!resolvedVariants.length && !resolvedRequirements.length)) {
-        orphans.push({ archiveId, archiveName: file.name, filename, parsed, reason: resolved.status, renderFingerprint: parsed?.renderFingerprint || null });
+      const dynamicRequirements = manifestEntry
+        ? resolveSplitManifestRequirements({ manifestEntry, renderFingerprint: parsed?.renderFingerprint || manifestEntry?.rf || manifestEntry?.identity })
+        : [];
+      const requirementMap = new Map();
+      [...(Array.isArray(resolved.requirements) ? resolved.requirements : []), ...dynamicRequirements].forEach(requirement => {
+        const key = `${String(requirement?.segmentId || '').toUpperCase()}|${String(requirement?.channel || '').toLowerCase()}|${String(requirement?.renderFingerprint || '').toLowerCase()}`;
+        if (!key.startsWith('||')) requirementMap.set(key, requirement);
+      });
+      // Existing exact-RF variants already represent their own logical slots; do
+      // not duplicate them as requirement-only matches. Portable ZIP descriptor
+      // requirements intentionally ignore the current download-voice preference,
+      // allowing Libby.zip then Maisie.zip to merge into the same Segment library.
+      const resolvedRequirements = [...requirementMap.values()].filter(requirement => !resolvedVariants.some(variant =>
+        String(variant?.segmentId || '').toUpperCase() === String(requirement?.segmentId || '').toUpperCase()
+        && String(variant?.channel || '').toLowerCase() === String(requirement?.channel || '').toLowerCase()
+        && String(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase() === String(requirement?.renderFingerprint || '').toLowerCase()
+      ));
+      const accepted = ['matched', 'matched-rf', 'matched-requirement'].includes(resolved.status) || resolvedRequirements.length > 0;
+      if (!accepted || (!resolvedVariants.length && !resolvedRequirements.length)) {
+        orphans.push({ ...common, parsed, reason: manifestEntry ? 'unmatched-current-content' : resolved.status, renderFingerprint: parsed?.renderFingerprint || null });
         orphanCount += 1;
         return;
       }
       if (resolved.aliasMatched) aliasMatchedCount += 1;
-      const common = { archiveId, archiveName: file.name, archiveFile: file, entryId: `${archiveId}:${entry.localHeaderOffset}:${entryIndex}`, entry, filename, parsed, aliasMatched: resolved.aliasMatched, rfMatched: Boolean(resolved.rfMatched), manifestBacked: Boolean(manifestEntry), renderFingerprint: parsed?.renderFingerprint || null, mimeType: mimeFromFilename(filename) };
-      resolvedVariants.forEach(variant => matches.push({ ...common, variant, requirement: null, renderFingerprint: common.renderFingerprint || variant?.metadata?.audioRenderFingerprintV1 || null }));
-      resolvedRequirements.forEach(requirement => matches.push({ ...common, variant: null, requirement, renderFingerprint: common.renderFingerprint || requirement.renderFingerprint }));
-      matchedCount += resolvedVariants.length + resolvedRequirements.length;
+      const splitCommon = { ...common, parsed, representation: 'split', aliasMatched: resolved.aliasMatched, rfMatched: Boolean(resolved.rfMatched || resolvedRequirements.length), renderFingerprint: parsed?.renderFingerprint || manifestEntry?.rf || manifestEntry?.identity || null };
+      resolvedVariants.forEach(variant => matches.push({ ...splitCommon, variant, requirement: null, renderFingerprint: splitCommon.renderFingerprint || variant?.metadata?.audioRenderFingerprintV1 || null }));
+      resolvedRequirements.forEach(requirement => matches.push({ ...splitCommon, variant: null, requirement, renderFingerprint: splitCommon.renderFingerprint || requirement.renderFingerprint }));
+      const logicalCount = resolvedVariants.length + resolvedRequirements.length;
+      matchedCount += logicalCount;
+      splitMatchedCount += logicalCount;
     });
 
-    archives.push({ id: archiveId, name: file.name, size: file.size, archiveFile: file, entryCount: entries.length, audioFileCount, matchedCount, orphanCount, legacyCount, aliasMatchedCount, unsupportedCount: unsupported, manifestPresent: Boolean(manifest), manifestError });
+    archives.push({
+      id: archiveId,
+      name: file.name,
+      size: file.size,
+      archiveFile: file,
+      entryCount: entries.length,
+      audioFileCount,
+      matchedCount,
+      splitMatchedCount,
+      fullMatchedCount,
+      orphanCount,
+      legacyCount,
+      aliasMatchedCount,
+      unsupportedCount: unsupported,
+      manifestPresent: Boolean(manifest),
+      manifestVersion: manifest?.packageVersion || null,
+      manifestError
+    });
   }
 
   return {
     archives,
     matches,
+    fullMatches,
     orphans,
     legacy,
     archiveCount: archives.length,
-    matchedCount: matches.length,
+    matchedCount: matches.length + fullMatches.length,
+    splitMatchedCount: matches.length,
+    fullMatchedCount: fullMatches.length,
     orphanCount: orphans.length,
     legacyCount: legacy.length,
     aliasMatchedCount: matches.filter(match => match.aliasMatched).length,
@@ -210,7 +400,7 @@ export const clearTextStructuredAudioZipRuntimeCache = () => {
 
 export const readTextStructuredAudioZipRuntimeBlob = async runtime => {
   const file = runtime?.archiveFile;
-  const entry = runtime?.zipEntry;
+  const entry = runtime?.zipEntry || runtime?.entry;
   if (!file || !entry) throw new Error('Text ZIP audio entry is missing its archive reference.');
   return readZipEntryBlobFromFile({ file, entry, mimeType: runtime?.mimeType || mimeFromFilename(runtime?.filename || entry.filename) });
 };

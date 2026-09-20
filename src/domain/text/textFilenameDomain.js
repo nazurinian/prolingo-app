@@ -92,6 +92,37 @@ export const normalizeTextRenderFingerprint = value => {
   return match ? `rf-sha256-${match[1].toLowerCase()}` : null;
 };
 
+
+export const normalizeTextFullArtifactFingerprint = value => {
+  const raw = clean(value).toLowerCase();
+  const match = raw.match(/^(?:full-)?sha256-([0-9a-f]{64})$/i) || raw.match(/^full_([0-9a-f]{64})$/i);
+  return match ? `full-sha256-${match[1].toLowerCase()}` : null;
+};
+
+export const buildCanonicalTextFullArtifactFilename = ({ fullArtifactFingerprint, engine = null, voiceId = null, extension = 'mp3' } = {}) => {
+  const normalized = normalizeTextFullArtifactFingerprint(fullArtifactFingerprint);
+  if (!normalized) throw new Error('Canonical Text Full audio filename requires a valid Full SHA-256 fingerprint');
+  const hash = normalized.slice('full-sha256-'.length).toUpperCase();
+  const ext = sanitizeTextFilenameToken(String(extension || 'mp3').replace(/^\.+/, '').toLowerCase(), 'mp3', 8);
+  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId) : null].filter(Boolean);
+  return `${join(`FULL_${hash}`, ...debug)}.${ext}`;
+};
+
+export const parseCanonicalTextFullArtifactFilename = filename => {
+  const name = clean(filename).split('/').filter(Boolean).pop() || '';
+  const match = name.match(/^FULL_([0-9A-F]{64})(?:__([A-Za-z0-9._-]+))?(?:__([A-Za-z0-9._+-]+))?\.(mp3|wav|ogg|webm)$/i);
+  if (!match) return null;
+  return {
+    version: 1,
+    representation: 'full',
+    fullArtifactFingerprint: `full-sha256-${match[1].toLowerCase()}`,
+    engineToken: match[2] ? match[2].toLowerCase() : null,
+    voiceToken: match[3] || null,
+    extension: match[4].toLowerCase(),
+    filename: name
+  };
+};
+
 export const buildCanonicalTextRenderAudioFilename = ({ renderFingerprint, engine = null, voiceId = null, extension = 'mp3' } = {}) => {
   const normalized = normalizeTextRenderFingerprint(renderFingerprint);
   if (!normalized) throw new Error('Canonical Text audio filename v2 requires a valid RF SHA-256 fingerprint');

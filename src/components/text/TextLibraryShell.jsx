@@ -269,7 +269,7 @@ export const TextLibraryShell = ({
 
   const runRuntimeHardeningAudit = async () => {
     if (!runtimeHardening?.onAuditAndGc || isBusy) return;
-    setRuntimeAuditStatus('Auditing RF references, Staging GC, Folder and ZIP reconnect…');
+    setRuntimeAuditStatus('Auditing Split/Full physical references, Staging GC, and Portable ZIP reconciliation…');
     const result = await runtimeHardening.onAuditAndGc();
     if (!result) {
       setRuntimeAuditStatus('Runtime audit did not complete.');
@@ -277,7 +277,7 @@ export const TextLibraryShell = ({
     }
     const released = result.gc?.released || 0;
     const saved = result.gc?.orphanBytes || 0;
-    setRuntimeAuditStatus(`Audit complete • GC ${released} RF (${formatBytes(saved)}) • Folder ${result.external?.folderMatched || 0} matched • ZIP ${result.external?.zipMatched || 0} matched.`);
+    setRuntimeAuditStatus(`Audit complete • GC ${released} physical (${formatBytes(saved)}) • Portable ZIP ${result.external?.zipSplitMatched || 0} Split + ${result.external?.zipFullMatched || 0} Full matched • Folder LOCKED.`);
   };
 
   const runDatabaseBackupExport = async () => {
@@ -528,17 +528,17 @@ export const TextLibraryShell = ({
           <Database className="w-4 h-4 mt-0.5 text-cyan-600 dark:text-cyan-300 shrink-0"/>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Runtime & Storage Diagnostics</p>
-            <p className="mt-0.5 text-[8px] leading-relaxed text-slate-400">Read-only counters plus a safe audit action. Audit may garbage-collect only unreferenced app-owned RF Staging; Folder/ZIP files are never deleted.</p>
+            <p className="mt-0.5 text-[8px] leading-relaxed text-slate-400">Read-only counters plus a safe audit action. Audit may garbage-collect only unreferenced app-owned Split/Full Staging binaries; Folder/ZIP files are never deleted. Folder is locked in beta.8.</p>
           </div>
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
-          {[['Workspaces', runtimeHardening.database?.workspaces || 0], ['Cards', runtimeHardening.database?.cards || 0], ['Segments', runtimeHardening.database?.segments || 0], ['Audio slots', runtimeHardening.database?.audioVariants || 0], ['Staged RF', runtimeHardening.staging?.count || 0], ['Staging', formatBytes(runtimeHardening.staging?.bytes || 0)]].map(([label,value]) => <div key={label} className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-white/75 dark:bg-slate-900/45 px-1.5 py-2"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">{value}</p><p className="text-[7px] font-black uppercase text-slate-400">{label}</p></div>)}
+          {[['Workspaces', runtimeHardening.database?.workspaces || 0], ['Cards', runtimeHardening.database?.cards || 0], ['Segments', runtimeHardening.database?.segments || 0], ['Audio slots', runtimeHardening.database?.audioVariants || 0], ['Staged audio', runtimeHardening.staging?.count || 0], ['Staging', formatBytes(runtimeHardening.staging?.bytes || 0)]].map(([label,value]) => <div key={label} className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-white/75 dark:bg-slate-900/45 px-1.5 py-2"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">{value}</p><p className="text-[7px] font-black uppercase text-slate-400">{label}</p></div>)}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[8px]">
           <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 p-2"><p className="font-black text-emerald-700 dark:text-emerald-300">Ready</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">{runtimeHardening.activeCoverage?.ready || 0}/{runtimeHardening.activeCoverage?.total || 0} active Workspace slots</p></div>
           <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 p-2"><p className="font-black text-amber-700 dark:text-amber-300">Need attention</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">Missing {runtimeHardening.activeCoverage?.missing || 0} • stale {runtimeHardening.activeCoverage?.stale || 0}</p></div>
-          <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20 p-2"><p className="font-black text-sky-700 dark:text-sky-300">Audio Folder</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">{runtimeHardening.folder?.status === 'connected' ? `${runtimeHardening.folder?.matchedCount || 0} matched • ${runtimeHardening.folder?.orphanCount || 0} reusable orphan` : 'Not connected'}</p></div>
-          <div className="rounded-lg border border-violet-200 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2"><p className="font-black text-violet-700 dark:text-violet-300">Mounted ZIP</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">{runtimeHardening.zip?.archives?.length ? `${runtimeHardening.zip.archives.length} archive • ${runtimeHardening.zip?.matchedCount || 0} matched` : 'Not mounted'}</p></div>
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-950/20 p-2"><p className="font-black text-slate-600 dark:text-slate-300">Audio Folder</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">Deprecated • LOCKED in beta.8</p></div>
+          <div className="rounded-lg border border-violet-200 dark:border-violet-900 bg-violet-50/60 dark:bg-violet-950/20 p-2"><p className="font-black text-violet-700 dark:text-violet-300">Portable ZIP</p><p className="mt-0.5 text-slate-500 dark:text-slate-400">{runtimeHardening.zip?.archives?.length ? `${runtimeHardening.zip.archives.length} source ZIP • Split ${runtimeHardening.zip?.splitMatchedCount || 0} • Full ${runtimeHardening.zip?.fullMatchedCount || 0}` : 'No source ZIP loaded'}</p></div>
         </div>
         <button type="button" disabled={isBusy || !runtimeHardening.onAuditAndGc} onClick={runRuntimeHardeningAudit} className="w-full min-h-11 rounded-lg border border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 text-[9px] font-black text-cyan-700 dark:text-cyan-300 disabled:opacity-40"><RefreshCcw className="w-3 h-3 inline mr-1"/>AUDIT + RECONCILE + SAFE STAGING GC</button>
         {runtimeAuditStatus && <p className="text-[8px] text-cyan-700 dark:text-cyan-300" role="status" aria-live="polite">{runtimeAuditStatus}</p>}
