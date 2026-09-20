@@ -1241,10 +1241,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextPlaybackChannelModeChange = useCallback((playbackChannelMode) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackChannelMode }));
   }, []);
-  const handleStructuredTextPlaybackRepresentationModeChange = useCallback((playbackRepresentationMode) => {
+  const handleStructuredTextPlaybackRepresentationModeChange = (playbackRepresentationMode) => {
     forceStopAll();
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackRepresentationMode }));
-  }, [forceStopAll]);
+  };
   const handleStructuredTextPlaybackFeelChange = useCallback((patch) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...(patch || {}) }));
   }, []);

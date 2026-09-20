@@ -111,11 +111,11 @@ check('Folder stays visibly Deprecated / Locked', () => {
   assert.match(audioData, />LOCKED</);
 });
 check('P7 release metadata and package metadata are aligned', () => {
-  assert.match(metadata, /APP_VERSION = '6\.0\.3-beta\.8-p7'/);
+  assert.match(metadata, /APP_VERSION = '6\.0\.3-beta\.8-p7(?:-[^']+)?'/);
   assert.match(metadata, /v6\.0\.3-beta\.8-p7 completes beta\.8 Paragraph UI simplification/);
-  assert.equal(packageJson.version, '6.0.3-beta.8-p7');
-  assert.equal(packageLock.version, '6.0.3-beta.8-p7');
-  assert.equal(packageLock.packages?.['']?.version, '6.0.3-beta.8-p7');
+  assert.match(packageJson.version, /^6\.0\.3-beta\.8-p7(?:-.+)?$/);
+  assert.match(packageLock.version, /^6\.0\.3-beta\.8-p7(?:-.+)?$/);
+  assert.match(packageLock.packages?.['']?.version || '', /^6\.0\.3-beta\.8-p7(?:-.+)?$/);
 });
 check('Text DB remains v1 and Table tree remains frozen inside this checkpoint', () => {
   const dbSource = [read('src/constants/textDatabaseConstants.js'), read('src/services/persistence/textLibraryIndexedDbService.js')].join('\n');

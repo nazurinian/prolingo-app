@@ -140,7 +140,20 @@ export const TextStructuredCardAudioPanel = ({
   const speakers = useMemo(() => collectTextStructuredCardSpeakers(block), [block]);
   const firstSegment = segments[0] || null;
   const isConversation = block?.blockType === 'conversation';
-
+  const cardChannelCoverage = useMemo(() => {
+    const result = { text: { total: 0, ready: 0, voices: new Set() }, meaning: { total: 0, ready: 0, voices: new Set() } };
+    segments.forEach(segment => {
+      ['text', 'meaning'].forEach(channel => {
+        const content = clean(channel === 'meaning' ? segment?.meaning : segment?.text);
+        if (!content) return;
+        const slot = audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, channel)] || { status: 'missing' };
+        result[channel].total += 1;
+        if (slot.status === 'ready') result[channel].ready += 1;
+        if (slot.requiredVoiceId) result[channel].voices.add(slot.requiredVoiceId);
+      });
+    });
+    return result;
+  }, [segments, audioCoverageMap]);
 
   useEffect(() => {
     const handleKeyDown = event => {

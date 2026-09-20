@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.8-p7';
+export const APP_VERSION = '6.0.3-beta.8-p7-hf1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P7-FINAL-UI';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P7 • Final UI Simplification';
-export const APP_RELEASE_NAME = 'beta.8 P7 Final UI Simplification';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P7-HF1-RUNTIME-BOOT';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P7 HF1 • Runtime Boot Recovery';
+export const APP_RELEASE_NAME = 'beta.8 P7 HF1 Runtime Boot Recovery';
 export const APP_RELEASE_DATE = '2026-09-20';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: beta.8 P7 completes the Paragraph UI contract with global Split/Full/TTS Only + local voice order controls, compact Ready/Missing Card state, centralized Bulk Generate/Export surfaces, Advanced overrides, and removal of duplicated legacy scope-export controls while preserving P1-P6 behavior and Text DB v1.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: P7 HF1 repairs two runtime blockers without changing the frozen P1-P7 domain contract: App boot no longer reads forceStopAll through a pre-declaration hook dependency, and Card Audio restores its compact channel coverage derivation. Text DB remains v1 and Table is untouched.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.8-p7-hf1 fixes the runtime blank-screen regression inherited from P3 by removing the pre-declaration forceStopAll dependency from the playback-representation callback, restores the P7 Card Audio cardChannelCoverage derivation that was accidentally removed during UI simplification, and adds an explicit runtime-boot guard audit; no P1-P7 domain behavior, Text DB schema, or Table code is intentionally changed',
   'v6.0.3-beta.8-p7 completes beta.8 Paragraph UI simplification: Player Settings now exposes the already-implemented global Split / Full representation, TTS Only bypass, and explicit Workspace EN/ID local playback order; Card headers show compact Ready/Missing state, Card Audio keeps quick Generate Missing plus Advanced regeneration while scope exports are centralized in Bulk Audio, Bulk labels are phase-neutral Generate / Export, and duplicated legacy Split MP3/consolidated export controls are removed from the normal workflow without changing playback/generation/export domain contracts',
   'v6.0.3-beta.8-p6 adds Paragraph Bulk Export / Auto Export: Ready current-profile Split and Full binaries are selected from canonical IndexedDB Staging, Audio-Only supports human-readable direct files or ZIP, Portable ProLingo ZIP remains machine-reimportable with manifest + AUDIO_INDEX.csv, Preferred / Selected / All-selected voice policies and Split / Full / Both do not mutate playback order, physical identities are exported once even when shared by many logical consumers, stale text/profile artifacts fail closed, and Auto Export remains OFF by default and waits for durable Staging reconciliation',
   'v6.0.3-beta.8-p5 adds Paragraph-first Bulk Multi-Voice generation: one or many EN/ID voices can generate Split, Full, or Both into IndexedDB Staging; Generate Missing reuses exact physical RF/Full identities without unnecessary TTS, optional Missing + Stale refresh is separate, Shared RF and identical Full physical identities fan out across logical consumers, generation selection stays independent from playback priority, and telemetry separates logical requirements from unique/generated/reused physical binaries; Auto Export remains out of P5',
