@@ -1589,7 +1589,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return updates.size;
   }, [setTextLibrarySnapshot]);
 
-  const materializeStructuredTextExternalRfRequirementsBulk = useCallback(async (entries = [], deliveryStatus = 'external-rf-ready') => {
+  const materializeStructuredTextExternalRfRequirementsBulk = useCallback(async (entries = [], deliveryStatus = 'external-rf-ready', { deferSnapshot = false } = {}) => {
     const candidates = (Array.isArray(entries) ? entries : []).filter(entry => entry?.requirement?.segmentId && entry?.requirement?.channel && entry?.requirement?.renderFingerprint && entry?.requirement?.voiceId);
     if (!candidates.length) return new Map();
     const payloads = candidates.map(({ requirement, filename = null, mimeType = null }) => ({
@@ -1621,15 +1621,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const result = await executeTextAudioVariantBulkUpsert(payloads);
     const records = result?.audioVariants || [];
     if (records.length) {
-      setTextLibrarySnapshot(previous => {
-        if (!previous) return previous;
-        const updates = new Map(records.map(record => [record.id, record]));
-        const existing = Array.isArray(previous.audioVariants) ? previous.audioVariants : [];
-        const seen = new Set(existing.map(record => record.id));
-        const next = existing.map(record => updates.get(record.id) || record);
-        records.forEach(record => { if (!seen.has(record.id)) next.push(record); });
-        return { ...previous, counters: result.counters || previous.counters, audioVariants: next };
-      });
+      if (deferSnapshot) {
+        records.forEach(record => structuredTextAudioPendingVariantRef.current.set(record.id, record));
+        structuredTextAudioPendingCountersRef.current = result.counters || structuredTextAudioPendingCountersRef.current;
+      } else {
+        setTextLibrarySnapshot(previous => {
+          if (!previous) return previous;
+          const updates = new Map(records.map(record => [record.id, record]));
+          const existing = Array.isArray(previous.audioVariants) ? previous.audioVariants : [];
+          const seen = new Set(existing.map(record => record.id));
+          const next = existing.map(record => updates.get(record.id) || record);
+          records.forEach(record => { if (!seen.has(record.id)) next.push(record); });
+          return { ...previous, counters: result.counters || previous.counters, audioVariants: next };
+        });
+      }
     }
     const byRequirement = new Map();
     candidates.forEach((entry, index) => {
@@ -1647,7 +1652,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     runtimeEntry,
     filename = null,
     mimeType = null,
-    deliveryStatus = 'shared-rf-ready'
+    deliveryStatus = 'shared-rf-ready',
+    deferRuntimeState = false
   } = {}) => {
     const rf = String(renderFingerprint || '').toLowerCase();
     if (!rf || !textLibrarySnapshot || !runtimeEntry) return { materialized: 0 };
@@ -1659,7 +1665,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (!requirements.length) return { materialized: 0 };
 
     const entries = requirements.map(requirement => ({ requirement, filename: filename || runtimeEntry.filename || null, mimeType: mimeType || runtimeEntry.mimeType || null }));
-    const byRequirement = await materializeStructuredTextExternalRfRequirementsBulk(entries, deliveryStatus);
+    const byRequirement = await materializeStructuredTextExternalRfRequirementsBulk(entries, deliveryStatus, { deferSnapshot: deferRuntimeState });
     const runtimeUpdates = [];
     requirements.forEach(requirement => {
       const key = `${String(requirement.segmentId).toUpperCase()}|${String(requirement.channel).toLowerCase()}|${rf}`;
@@ -1667,24 +1673,27 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (variant) runtimeUpdates.push({ requirement, variant });
     });
     if (runtimeUpdates.length) {
-      setStructuredTextAudioRuntimeUrls(prev => {
-        const next = { ...prev };
-        runtimeUpdates.forEach(({ variant }) => {
-          next[variant.id] = {
-            ...runtimeEntry,
-            filename: filename || runtimeEntry.filename || variant.filename || null,
-            mimeType: mimeType || runtimeEntry.mimeType || variant.mimeType || null,
-            variantId: variant.id,
-            renderFingerprint: rf,
-            reusedPhysicalRender: true
-          };
-        });
-        return next;
+      const buildRuntime = variant => ({
+        ...runtimeEntry,
+        filename: filename || runtimeEntry.filename || variant.filename || null,
+        mimeType: mimeType || runtimeEntry.mimeType || variant.mimeType || null,
+        variantId: variant.id,
+        renderFingerprint: rf,
+        reusedPhysicalRender: true
       });
-      addLog('Text Audio', `Shared RF auto-linked ${runtimeUpdates.length} additional logical slot${runtimeUpdates.length === 1 ? '' : 's'} from one physical render.`);
+      if (deferRuntimeState) {
+        runtimeUpdates.forEach(({ variant }) => queueStructuredTextRuntimeEntry(variant.id, buildRuntime(variant), { immediate: false }));
+      } else {
+        setStructuredTextAudioRuntimeUrls(prev => {
+          const next = { ...prev };
+          runtimeUpdates.forEach(({ variant }) => { next[variant.id] = buildRuntime(variant); });
+          return next;
+        });
+      }
+      addLog('Text Audio', `Shared RF auto-linked ${runtimeUpdates.length} additional logical slot${runtimeUpdates.length === 1 ? '' : 's'} from one physical render${deferRuntimeState ? ' (deferred batch sync)' : ''}.`);
     }
     return { materialized: runtimeUpdates.length, variants: runtimeUpdates.map(item => item.variant) };
-  }, [textLibrarySnapshot, structuredTextDownloadResolutionPreferences, materializeStructuredTextExternalRfRequirementsBulk, addLog]);
+  }, [textLibrarySnapshot, structuredTextDownloadResolutionPreferences, materializeStructuredTextExternalRfRequirementsBulk, queueStructuredTextRuntimeEntry, addLog]);
 
   const applyStructuredTextAudioFolderFiles = useCallback(async (files, folderName = null, snapshotOverride = null) => {
     const sourceSnapshot = snapshotOverride || textLibrarySnapshot;
@@ -2133,7 +2142,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       structuredTextAudioPendingCountersRef.current = completed.counters || structuredTextAudioPendingCountersRef.current;
     }
 
-    if (!deferRuntimeState && generationVoiceState.renderFingerprint && runtimeEntry) {
+    if (generationVoiceState.renderFingerprint && runtimeEntry) {
       try {
         await fanOutStructuredTextSharedRfLogicalSlots({
           renderFingerprint: generationVoiceState.renderFingerprint,
@@ -2142,7 +2151,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           runtimeEntry,
           filename,
           mimeType: blob.type || null,
-          deliveryStatus: runtimeEntry.folderBacked ? 'folder-shared-rf-ready' : 'staging-shared-rf-ready'
+          deliveryStatus: runtimeEntry.folderBacked ? 'folder-shared-rf-ready' : 'staging-shared-rf-ready',
+          deferRuntimeState
         });
       } catch (error) {
         addLog('Warn', `Shared RF auto-link failed for ${segmentId}/${channel}: ${error?.message || error}`);
@@ -2310,6 +2320,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           variantId: variant.id
         }, { immediate: !options.batch });
       }
+      try {
+        const sharedRuntimeEntry = variant ? {
+          filename,
+          mimeType: reusableStaging.mimeType || variant.mimeType || null,
+          stagingBacked: true,
+          stagingId: reusableStaging.id,
+          renderFingerprint: render.renderFingerprint,
+          generated: true,
+          reusedPhysicalRender: true,
+          variantId: variant.id
+        } : null;
+        if (sharedRuntimeEntry) {
+          await fanOutStructuredTextSharedRfLogicalSlots({
+            renderFingerprint: render.renderFingerprint,
+            sourceSegmentId: segmentId,
+            sourceChannel: channel,
+            runtimeEntry: sharedRuntimeEntry,
+            filename,
+            mimeType: reusableStaging.mimeType || null,
+            deliveryStatus: 'staging-shared-rf-ready',
+            deferRuntimeState: Boolean(options.batch)
+          });
+        }
+      } catch (error) {
+        addLog('Warn', `Shared RF reuse fan-out failed for ${segmentId}/${channel}: ${error?.message || error}`);
+      }
       if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} reused existing RF ${String(render.renderFingerprint).slice(-12)}; TTS skipped.`);
       return {
         status: 'reused-rf',
@@ -2402,6 +2438,30 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           reusedPhysicalRender: true
         }, { immediate: !options.batch });
       }
+      try {
+        if (variant) {
+          await fanOutStructuredTextSharedRfLogicalSlots({
+            renderFingerprint: render.renderFingerprint,
+            sourceSegmentId: segmentId,
+            sourceChannel: channel,
+            runtimeEntry: {
+              ...reusableExternalRuntime,
+              filename,
+              mimeType: reusableExternalRuntime.mimeType || variant.mimeType || null,
+              variantId: variant.id,
+              renderFingerprint: render.renderFingerprint,
+              generated: true,
+              reusedPhysicalRender: true
+            },
+            filename,
+            mimeType: reusableExternalRuntime.mimeType || null,
+            deliveryStatus: `${externalOrigin}-shared-rf-ready`,
+            deferRuntimeState: Boolean(options.batch)
+          });
+        }
+      } catch (error) {
+        addLog('Warn', `Shared external RF fan-out failed for ${segmentId}/${channel}: ${error?.message || error}`);
+      }
       if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} reused ${externalOrigin.toUpperCase()} RF ${String(render.renderFingerprint).slice(-12)}; TTS skipped.`);
       return {
         status: 'reused-rf',
@@ -2459,7 +2519,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, registerStructuredTextGeneratedBlob, queueStructuredTextRuntimeEntry, setTextLibrarySnapshot, addLog]);
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, registerStructuredTextGeneratedBlob, queueStructuredTextRuntimeEntry, fanOutStructuredTextSharedRfLogicalSlots, setTextLibrarySnapshot, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
@@ -4110,20 +4170,45 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     if (runtime?.stagingBacked && runtime?.stagingId) {
-      await releaseAudioStagingBlobs([runtime.stagingId], { reason: 'text-manual-card-release' });
-      const stagedRecord = structuredTextAudioStagingRecordsRef.current.get(runtime.stagingId) || null;
+      const stagingId = runtime.stagingId;
+      const rf = String(runtime?.renderFingerprint || variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
+      const sharedRuntimeIds = Object.entries(structuredTextAudioRuntimeUrlsRef.current || {})
+        .filter(([, entry]) => entry?.stagingBacked && (
+          String(entry?.stagingId || '') === String(stagingId)
+          || (rf && String(entry?.renderFingerprint || '').toLowerCase() === rf)
+        ))
+        .map(([variantKey]) => String(variantKey || '').toUpperCase())
+        .filter(Boolean);
+      if (sharedRuntimeIds.length > 1 && typeof window !== 'undefined') {
+        const confirmed = window.confirm(`This staged RF is shared by ${sharedRuntimeIds.length} logical audio slot(s). Releasing the physical staged file will make every shared slot no longer Ready until Folder/ZIP reconnect or regeneration. Continue?`);
+        if (!confirmed) return { status: 'cancelled-shared-release', variantId: id, stagingId, sharedCount: sharedRuntimeIds.length };
+      }
+      await releaseAudioStagingBlobs([stagingId], { reason: 'text-manual-shared-rf-release' });
+      const stagedRecord = structuredTextAudioStagingRecordsRef.current.get(stagingId) || null;
       if (stagedRecord) forgetStructuredTextStagingRecord(stagedRecord);
-      // releaseAudioStagingBlobs already revokes only this exact staged ObjectURL.
-      // Do not clear the whole Text staging cache from a one-off Card action.
+      const affected = new Set(sharedRuntimeIds.length ? sharedRuntimeIds : [id]);
+      for (const [pendingId, entry] of [...structuredTextAudioPendingRuntimeRef.current.entries()]) {
+        if (affected.has(String(pendingId || '').toUpperCase())
+          || (entry?.stagingBacked && String(entry?.stagingId || '') === String(stagingId))
+          || (rf && entry?.stagingBacked && String(entry?.renderFingerprint || '').toLowerCase() === rf)) {
+          structuredTextAudioPendingRuntimeRef.current.delete(pendingId);
+        }
+      }
       setStructuredTextAudioRuntimeUrls(prev => {
-        const current = prev?.[id];
         const next = { ...prev };
-        if (current?.zipFallback?.zipBacked) next[id] = current.zipFallback;
-        else delete next[id];
+        Object.entries(prev || {}).forEach(([variantKey, entry]) => {
+          const samePhysical = entry?.stagingBacked && (
+            String(entry?.stagingId || '') === String(stagingId)
+            || (rf && String(entry?.renderFingerprint || '').toLowerCase() === rf)
+          );
+          if (!samePhysical) return;
+          if (entry?.zipFallback?.zipBacked) next[variantKey] = entry.zipFallback;
+          else delete next[variantKey];
+        });
         return next;
       });
-      addLog('Text Audio', `Released staged binary for ${id}. Core audio metadata/history remains.`);
-      return { status: 'released-staging', variantId: id, stagingId: runtime.stagingId };
+      addLog('Text Audio', `Released one shared staged RF for ${affected.size} logical slot${affected.size === 1 ? '' : 's'}. Core audio metadata/history remains; coverage is now metadata-only unless an external Folder/ZIP source still resolves it.`);
+      return { status: 'released-shared-staging', variantId: id, stagingId, sharedCount: affected.size, renderFingerprint: rf || null };
     }
 
     // Manually attached local runtime files remain removable. Generated history

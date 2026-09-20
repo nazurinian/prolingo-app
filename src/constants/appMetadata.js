@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.6';
+export const APP_VERSION = '6.0.3-beta.7';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA6-SHARED-RF-FOLDER-RESTORE-HOTFIX';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Shared RF + Folder Restore Hotfix';
-export const APP_RELEASE_NAME = 'Shared RF + Folder Restore Hotfix';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA7-SHARED-RF-CONSUMER-SYNC';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Shared RF Consumer Sync';
+export const APP_RELEASE_NAME = 'Shared RF Consumer Sync';
 export const APP_RELEASE_DATE = '2026-09-20';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: shared-RF hotfix auto-links matching logical Segment slots, bulk-reconciles Folder/ZIP RF matches in one IndexedDB transaction, and requires explicit Audio Folder reconnect after reload to avoid startup scan/materialization crashes.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Shared RF fan-out now works for Card/Bulk deferred generation as well as Segment generation, reused Staging/Folder/ZIP RFs fan out to every matching logical slot, and manual staged-RF Release synchronizes every consumer of that physical binary.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.7 fixes Shared RF logical-consumer synchronization: Card/Bulk deferred generation now auto-links all matching Segment/channel slots, Staging/Folder/ZIP reuse fans out consistently, and manually releasing one shared staged RF updates every logical consumer instead of leaving sibling slots falsely Ready',
   'v6.0.3-beta.6 fixes the reproducible Shared-RF/Audio-Folder refresh crash by removing automatic startup folder scans, bulk-reconciling RF matches in one IndexedDB transaction, auto-linking sibling logical slots after one physical render is generated, and reporting physical RF files separately from logical matches; full RF SHA-256 remains the internal identity',
   'v6.0.3-beta.5 fixes Folder/ZIP exact-RF reuse during generation, adds async playback session guards, confirms destructive Staging/ZIP clears, clarifies Workspace/Collection/Text Pack cleanup semantics, collapses Card Generate & Export workflow, and renames scope-level Batch Audio to Bulk Audio with Retry Failed wiring for structured runtime testing',
   'v6.0.3-beta.4 hardens the beta.3 Data/Audio foundation for runtime acceptance: DATA/TRANSFER shows explicit external-source change counts and conflict choices, Runtime & Storage Diagnostics exposes DB/RF/Folder/ZIP state plus safe reference-derived Staging GC/reconnect, and Card Audio is reorganized into Prepare Audio → Split Download → Full Derived Audio with Selected Sentence helpers',
