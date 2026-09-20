@@ -68,10 +68,11 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
           <FolderOpen className="w-3.5 h-3.5 text-indigo-500"/>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Audio Folder</p>
-            <p className="text-[8px] text-slate-400 truncate">{folder.name || 'No remembered folder'} • {folder.matchedCount || 0} matched{folder.aliasMatchedCount ? ` • ${folder.aliasMatchedCount} source-ID reconnected` : ''}{folder.legacyCount ? ` • ${folder.legacyCount} legacy unresolved` : ''}</p>
+            <p className="text-[8px] text-slate-400 truncate">{folder.name || 'No remembered folder'}{reconnect ? ' • remembered; reconnect to scan' : ` • ${folder.physicalRfCount || 0} RF file${Number(folder.physicalRfCount || 0) === 1 ? '' : 's'} → ${folder.matchedCount || 0} logical slot${Number(folder.matchedCount || 0) === 1 ? '' : 's'}`}{folder.aliasMatchedCount ? ` • ${folder.aliasMatchedCount} source-ID reconnected` : ''}{folder.legacyCount ? ` • ${folder.legacyCount} legacy unresolved` : ''}</p>
           </div>
           <button type="button" disabled={disabled} onClick={reconnect ? audioLibrary.onReconnectFolder : audioLibrary.onChooseFolder} className="min-h-10 px-2.5 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300 disabled:opacity-40">{reconnect ? 'Reconnect' : (folder.name ? 'Change' : 'Choose')}</button>
         </div>
+        <p className="text-[8px] leading-relaxed text-slate-400">One physical RF file can satisfy multiple logical Segment slots when text + channel + voice + rate + pitch match exactly. After a browser reload, Text requires an explicit Reconnect before scanning the remembered Folder.</p>
       </div>
 
       <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2.5 space-y-2">

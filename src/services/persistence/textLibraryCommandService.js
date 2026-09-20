@@ -176,3 +176,100 @@ export const executeTextAudioVariantUpsert = async payload => {
     db.close();
   }
 };
+
+
+// v6.0.3-beta.6: RF reconciliation can fan one physical render out to many
+// logical Segment/channel slots. Persist those logical AudioVariants in one
+// IndexedDB transaction instead of opening one transaction per match.
+export const executeTextAudioVariantBulkUpsert = async payloadsCandidate => {
+  const payloads = (Array.isArray(payloadsCandidate) ? payloadsCandidate : []).filter(payload => payload?.segmentId && payload?.channel);
+  if (!payloads.length) return { audioVariants: [], counters: null, created: 0, updated: 0 };
+
+  const db = await openTextLibraryDatabase();
+  try {
+    const tx = db.transaction([
+      TEXT_LIBRARY_STORES.META,
+      TEXT_LIBRARY_STORES.DOCUMENTS,
+      TEXT_LIBRARY_STORES.SEGMENTS,
+      TEXT_LIBRARY_STORES.AUDIO_VARIANTS
+    ], 'readwrite');
+    const done = transactionDone(tx);
+    const segmentStore = tx.objectStore(TEXT_LIBRARY_STORES.SEGMENTS);
+    const documentStore = tx.objectStore(TEXT_LIBRARY_STORES.DOCUMENTS);
+    const audioStore = tx.objectStore(TEXT_LIBRARY_STORES.AUDIO_VARIANTS);
+    const metaStore = tx.objectStore(TEXT_LIBRARY_STORES.META);
+    const [segments, documents, existingVariants, countersRecord] = await Promise.all([
+      requestToPromise(segmentStore.getAll()),
+      requestToPromise(documentStore.getAll()),
+      requestToPromise(audioStore.getAll()),
+      requestToPromise(metaStore.get(TEXT_LIBRARY_META_KEYS.ID_COUNTERS))
+    ]);
+
+    const segmentsById = new Map((segments || []).map(record => [String(record?.id || '').toUpperCase(), record]));
+    const documentsById = new Map((documents || []).map(record => [String(record?.id || '').toUpperCase(), record]));
+    const variantsByIdentity = new Map((existingVariants || []).map(record => [getTextStructuredAudioVariantKey(record), record]));
+    let counters = normalizeTextIdCounters(countersRecord?.value);
+    let created = 0;
+    let updated = 0;
+    const records = [];
+    const now = Date.now();
+
+    for (const payload of payloads) {
+      const segmentId = String(payload.segmentId || '').toUpperCase();
+      const channel = String(payload.channel || 'text').toLowerCase();
+      const segment = segmentsById.get(segmentId);
+      if (!segment) throw new Error(`Unknown Text segment: ${segmentId}`);
+      const document = documentsById.get(String(segment.documentId || '').toUpperCase());
+      if (!document || document.editorModel !== TEXT_STRUCTURED_EDITOR_MODEL) {
+        throw new Error(`Text audio requires a structured Document: ${segment.documentId}`);
+      }
+
+      const identity = {
+        segmentId,
+        channel,
+        engine: payload.engine || 'local',
+        source: payload.source || 'file',
+        voiceId: payload.voiceId ?? null
+      };
+      const identityKey = getTextStructuredAudioVariantKey(identity);
+      const existing = variantsByIdentity.get(identityKey) || null;
+      let record;
+      if (existing) {
+        record = createTextAudioVariantRecord({
+          ...existing,
+          uid: existing.uid || createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT),
+          ...identity,
+          language: payload.language === undefined ? existing.language : payload.language,
+          filename: payload.filename === undefined ? existing.filename : payload.filename,
+          mimeType: payload.mimeType === undefined ? existing.mimeType : payload.mimeType,
+          updatedAt: now,
+          metadata: payload.metadata === undefined ? existing.metadata : payload.metadata
+        });
+        updated += 1;
+      } else {
+        counters = { ...counters, audioVariant: Number(counters.audioVariant || 0) + 1 };
+        record = createTextAudioVariantRecord({
+          id: formatTextLibraryId('AUDIO_VARIANT', counters.audioVariant),
+          uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT),
+          ...identity,
+          language: payload.language,
+          filename: payload.filename,
+          mimeType: payload.mimeType,
+          createdAt: now,
+          updatedAt: now,
+          metadata: payload.metadata
+        });
+        created += 1;
+      }
+      variantsByIdentity.set(identityKey, record);
+      audioStore.put(record);
+      records.push(record);
+    }
+
+    putMeta(metaStore, TEXT_LIBRARY_META_KEYS.ID_COUNTERS, counters, now);
+    await done;
+    return { audioVariants: records, counters, created, updated };
+  } finally {
+    db.close();
+  }
+};
