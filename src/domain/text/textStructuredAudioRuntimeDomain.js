@@ -5,6 +5,7 @@ import {
 } from './textStructuredAudioIdentityDomain.js';
 import { resolveTextStructuredEffectiveVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
 import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
+import { doesTextStructuredVariantMatchPlaybackProfile, resolveTextStructuredEffectivePlaybackOrder } from './textStructuredAudioPlaybackOrderDomain.js';
 
 const clean = value => String(value ?? '').trim();
 
@@ -99,6 +100,8 @@ export const resolveTextStructuredRuntimeAudio = ({
   requestedVoiceId,
   preferredGeneratedVoiceId = null,
   preferredGeneratedEngine = null,
+  preferredGeneratedProfiles = [],
+  strictProfileOrder = false,
   allowAnyGenerated = false,
   content = ''
 }) => {
@@ -109,16 +112,44 @@ export const resolveTextStructuredRuntimeAudio = ({
     content
   });
   const requested = clean(requestedVoiceId) || null;
-  // C3.4: Browser TTS voice and generated Edge Download voice are independent.
-  // Manual local files may still bind to the playback voice, while generated
-  // files are resolved by their canonical provider/download voice identity.
-  let variant = requested ? resolveTextStructuredAudioVariant({
+  const orderedProfiles = Array.isArray(preferredGeneratedProfiles) ? preferredGeneratedProfiles : [];
+  let orderedProfileRank = null;
+  let orderedPlaybackProfile = null;
+  let variant = null;
+
+  // beta.8/P1: ordered local playback is independent from generation selection.
+  // Try the Workspace/Card ordered profiles first. Only a READY runtime-backed,
+  // content-compatible variant can win. Rate/pitch are enforced when the order
+  // profile pins them; otherwise voice+engine order is sufficient.
+  for (let index = 0; index < orderedProfiles.length && !variant; index += 1) {
+    const profile = orderedProfiles[index];
+    const candidate = runtimeVariants
+      .filter(item => String(item?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
+      .filter(item => String(item?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
+      .filter(item => doesTextStructuredVariantMatchPlaybackProfile({ variant: item, profile }))
+      .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))[0] || null;
+    if (candidate) {
+      variant = candidate;
+      orderedProfileRank = index + 1;
+      orderedPlaybackProfile = profile;
+    }
+  }
+
+  // An explicit Workspace/Card order is fail-closed: an unlisted generated
+  // voice must not silently outrank the configured order. Browser TTS remains
+  // the caller's final fallback when none of the ordered local profiles is ready.
+  if (!variant && strictProfileOrder && orderedProfiles.length) return null;
+
+  // Legacy/manual compatibility path used when no explicit ordered profile wins.
+  // Manual local files may still bind to the Browser playback voice, while
+  // generated files use their canonical provider/download identity.
+  if (!variant && requested) variant = resolveTextStructuredAudioVariant({
     audioVariants: runtimeVariants,
     segmentId,
     channel,
     preferredSource: 'file',
     preferredVoiceId: requested
-  }) : null;
+  });
 
   if (!variant && clean(preferredGeneratedVoiceId)) {
     variant = resolveGeneratedVariantByVoice({
@@ -162,7 +193,9 @@ export const resolveTextStructuredRuntimeAudio = ({
     runtime,
     filename: runtime.filename || variant.filename || null,
     mimeType: runtime.mimeType || variant.mimeType || null,
-    contentVerified: compatibility.verified
+    contentVerified: compatibility.verified,
+    playbackProfileRank: orderedProfileRank,
+    playbackProfile: orderedPlaybackProfile
   };
 };
 
@@ -205,6 +238,17 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
           : effective.voiceName;
         const content = channel === 'meaning' ? segment?.meaning : segment?.text;
         const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel, preferences: downloadPreferences });
+        const playbackOrder = resolveTextStructuredEffectivePlaybackOrder({
+          documentTree,
+          block,
+          channel,
+          fallbackProfiles: [{
+            engine: preferredGeneratedEngine || 'edge',
+            voiceId: downloadVoice.voiceId,
+            rate: downloadPreferences?.edgeRate,
+            pitch: downloadPreferences?.edgePitch
+          }]
+        });
         const metadataVariant = resolveGeneratedMetadataByVoice({
           audioVariants,
           segmentId: segment.id,
@@ -226,6 +270,8 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
           requestedVoiceId,
           preferredGeneratedVoiceId: downloadVoice.voiceId,
           preferredGeneratedEngine,
+          preferredGeneratedProfiles: playbackOrder.profiles,
+          strictProfileOrder: playbackOrder.explicit,
           content
         });
         const compatibility = metadataVariant
@@ -241,6 +287,9 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
               requestedVoiceId,
               downloadVoiceId: downloadVoice.voiceId,
               downloadVoiceSource: downloadVoice.source,
+              playbackOrderSource: playbackOrder.source,
+              playbackProfileRank: resolved.playbackProfileRank,
+              playbackProfileVoiceId: resolved.playbackProfile?.voiceId || resolved.variant.voiceId || null,
               variantId: resolved.variant.id,
               voiceId: resolved.variant.voiceId,
               engine: resolved.variant.engine,

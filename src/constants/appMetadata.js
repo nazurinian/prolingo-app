@@ -1,15 +1,17 @@
-export const APP_VERSION = '6.0.3-beta.7';
+export const APP_VERSION = '6.0.3-beta.8-p2';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA7-SHARED-RF-CONSUMER-SYNC';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 • Shared RF Consumer Sync';
-export const APP_RELEASE_NAME = 'Shared RF Consumer Sync';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P2-SPLIT-FULL-DOMAIN';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P2 • Split/Full Domain';
+export const APP_RELEASE_NAME = 'beta.8 P2 Split/Full Domain';
 export const APP_RELEASE_DATE = '2026-09-20';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Shared RF fan-out now works for Card/Bulk deferred generation as well as Segment generation, reused Staging/Folder/ZIP RFs fan out to every matching logical slot, and manual staged-RF Release synchronizes every consumer of that physical binary.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: beta.8 P2 adds deterministic derived Full Text, independent Full Audio Artifact identity/readiness, parallel Split/Full coverage, and additive Full Artifact metadata while preserving P1 ordered multi-audio and beta.7 Shared RF sync.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'v6.0.3-beta.8-p2 adds the frozen Split/Full domain: ordered canonical Segments deterministically derive Full EN/ID text, Full Audio uses an independent profile-aware full-sha256 artifact identity stored additively on Card metadata, Split and Full readiness are modeled independently, partial Split coverage remains valid, Segment content changes make old Full artifacts stale automatically, and deleting Split audio never deletes Full artifacts (or vice versa); Text DB remains v1',
+  'v6.0.3-beta.8-p1 starts the frozen beta.8 contract with an additive Ordered Multi-Audio domain: Workspace playback profile order, Advanced Card override inheritance, first-READY local resolution with next-profile promotion, optional Workspace TTS-only policy, and strict separation between generation/download voice selection and playback priority; beta.7 Shared RF consumer sync remains intact and Text DB schema stays v1',
   'v6.0.3-beta.7 fixes Shared RF logical-consumer synchronization: Card/Bulk deferred generation now auto-links all matching Segment/channel slots, Staging/Folder/ZIP reuse fans out consistently, and manually releasing one shared staged RF updates every logical consumer instead of leaving sibling slots falsely Ready',
   'v6.0.3-beta.6 fixes the reproducible Shared-RF/Audio-Folder refresh crash by removing automatic startup folder scans, bulk-reconciling RF matches in one IndexedDB transaction, auto-linking sibling logical slots after one physical render is generated, and reporting physical RF files separately from logical matches; full RF SHA-256 remains the internal identity',
   'v6.0.3-beta.5 fixes Folder/ZIP exact-RF reuse during generation, adds async playback session guards, confirms destructive Staging/ZIP clears, clarifies Workspace/Collection/Text Pack cleanup semantics, collapses Card Generate & Export workflow, and renames scope-level Batch Audio to Bulk Audio with Retry Failed wiring for structured runtime testing',

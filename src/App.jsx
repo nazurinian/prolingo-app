@@ -110,6 +110,7 @@ import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStat
 import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
 import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCoverage, shouldDownloadTextStructuredCoverageSlot } from './domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredAudioDownloadProfileMetadata, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
+import { buildTextStructuredAudioPlaybackOrderMetadata, getTextStructuredAudioPlaybackOrder, resolveTextStructuredEffectivePlaybackOrder, resolveTextStructuredEffectiveTtsOnly } from './domain/text/textStructuredAudioPlaybackOrderDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
 import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, buildTextStructuredUpsertSpeakerRegistryMetadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
@@ -766,6 +767,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   );
   const structuredTextAudioSyncProfile = useMemo(
     () => getTextStructuredAudioSyncProfile(activeTextDocumentTree),
+    [activeTextDocumentTree?.metadata]
+  );
+  const structuredTextAudioPlaybackOrder = useMemo(
+    () => getTextStructuredAudioPlaybackOrder(activeTextDocumentTree),
     [activeTextDocumentTree?.metadata]
   );
   const structuredTextConversationSpeakers = useMemo(
@@ -2710,16 +2715,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const targetVoiceId = voiceState.requestedVoiceId;
     const playbackSessionId = playbackSessionRef.current;
     const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
+    const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
+    const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
+    const effectiveTtsOnly = resolveTextStructuredEffectiveTtsOnly({
+      documentTree: activeTextDocumentTree,
+      block,
+      globalTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
+    });
 
-    if (textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY) {
-      const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
-      const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
+    if (!effectiveTtsOnly.enabled) {
       const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
         documentTree: activeTextDocumentTree,
         block,
         segment,
         channel,
         preferences: structuredTextDownloadResolutionPreferences
+      });
+      const playbackOrder = resolveTextStructuredEffectivePlaybackOrder({
+        documentTree: activeTextDocumentTree,
+        block,
+        channel,
+        fallbackProfiles: [{
+          engine: 'edge',
+          voiceId: generatedVoice.voiceId,
+          rate: structuredTextAudioGenerationPreferences.edgeRate,
+          pitch: structuredTextAudioGenerationPreferences.edgePitch
+        }]
       });
       const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
       const syncLocalToFirstSpeaker = activeTextDocumentTree?.documentType === 'conversation'
@@ -2745,7 +2766,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         requestedVoiceId: customLocalVoiceId || targetVoiceId,
         preferredGeneratedVoiceId: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL ? customLocalVoiceId : generatedVoice.voiceId,
         preferredGeneratedEngine: 'edge',
-        allowAnyGenerated: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+        preferredGeneratedProfiles: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL ? [] : playbackOrder.profiles,
+        strictProfileOrder: textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL && playbackOrder.explicit,
+        allowAnyGenerated: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST && !playbackOrder.explicit,
         content: textToRead
       }) : null;
       if (runtimeAudio) {
@@ -3511,6 +3534,51 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (result) addLog('Text Download', `Workspace • ${channel} preset → ${mode || 'default'}.`);
     return result;
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentPlaybackOrderChange = useCallback(async (profiles, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredAudioPlaybackOrderMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      channel,
+      profiles
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio Order', `Workspace • ${channel} → ${(Array.isArray(profiles) ? profiles : []).map(item => typeof item === 'string' ? item : item?.voiceId).filter(Boolean).join(' > ') || 'compatibility fallback'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextDocumentTtsOnlyChange = useCallback(async (enabled) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    forceStopAll();
+    const metadata = buildTextStructuredAudioPlaybackOrderMetadata({
+      metadata: activeTextDocumentTree.metadata,
+      ttsOnly: Boolean(enabled)
+    });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+      payload: { id: activeTextDocumentTree.id, metadata }
+    });
+    if (result) addLog('Text Audio Order', `Workspace TTS Only → ${enabled ? 'ON' : 'OFF'}.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextCardPlaybackOrderChange = useCallback(async (blockId, profiles, channel = 'text') => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1' || !blockId) return null;
+    const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
+    if (!block) return null;
+    forceStopAll();
+    const metadata = buildTextStructuredAudioPlaybackOrderMetadata({ metadata: block.metadata, channel, profiles });
+    const result = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
+      payload: { id: blockId, metadata }
+    });
+    if (result) addLog('Text Audio Order', `Card ${blockId} • ${channel} custom order updated.`);
+    return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextSpeakerVoiceChange = useCallback(async (speakerLike, voiceName, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -5555,6 +5623,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGenerationPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
     onDocumentDownloadVoiceChange: handleStructuredTextDocumentDownloadVoiceChange,
     onDocumentDownloadModeChange: handleStructuredTextDocumentDownloadModeChange,
+    playbackOrder: structuredTextAudioPlaybackOrder,
+    onDocumentPlaybackOrderChange: handleStructuredTextDocumentPlaybackOrderChange,
+    onDocumentTtsOnlyChange: handleStructuredTextDocumentTtsOnlyChange,
+    onCardPlaybackOrderChange: handleStructuredTextCardPlaybackOrderChange,
     onSpeakerDownloadVoiceChange: handleStructuredTextSpeakerDownloadVoiceChange,
     edgeHealth: structuredTextEdgeHealth,
     onEdgeHealthCheck: handleStructuredTextEdgeHealthCheck,
@@ -5649,6 +5721,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onDocumentVoiceChange={handleStructuredTextDocumentVoiceChange}
         onDocumentDownloadVoiceChange={handleStructuredTextDocumentDownloadVoiceChange}
         onDocumentDownloadModeChange={handleStructuredTextDocumentDownloadModeChange}
+        playbackOrder={structuredTextAudioPlaybackOrder}
+        onDocumentPlaybackOrderChange={handleStructuredTextDocumentPlaybackOrderChange}
+        onDocumentTtsOnlyChange={handleStructuredTextDocumentTtsOnlyChange}
+        onCardPlaybackOrderChange={handleStructuredTextCardPlaybackOrderChange}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}

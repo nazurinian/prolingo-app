@@ -28,6 +28,10 @@ import {
   deriveTextStructuredSpeakerId,
   getTextStructuredSegmentSpeakerId
 } from './textStructuredSpeakerIdentityDomain.js';
+import {
+  buildTextStructuredFullAudioArtifactsMetadata,
+  normalizeTextStructuredFullArtifactRecord
+} from './textStructuredSplitFullDomain.js';
 
 const COMMAND_TYPES = Object.freeze({
   CREATE_COLLECTION: 'collection.create',
@@ -50,7 +54,9 @@ const COMMAND_TYPES = Object.freeze({
   SPLIT_PARAGRAPH_SEGMENT: 'paragraphSegment.split',
   MERGE_PARAGRAPH_SEGMENTS: 'paragraphSegments.merge',
   UPSERT_AUDIO_VARIANT: 'audioVariant.upsert',
-  DELETE_AUDIO_VARIANT: 'audioVariant.delete'
+  DELETE_AUDIO_VARIANT: 'audioVariant.delete',
+  UPSERT_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.upsert',
+  DELETE_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.delete'
 });
 
 export const TEXT_LIBRARY_COMMAND_TYPES = COMMAND_TYPES;
@@ -754,6 +760,56 @@ const deleteAudioVariant = (snapshot, payload) => {
   }, { entity: 'audioVariant', action: 'delete', id: current.id, segmentId: current.segmentId });
 };
 
+
+const upsertFullAudioArtifact = (snapshot, payload, now) => {
+  const block = requireBlock(snapshot, payload?.blockId);
+  requireStructuredDocument(snapshot, block.documentId);
+  const artifact = normalizeTextStructuredFullArtifactRecord(payload?.artifact);
+  if (!artifact) throw new Error('Full Audio Artifact upsert requires a valid artifact record.');
+  const normalizedArtifact = {
+    ...artifact,
+    createdAt: artifact.createdAt || now,
+    updatedAt: now
+  };
+  const nextMetadata = buildTextStructuredFullAudioArtifactsMetadata({
+    metadata: block.metadata,
+    artifact: normalizedArtifact
+  });
+  return finalize({
+    ...snapshot,
+    blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, metadata: nextMetadata, updatedAt: now } : item),
+    documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, updatedAt: now } : item)
+  }, {
+    entity: 'fullAudioArtifact',
+    action: 'upsert',
+    id: normalizedArtifact.fullArtifactFingerprint,
+    blockId: block.id,
+    documentId: block.documentId
+  });
+};
+
+const deleteFullAudioArtifact = (snapshot, payload, now) => {
+  const block = requireBlock(snapshot, payload?.blockId);
+  requireStructuredDocument(snapshot, block.documentId);
+  const fingerprint = String(payload?.fullArtifactFingerprint || payload?.id || '').trim();
+  if (!fingerprint) throw new Error('Full Audio Artifact delete requires a fingerprint.');
+  const nextMetadata = buildTextStructuredFullAudioArtifactsMetadata({
+    metadata: block.metadata,
+    removeFingerprint: fingerprint
+  });
+  return finalize({
+    ...snapshot,
+    blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, metadata: nextMetadata, updatedAt: now } : item),
+    documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, updatedAt: now } : item)
+  }, {
+    entity: 'fullAudioArtifact',
+    action: 'delete',
+    id: fingerprint,
+    blockId: block.id,
+    documentId: block.documentId
+  });
+};
+
 export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.now()) => {
   const snapshot = normalizeTextLibraryRuntimeSnapshot(snapshotCandidate);
   const type = command?.type;
@@ -780,6 +836,8 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.MERGE_PARAGRAPH_SEGMENTS: return mergeParagraphSegments(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_AUDIO_VARIANT: return upsertAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_AUDIO_VARIANT: return deleteAudioVariant(snapshot, payload, now);
+    case COMMAND_TYPES.UPSERT_FULL_AUDIO_ARTIFACT: return upsertFullAudioArtifact(snapshot, payload, now);
+    case COMMAND_TYPES.DELETE_FULL_AUDIO_ARTIFACT: return deleteFullAudioArtifact(snapshot, payload, now);
     default: throw new Error(`Unknown Text Library command: ${type || '(missing)'}`);
   }
 };
