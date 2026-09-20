@@ -104,6 +104,9 @@ const StructuredPlayerCard = ({
   displayMode,
   playbackChannelMode,
   playbackPreferences = {},
+  playbackOrder = null,
+  availableLocalVoices = null,
+  onCardPlaybackOrderChange,
   onPlayCard,
   onPlaySegment,
   onStartFromSegment,
@@ -215,7 +218,7 @@ const StructuredPlayerCard = ({
             <span className={`hidden sm:inline-flex text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300' : 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'}`}>{block.blockType === 'conversation' ? 'CONVERSATION' : paragraphRoleLabel?.toUpperCase()}</span>
             {isActiveCard && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 shrink-0">ACTIVE</span>}
           </div>
-          <p className="mt-0.5 text-[8px] text-slate-400">{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'} • Audio {cardCoverage.covered}/{cardCoverage.total}{cardCoverage.needDownload ? ` • ${cardCoverage.needDownload} need download` : ' • ready'}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[8px] text-slate-400" data-text-card-compact-readiness="true"><span>{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'}</span><span>•</span><span className="rounded bg-emerald-100 dark:bg-emerald-950/30 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {cardCoverage.covered}/{cardCoverage.total}</span>{cardCoverage.needDownload ? <span className="rounded bg-amber-100 dark:bg-amber-950/30 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {cardCoverage.needDownload}</span> : <span className="rounded bg-emerald-100 dark:bg-emerald-950/30 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">COMPLETE</span>}</div>
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
@@ -338,6 +341,8 @@ const StructuredPlayerCard = ({
       defaultMeaningVoiceName={defaultMeaningVoiceName}
       generationPreferences={generationPreferences}
       edgeGenerationVoices={edgeGenerationVoices}
+      playbackOrder={playbackOrder}
+      availableLocalVoices={availableLocalVoices}
       cardCoverage={cardCoverage}
       audioCoverageMap={audioCoverageMap}
       generationRunning={generationBusy}
@@ -353,6 +358,7 @@ const StructuredPlayerCard = ({
       onGenerateCardAudio={onGenerateCardAudio}
       onGenerateSpeakerAudio={onGenerateSpeakerAudio}
       onCancelGeneration={onCancelGeneration}
+      onCardPlaybackOrderChange={onCardPlaybackOrderChange}
       onExportSegmentAudio={onExportSegmentAudio}
       onExportCardZip={onExportCardZip}
       onExportFullCardAudio={onExportFullCardAudio}
@@ -370,9 +376,16 @@ export const TextStructuredPlayer = ({
   playingIndex,
   displayMode,
   playbackChannelMode,
+  playbackRepresentationMode,
   playbackPreferences = {},
+  playbackOrder = null,
+  availableLocalVoices = null,
   onDisplayModeChange,
   onPlaybackChannelModeChange,
+  onPlaybackRepresentationModeChange,
+  onDocumentPlaybackOrderChange,
+  onDocumentTtsOnlyChange,
+  onCardPlaybackOrderChange,
   onPlaybackFeelChange,
   onPlayDocument,
   onPlayCard,
@@ -456,7 +469,7 @@ export const TextStructuredPlayer = ({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">{documentModeLabel} • Player settings via bottom bar</p>
-            <p className="text-[8px] text-slate-400 truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'} • Audio {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}{documentCoverage?.needDownload ? ` • ${documentCoverage.needDownload} need` : ''}</p>
+            <div className="flex min-w-0 flex-wrap items-center gap-1 text-[8px] text-slate-400" data-text-workspace-compact-readiness="true"><span className="truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'}</span><span className="rounded bg-emerald-100 dark:bg-emerald-950/30 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}</span>{documentCoverage?.needDownload ? <span className="rounded bg-amber-100 dark:bg-amber-950/30 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {documentCoverage.needDownload}</span> : null}</div>
           </div>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Workspace"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
         </div>
@@ -473,9 +486,15 @@ export const TextStructuredPlayer = ({
                 <TextStructuredPlaybackControls
                   documentTree={documentTree}
                   preferences={playbackPreferences}
+                  playbackRepresentationMode={playbackRepresentationMode}
+                  playbackOrder={playbackOrder}
+                  availableLocalVoices={availableLocalVoices}
                   disabled={controlsBusy}
                   onDisplayModeChange={onDisplayModeChange}
                   onPlaybackChannelModeChange={onPlaybackChannelModeChange}
+                  onPlaybackRepresentationModeChange={onPlaybackRepresentationModeChange}
+                  onDocumentPlaybackOrderChange={onDocumentPlaybackOrderChange}
+                  onDocumentTtsOnlyChange={onDocumentTtsOnlyChange}
                   onPlaybackFeelChange={onPlaybackFeelChange}
                 />
               </div>
@@ -498,6 +517,9 @@ export const TextStructuredPlayer = ({
           displayMode={displayMode}
           playbackChannelMode={playbackChannelMode}
           playbackPreferences={playbackPreferences}
+          playbackOrder={playbackOrder}
+          availableLocalVoices={availableLocalVoices}
+          onCardPlaybackOrderChange={onCardPlaybackOrderChange}
           onPlayCard={onPlayCard}
           onPlaySegment={onPlaySegment}
           onStartFromSegment={onStartFromSegment}

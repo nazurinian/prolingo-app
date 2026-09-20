@@ -36,29 +36,53 @@ export const TextBatchPopup = ({
   inline = false,
   showClose = true
 }) => {
-  const [directMp3ConfirmOpen, setDirectMp3ConfirmOpen] = React.useState(false);
-  const [consolidatedZipConfirmOpen, setConsolidatedZipConfirmOpen] = React.useState(false);
-  const [partialZipConfirmOpen, setPartialZipConfirmOpen] = React.useState(false);
+  const [bulkExportConfirmFormat, setBulkExportConfirmFormat] = React.useState(null);
   const liveTelemetry = React.useSyncExternalStore(
     subscribeTextStructuredBatchTelemetry,
     getTextStructuredBatchTelemetrySnapshot,
     getTextStructuredBatchTelemetrySnapshot
   );
-  const coverage = structuredTextBatch?.coverage || {};
+  const generationCoverage = structuredTextBatch?.generationCoverage || structuredTextBatch?.coverage || {};
+  const exportCoverage = structuredTextBatch?.exportCoverage || {};
+  const exportFormat = structuredTextBatch?.preferences?.bulkExportFormat || 'portable-zip';
+  const exportVoicePolicy = structuredTextBatch?.preferences?.bulkExportVoicePolicy || 'all-selected';
+  const exportRepresentation = structuredTextBatch?.preferences?.bulkExportRepresentation || 'split';
   const textScope = structuredTextBatch?.scope || { scopeMode: 'workspace', cardId: null };
   const scopeMode = textScope?.scopeMode || 'workspace';
-  const textVoiceSummary = (structuredTextBatch?.voicesResolved || []).map(compactVoiceLabel);
+  const bulkTextVoiceIds = structuredTextBatch?.preferences?.bulkTextVoiceIds || [];
+  const bulkMeaningVoiceIds = structuredTextBatch?.preferences?.bulkMeaningVoiceIds || [];
+  const bulkTextVoiceSummary = (structuredTextBatch?.bulkTextVoicesResolved || bulkTextVoiceIds).map(compactVoiceLabel);
+  const bulkMeaningVoiceSummary = (structuredTextBatch?.bulkMeaningVoicesResolved || bulkMeaningVoiceIds).map(compactVoiceLabel);
+  const englishBulkVoices = (structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-'));
+  const meaningBulkVoices = (structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || '')));
   const textSpeakerSummary = structuredTextBatch?.speakersResolved || [];
   const cardOptions = structuredTextBatch?.cardOptions || [];
   const workspaceOptions = structuredTextBatch?.workspaceOptions || structuredTextBatch?.documentOptions || [];
   const selectedWorkspaceIds = textScope?.selectedDocumentIds || [];
   const resolvedWorkspaces = structuredTextBatch?.workspacesResolved || structuredTextBatch?.documentsResolved || [];
   const running = Boolean(structuredTextBatch?.running);
-  const directMp3Limit = Number(structuredTextBatch?.directMp3Limit || 10);
   const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && workspaceOptions.some(workspace => workspace.collectionId === structuredTextBatch.activeCollectionId);
   const selectedCard = cardOptions.find(card => card.id === textScope?.cardId) || cardOptions[0] || null;
   const failedJobs = structuredTextBatch?.generationState?.failedJobs || [];
 
+  const toggleBulkVoice = (key, voiceId) => {
+    const current = Array.isArray(structuredTextBatch?.preferences?.[key]) ? structuredTextBatch.preferences[key] : [];
+    const exists = current.includes(voiceId);
+    if (exists && current.length <= 1) return;
+    const next = exists ? current.filter(id => id !== voiceId) : [...current, voiceId];
+    structuredTextBatch?.onPreferencesChange?.({ [key]: next });
+  };
+  const toggleBulkRepresentation = key => {
+    const split = structuredTextBatch?.preferences?.bulkGenerateSplit !== false;
+    const full = structuredTextBatch?.preferences?.bulkGenerateFull === true;
+    if (key === 'bulkGenerateSplit') {
+      if (split && !full) return;
+      structuredTextBatch?.onPreferencesChange?.({ bulkGenerateSplit: !split });
+      return;
+    }
+    if (full && !split) return;
+    structuredTextBatch?.onPreferencesChange?.({ bulkGenerateFull: !full });
+  };
   const setScopeMode = nextMode => structuredTextBatch?.onScopeChange?.({ scopeMode: nextMode });
   const selectCard = cardId => structuredTextBatch?.onScopeChange?.({ scopeMode: 'card', cardId });
   const toggleSelectedWorkspace = workspaceId => {
@@ -74,8 +98,8 @@ export const TextBatchPopup = ({
       : scopeMode === 'collection'
         ? `${structuredTextBatch?.activeCollectionTitle || 'Book Collection'} • ${resolvedWorkspaces.length} Workspace${resolvedWorkspaces.length === 1 ? '' : 's'}`
         : scopeMode === 'selected'
-          ? `${resolvedWorkspaces.length} selected Workspace${resolvedWorkspaces.length === 1 ? '' : 's'} • ${coverage?.total || 0} audio slots`
-          : `All Book Collections + Unfiled • ${resolvedWorkspaces.length} Workspaces • ${coverage?.total || 0} audio slots`;
+          ? `${resolvedWorkspaces.length} selected Workspace${resolvedWorkspaces.length === 1 ? '' : 's'} • ${generationCoverage?.logicalRequirements || generationCoverage?.total || 0} generation requirements`
+          : `All Book Collections + Unfiled • ${resolvedWorkspaces.length} Workspaces • ${generationCoverage?.logicalRequirements || generationCoverage?.total || 0} generation requirements`;
   const panelClass = inline
     ? 'w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col animate-in fade-in duration-150'
     : 'absolute top-full left-0 mt-2 w-72 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl z-[100] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200';
@@ -132,46 +156,75 @@ export const TextBatchPopup = ({
           </div>
         </div>
 
-        <div className="grid gap-2">
-          <label className="text-[9px] font-bold text-slate-500">Global Edge EN download fallback
-            <select disabled={running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
-              {(structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
-            </select>
-          </label>
-          <label className="text-[9px] font-bold text-slate-500">Global Edge ID / Meaning fallback (Indonesia locales)
-            <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
-              {(structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || ''))).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
-            </select>
-          </label>
-          <p className="text-[8px] text-slate-400">Workspace / speaker / Card / Segment download profiles configured in AUDIO remain higher priority; these are global fallbacks.</p>
-        </div>
+        <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-2.5 space-y-2" data-text-bulk-p5-selection="true">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Generate Selection</span>
+            <span className="text-[8px] font-bold text-slate-400">Paragraph only</span>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-white/70 dark:bg-slate-900/35 p-2">
+            <ToggleRow checked={structuredTextBatch?.preferences?.generateText !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateText: structuredTextBatch?.preferences?.generateText === false })}>EN / Text</ToggleRow>
+            <ToggleRow checked={structuredTextBatch?.preferences?.generateMeaning !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateMeaning: structuredTextBatch?.preferences?.generateMeaning === false })} tone="amber">ID / Meaning</ToggleRow>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-white/70 dark:bg-slate-900/35 p-2" data-text-bulk-representations="true">
+            <ToggleRow checked={structuredTextBatch?.preferences?.bulkGenerateSplit !== false} disabled={running} onClick={() => toggleBulkRepresentation('bulkGenerateSplit')}>Split</ToggleRow>
+            <ToggleRow checked={structuredTextBatch?.preferences?.bulkGenerateFull === true} disabled={running} onClick={() => toggleBulkRepresentation('bulkGenerateFull')}>Full</ToggleRow>
+            <span className="ml-auto text-[8px] text-slate-400">At least one stays selected</span>
+          </div>
 
-        <div className="flex gap-3 rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
-          <ToggleRow checked={structuredTextBatch?.preferences?.generateText !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateText: structuredTextBatch?.preferences?.generateText === false })}>EN / Text</ToggleRow>
-          <ToggleRow checked={structuredTextBatch?.preferences?.generateMeaning !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateMeaning: structuredTextBatch?.preferences?.generateMeaning === false })} tone="amber">ID / Meaning</ToggleRow>
+          <details className="rounded-md border border-indigo-100 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/35 p-2" open={bulkTextVoiceIds.length > 1}>
+            <summary className="cursor-pointer text-[8px] font-black text-indigo-700 dark:text-indigo-300">EN bulk voices • {bulkTextVoiceSummary.join(' + ') || '—'}</summary>
+            <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
+              {englishBulkVoices.map(voice => <ToggleRow key={voice.id} checked={bulkTextVoiceIds.includes(voice.id)} disabled={running} onClick={() => toggleBulkVoice('bulkTextVoiceIds', voice.id)}>{voice.label || voice.id}</ToggleRow>)}
+            </div>
+          </details>
+
+          <details className="rounded-md border border-amber-100 dark:border-amber-900 bg-white/70 dark:bg-slate-900/35 p-2" open={bulkMeaningVoiceIds.length > 1}>
+            <summary className="cursor-pointer text-[8px] font-black text-amber-700 dark:text-amber-300">ID bulk voices • {bulkMeaningVoiceSummary.join(' + ') || '—'}</summary>
+            <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
+              {meaningBulkVoices.map(voice => <ToggleRow key={voice.id} checked={bulkMeaningVoiceIds.includes(voice.id)} disabled={running} onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voice.id)} tone="amber">{voice.label || voice.id}</ToggleRow>)}
+            </div>
+          </details>
+
+          <details className="rounded-md border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/30 p-2">
+            <summary className="cursor-pointer text-[8px] font-black uppercase tracking-wide text-slate-500">Manual / legacy fallback voice</summary>
+            <div className="mt-2 grid gap-2">
+              <label className="text-[8px] font-bold text-slate-500">Edge EN fallback
+                <select disabled={running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
+                  {englishBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                </select>
+              </label>
+              <label className="text-[8px] font-bold text-slate-500">Edge ID / Meaning fallback
+                <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
+                  {meaningBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                </select>
+              </label>
+            </div>
+          </details>
+          <p className="text-[8px] leading-relaxed text-slate-400">Generation voice selection is independent from Workspace playback order. It writes Split/Full output to Staging first. Conversation adaptation is intentionally deferred until Paragraph P1–P7 is accepted.</p>
         </div>
 
         <div className="rounded-lg border border-sky-100 dark:border-sky-900 bg-sky-50/50 dark:bg-sky-950/15 p-2.5 text-[9px]" data-text-batch-resolved-voices="true">
-          <div className="font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Resolved Multi-Voice Plan</div>
-          <p className="mt-1 text-slate-500 dark:text-slate-400">Voices: {textVoiceSummary.length ? textVoiceSummary.join(' + ') : '—'}</p>
-          <p className="mt-0.5 text-slate-500 dark:text-slate-400">Speakers: {textSpeakerSummary.length ? textSpeakerSummary.join(', ') : 'single narrator / no speaker labels'}</p>
-          <p className="mt-1 text-[8px] text-slate-400">Conversation keeps each Segment's exact speaker/channel download voice. Paragraph narrator defaults stay independent. Multi-Workspace output is separated again by Workspace during ZIP packaging.</p>
-          <p className="mt-1 text-[8px] font-bold text-sky-600/80 dark:text-sky-300/80">Bulk Audio follows AUDIO Setup & Sources profiles. Bottom Player Settings never changes generated/downloaded voice, rate, or pitch.</p>
+          <div className="font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Generate Plan</div>
+          <p className="mt-1 text-slate-500 dark:text-slate-400">EN: {bulkTextVoiceSummary.length ? bulkTextVoiceSummary.join(' + ') : '—'}</p>
+          <p className="mt-0.5 text-slate-500 dark:text-slate-400">ID: {bulkMeaningVoiceSummary.length ? bulkMeaningVoiceSummary.join(' + ') : '—'}</p>
+          <p className="mt-0.5 text-slate-500 dark:text-slate-400">Representation: {structuredTextBatch?.preferences?.bulkGenerateSplit !== false ? 'Split' : ''}{structuredTextBatch?.preferences?.bulkGenerateSplit !== false && structuredTextBatch?.preferences?.bulkGenerateFull === true ? ' + ' : ''}{structuredTextBatch?.preferences?.bulkGenerateFull === true ? 'Full' : ''}</p>
+          <p className="mt-1 text-[8px] font-bold text-sky-600/80 dark:text-sky-300/80">Generation selection never changes playback priority.</p>
         </div>
 
-        <div className="rounded-lg border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5 text-[9px]" data-audio-coverage-summary="text">
-          <div className="flex justify-between font-black text-violet-700 dark:text-violet-300"><span>Selected Coverage</span><span>{coverage?.covered || 0}/{coverage?.total || 0}</span></div>
+        <div className="rounded-lg border border-violet-100 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5 text-[9px]" data-audio-generation-coverage-summary="text">
+          <div className="flex justify-between font-black text-violet-700 dark:text-violet-300"><span>Generation Coverage</span><span>{generationCoverage?.ready || 0}/{generationCoverage?.total || 0}</span></div>
           <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400">
-            <span>Ready: {coverage?.ready || 0}</span><span>History only*: {coverage?.downloaded || 0}</span>
-            <span>Other voice: {coverage?.otherVoice || 0}</span><span>Stale: {coverage?.stale || 0}</span>
-            <span>Missing: {coverage?.missing || 0}</span><span className="font-black text-amber-600 dark:text-amber-300">Need: {coverage?.needDownload || 0}</span>
+            <span>Ready logical: {generationCoverage?.ready || 0}</span><span>Reusable physical: {generationCoverage?.reusable || 0}</span>
+            <span>Missing: {generationCoverage?.missing || 0}</span><span>Stale: {generationCoverage?.stale || 0}</span>
+            <span>Logical req.: {generationCoverage?.logicalRequirements || 0}</span><span>Unique physical: {generationCoverage?.uniquePhysicalRequirements || 0}</span>
+            <span>Split logical: {generationCoverage?.splitLogical || 0}</span><span>Full logical: {generationCoverage?.fullLogical || 0}</span>
           </div>
-          <p className="mt-1.5 text-[8px] text-slate-400">Only binary currently readable from Text Staging (including Portable ZIP imports) or active runtime is Ready. Folder is deprecated/locked. Export history never suppresses regeneration.</p>
+          <p className="mt-1.5 text-[8px] text-slate-400">Eligible Paragraph Cards: {generationCoverage?.eligibleBlockCount || 0}{generationCoverage?.skippedConversationBlockCount ? ` • Conversation skipped: ${generationCoverage.skippedConversationBlockCount}` : ''}. Shared Split RF / identical Full identity is counted once physically even when several logical consumers need it.</p>
         </div>
 
         {liveTelemetry?.sessionId && <div className="rounded-lg border border-cyan-100 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-2.5 text-[9px]" data-live-batch-telemetry="text">
           <div className="flex items-center justify-between gap-2 font-black text-cyan-700 dark:text-cyan-300"><span>Live Bulk Audio • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span><span>{liveTelemetry.processed || 0}/{liveTelemetry.total || 0}</span></div>
-          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Need est.: {liveTelemetry.missingEstimate || 0}</span><span>Generated RF: {liveTelemetry.generated || 0}</span><span>RF reused: {liveTelemetry.reusedPhysical || 0}</span><span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span><span>Remaining: {liveTelemetry.remaining || 0}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-500 dark:text-slate-400"><span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Missing est.: {liveTelemetry.missingEstimate || 0}</span><span>Stale est.: {liveTelemetry.staleEstimate || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span><span>Logical scope: {liveTelemetry.logicalRequirements || 0}</span><span>Unique physical: {liveTelemetry.uniquePhysicalRequirements || 0}</span><span>Selected logical: {liveTelemetry.selectedLogicalRequirements || 0}</span><span>Selected physical: {liveTelemetry.selectedUniquePhysicalRequirements || 0}</span><span>Generated physical: {liveTelemetry.generatedPhysical ?? liveTelemetry.generated ?? 0}</span><span>Reused physical: {liveTelemetry.reusedPhysical || 0}</span><span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Skipped Stale: {liveTelemetry.skippedStale || 0}</span><span>Remaining selected: {liveTelemetry.remaining || 0}</span></div>
           <p className="mt-1 text-[8px] text-cyan-600/80 dark:text-cyan-300/80">Counter UI only • no per-audio IndexedDB inventory scan{liveTelemetry.reconciled ? ' • final durable commit reconciled' : ''}.</p>
         </div>}
 
@@ -179,51 +232,88 @@ export const TextBatchPopup = ({
           <summary className="cursor-pointer font-black text-red-700 dark:text-red-300">Failed items • {failedJobs.length}</summary>
           <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
             {failedJobs.map((job, index) => <div key={`${job?.segmentId || job?.id || 'job'}-${job?.channel || 'text'}-${index}`} className="rounded border border-red-100 dark:border-red-900/70 bg-white/70 dark:bg-slate-900/40 px-2 py-1.5">
-              <p className="font-bold text-slate-700 dark:text-slate-200">{job?.segmentId || job?.id || 'Unknown Segment'} • {job?.channel === 'meaning' ? 'ID / Meaning' : 'EN / Text'} • {compactVoiceLabel(job?.voiceId || job?.resolvedVoiceId)}</p>
+              <p className="font-bold text-slate-700 dark:text-slate-200">{job?.representation === 'full' ? `FULL ${job?.blockId || 'Card'}` : (job?.segmentId || job?.id || 'Unknown Segment')} • {job?.channel === 'meaning' ? 'ID / Meaning' : 'EN / Text'} • {compactVoiceLabel(job?.voiceId || job?.resolvedVoiceId)}</p>
               <p className="mt-0.5 text-[8px] text-red-600/80 dark:text-red-300/80">{job?.error || job?.reason || 'Generation failed. Retry uses the same resolved job.'}</p>
             </div>)}
           </div>
           <button type="button" disabled={running || !structuredTextBatch?.retryFailed} onClick={structuredTextBatch?.retryFailed} className="mt-2 w-full rounded border border-red-300 dark:border-red-800 py-2 text-[9px] font-black text-red-700 dark:text-red-300 disabled:opacity-35">RETRY FAILED ONLY ({failedJobs.length})</button>
         </details>}
 
-        <div className="rounded-lg border border-emerald-100 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/15 p-2.5 space-y-2" data-text-batch-export="true">
-          <button type="button" disabled={running || !(coverage?.ready > 0)} onClick={() => setDirectMp3ConfirmOpen(true)} className="w-full rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>EXPORT READY MP3 • {coverage?.ready || 0}</button>
-          <p className="text-[8px] leading-relaxed text-slate-400">Exports Ready physical RF files once in waves of max {directMp3Limit}. Multiple logical Segments sharing the same RF do not create duplicate downloads. Missing/Other/Stale are skipped; no TTS starts.</p>
-          <button type="button" disabled={running || !(coverage?.total > 0) || coverage?.ready !== coverage?.total} onClick={() => setConsolidatedZipConfirmOpen(true)} className="w-full rounded border border-sky-200 dark:border-sky-800 py-2 text-[10px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>{coverage?.ready === coverage?.total && coverage?.total > 0 ? `BUILD FULL CONSOLIDATED ZIP • ${coverage.ready}/${coverage.total}` : `FULL ZIP PENDING • ${coverage?.needDownload || 0} need source`}</button>
-          {coverage?.ready > 0 && coverage?.ready < coverage?.total && <button type="button" disabled={running} onClick={() => setPartialZipConfirmOpen(true)} className="w-full rounded border border-amber-200 dark:border-amber-800 py-2 text-[9px] font-black text-amber-700 dark:text-amber-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>EXPORT PARTIAL ZIP • {coverage.ready}/{coverage.total} READY</button>}
-          <p className="text-[8px] leading-relaxed text-slate-400">Consolidation uses Ready Text Staging binaries (including Portable ZIP imports) without TTS, deduplicates physical identities, and writes a Text Audio Manifest with logical references. Folder is deprecated/locked. Full output stays locked until the selected scope is complete.</p>
+        <div className="rounded-lg border border-teal-100 dark:border-teal-900 bg-teal-50/50 dark:bg-teal-950/15 p-2.5 space-y-2" data-text-bulk-export-p6="true">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] font-black uppercase tracking-wide text-teal-700 dark:text-teal-300">Export / Auto Export</span>
+            <button type="button" disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ bulkAutoExport: !structuredTextBatch?.preferences?.bulkAutoExport })} className={`rounded-full border px-2 py-1 text-[8px] font-black ${structuredTextBatch?.preferences?.bulkAutoExport ? 'border-teal-400 bg-teal-600 text-white' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'}`}>AUTO EXPORT {structuredTextBatch?.preferences?.bulkAutoExport ? 'ON' : 'OFF'}</button>
+          </div>
+          <p className="text-[8px] leading-relaxed text-slate-400">Export reads only Ready app-owned Staging binaries. Selection does not change Workspace playback priority. Auto Export is OFF by default and runs only after generation/preflight finishes.</p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[8px] font-bold text-slate-500">Voice policy
+              <select disabled={running} value={exportVoicePolicy} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportVoicePolicy: event.target.value })} className="mt-1 w-full rounded border border-teal-100 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                <option value="preferred">Preferred playback voice</option>
+                <option value="selected">One selected voice</option>
+                <option value="all-selected">All selected generation voices</option>
+              </select>
+            </label>
+            <label className="text-[8px] font-bold text-slate-500">Representation
+              <select disabled={running} value={exportRepresentation} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportRepresentation: event.target.value })} className="mt-1 w-full rounded border border-teal-100 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                <option value="split">Split only</option>
+                <option value="full">Full only</option>
+                <option value="both">Split + Full</option>
+              </select>
+            </label>
+          </div>
+
+          {exportVoicePolicy === 'selected' && <div className="grid grid-cols-2 gap-2" data-text-bulk-export-selected-voices="true">
+            <label className="text-[8px] font-bold text-slate-500">EN selected voice
+              <select disabled={running} value={structuredTextBatch?.preferences?.bulkExportTextVoiceId || bulkTextVoiceIds[0] || ''} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportTextVoiceId: event.target.value })} className="mt-1 w-full rounded border border-teal-100 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                {englishBulkVoices.map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+              </select>
+            </label>
+            <label className="text-[8px] font-bold text-slate-500">ID selected voice
+              <select disabled={running} value={structuredTextBatch?.preferences?.bulkExportMeaningVoiceId || bulkMeaningVoiceIds[0] || ''} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded border border-teal-100 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                {meaningBulkVoices.map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+              </select>
+            </label>
+          </div>}
+
+          <div className="grid grid-cols-2 gap-1 text-[8px] text-slate-500 dark:text-slate-400">
+            <span>Ready logical: {exportCoverage?.logicalReady || 0}</span><span>Unique physical: {exportCoverage?.uniquePhysicalReady || 0}</span>
+            <span>Split physical: {exportCoverage?.splitPhysical || 0}</span><span>Full physical: {exportCoverage?.fullPhysical || 0}</span>
+          </div>
+
+          <label className="block text-[8px] font-bold text-slate-500">Auto Export / quick export format
+            <select disabled={running} value={exportFormat} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportFormat: event.target.value })} className="mt-1 w-full rounded border border-teal-100 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+              <option value="audio-only-direct">Audio-Only • Direct files</option>
+              <option value="audio-only-zip">Audio-Only • One ZIP</option>
+              <option value="portable-zip">Portable ProLingo ZIP</option>
+            </select>
+          </label>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <button type="button" disabled={running || !(exportCoverage?.uniquePhysicalReady > 0)} onClick={() => setBulkExportConfirmFormat('audio-only-direct')} className="rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[8px] font-black text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><Music className="mr-1 inline h-3 w-3"/>DIRECT</button>
+            <button type="button" disabled={running || !(exportCoverage?.uniquePhysicalReady > 0)} onClick={() => setBulkExportConfirmFormat('audio-only-zip')} className="rounded border border-emerald-200 dark:border-emerald-800 py-2 text-[8px] font-black text-emerald-700 dark:text-emerald-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>AUDIO ZIP</button>
+            <button type="button" disabled={running || !(exportCoverage?.uniquePhysicalReady > 0)} onClick={() => setBulkExportConfirmFormat('portable-zip')} className="rounded border border-violet-200 dark:border-violet-800 py-2 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-35"><FileArchive className="mr-1 inline h-3 w-3"/>PORTABLE</button>
+          </div>
         </div>
 
+
+
         {running ? <button type="button" onClick={structuredTextBatch?.cancel} className="w-full rounded bg-red-500 py-2 text-xs font-bold text-white"><Loader2 className="mr-1 inline h-3 w-3 animate-spin"/>{structuredTextBatch?.statusText || 'STOP BULK JOB'}</button> : <>
-          <button type="button" disabled={!(coverage?.needDownload || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white disabled:opacity-35"><Download className="mr-1 inline h-3 w-3"/>GENERATE MISSING ({coverage?.needDownload || 0})</button>
-          <button type="button" disabled={!(coverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REGENERATE SELECTED ({coverage?.total || 0})</button>
+          <button type="button" disabled={!(generationCoverage?.needGenerateMissing || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white disabled:opacity-35"><Download className="mr-1 inline h-3 w-3"/>GENERATE MISSING ({generationCoverage?.needGenerateMissing || 0})</button>
+          {(generationCoverage?.stale || 0) > 0 && <button type="button" disabled={!(generationCoverage?.needGenerateWithStale || 0)} onClick={structuredTextBatch?.downloadMissingAndStale} className="w-full rounded border border-amber-300 dark:border-amber-800 py-2 text-[10px] font-black text-amber-700 dark:text-amber-300 disabled:opacity-35">GENERATE MISSING + STALE ({generationCoverage?.needGenerateWithStale || 0})</button>}
+          <button type="button" disabled={!(generationCoverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REGENERATE SELECTED ({generationCoverage?.total || 0})</button>
         </>}
       </div>
 
       <SafetyConfirmDialog
-        open={consolidatedZipConfirmOpen}
-        title="Build complete Text consolidated ZIP?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. ProLingo reads exact Ready binaries from Text Staging (including Portable ZIP imports) and creates resource-bounded ZIP group(s) separated by Workspace. No TTS is generated and source ZIP files are not modified.`}
-        confirmLabel="Build Full ZIP"
-        onCancel={() => setConsolidatedZipConfirmOpen(false)}
-        onConfirm={() => { setConsolidatedZipConfirmOpen(false); structuredTextBatch?.exportFullZip?.(); }}
+        open={Boolean(bulkExportConfirmFormat)}
+        title={bulkExportConfirmFormat === 'portable-zip' ? 'Export Portable ProLingo Audio ZIP?' : bulkExportConfirmFormat === 'audio-only-zip' ? 'Export Audio-Only ZIP?' : 'Export Audio-Only direct files?'}
+        message={`${scopeSummary} • ${exportCoverage?.logicalReady || 0} logical Ready → ${exportCoverage?.uniquePhysicalReady || 0} unique physical • voice policy ${exportVoicePolicy} • ${exportRepresentation}. ${bulkExportConfirmFormat === 'portable-zip' ? 'Portable ZIP keeps canonical identity + manifest + AUDIO_INDEX.csv for re-import.' : 'Audio-Only uses human-readable filenames for external playback and is not the canonical re-import format.'}`}
+        confirmLabel={bulkExportConfirmFormat === 'portable-zip' ? 'Export Portable ZIP' : bulkExportConfirmFormat === 'audio-only-zip' ? 'Export Audio ZIP' : 'Export Direct Files'}
+        onCancel={() => setBulkExportConfirmFormat(null)}
+        onConfirm={() => { const format = bulkExportConfirmFormat; setBulkExportConfirmFormat(null); structuredTextBatch?.exportBulk?.({ format }); }}
       />
-      <SafetyConfirmDialog
-        open={partialZipConfirmOpen}
-        title="Export explicitly partial Text ZIP?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0}. Only currently readable exact-voice binaries are included, separated by Workspace. Archive filenames are marked PARTIAL. No TTS is generated.`}
-        confirmLabel={`Export PARTIAL ${coverage?.ready || 0}/${coverage?.total || 0}`}
-        onCancel={() => setPartialZipConfirmOpen(false)}
-        onConfirm={() => { setPartialZipConfirmOpen(false); structuredTextBatch?.exportPartialZip?.(); }}
-      />
-      <SafetyConfirmDialog
-        open={directMp3ConfirmOpen}
-        title="Export all Ready Text audio as direct MP3?"
-        message={`${scopeSummary} • Ready ${coverage?.ready || 0}/${coverage?.total || 0} • resolved voices ${textVoiceSummary.join(' + ') || '—'}. Ready exact-voice Text audio downloads by unique physical RF in waves of max ${directMp3Limit} files. Shared RF renders are exported once; Missing/Other/Stale are skipped and never generated.`}
-        confirmLabel={`Export ${coverage?.ready || 0} MP3`}
-        onCancel={() => setDirectMp3ConfirmOpen(false)}
-        onConfirm={() => { setDirectMp3ConfirmOpen(false); structuredTextBatch?.exportReadyMp3?.(); }}
-      />
+
     </div>
   );
 };

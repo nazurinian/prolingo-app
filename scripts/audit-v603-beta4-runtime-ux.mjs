@@ -7,6 +7,7 @@ const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const app = read('src/App.jsx');
 const shell = read('src/components/text/TextLibraryShell.jsx');
 const card = read('src/components/text/TextStructuredCardAudioPanel.jsx');
+const batch = read('src/components/text/TextBatchPopup.jsx');
 const meta = read('src/constants/appMetadata.js');
 
 const checks = [];
@@ -24,12 +25,22 @@ check('external source summary shows unchanged/local/conflicts', () => {
 check('external source explicit four decisions remain', () => {
   for (const token of ['update-keep-local','update-use-incoming','import-as-copy','keep-existing']) assert.match(shell, new RegExp(token));
 });
-check('card audio workflow has prepare split full groups', () => {
-  assert.match(card, /1 • Prepare audio/); assert.match(card, /2 • Split download/); assert.match(card, /3 • Full derived audio/);
+check('card audio workflow remains clear after final UI centralization', () => {
+  const legacy = /1 • Prepare audio/.test(card) && /2 • Split download/.test(card) && /3 • Full derived audio/.test(card);
+  const finalUi = /Card Audio State/.test(card) && /GENERATE MISSING/.test(card) && /exports are centralized in Bulk Audio/.test(card);
+  assert.ok(legacy || finalUi);
 });
-check('selected sentence helpers exist', () => { assert.match(card, /SELECT ALL/); assert.match(card, /CLEAR/); });
-check('full export remains derived and non-persistent', () => assert.match(card, /creates no permanent Full AudioVariant/));
-check('split export remains RF manifest based', () => assert.match(card, /Physical RF binaries are deduplicated and accompanied by a manifest/));
+check('granular Segment helpers remain available', () => {
+  const legacy = /SELECT ALL/.test(card) && /CLEAR/.test(card);
+  const finalUi = /Segment overrides/.test(card) && /single-file tools/.test(card) && /onExportSegmentAudio/.test(card);
+  assert.ok(legacy || finalUi);
+});
+check('Full export remains explicit and non-confused with Split generation', () => {
+  assert.ok(/creates no permanent Full AudioVariant/.test(card) || (/Split \+ Full/.test(batch) && /Audio-Only/.test(batch)));
+});
+check('portable export remains identity/manifest based', () => {
+  assert.ok(/Physical RF binaries are deduplicated and accompanied by a manifest/.test(card) || /Portable ProLingo ZIP/.test(batch));
+});
 
 console.log(`v6.0.3-beta.4 Runtime UX audit: ${checks.length} checks PASS`);
 checks.forEach((name, index) => console.log(`${index + 1}. PASS — ${name}`));

@@ -118,6 +118,8 @@ import { buildTextStructuredAudioContentFingerprint } from './domain/text/textSt
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './domain/text/textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredAudioRequirementsForSnapshot } from './domain/text/textStructuredAudioRequirementDomain.js';
 import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection, resolveTextStructuredBatchTargetWorkspaceIds } from './domain/text/textStructuredBatchDomain.js';
+import { buildTextStructuredBulkGenerationPlan, selectTextStructuredBulkGenerationRequirements, summarizeTextStructuredBulkPhysicalWork, TEXT_STRUCTURED_BULK_REPRESENTATIONS, TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS } from './domain/text/textStructuredBulkGenerationDomain.js';
+import { buildTextStructuredBulkExportPlan, TEXT_STRUCTURED_BULK_EXPORT_FORMATS } from './domain/text/textStructuredBulkExportDomain.js';
 import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
@@ -140,10 +142,10 @@ import { executeTextStructuredPreferencePersistenceEffect } from './services/per
 import { executeTextStructuredAudioGenerationPreferencePersistenceEffect, loadTextStructuredAudioGenerationPreferences } from './services/persistence/textStructuredAudioGenerationPreferenceService.js';
 import { clearAudioDownloadHistoryForMode, clearPersistedAudioDownloadHistoryForMode, loadAudioDownloadHistory, persistAudioDownloadHistory, recordAudioDownloadHistory } from './services/persistence/audioDownloadHistoryService.js';
 import { executeTextStructuredAudioGenerationRequest } from './services/audio/textStructuredAudioGenerationService.js';
-import { buildCanonicalTextCardZipFilename, buildCanonicalTextConsolidatedZipFilename } from './domain/text/textFilenameDomain.js';
+import { buildCanonicalTextCardZipFilename, buildCanonicalTextConsolidatedZipFilename, buildCanonicalTextFullArtifactFilename } from './domain/text/textFilenameDomain.js';
 import { buildProLingoTextAudioManifest, TEXT_AUDIO_MANIFEST_FILENAME } from './domain/text/textAudioManifestDomain.js';
 import { buildTextAudioIndexCsv, TEXT_AUDIO_INDEX_FILENAME } from './domain/text/textAudioIndexDomain.js';
-import { getTextStructuredFullAudioArtifacts } from './domain/text/textStructuredSplitFullDomain.js';
+import { buildTextStructuredFullArtifactRecord, getTextStructuredFullAudioArtifacts } from './domain/text/textStructuredSplitFullDomain.js';
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { exportStagedAudioZipGroups, exportTableAudioRecordZipGroups, DIRECT_MP3_BATCH_LIMIT } from './services/audio/audioBatchExportService.js';
 import { clearAudioStagingExportHistoryForMode, clearAudioStagingForMode, clearAudioStagingRuntimeCache, deleteAudioBatchSession, getAudioStagingBlob, getAudioStagingObjectUrl, listAudioBatchSessions, listAudioStagingMetadata, markAudioStagingExported, putAudioStagingBlob, recoverInterruptedAudioBatchSessions, releaseAudioStagingBlobs, requestPersistentAudioStorage, saveAudioBatchSession } from './services/persistence/audioStagingIndexedDbService.js';
@@ -163,6 +165,24 @@ const compactVoiceFilenameLabel = value => {
   if (!raw) return 'Voice';
   const tail = raw.split('-').pop() || raw;
   return sanitizeFilename(tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw);
+};
+
+const buildTextBulkAudioOnlyFilename = (entry, index = 0) => {
+  const reference = entry?.references?.[0] || {};
+  const seq = String(index + 1).padStart(3, '0');
+  const channel = entry?.channel === 'meaning' ? 'ID' : 'EN';
+  const voice = compactVoiceFilenameLabel(entry?.voiceId);
+  const card = sanitizeFilename(reference?.cardTitle || reference?.cardId || 'Card');
+  const segment = sanitizeFilename(reference?.segmentId || 'Segment');
+  const ext = String(entry?.canonicalFilename || '').split('.').pop()?.toLowerCase() || (String(entry?.mimeType || '').includes('wav') ? 'wav' : 'mp3');
+  if (entry?.representation === 'full') return `${seq}_${card}_FULL_${channel}_${voice}.${ext}`;
+  return `${seq}_${card}_${segment}_${channel}_${voice}.${ext}`;
+};
+
+const buildTextBulkArchiveFilename = ({ kind = 'portable', scopeLabel = 'Text', partNo = null } = {}) => {
+  const safe = sanitizeFilename(scopeLabel || 'Text');
+  const prefix = kind === 'audio-only' ? 'ProLingo_Audio_Only' : 'ProLingo_Text_Audio_Portable';
+  return `${prefix}_${safe}${partNo ? `_PART_${String(partNo).padStart(2, '0')}` : ''}.zip`;
 };
 
 const loadTableLocalAudioPlaybackPreference = () => {
@@ -285,6 +305,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [structuredTextAudioZipState, setStructuredTextAudioZipState] = useState({ archives: [], matchedCount: 0, splitMatchedCount: 0, fullMatchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0, unsupportedCount: 0, physicalImportedCount: 0 });
   const structuredTextAudioGenerationAbortRef = useRef(null);
   const structuredTextAudioBatchStopRef = useRef(false);
+  // beta.8/P6: arm Auto Export as React state so export preflight runs only after
+  // logical metadata + durable Staging reconciliation have produced a fresh export plan.
+  const [structuredTextPendingAutoExport, setStructuredTextPendingAutoExport] = useState(null);
   const structuredTextAudioDirectoryHandleRef = useRef(null);
   const structuredTextAudioRememberedHandleRef = useRef(null);
   const structuredTextAudioFolderRestoreAttemptedRef = useRef(false);
@@ -1037,6 +1060,28 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     activeDocumentId: activeTextDocumentTree?.id || null,
     activeScope: (structuredTextBatchScope?.scopeMode || 'workspace') === 'card' ? { cardId: structuredTextBatchScope?.cardId || null } : null
   }), [structuredTextBatchTargetTrees, structuredTextDownloadResolutionPreferences, structuredTextBatchCoverageMaps, activeTextDocumentTree?.id, structuredTextBatchScope?.scopeMode, structuredTextBatchScope?.cardId]);
+
+  // beta.8/P5: Bulk generation has its own explicit voice + Split/Full selection.
+  // It consumes the already-resolved scope but never mutates playback priority.
+  const structuredTextBulkGenerationPlan = useMemo(() => buildTextStructuredBulkGenerationPlan({
+    documentTrees: structuredTextBatchTargetTrees,
+    selection: structuredTextBatchSelection,
+    preferences: structuredTextAudioGenerationPreferences,
+    audioVariants: textLibrarySnapshot?.audioVariants || [],
+    runtimeAudioUrls: structuredTextAudioRuntimeUrls,
+    runtimeFullAudio: structuredTextFullAudioRuntimeUrls,
+    stagingRecords: [...structuredTextAudioStagingRecordsRef.current.values()]
+  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextFullAudioRuntimeUrls, structuredTextAudioStagingSummary]);
+
+  // beta.8/P6: export is planned independently from generation order and playback
+  // priority, but consumes the same resolved Paragraph scope and canonical Staging.
+  const structuredTextBulkExportPlan = useMemo(() => buildTextStructuredBulkExportPlan({
+    documentTrees: structuredTextBatchTargetTrees,
+    selection: structuredTextBatchSelection,
+    preferences: structuredTextAudioGenerationPreferences,
+    audioVariants: textLibrarySnapshot?.audioVariants || [],
+    stagingRecords: [...structuredTextAudioStagingRecordsRef.current.values()]
+  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, textLibrarySnapshot?.audioVariants, structuredTextAudioStagingSummary]);
   const activeTableAudioStagingRecords = useMemo(
     () => filterTableAudioStagingRecordsForPlaylist(tableAudioStagingRecords, playlist),
     [tableAudioStagingRecords, playlist]
@@ -2459,10 +2504,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // B1/A1 foundation: RF is the physical render identity. If the exact render
     // already exists in app-owned Text Staging, create/update only the logical
     // AudioVariant for this Segment and reuse the same staged binary. No TTS call.
-    const reusableStaging = [...structuredTextAudioStagingRecordsRef.current.values()].find(record =>
-      record?.hasBlob
-      && String(record?.mapKey || '').toLowerCase() === String(render.renderFingerprint || '').toLowerCase()
-    ) || null;
+    const reusableStaging = !options.forceRegenerate
+      ? [...structuredTextAudioStagingRecordsRef.current.values()].find(record =>
+          record?.hasBlob
+          && String(record?.mapKey || '').toLowerCase() === String(render.renderFingerprint || '').toLowerCase()
+        ) || null
+      : null;
     if (reusableStaging) {
       const filename = reusableStaging.filename || buildTextStructuredGeneratedFilename({
         audioVariantId: null,
@@ -2574,7 +2621,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // runtime handles. New beta.8/P4 Portable ZIP imports are committed to Staging,
     // and Folder is deprecated/locked. Reuse legacy exact RF without TTS if present.
     const currentExternalRuntimeEntries = Object.values(structuredTextAudioRuntimeUrlsRef.current || {});
-    const reusableExternalRuntime = currentExternalRuntimeEntries.find(entry =>
+    const reusableExternalRuntime = options.forceRegenerate ? null : currentExternalRuntimeEntries.find(entry =>
       entry?.folderBacked
       && String(entry?.renderFingerprint || '').toLowerCase() === String(render.renderFingerprint || '').toLowerCase()
     ) || currentExternalRuntimeEntries.find(entry =>
@@ -2726,6 +2773,185 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, registerStructuredTextGeneratedBlob, queueStructuredTextRuntimeEntry, fanOutStructuredTextSharedRfLogicalSlots, setTextLibrarySnapshot, addLog]);
 
+  const generateStructuredTextFullAudioJob = useCallback(async (job, options = {}) => {
+    const documentId = job?.documentId || null;
+    const blockId = job?.blockId || null;
+    const channel = job?.channel === 'meaning' ? 'meaning' : 'text';
+    const jobDocumentTree = documentId && textLibrarySnapshot
+      ? resolveTextLibraryDocumentTree(textLibrarySnapshot, documentId)
+      : activeTextDocumentTree;
+    const block = (jobDocumentTree?.blocks || []).find(candidate => candidate.id === blockId) || null;
+    if (!block) throw new Error(`Unknown structured Text block: ${blockId || '—'}${documentId ? ` in ${documentId}` : ''}`);
+
+    const content = String(job?.content || '').trim();
+    if (!content) return { status: 'skipped-empty', representation: 'full', documentId: jobDocumentTree?.id || documentId, blockId, channel };
+    const generationVoiceStateBase = {
+      ...resolveTextStructuredGenerationVoiceState({
+        channel,
+        requestedDownloadVoiceId: job?.voiceId || job?.downloadVoiceId,
+        preferences: structuredTextAudioGenerationPreferences,
+        edgeVoices: initialEdgeVoices
+      }),
+      assignmentSource: job?.downloadVoiceSource || 'bulk-selection'
+    };
+    const artifact = buildTextStructuredFullArtifactRecord({
+      block,
+      channel,
+      language: job?.language || (channel === 'meaning' ? (jobDocumentTree?.meaningLanguage || 'id') : (jobDocumentTree?.textLanguage || 'en')),
+      engine: generationVoiceStateBase.engine,
+      voiceId: generationVoiceStateBase.engineVoiceId,
+      rate: structuredTextAudioGenerationPreferences.edgeRate,
+      pitch: structuredTextAudioGenerationPreferences.edgePitch,
+      source: 'generated',
+      metadata: { assignmentSource: generationVoiceStateBase.assignmentSource }
+    });
+    const fingerprint = String(artifact.fullArtifactFingerprint || '').toLowerCase();
+    if (job?.fullArtifactFingerprint && fingerprint !== String(job.fullArtifactFingerprint).toLowerCase()) {
+      throw new Error(`Full Artifact identity drift for ${blockId}/${channel}/${generationVoiceStateBase.engineVoiceId}.`);
+    }
+
+    const commitArtifact = async ({ filename, mimeType, stagingRecord, reusedPhysicalRender = false }) => {
+      const now = Date.now();
+      const completedArtifact = buildTextStructuredFullArtifactRecord({
+        block,
+        channel,
+        language: artifact.descriptor.language,
+        engine: artifact.descriptor.engine,
+        voiceId: artifact.descriptor.voiceId,
+        rate: artifact.descriptor.rate,
+        pitch: artifact.descriptor.pitch,
+        rendererVersion: artifact.descriptor.rendererVersion,
+        codecProfile: artifact.descriptor.codecProfile,
+        derivationVersion: artifact.descriptor.derivationVersion,
+        filename,
+        mimeType,
+        source: 'generated',
+        createdAt: artifact.createdAt || now,
+        updatedAt: now,
+        metadata: {
+          generatedBy: reusedPhysicalRender ? 'TEXT_FULL_RF_REUSE_V1' : 'TEXT_FULL_GENERATION_V1',
+          generatedAt: reusedPhysicalRender ? (stagingRecord?.metadata?.generatedAt || null) : now,
+          assignmentSource: generationVoiceStateBase.assignmentSource,
+          deliveryStatus: reusedPhysicalRender ? 'staged-full-reused' : 'staged-ready',
+          stagingId: stagingRecord?.id || null,
+          reusedPhysicalRender
+        }
+      });
+      const persisted = await executeTextFullAudioArtifactBulkUpsert([{ blockId, artifact: completedArtifact }]);
+      if (persisted.blocks.length) {
+        setTextLibrarySnapshot(previous => {
+          if (!previous) return previous;
+          const updates = new Map(persisted.blocks.map(record => [record.id, record]));
+          return { ...previous, blocks: (previous.blocks || []).map(record => updates.get(record.id) || record) };
+        });
+      }
+      setStructuredTextFullAudioRuntimeUrls(prev => {
+        const current = prev?.[fingerprint] || {};
+        const consumers = new Set([...(current.consumerBlockIds || []), blockId].filter(Boolean));
+        return {
+          ...prev,
+          [fingerprint]: {
+            ...current,
+            stagingBacked: true,
+            stagingId: stagingRecord?.id || current.stagingId || null,
+            fullArtifactFingerprint: fingerprint,
+            filename,
+            mimeType,
+            representation: 'full',
+            generated: true,
+            reusedPhysicalRender,
+            consumerBlockIds: [...consumers]
+          }
+        };
+      });
+      return completedArtifact;
+    };
+
+    const reusableStaging = !options.forceRegenerate
+      ? [...structuredTextAudioStagingRecordsRef.current.values()].find(record =>
+          record?.hasBlob && String(record?.mapKey || '').toLowerCase() === fingerprint
+        ) || null
+      : null;
+    if (reusableStaging) {
+      const filename = reusableStaging.filename || buildCanonicalTextFullArtifactFilename({
+        fullArtifactFingerprint: fingerprint,
+        engine: generationVoiceStateBase.engine,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        extension: 'mp3'
+      });
+      await commitArtifact({ filename, mimeType: reusableStaging.mimeType || 'audio/mpeg', stagingRecord: reusableStaging, reusedPhysicalRender: true });
+      return {
+        status: 'reused-rf',
+        representation: 'full',
+        documentId: jobDocumentTree?.id || documentId,
+        blockId,
+        channel,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        fullArtifactFingerprint: fingerprint,
+        stagingRecord: reusableStaging,
+        reusedPhysicalRender: true,
+        packagePending: false
+      };
+    }
+
+    const controller = new AbortController();
+    structuredTextAudioGenerationAbortRef.current = controller;
+    if (!options.batch || options.renderProgress) {
+      setStructuredTextAudioGenerationState(prev => ({ ...prev, current: { blockId, channel, representation: 'full', voice: generationVoiceStateBase.engineVoiceId } }));
+    }
+    try {
+      const generated = await executeTextStructuredAudioGenerationRequest({
+        engine: generationVoiceStateBase.engine,
+        text: content,
+        engineVoiceId: generationVoiceStateBase.engineVoiceId,
+        edgeRate: structuredTextAudioGenerationPreferences.edgeRate,
+        edgePitch: structuredTextAudioGenerationPreferences.edgePitch,
+        signal: controller.signal,
+        onRetry: options.batch
+          ? ({ nextAttempt, maxAttempts, error }) => addLog('Text Generate', `Retry ${nextAttempt}/${maxAttempts}: FULL ${blockId}/${channel} • ${error.message}`)
+          : null
+      });
+      const filename = buildCanonicalTextFullArtifactFilename({
+        fullArtifactFingerprint: fingerprint,
+        engine: generationVoiceStateBase.engine,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        extension: generated?.blob?.type?.includes('wav') ? 'wav' : 'mp3'
+      });
+      const stagingRecord = await putTextFullAudioStagingBlob({
+        fullArtifactFingerprint: fingerprint,
+        documentId: jobDocumentTree?.id || documentId,
+        blockId,
+        channel,
+        engine: generationVoiceStateBase.engine,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        filename,
+        mimeType: generated.blob.type || 'audio/mpeg',
+        blob: generated.blob,
+        descriptor: artifact.descriptor,
+        metadata: { generatedAt: Date.now(), deliveryStatus: 'staged-ready', consumerBlockIds: [blockId] }
+      });
+      rememberStructuredTextStagingRecord(stagingRecord, { deferUi: Boolean(options.batch) });
+      await commitArtifact({ filename, mimeType: generated.blob.type || 'audio/mpeg', stagingRecord, reusedPhysicalRender: false });
+      return {
+        status: 'success',
+        representation: 'full',
+        documentId: jobDocumentTree?.id || documentId,
+        blockId,
+        channel,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        fullArtifactFingerprint: fingerprint,
+        stagingRecord,
+        reusedPhysicalRender: false,
+        packagePending: false
+      };
+    } catch (error) {
+      if (error?.name === 'AbortError') return { status: 'cancelled', representation: 'full', documentId, blockId, channel };
+      return { status: 'error', representation: 'full', documentId, blockId, channel, voiceId: generationVoiceStateBase.engineVoiceId, error: error?.message || String(error) };
+    } finally {
+      if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
+    }
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, setTextLibrarySnapshot, rememberStructuredTextStagingRecord, addLog]);
+
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
     forceStopAll();
@@ -2742,103 +2968,190 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [structuredTextAudioGenerationState.running, forceStopAll, generateStructuredTextAudioJob]);
 
-  const runStructuredTextAudioGenerationBatch = useCallback(async (jobsCandidate = null, options = {}) => {
+  const runStructuredTextAudioGenerationBatch = useCallback(async (requirementsCandidate = null, options = {}) => {
     if (structuredTextAudioGenerationState.running || !(structuredTextBatchSelection?.documentCount > 0)) return null;
     forceStopAll();
-    const allJobs = Array.isArray(jobsCandidate)
-      ? jobsCandidate
-      : (structuredTextBatchSelection?.jobs || []);
-    const missingOnly = options.missingOnly !== false;
-    const jobs = missingOnly
-      ? allJobs.filter(job => shouldDownloadTextStructuredCoverageSlot(job?.coverage || { status: job?.coverageStatus || 'missing' }))
-      : allJobs;
-    const readyBefore = allJobs.reduce((sum, job) => sum + ((job?.coverage?.status || job?.coverageStatus) === 'ready' ? 1 : 0), 0);
-    const skippedReady = missingOnly ? Math.max(0, allJobs.length - jobs.length) : 0;
-    const sessionId = `TEXT_BATCH_${Date.now()}`;
+    const suppliedRequirements = Array.isArray(requirementsCandidate);
+    const allRequirements = suppliedRequirements
+      ? requirementsCandidate
+      : (structuredTextBulkGenerationPlan?.requirements || []);
+    const suppliedP5Requirements = suppliedRequirements && allRequirements.some(item =>
+      Boolean(item?.physicalKey || item?.representation === TEXT_STRUCTURED_BULK_REPRESENTATIONS.FULL || item?.status)
+    );
+    const selectionMode = suppliedP5Requirements
+      ? 'retry'
+      : (options.selectionMode || (options.missingOnly === false ? 'all' : 'missing'));
+    const requirements = suppliedP5Requirements
+      ? allRequirements
+      : suppliedRequirements
+        ? (selectionMode === 'all'
+            ? allRequirements
+            : allRequirements.filter(job => shouldDownloadTextStructuredCoverageSlot(job?.coverage || { status: job?.coverageStatus || 'missing' })))
+        : selectTextStructuredBulkGenerationRequirements(structuredTextBulkGenerationPlan, { mode: selectionMode });
 
-    if (!jobs.length) {
-      const finalReady = readyBefore;
-      const status = allJobs.length ? 'up-to-date' : 'empty-scope';
+    const readRequirementStatus = item => suppliedRequirements && !suppliedP5Requirements
+      ? (item?.coverage?.status || item?.coverageStatus || TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING)
+      : item?.status;
+    const countStatus = status => allRequirements.filter(item => readRequirementStatus(item) === status).length;
+    const readyBefore = countStatus(TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.READY);
+    const reusableBefore = countStatus(TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE);
+    const staleBefore = countStatus(TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.STALE);
+    const missingBefore = suppliedRequirements && !suppliedP5Requirements
+      ? Math.max(0, allRequirements.length - readyBefore - staleBefore)
+      : countStatus(TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING);
+    const excludedCount = Math.max(0, allRequirements.length - requirements.length);
+    const skippedReady = selectionMode === 'all' || selectionMode === 'retry' ? 0 : readyBefore;
+    const skippedStale = selectionMode === 'missing' ? staleBefore : 0;
+    const physicalWork = summarizeTextStructuredBulkPhysicalWork(allRequirements);
+    const selectedPhysicalWork = summarizeTextStructuredBulkPhysicalWork(requirements);
+    const sessionId = `TEXT_BULK_P5_${Date.now()}`;
+
+    if (!requirements.length) {
+      const status = !allRequirements.length
+        ? 'empty-scope'
+        : (selectionMode === 'missing' && staleBefore > 0 ? 'stale-only' : 'up-to-date');
       const snapshot = {
-        running: false, completed: allJobs.length, total: allJobs.length, current: null, failedJobs: [], lastStatus: status,
-        processed: allJobs.length, generated: 0, reusedPhysical: 0, skippedReady: allJobs.length, failed: 0, remaining: 0,
-        readyEstimate: finalReady, missingEstimate: Math.max(0, allJobs.length - finalReady), sessionId
+        running: false, completed: excludedCount, total: allRequirements.length, current: null, failedJobs: [], lastStatus: status,
+        processed: excludedCount, generated: 0, generatedPhysical: 0, reusedPhysical: 0, skippedReady, skippedStale, failed: 0, remaining: 0,
+        readyEstimate: readyBefore, missingEstimate: missingBefore + reusableBefore, staleEstimate: staleBefore, sessionId,
+        logicalRequirements: allRequirements.length, uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+        selectedLogicalRequirements: 0, selectedUniquePhysicalRequirements: 0, selectionMode
       };
       setStructuredTextAudioGenerationState(snapshot);
       resetTextStructuredBatchTelemetry({
-        sessionId, status, total: allJobs.length, processed: allJobs.length, generated: 0, reusedPhysical: 0,
-        skippedReady: allJobs.length, failed: 0, remaining: 0, readyEstimate: finalReady,
-        missingEstimate: Math.max(0, allJobs.length - finalReady), reconciled: true
+        sessionId, status, total: allRequirements.length, processed: excludedCount, generated: 0, generatedPhysical: 0, reusedPhysical: 0,
+        skippedReady, skippedStale, failed: 0, remaining: 0, readyEstimate: readyBefore,
+        missingEstimate: missingBefore + reusableBefore, staleEstimate: staleBefore, logicalRequirements: allRequirements.length,
+        uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements, selectedLogicalRequirements: 0,
+        selectedUniquePhysicalRequirements: 0, selectionMode, reconciled: true
       });
-      addLog('Text Generate', missingOnly ? 'Text Batch: selected scope is already covered.' : 'Text Batch: no jobs in selected scope.');
-      return { status, completed: allJobs.length, total: allJobs.length, failedJobs: [] };
+      addLog('Text Generate', status === 'stale-only'
+        ? 'Bulk Audio: no Missing requirements; Stale requirements remain. Use Generate Missing + Stale if you want to refresh them.'
+        : (status === 'up-to-date'
+          ? 'Bulk Audio: selected Split/Full + voice requirements are already Ready.'
+          : 'Bulk Audio: no eligible Paragraph requirements in the selected scope.'));
+      if (status !== 'empty-scope' && structuredTextAudioGenerationPreferences.bulkAutoExport) {
+        setStructuredTextPendingAutoExport({ sessionId, format: structuredTextAudioGenerationPreferences.bulkExportFormat || TEXT_STRUCTURED_BULK_EXPORT_FORMATS.PORTABLE_ZIP });
+      }
+      return { status, completed: excludedCount, total: allRequirements.length, failedJobs: [] };
     }
 
     structuredTextAudioBatchStopRef.current = false;
     const failedJobs = [];
-    const packageRecords = [];
-    let generated = 0;
-    let reused = 0;
+    const processedPhysicalKeys = new Set();
+    const generatedPhysicalKeys = new Set();
+    const reusedPhysicalKeys = new Set();
+    const successfulByStatus = {
+      [TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.READY]: 0,
+      [TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE]: 0,
+      [TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.STALE]: 0,
+      [TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING]: 0
+    };
     let attempts = 0;
-    let successfulJobs = 0;
-    const initialProcessed = skippedReady;
-    const initialReadyEstimate = missingOnly ? skippedReady : readyBefore;
+    let successfulLogical = 0;
+    const initialProcessed = excludedCount;
+    const initialReadyEstimate = readyBefore;
     setStructuredTextAudioGenerationState({
-      running: true, completed: initialProcessed, total: allJobs.length, current: null, failedJobs: [], lastStatus: 'running',
-      processed: initialProcessed, generated: 0, reusedPhysical: 0, skippedReady, failed: 0, remaining: Math.max(0, allJobs.length - initialProcessed),
-      readyEstimate: initialReadyEstimate, missingEstimate: Math.max(0, allJobs.length - initialReadyEstimate), sessionId
+      running: true, completed: initialProcessed, total: allRequirements.length, current: null, failedJobs: [], lastStatus: 'running',
+      processed: initialProcessed, generated: 0, generatedPhysical: 0, reusedPhysical: 0, skippedReady, skippedStale, failed: 0,
+      remaining: requirements.length, readyEstimate: initialReadyEstimate, missingEstimate: missingBefore + reusableBefore, staleEstimate: staleBefore, sessionId,
+      logicalRequirements: allRequirements.length, uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+      selectedLogicalRequirements: requirements.length, selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements, selectionMode
     });
     resetTextStructuredBatchTelemetry({
-      sessionId, status: 'running', total: allJobs.length, processed: initialProcessed, generated: 0, reusedPhysical: 0, skippedReady,
-      failed: 0, remaining: Math.max(0, allJobs.length - initialProcessed), readyEstimate: initialReadyEstimate,
-      missingEstimate: Math.max(0, allJobs.length - initialReadyEstimate), reconciled: false
+      sessionId, status: 'running', total: allRequirements.length, processed: initialProcessed, generated: 0, generatedPhysical: 0, reusedPhysical: 0,
+      skippedReady, skippedStale, failed: 0, remaining: requirements.length, readyEstimate: initialReadyEstimate,
+      missingEstimate: missingBefore + reusableBefore, staleEstimate: staleBefore, logicalRequirements: allRequirements.length,
+      uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements, selectedLogicalRequirements: requirements.length,
+      selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements, selectionMode, reconciled: false
     });
 
+    const estimateReady = () => selectionMode === 'all'
+      ? Math.min(allRequirements.length, Math.max(readyBefore, successfulLogical))
+      : Math.min(allRequirements.length, readyBefore + successfulLogical);
+    const estimateMissing = () => Math.max(0,
+      (missingBefore + reusableBefore)
+      - successfulByStatus[TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING]
+      - successfulByStatus[TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE]
+    );
+    const estimateStale = () => Math.max(0,
+      staleBefore - successfulByStatus[TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.STALE]
+    );
+
     try {
-      for (let jobIndex = 0; jobIndex < jobs.length; jobIndex += 1) {
+      for (let requirementIndex = 0; requirementIndex < requirements.length; requirementIndex += 1) {
         if (structuredTextAudioBatchStopRef.current) break;
-        const job = jobs[jobIndex];
-        const result = await generateStructuredTextAudioJob(job, { batch: true, deferBrowserDelivery: true, renderProgress: jobIndex % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0 });
+        const requirement = requirements[requirementIndex];
+        const physicalKey = String(requirement?.physicalKey || requirement?.coverage?.renderFingerprint || requirement?.renderFingerprint || '');
+        const firstPhysicalVisit = physicalKey ? !processedPhysicalKeys.has(physicalKey) : true;
+        const forceRegenerate = selectionMode === 'all' && firstPhysicalVisit;
+        const generationOptions = {
+          batch: true,
+          deferBrowserDelivery: true,
+          renderProgress: requirementIndex % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0,
+          forceRegenerate
+        };
+        const result = requirement?.representation === TEXT_STRUCTURED_BULK_REPRESENTATIONS.FULL
+          ? await generateStructuredTextFullAudioJob(requirement, generationOptions)
+          : await generateStructuredTextAudioJob(requirement, generationOptions);
         attempts += 1;
+        if (physicalKey) processedPhysicalKeys.add(physicalKey);
         if (result?.status === 'success') {
-          generated += 1;
-          successfulJobs += 1;
+          if (physicalKey) generatedPhysicalKeys.add(physicalKey);
+          successfulLogical += 1;
+          if (requirement?.status && successfulByStatus[requirement.status] !== undefined) successfulByStatus[requirement.status] += 1;
         } else if (result?.status === 'reused-rf') {
-          reused += 1;
-          successfulJobs += 1;
+          if (physicalKey && !generatedPhysicalKeys.has(physicalKey)) reusedPhysicalKeys.add(physicalKey);
+          successfulLogical += 1;
+          if (requirement?.status && successfulByStatus[requirement.status] !== undefined) successfulByStatus[requirement.status] += 1;
         } else if (result?.status === 'skipped-empty') {
-          successfulJobs += 1;
-        } else if (result?.status === 'error') failedJobs.push(job);
-        if (['success', 'reused-rf'].includes(result?.status) && result?.packagePending && result?.stagingRecord) packageRecords.push(result);
+          successfulLogical += 1;
+          if (requirement?.status && successfulByStatus[requirement.status] !== undefined) successfulByStatus[requirement.status] += 1;
+        } else if (result?.status === 'error') {
+          failedJobs.push({ ...requirement, error: result?.error || 'Generation failed.' });
+        }
         if (result?.status === 'cancelled' && structuredTextAudioBatchStopRef.current) break;
 
-        if ((jobIndex + 1) % TEXT_BATCH_RUNTIME_FLUSH_INTERVAL === 0) {
+        if ((requirementIndex + 1) % TEXT_BATCH_RUNTIME_FLUSH_INTERVAL === 0) {
           flushStructuredTextPendingRuntimeEntries();
           flushStructuredTextPendingAudioVariants();
         }
-        const processed = Math.min(allJobs.length, skippedReady + attempts);
-        const readyEstimate = missingOnly
-          ? Math.min(allJobs.length, skippedReady + successfulJobs)
-          : Math.min(allJobs.length, Math.max(readyBefore, successfulJobs));
+        const processed = Math.min(allRequirements.length, excludedCount + attempts);
+        const readyEstimate = estimateReady();
         const telemetryPatch = {
           status: structuredTextAudioBatchStopRef.current ? 'cancelling' : 'running',
-          total: allJobs.length,
+          total: allRequirements.length,
+          logicalRequirements: allRequirements.length,
+          uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+          selectedLogicalRequirements: requirements.length,
+          selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements,
+          selectionMode,
           processed,
-          generated,
-          reusedPhysical: reused,
+          generated: generatedPhysicalKeys.size,
+          generatedPhysical: generatedPhysicalKeys.size,
+          reusedPhysical: reusedPhysicalKeys.size,
           skippedReady,
+          skippedStale,
           failed: failedJobs.length,
-          remaining: Math.max(0, allJobs.length - processed),
+          remaining: Math.max(0, requirements.length - attempts),
           readyEstimate,
-          missingEstimate: Math.max(0, allJobs.length - readyEstimate),
-          currentSegmentId: job.segmentId,
-          currentChannel: job.channel,
-          currentVoiceId: job.downloadVoiceId || null,
+          missingEstimate: estimateMissing(),
+          staleEstimate: estimateStale(),
+          currentSegmentId: requirement.segmentId || null,
+          currentBlockId: requirement.blockId || null,
+          currentChannel: requirement.channel,
+          currentVoiceId: requirement.voiceId || requirement.downloadVoiceId || null,
+          currentRepresentation: requirement.representation || 'split',
           reconciled: false
         };
-        if ((jobIndex + 1) % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0 || jobIndex + 1 === jobs.length || structuredTextAudioBatchStopRef.current) {
+        if ((requirementIndex + 1) % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0 || requirementIndex + 1 === requirements.length || structuredTextAudioBatchStopRef.current) {
           flushStructuredTextStagingSummary();
-          setStructuredTextAudioGenerationState(prev => ({ ...prev, completed: processed, processed, generated, reusedPhysical: reused, skippedReady, failed: failedJobs.length, remaining: telemetryPatch.remaining, readyEstimate, missingEstimate: telemetryPatch.missingEstimate, failedJobs: [...failedJobs] }));
+          setStructuredTextAudioGenerationState(prev => ({
+            ...prev,
+            completed: processed, processed, generated: generatedPhysicalKeys.size, generatedPhysical: generatedPhysicalKeys.size,
+            reusedPhysical: reusedPhysicalKeys.size, skippedReady, skippedStale, failed: failedJobs.length, remaining: telemetryPatch.remaining,
+            readyEstimate, missingEstimate: telemetryPatch.missingEstimate, staleEstimate: telemetryPatch.staleEstimate, failedJobs: [...failedJobs]
+          }));
           publishTextStructuredBatchTelemetry(telemetryPatch);
         }
         if (!structuredTextAudioBatchStopRef.current) await new Promise(resolve => setTimeout(resolve, 250));
@@ -2847,46 +3160,45 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       flushStructuredTextPendingRuntimeEntries();
       flushStructuredTextPendingAudioVariants();
       flushStructuredTextStagingSummary();
-      let packageChunkCount = 0;
-      if (packageRecords.length) {
-        const recordsByDocument = new Map();
-        packageRecords.forEach(record => {
-          const documentId = record?.documentId || record?.stagingRecord?.documentId || 'TEXT_DOCUMENT';
-          const list = recordsByDocument.get(documentId) || [];
-          list.push(record);
-          recordsByDocument.set(documentId, list);
-        });
-        for (const [documentId, documentRecords] of recordsByDocument.entries()) {
-          const documentDescriptor = structuredTextBatchSelection?.documents?.find(document => document.id === documentId);
-          const packageResults = await exportTextAudioStagingZipChunks({
-            records: documentRecords.map(record => record.stagingRecord).filter(Boolean),
-            documentTitle: documentDescriptor?.title || documentRecords[0]?.documentTitle || 'Text_Document'
-          });
-          packageChunkCount += packageResults.length;
-          await markStructuredTextPackagedDelivery(documentRecords);
-          packageResults.forEach(result => addLog('Text Generate', `Browser package (${documentDescriptor?.title || documentId}): ${result.fileCount} audio → ${result.filename}.`));
-        }
-      }
-
       const stopped = structuredTextAudioBatchStopRef.current;
       const status = stopped ? 'cancelled' : failedJobs.length ? 'completed-with-errors' : 'completed';
-      const processed = Math.min(allJobs.length, skippedReady + attempts);
-      const readyEstimate = missingOnly
-        ? Math.min(allJobs.length, skippedReady + successfulJobs)
-        : Math.min(allJobs.length, Math.max(readyBefore, successfulJobs));
+      const processed = Math.min(allRequirements.length, excludedCount + attempts);
+      const readyEstimate = estimateReady();
       const finalState = {
-        running: false, completed: processed, total: allJobs.length, current: null, failedJobs, lastStatus: status,
-        processed, generated, reusedPhysical: reused, skippedReady, failed: failedJobs.length, remaining: Math.max(0, allJobs.length - processed),
-        readyEstimate, missingEstimate: Math.max(0, allJobs.length - readyEstimate), sessionId
+        running: false, completed: processed, total: allRequirements.length, current: null, failedJobs, lastStatus: status,
+        processed, generated: generatedPhysicalKeys.size, generatedPhysical: generatedPhysicalKeys.size, reusedPhysical: reusedPhysicalKeys.size,
+        skippedReady, skippedStale, failed: failedJobs.length, remaining: Math.max(0, requirements.length - attempts),
+        readyEstimate, missingEstimate: estimateMissing(), staleEstimate: estimateStale(), sessionId,
+        logicalRequirements: allRequirements.length, uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+        selectedLogicalRequirements: requirements.length, selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements, selectionMode
       };
       setStructuredTextAudioGenerationState(finalState);
       publishTextStructuredBatchTelemetry({
-        status, total: allJobs.length, processed, generated, reusedPhysical: reused, skippedReady, failed: failedJobs.length,
-        remaining: finalState.remaining, readyEstimate, missingEstimate: finalState.missingEstimate,
-        currentSegmentId: null, currentChannel: null, currentVoiceId: null, reconciled: true
+        status, total: allRequirements.length, logicalRequirements: allRequirements.length, uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+        selectedLogicalRequirements: requirements.length, selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements, selectionMode,
+        processed, generated: generatedPhysicalKeys.size, generatedPhysical: generatedPhysicalKeys.size, reusedPhysical: reusedPhysicalKeys.size,
+        skippedReady, skippedStale, failed: failedJobs.length, remaining: finalState.remaining, readyEstimate,
+        missingEstimate: finalState.missingEstimate, staleEstimate: finalState.staleEstimate,
+        currentSegmentId: null, currentBlockId: null, currentChannel: null, currentVoiceId: null, currentRepresentation: null, reconciled: true
       });
-      addLog('Text Generate', `Batch ${status}: ${processed}/${allJobs.length} processed • generated ${generated} • RF reused ${reused} • skipped Ready ${skippedReady} • failed ${failedJobs.length}.`);
-      return { status, completed: processed, total: allJobs.length, generated, reused, skippedReady, failedJobs, packaged: packageRecords.length, packageChunks: packageChunkCount };
+      addLog('Text Generate', `Bulk ${status}: ${requirements.length} selected / ${allRequirements.length} logical • ${selectedPhysicalWork.uniquePhysicalRequirements} selected unique physical • generated ${generatedPhysicalKeys.size} • reused ${reusedPhysicalKeys.size} • Ready skipped ${skippedReady} • Stale skipped ${skippedStale} • failed ${failedJobs.length}.${structuredTextAudioGenerationPreferences.bulkAutoExport ? ' Auto Export preflight follows after durable Staging reconciliation.' : ' Auto Export OFF; output remains in Staging.'}`);
+      if (!stopped && failedJobs.length === 0 && structuredTextAudioGenerationPreferences.bulkAutoExport) {
+        setStructuredTextPendingAutoExport({ sessionId, format: structuredTextAudioGenerationPreferences.bulkExportFormat || TEXT_STRUCTURED_BULK_EXPORT_FORMATS.PORTABLE_ZIP });
+      }
+      return {
+        status,
+        completed: processed,
+        total: allRequirements.length,
+        logicalRequirements: allRequirements.length,
+        uniquePhysicalRequirements: physicalWork.uniquePhysicalRequirements,
+        selectedLogicalRequirements: requirements.length,
+        selectedUniquePhysicalRequirements: selectedPhysicalWork.uniquePhysicalRequirements,
+        generatedPhysical: generatedPhysicalKeys.size,
+        reusedPhysical: reusedPhysicalKeys.size,
+        skippedReady,
+        skippedStale,
+        failedJobs
+      };
     } finally {
       flushStructuredTextPendingRuntimeEntries();
       flushStructuredTextPendingAudioVariants();
@@ -2894,7 +3206,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       structuredTextAudioBatchStopRef.current = false;
       structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextAudioGenerationState.running, structuredTextBatchSelection, forceStopAll, generateStructuredTextAudioJob, markStructuredTextPackagedDelivery, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
+  }, [structuredTextAudioGenerationState.running, structuredTextBatchSelection, structuredTextBulkGenerationPlan, structuredTextAudioGenerationPreferences.bulkAutoExport, forceStopAll, generateStructuredTextAudioJob, generateStructuredTextFullAudioJob, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
 
   const handleStructuredTextCancelGeneration = useCallback(() => {
     structuredTextAudioBatchStopRef.current = true;
@@ -4540,6 +4852,143 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   }, [structuredTextBatchSelection, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
+  const handleStructuredTextBulkExport = useCallback(async ({ format = null, auto = false } = {}) => {
+    const exportPlan = structuredTextBulkExportPlan || { physical: [], coverage: {} };
+    const physical = Array.isArray(exportPlan.physical) ? exportPlan.physical : [];
+    const targetFormat = format || structuredTextAudioGenerationPreferences.bulkExportFormat || TEXT_STRUCTURED_BULK_EXPORT_FORMATS.PORTABLE_ZIP;
+    if (!physical.length) {
+      addLog('Warn', `Bulk Export${auto ? ' (Auto)' : ''}: no Ready Staging physical audio matches the current scope / voice / representation policy.`);
+      return { status: 'empty', format: targetFormat, exported: 0 };
+    }
+
+    const scopeLabel = structuredTextBatchSelection?.documents?.length === 1
+      ? (structuredTextBatchSelection.documents[0]?.title || activeTextDocumentTree?.title || 'Text')
+      : `${structuredTextBatchSelection?.documents?.length || 0}_Workspaces`;
+    const readPhysical = async (entry, index) => {
+      const blob = await getTextAudioStagingBlob(entry?.stagingRecord?.id);
+      if (!blob) throw new Error(`Staging binary unavailable for ${entry?.physicalKey || `entry ${index + 1}`}.`);
+      return { entry, blob, index };
+    };
+
+    try {
+      if (targetFormat === TEXT_STRUCTURED_BULK_EXPORT_FORMATS.AUDIO_ONLY_DIRECT) {
+        let exported = 0;
+        let failed = 0;
+        for (let offset = 0; offset < physical.length; offset += DIRECT_MP3_BATCH_LIMIT) {
+          const wave = physical.slice(offset, offset + DIRECT_MP3_BATCH_LIMIT);
+          for (let waveIndex = 0; waveIndex < wave.length; waveIndex += 1) {
+            const index = offset + waveIndex;
+            const entry = wave[waveIndex];
+            try {
+              const { blob } = await readPhysical(entry, index);
+              const filename = buildTextBulkAudioOnlyFilename(entry, index);
+              const url = URL.createObjectURL(blob);
+              triggerBrowserDownload(url, filename);
+              window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+              if (entry?.stagingRecord?.id) await markAudioStagingExported(entry.stagingRecord.id, { kind: 'audio-only-direct', filename });
+              exported += 1;
+            } catch (error) {
+              failed += 1;
+              addLog('Warn', `Bulk Audio-Only direct skipped ${entry?.physicalKey || index}: ${error?.message || error}`);
+            }
+          }
+          if (offset + DIRECT_MP3_BATCH_LIMIT < physical.length) await new Promise(resolve => setTimeout(resolve, 300));
+        }
+        addLog('Text Audio', `Bulk Audio-Only Direct${auto ? ' Auto Export' : ''}: ${exportPlan.coverage?.logicalReady || 0} logical Ready → ${physical.length} unique physical • exported ${exported}${failed ? ` • failed ${failed}` : ''}.`);
+        return { status: failed ? 'completed-with-errors' : 'completed', format: targetFormat, exported, failed, logicalReady: exportPlan.coverage?.logicalReady || 0, physicalReady: physical.length };
+      }
+
+      const chunks = [];
+      let current = [];
+      let currentBytes = 0;
+      for (const entry of physical) {
+        const bytes = Math.max(0, Number(entry?.stagingRecord?.size || 0));
+        if (current.length && currentBytes + bytes > TEXT_AUDIO_STAGING_ZIP_MAX_BYTES) {
+          chunks.push(current);
+          current = [];
+          currentBytes = 0;
+        }
+        current.push(entry);
+        currentBytes += bytes;
+      }
+      if (current.length) chunks.push(current);
+
+      const results = [];
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+        const chunk = chunks[chunkIndex];
+        const loaded = [];
+        for (const entry of chunk) loaded.push(await readPhysical(entry, physical.indexOf(entry)));
+        const partNo = chunks.length > 1 ? chunkIndex + 1 : null;
+
+        if (targetFormat === TEXT_STRUCTURED_BULK_EXPORT_FORMATS.AUDIO_ONLY_ZIP) {
+          const entries = loaded.map(({ entry, blob, index }) => ({ filename: buildTextBulkAudioOnlyFilename(entry, index), blob }));
+          const filename = buildTextBulkArchiveFilename({ kind: 'audio-only', scopeLabel, partNo });
+          const result = await triggerBrowserZipDownload({ entries, filename });
+          const ids = chunk.map(entry => entry?.stagingRecord?.id).filter(Boolean);
+          if (ids.length) await markAudioStagingExported(ids, { kind: 'audio-only-zip', filename });
+          results.push({ ...result, filename, physical: chunk.length });
+          continue;
+        }
+
+        const manifest = buildProLingoTextAudioManifest({
+          entries: loaded.map(({ entry, blob }) => {
+            const isFull = entry.representation === 'full';
+            return {
+              representation: entry.representation,
+              identity: entry.physicalKey,
+              rf: isFull ? null : entry.physicalKey,
+              fullArtifactFingerprint: isFull ? entry.physicalKey : null,
+              filename: entry.canonicalFilename || entry.stagingRecord?.filename || `${entry.physicalKey}.${String(blob.type || '').includes('wav') ? 'wav' : 'mp3'}`,
+              mimeType: blob.type || entry.mimeType || null,
+              size: Number(blob.size || 0),
+              render: isFull
+                ? entry.stagingRecord?.metadata?.fullArtifactDescriptorV1 || null
+                : entry.stagingRecord?.metadata?.audioRenderDescriptorV1 || entry.stagingRecord?.metadata?.renderDescriptor || null,
+              references: entry.references || []
+            };
+          }),
+          source: {
+            kind: 'bulk-portable-audio',
+            appVersion: APP_VERSION,
+            checkpointId: APP_CHECKPOINT_ID,
+            scope: structuredTextBatchScope?.scopeMode || 'workspace',
+            voicePolicy: structuredTextAudioGenerationPreferences.bulkExportVoicePolicy || 'all-selected',
+            representation: structuredTextAudioGenerationPreferences.bulkExportRepresentation || 'split',
+            logicalReady: exportPlan.coverage?.logicalReady || 0,
+            uniquePhysicalReady: exportPlan.coverage?.uniquePhysicalReady || physical.length
+          }
+        });
+        const entries = loaded.map(({ entry, blob }) => ({ filename: entry.canonicalFilename || entry.stagingRecord?.filename || `${entry.physicalKey}.mp3`, blob }));
+        entries.push({ filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' }) });
+        entries.push({ filename: TEXT_AUDIO_INDEX_FILENAME, blob: new Blob([buildTextAudioIndexCsv(manifest)], { type: 'text/csv;charset=utf-8' }) });
+        const filename = buildTextBulkArchiveFilename({ kind: 'portable', scopeLabel, partNo });
+        const result = await triggerBrowserZipDownload({ entries, filename });
+        const ids = chunk.map(entry => entry?.stagingRecord?.id).filter(Boolean);
+        if (ids.length) await markAudioStagingExported(ids, { kind: 'portable-zip', filename });
+        results.push({ ...result, filename, physical: chunk.length, manifestEntries: manifest.entries.length });
+      }
+
+      const label = targetFormat === TEXT_STRUCTURED_BULK_EXPORT_FORMATS.AUDIO_ONLY_ZIP ? 'Audio-Only ZIP' : 'Portable ZIP';
+      addLog('Text Audio', `Bulk ${label}${auto ? ' Auto Export' : ''}: ${exportPlan.coverage?.logicalReady || 0} logical Ready → ${physical.length} unique physical • ${results.length} ZIP${results.length === 1 ? '' : 's'}.`);
+      return { status: 'completed', format: targetFormat, logicalReady: exportPlan.coverage?.logicalReady || 0, physicalReady: physical.length, results };
+    } catch (error) {
+      addLog('Error', `Bulk Export failed: ${error?.message || error}`);
+      return { status: 'error', format: targetFormat, error };
+    }
+  }, [structuredTextBulkExportPlan, structuredTextAudioGenerationPreferences, structuredTextBatchSelection, structuredTextBatchScope?.scopeMode, activeTextDocumentTree?.title, addLog]);
+
+  useEffect(() => {
+    if (!structuredTextPendingAutoExport || structuredTextAudioGenerationState.running) return;
+    const pending = structuredTextPendingAutoExport;
+    // Clear before dispatch to make this edge-triggered even if export fails. A new generation
+    // session may arm a new request independently.
+    setStructuredTextPendingAutoExport(null);
+    void handleStructuredTextBulkExport({
+      format: pending.format || structuredTextAudioGenerationPreferences.bulkExportFormat,
+      auto: true
+    });
+  }, [structuredTextPendingAutoExport, structuredTextAudioGenerationState.running, structuredTextBulkExportPlan, handleStructuredTextBulkExport, structuredTextAudioGenerationPreferences.bulkExportFormat]);
+
   const handleStructuredTextEdgeHealthCheck = useCallback(async () => {
     if (structuredTextAudioGenerationState.running || structuredTextEdgeHealth.status === 'testing') return null;
     const generationVoiceState = resolveTextStructuredGenerationVoiceState({
@@ -5821,7 +6270,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const structuredTextBatchControls = structuredTextModeActive ? {
     preferences: structuredTextAudioGenerationPreferences,
     voices: initialEdgeVoices,
+    // Existing Split export coverage stays separate until P6. P5 generation uses the
+    // explicit multi-voice Split/Full plan below.
     coverage: structuredTextBatchSelection?.coverage || structuredTextDocumentCoverage,
+    generationCoverage: structuredTextBulkGenerationPlan?.coverage || {},
+    exportCoverage: structuredTextBulkExportPlan?.coverage || {},
+    exportPlan: structuredTextBulkExportPlan,
+    bulkTextVoicesResolved: structuredTextBulkGenerationPlan?.selectedVoices?.text || [],
+    bulkMeaningVoicesResolved: structuredTextBulkGenerationPlan?.selectedVoices?.meaning || [],
+    bulkRepresentations: structuredTextBulkGenerationPlan?.representations || { split: true, full: false },
     scope: structuredTextBatchScope,
     cardCount: activeTextDocumentTree?.blocks?.length || 0,
     workspaceTitle: activeTextDocumentTree?.title || 'Text Workspace',
@@ -5847,8 +6304,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     generationState: structuredTextAudioGenerationState,
     onPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
     onScopeChange: patch => setStructuredTextBatchScope(prev => ({ ...prev, ...(patch || {}) })),
-    downloadMissing: () => runStructuredTextAudioGenerationBatch(null, { missingOnly: true }),
-    redownloadAll: () => runStructuredTextAudioGenerationBatch(null, { missingOnly: false }),
+    downloadMissing: () => runStructuredTextAudioGenerationBatch(null, { selectionMode: 'missing' }),
+    downloadMissingAndStale: () => runStructuredTextAudioGenerationBatch(null, { selectionMode: 'missing-and-stale' }),
+    redownloadAll: () => runStructuredTextAudioGenerationBatch(null, { selectionMode: 'all' }),
+    exportBulk: options => handleStructuredTextBulkExport(options),
     exportReadyMp3: handleStructuredTextBatchExportReadyMp3,
     exportFullZip: () => handleStructuredTextBatchExportConsolidatedZip({ partial: false }),
     exportPartialZip: () => handleStructuredTextBatchExportConsolidatedZip({ partial: true }),
@@ -6063,6 +6522,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onDocumentDownloadVoiceChange={handleStructuredTextDocumentDownloadVoiceChange}
         onDocumentDownloadModeChange={handleStructuredTextDocumentDownloadModeChange}
         playbackOrder={structuredTextAudioPlaybackOrder}
+        availableLocalVoices={structuredTextAvailableLocalVoices}
         onDocumentPlaybackOrderChange={handleStructuredTextDocumentPlaybackOrderChange}
         onDocumentTtsOnlyChange={handleStructuredTextDocumentTtsOnlyChange}
         onCardPlaybackOrderChange={handleStructuredTextCardPlaybackOrderChange}

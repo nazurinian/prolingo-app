@@ -60,8 +60,8 @@ const panelSource = fs.readFileSync(new URL('../src/components/text/TextStructur
 const popupSource = fs.readFileSync(new URL('../src/components/text/TextBatchPopup.jsx', import.meta.url), 'utf8');
 ok(appSource.includes('physicalByRf') && appSource.includes('buildProLingoTextAudioManifest'), 'Card/Batch ZIP production path RF-deduplicates and emits manifest');
 ok(appSource.includes('reusedPhysical: reused'), 'Batch telemetry separates RF reuse from new generation');
-ok(panelSource.includes('SELECTED ZIP') && panelSource.includes('segmentIds: selectedSegmentIds'), 'DL1 exposes Selected Sentence Split ZIP');
-ok(panelSource.includes('FULL EN') && panelSource.includes('FULL ID'), 'DL2 exposes derived Full Card channels');
-ok(popupSource.includes('unique physical RF') && popupSource.includes('Text Audio Manifest'), 'Batch UI documents physical RF dedup/manifest behavior');
+ok((panelSource.includes('SELECTED ZIP') && panelSource.includes('segmentIds: selectedSegmentIds')) || (panelSource.includes('Scope exports now live in Bulk Audio') && panelSource.includes('onExportSegmentAudio')), 'DL1 granular Segment export remains reachable while P7 centralizes scope export in Bulk Audio');
+ok((panelSource.includes('FULL EN') && panelSource.includes('FULL ID')) || (popupSource.includes('Split + Full') && popupSource.includes('Audio-Only')), 'DL2 Full export remains available through the final Split/Full Bulk export surface');
+ok((popupSource.includes('unique physical RF') && popupSource.includes('Text Audio Manifest')) || (popupSource.includes('Unique physical') && popupSource.includes('Portable ProLingo ZIP')), 'Batch UI exposes physical dedup and canonical Portable export behavior');
 
 console.log(`PASS DL1/DL2/B1 download-batch audit: ${checks} checks`);

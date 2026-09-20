@@ -1,10 +1,11 @@
 import React from 'react';
-import { Eye, List, PlayCircle, Repeat2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, List, ListOrdered, PlayCircle, Plus, Repeat2, Trash2, Volume2 } from 'lucide-react';
 import {
   TEXT_STRUCTURED_DISPLAY_MODES,
   TEXT_STRUCTURED_MANUAL_REPEAT_MODES,
   TEXT_STRUCTURED_ORDER_MODES,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
+  TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES,
   TEXT_STRUCTURED_REPEAT_MODES,
   TEXT_STRUCTURED_RESUME_MODES,
   getStructuredTextDisplayModeLabel,
@@ -26,6 +27,43 @@ const PLAY_OPTIONS = [
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_THEN_TEXT,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY
 ];
+
+const compactVoiceLabel = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Unknown';
+  const tail = raw.split('-').pop() || raw;
+  return tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw;
+};
+
+const PlaybackProfileOrderEditor = ({ channel = 'text', playbackOrder, availableLocalVoices, disabled, onChange }) => {
+  const profiles = Array.isArray(playbackOrder?.channels?.[channel]) ? playbackOrder.channels[channel] : [];
+  const currentVoices = profiles.map(profile => String(profile?.voiceId || profile || '').trim()).filter(Boolean);
+  const available = [...new Set([...(availableLocalVoices?.channels?.[channel] || []), ...currentVoices].filter(Boolean))].sort();
+  const remaining = available.filter(voiceId => !currentVoices.some(item => item.toLowerCase() === voiceId.toLowerCase()));
+  const move = (index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= profiles.length) return;
+    const next = [...profiles];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange?.(next, channel);
+  };
+  const remove = index => onChange?.(profiles.filter((_, itemIndex) => itemIndex !== index), channel);
+  const add = voiceId => {
+    if (!voiceId) return;
+    onChange?.([...profiles, { engine: 'edge', voiceId }], channel);
+  };
+  return <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-white/85 dark:bg-slate-900/35 p-2.5" data-text-global-playback-order={channel}>
+    <div className="flex items-center justify-between gap-2"><p className="text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300">{channel === 'meaning' ? 'ID local order' : 'EN local order'}</p><span className="text-[7px] text-slate-400">first Ready wins</span></div>
+    {profiles.length ? <div className="mt-1.5 space-y-1">{profiles.map((profile, index) => <div key={`${channel}-${profile?.id || profile?.voiceId || index}`} className="flex items-center gap-1 rounded-md border border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/25 px-1.5 py-1">
+      <span className="w-4 shrink-0 text-center text-[7px] font-black text-indigo-500">{index + 1}</span>
+      <span className="min-w-0 flex-1 truncate text-[8px] font-bold text-slate-600 dark:text-slate-300" title={profile?.voiceId}>{compactVoiceLabel(profile?.voiceId)}</span>
+      <button type="button" disabled={disabled || index === 0} onClick={() => move(index, -1)} className="min-h-8 min-w-8 rounded text-slate-400 disabled:opacity-25" title="Move up"><ArrowUp className="mx-auto h-3 w-3"/></button>
+      <button type="button" disabled={disabled || index === profiles.length - 1} onClick={() => move(index, 1)} className="min-h-8 min-w-8 rounded text-slate-400 disabled:opacity-25" title="Move down"><ArrowDown className="mx-auto h-3 w-3"/></button>
+      <button type="button" disabled={disabled} onClick={() => remove(index)} className="min-h-8 min-w-8 rounded text-slate-400 hover:text-red-500 disabled:opacity-25" title="Remove from explicit order"><Trash2 className="mx-auto h-3 w-3"/></button>
+    </div>)}</div> : <p className="mt-1.5 text-[7px] leading-relaxed text-slate-400">Compatibility fallback is active. Add a Ready local voice to make Workspace priority explicit.</p>}
+    <div className="mt-1.5 flex items-center gap-1.5"><Plus className="h-3 w-3 shrink-0 text-indigo-400"/><select disabled={disabled || !remaining.length} value="" onChange={event => add(event.target.value)} className="min-h-9 min-w-0 flex-1 rounded border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 px-2 text-[8px] text-slate-600 dark:text-slate-300 disabled:opacity-40"><option value="">{remaining.length ? 'Add local voice…' : 'No other Ready voice'}</option>{remaining.map(voiceId => <option key={voiceId} value={voiceId}>{compactVoiceLabel(voiceId)}</option>)}</select></div>
+  </div>;
+};
 
 const ManualTargetControls = ({ title, prefix, preferences, disabled, onChange }) => {
   const channelKey = `${prefix}PlaybackChannelMode`;
@@ -56,9 +94,15 @@ const ManualTargetControls = ({ title, prefix, preferences, disabled, onChange }
 export default function TextStructuredPlaybackControls({
   documentTree,
   preferences = {},
+  playbackRepresentationMode = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
+  playbackOrder = null,
+  availableLocalVoices = null,
   disabled = false,
   onDisplayModeChange,
   onPlaybackChannelModeChange,
+  onPlaybackRepresentationModeChange,
+  onDocumentPlaybackOrderChange,
+  onDocumentTtsOnlyChange,
   onPlaybackFeelChange
 }) {
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
@@ -66,6 +110,21 @@ export default function TextStructuredPlaybackControls({
     <div>
       <p className="text-[10px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">Text Player Settings</p>
       <p className="mt-0.5 text-[8px] text-slate-400">Playback behaviour only. Voice, speed and local-audio selection live in AUDIO.</p>
+    </div>
+
+    <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/45 dark:bg-indigo-950/15 p-3 space-y-2.5" data-text-global-playback-audio="true">
+      <div className="flex items-start gap-2"><Volume2 className="mt-0.5 h-3.5 w-3.5 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0 flex-1"><p className="text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300">Playback Audio</p><p className="text-[7px] leading-relaxed text-slate-400">Workspace-level representation and local voice priority. Generation/export selections stay independent.</p></div></div>
+      <div>
+        <p className="mb-1 text-[7px] font-bold text-slate-500">Representation</p>
+        <div className="grid grid-cols-2 gap-1.5" data-text-global-playback-mode="true">
+          {[TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL].map(mode => <button key={mode} type="button" disabled={disabled} onClick={() => onPlaybackRepresentationModeChange?.(mode)} className={`min-h-9 rounded-lg border px-2 text-[8px] font-black ${playbackRepresentationMode === mode ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-300'}`}>{mode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL ? 'FULL' : 'SPLIT'}</button>)}
+        </div>
+      </div>
+      <button type="button" disabled={disabled} onClick={() => onDocumentTtsOnlyChange?.(!(playbackOrder?.ttsOnly === true))} className={`w-full min-h-9 rounded-lg border px-2 text-left text-[8px] font-black ${playbackOrder?.ttsOnly === true ? 'border-amber-400 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`} data-text-global-tts-only="true">TTS ONLY • {playbackOrder?.ttsOnly === true ? 'ON — local audio bypassed' : 'OFF — local audio allowed'}</button>
+      <div className="grid gap-2 md:grid-cols-2" data-text-global-playback-order-editor="true">
+        <PlaybackProfileOrderEditor channel="text" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onDocumentPlaybackOrderChange}/>
+        <PlaybackProfileOrderEditor channel="meaning" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onDocumentPlaybackOrderChange}/>
+      </div>
     </div>
 
     <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3" data-text-player-show-play="true">

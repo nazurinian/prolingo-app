@@ -29,7 +29,7 @@ check(audioData.includes('window.confirm') && audioData.includes('app-owned stag
 check(audioData.includes('Original ZIP files will not be deleted'), 'ZIP clear explains external source is not deleted');
 check(audioControls.includes('SETUP & SOURCES'), 'Audio sidebar separates Setup & Sources from playback/export');
 check(audioControls.includes('Bulk Audio'), 'Audio helper points scope-level work to Bulk Audio');
-check(cardAudio.includes('Card Generate & Export'), 'Card workflow has clear generate/export surface');
+check(cardAudio.includes('Card Generate & Export') || (cardAudio.includes('Card Audio State') && cardAudio.includes('Bulk Audio')), 'Card workflow has a clear generation surface and directs scope export to Bulk Audio');
 check(cardAudio.includes('workflowExpanded'), 'Card workflow is collapsible to avoid fixed-footer crowding');
 check(library.includes('Workspace Text Packs are standalone scope packages') && library.includes('Unfiled / Library Root'), 'Transfer explains standalone Workspace pack destination');
 check(library.includes('Load DB Backup accepts only files exported by') && library.includes('Export DB'), 'Transfer explains strict DB Backup type');

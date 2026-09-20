@@ -17,11 +17,27 @@ export const TEXT_STRUCTURED_GENERATION_DEFAULTS = Object.freeze({
   edgeRate: 0,
   edgePitch: 0,
   generateText: true,
-  generateMeaning: true
+  generateMeaning: true,
+  // beta.8/P5: Bulk generation selection is independent from playback priority.
+  bulkTextVoiceIds: ['en-GB-LibbyNeural'],
+  bulkMeaningVoiceIds: ['su-ID-TutiNeural'],
+  bulkGenerateSplit: true,
+  bulkGenerateFull: false,
+  // beta.8/P6: export policy is independent from generation and playback order.
+  bulkAutoExport: false,
+  bulkExportFormat: 'portable-zip',
+  bulkExportVoicePolicy: 'all-selected',
+  bulkExportTextVoiceId: 'en-GB-LibbyNeural',
+  bulkExportMeaningVoiceId: 'su-ID-TutiNeural',
+  bulkExportRepresentation: 'split'
 });
 
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
+const normalizeVoiceIds = (candidate, fallback) => {
+  const list = (Array.isArray(candidate) ? candidate : []).map(clean).filter(Boolean);
+  return [...new Set(list.length ? list : [fallback].filter(Boolean))];
+};
 const clampInteger = (value, min, max, fallback = 0) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -38,7 +54,18 @@ export const normalizeTextStructuredAudioGenerationPreferences = candidate => ({
   edgeRate: clampInteger(candidate?.edgeRate, -50, 50, 0),
   edgePitch: clampInteger(candidate?.edgePitch, -20, 20, 0),
   generateText: candidate?.generateText !== false,
-  generateMeaning: candidate?.generateMeaning !== false
+  generateMeaning: candidate?.generateMeaning !== false,
+  bulkTextVoiceIds: normalizeVoiceIds(candidate?.bulkTextVoiceIds, clean(candidate?.edgeTextVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId),
+  bulkMeaningVoiceIds: normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, clean(candidate?.edgeMeaningVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId),
+  // Keep at least one representation selected. Full-only is valid; both-off falls back to Split.
+  bulkGenerateSplit: candidate?.bulkGenerateSplit !== false || candidate?.bulkGenerateFull !== true,
+  bulkGenerateFull: candidate?.bulkGenerateFull === true,
+  bulkAutoExport: candidate?.bulkAutoExport === true,
+  bulkExportFormat: ['audio-only-direct', 'audio-only-zip', 'portable-zip'].includes(candidate?.bulkExportFormat) ? candidate.bulkExportFormat : 'portable-zip',
+  bulkExportVoicePolicy: ['preferred', 'selected', 'all-selected'].includes(candidate?.bulkExportVoicePolicy) ? candidate.bulkExportVoicePolicy : 'all-selected',
+  bulkExportTextVoiceId: clean(candidate?.bulkExportTextVoiceId) || normalizeVoiceIds(candidate?.bulkTextVoiceIds, clean(candidate?.edgeTextVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId)[0],
+  bulkExportMeaningVoiceId: clean(candidate?.bulkExportMeaningVoiceId) || normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, clean(candidate?.edgeMeaningVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId)[0],
+  bulkExportRepresentation: ['split', 'full', 'both'].includes(candidate?.bulkExportRepresentation) ? candidate.bulkExportRepresentation : 'split'
 });
 
 const extractPersonToken = value => {
