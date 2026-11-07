@@ -29,6 +29,8 @@ const Header = ({
   saveUpdatedCSV,
   folderInputRef,
   audioZipInputRef,
+  csvInputRef,
+  handleCSVUpload,
   sourceInputRef,
   fullPackInputRef,
   handleFolderSelect,
@@ -57,14 +59,14 @@ const Header = ({
     <div className={`z-50 bg-white dark:bg-slate-800 transition-transform duration-300 shadow-md ${isMobile ? 'fixed top-0 left-0 right-0 w-full' : 'sticky top-0 border-b border-slate-200 dark:border-slate-700'} ${isMobile && !showAppBar ? '-translate-y-full' : 'translate-y-0'}`}>
       
       {/* 1. HEADER UTAMA */}
-      <div className={`p-3 flex gap-4 justify-between items-center ${!isMobile ? 'border-none shadow-none' : ''} h-16`}>
-          <div className="flex items-center gap-3">
+      <div className={`p-3 flex gap-2 md:gap-4 justify-between items-center min-w-0 ${!isMobile ? 'border-none shadow-none' : ''} h-16`}>
+          <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1 md:flex-none">
           {!isMobile && <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300">
               {isSidebarOpen ? <PanelLeftClose className="w-5 h-5"/> : <PanelLeftOpen className="w-5 h-5"/>}
           </button>}
-          <div className="flex items-center gap-2 whitespace-nowrap" title="ProLingo">
-              <div className="bg-indigo-600 text-white p-2 rounded-lg"><Mic className="w-5 h-5" /></div>
-              <div className="min-w-0"><h1 className="font-bold text-slate-800 dark:text-white leading-tight whitespace-nowrap">ProLingo <span className="text-indigo-500">{APP_VERSION_LABEL}</span></h1><p className="text-[8px] leading-tight font-bold text-slate-400 dark:text-slate-500 truncate max-w-40" title={APP_CHECKPOINT_LABEL}>Checkpoint: {APP_CHECKPOINT_ID}</p></div>
+          <div className="flex items-center gap-2 min-w-0" title="ProLingo">
+              <div className="bg-indigo-600 text-white p-2 rounded-lg flex-shrink-0"><Mic className="w-5 h-5" /></div>
+              <div className="min-w-0"><h1 className="font-bold text-slate-800 dark:text-white leading-tight truncate">ProLingo <span className="hidden md:inline text-indigo-500">{APP_VERSION_LABEL}</span></h1><p className="hidden md:block text-[8px] leading-tight font-bold text-slate-400 dark:text-slate-500 truncate max-w-40" title={APP_CHECKPOINT_LABEL}>Checkpoint: {APP_CHECKPOINT_ID}</p></div>
           </div>
           </div>
           
@@ -109,6 +111,8 @@ const Header = ({
               <input type="file" ref={sourceInputRef} accept=".csv,.tsv,.txt" onChange={handleSourceUpload} />
               <input type="file" ref={fullPackInputRef} accept=".csv,.tsv,.txt" multiple onChange={handleFullPackUpload} />
           </div>
+          {/* Keep this single CSV picker mounted, including on mobile where SidebarShell returns null. */}
+          <input type="file" data-csv-import-input="true" className="sr-only" tabIndex={-1} ref={csvInputRef} accept=".csv,.tsv,.txt" onChange={handleCSVUpload} />
     
           <div className="md:hidden ml-auto flex items-center gap-1.5 flex-shrink-0">
               <button

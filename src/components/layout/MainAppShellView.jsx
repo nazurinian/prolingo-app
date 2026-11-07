@@ -85,6 +85,8 @@ export const renderMainAppShellView = (props) => {
         saveUpdatedCSV={saveUpdatedCSV}
         folderInputRef={folderInputRef}
         audioZipInputRef={audioZipInputRef}
+        csvInputRef={csvInputRef}
+        handleCSVUpload={handleCSVUpload}
         sourceInputRef={sourceInputRef}
         fullPackInputRef={fullPackInputRef}
         handleFolderSelect={handleFolderSelect}

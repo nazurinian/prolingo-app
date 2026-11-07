@@ -2,7 +2,7 @@ import React from 'react';
 import { Upload, Plus, FileDown, Trash2, History, RotateCcw, Layers } from 'lucide-react';
 
 export default function DesktopDataActions({
-  mode, isSystemBusy, csvInputRef, handleCSVUpload, openManualAdd, playlist, tableViewMode,
+  mode, isSystemBusy, csvInputRef, openManualAdd, playlist, tableViewMode,
   exportTableCSV, setIsClearDialogOpen, isCsvDirty, csvChangeSummary, setIsChangeReviewOpen,
   undoStack, undoLastDataChange, saveUpdatedCSV, isMultiSourceMode, activeTextEditorModel, isBatchOpen = false, setIsBatchOpen, isBatchDownloading = false
 }) {
@@ -10,8 +10,7 @@ export default function DesktopDataActions({
               <div className="grid grid-cols-2 gap-2">
                 {mode === 'table' ? (
                   <>
-                    <button disabled={isSystemBusy} onClick={() => csvInputRef.current.click()} className={`flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700 text-xs dark:text-slate-300 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Upload className="w-3 h-3"/> Import CSV</button>
-                    <input type="file" ref={csvInputRef} accept=".csv,.tsv,.txt" className="hidden" onChange={handleCSVUpload} />
+                    <button disabled={isSystemBusy} onClick={() => csvInputRef.current?.click()} className={`flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700 text-xs dark:text-slate-300 ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Upload className="w-3 h-3"/> Import CSV</button>
                     <button disabled={isSystemBusy} onClick={openManualAdd} className={`flex items-center justify-center gap-1 border border-indigo-200 dark:border-indigo-900 text-indigo-600 dark:text-indigo-400 p-2 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Plus className="w-3 h-3"/> Add Manual</button>
                     <button disabled={isSystemBusy || playlist.filter(i => i.isStructured).length === 0} onClick={() => exportTableCSV(tableViewMode === 'study' ? 'study' : 'master')} className={`flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 p-2 rounded hover:bg-slate-50 dark:hover:bg-slate-700 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><FileDown className="w-3 h-3"/> Export Copy</button>
                     <button disabled={isSystemBusy} onClick={() => setIsClearDialogOpen(true)} className={`flex items-center justify-center gap-1 border border-red-100 dark:border-red-900/50 text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-xs ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''}`}><Trash2 className="w-3 h-3"/> Clear View</button>
