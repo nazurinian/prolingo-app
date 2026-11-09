@@ -4,7 +4,8 @@ import { createVoiceEngineRegistry } from '../services/audio/voiceEngines/voiceE
 import {
   createKokoroWebAdapter,
   KOKORO_BRITISH_VOICES,
-  KOKORO_MAX_LAB_TEXT
+  KOKORO_MAX_LAB_TEXT,
+  KOKORO_LAB_PROFILES
 } from '../services/audio/voiceEngines/kokoroWebAdapter.js';
 import { createPcmLabPlayer } from './pcmLabPlayer.js';
 import './style.css';
@@ -16,7 +17,7 @@ function Lab() {
   const playerRef = useRef(null);
   if (!engineRef.current) {
     const registry = createVoiceEngineRegistry({ fallbackId: 'browser' });
-    const engine = createKokoroWebAdapter();
+    const engine = createKokoroWebAdapter({ profile: 'wasm-q8' });
     registry.register(engine);
     engineRef.current = { registry, engine };
   }
@@ -26,6 +27,10 @@ function Lab() {
   const controllerRef = useRef(null);
   const [text, setText] = useState(INITIAL_TEXT);
   const [voiceId, setVoiceId] = useState('bf_emma');
+  const [profile, setProfile] = useState('wasm-q8');
+  const [bufferChunks, setBufferChunks] = useState(1);
+  const [chunkStats, setChunkStats] = useState([]);
+  const [underrunMs, setUnderrunMs] = useState(0);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -42,12 +47,26 @@ function Lab() {
     void playerRef.current?.dispose();
   }, []);
 
+  const changeProfile = next => {
+    if (loading || playing || next === profile) return;
+    engineRef.current.engine.dispose();
+    const registry = createVoiceEngineRegistry({ fallbackId: 'browser' });
+    const engine = createKokoroWebAdapter({ profile: next });
+    registry.register(engine);
+    engineRef.current = { registry, engine };
+    setProfile(next);
+    setReady(false);
+    setProgress(null);
+    setError('');
+    setStatus('Profil diganti. Muat model baru sebelum mencoba.');
+  };
+
   const load = async () => {
     if (loading || ready) return;
     setLoading(true);
     setError('');
     setProgress(null);
-    setStatus('Memuat model Kokoro Q8 (WASM)…');
+    setStatus('Memuat Kokoro ' + profile + '…');
     try {
       await engineRef.current.engine.load({
         onProgress: detail => {
@@ -86,9 +105,20 @@ function Lab() {
     setChunks(0);
     setFirstAudioMs(null);
     setLatestText('');
+    setChunkStats([]);
+    setUnderrunMs(0);
+    playerRef.current.stop();
     setStatus(mode === 'stream' ? 'Streaming per kalimat…' : 'Menghasilkan satu audio…');
     const start = performance.now();
     let count = 0;
+    const pending = [];
+    let started = false;
+    let totalUnderrun = 0;
+    const schedule = async chunk => {
+      const result = await playerRef.current.enqueue(chunk);
+      totalUnderrun += result.underrunMs;
+      setUnderrunMs(totalUnderrun);
+    };
     try {
       // Called directly by a user click to allow mobile audio playback.
       await playerRef.current.unlock();
@@ -101,11 +131,23 @@ function Lab() {
         if (sessionRef.current !== session) break;
         count += 1;
         if (count === 1) setFirstAudioMs(Math.round(performance.now() - start));
-        await playerRef.current.enqueue(chunk);
+        pending.push(chunk);
+        setChunkStats(previous => [...previous, {
+          index: count, text: chunk.text, generationMs: chunk.generationMs,
+          durationMs: chunk.durationMs
+        }]);
+        if (!started && pending.length >= bufferChunks) started = true;
+        if (started) {
+          while (pending.length) {
+            if (sessionRef.current !== session) break;
+            await schedule(pending.shift());
+          }
+        }
         setChunks(count);
         setLatestText(chunk.text);
       }
       if (sessionRef.current !== session) return;
+      while (pending.length) await schedule(pending.shift());
       setStatus('Sintesis selesai. Menyelesaikan antrean playback…');
       await playerRef.current.waitForIdle();
       if (sessionRef.current === session) setStatus('Playback selesai.');
@@ -124,17 +166,22 @@ function Lab() {
   return (
     <main>
       <a href="/">← ProLingo Beta (tanpa perubahan)</a>
-      <h1>ProLingo · AI Voice Lab v0.2</h1>
+      <h1>ProLingo · AI Voice Lab v0.2.1</h1>
       <p>Halaman eksperimen mandiri. Tidak terhubung ke P9, Global Player, atau preferensi suara Stable. Model diunduh dari Hugging Face saat diminta; inferensi dilakukan di perangkat.</p>
 
       <section className="lab-card">
         <h2>1. Memuat model lokal</h2>
-        <p>Kokoro 82M v1.0 · Q8 sekitar 92 MB, belum termasuk runtime dan voice. Cache browser membantu menghindari download ulang, tetapi tidak dijamin permanen.</p>
+        <p>Pilih WASM Q8 untuk model kecil, atau WebGPU FP32 untuk membandingkan GPU (sekitar 326 MB model). Browser mungkin menghapus cache.</p>
+        <label>Profil komputasi
+          <select value={profile} disabled={loading || playing} onChange={e => changeProfile(e.target.value)}>
+            {KOKORO_LAB_PROFILES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label>
         <div className="lab-row">
           <button disabled={loading || ready || playing} onClick={load}>
             {ready ? 'Model siap ✓' : loading ? 'Memuat…' : 'Load Kokoro (unduh jika perlu)'}
           </button>
-          <span className="lab-muted">WASM / Q8 · percobaan Web</span>
+          <span className="lab-muted">{profile} · eksperimen, bukan player P9</span>
         </div>
         {progress !== null && <progress max="100" value={progress} aria-label="Download model" />}
       </section>
@@ -148,6 +195,13 @@ function Lab() {
             </select>
           </label>
         </div>
+        <label style={{ marginTop: 12 }}>Buffer awal streaming
+          <select value={bufferChunks} disabled={playing} onChange={e => setBufferChunks(Number(e.target.value))}>
+            <option value={1}>1 chunk · mulai segera</option>
+            <option value={2}>2 chunk · lebih banyak buffer</option>
+            <option value={3}>3 chunk · buffer maksimum lab</option>
+          </select>
+        </label>
         <label style={{ marginTop: 12 }}>Teks percobaan
           <textarea maxLength={KOKORO_MAX_LAB_TEXT} value={text} disabled={playing} onChange={e => setText(e.target.value)} />
         </label>
@@ -167,12 +221,25 @@ function Lab() {
         <div className="lab-grid">
           <div className="lab-metric"><strong>{chunks}</strong><span className="lab-muted">Chunk diterima</span></div>
           <div className="lab-metric"><strong>{firstAudioMs === null ? '—' : firstAudioMs + ' ms'}</strong><span className="lab-muted">Waktu sampai chunk pertama</span></div>
+          <div className="lab-metric"><strong>{underrunMs} ms</strong><span className="lab-muted">Total gap antarchunk terdeteksi</span></div>
+          <div className="lab-metric"><strong>{chunkStats.length ? Math.round(chunkStats.reduce((sum,c) => sum + (c.generationMs || 0), 0) / chunkStats.length) + ' ms' : '—'}</strong><span className="lab-muted">Rata-rata waktu generasi per chunk</span></div>
         </div>
         <p className={error ? 'lab-status lab-error' : 'lab-status'} role="status">{error || status}</p>
-        {latestText && <p className="lab-muted">Segmen yang terakhir dihasilkan (bukan highlight sinkron): “{latestText}”</p>}
+        {latestText && <p className="lab-muted">Segmen terakhir yang dihasilkan (bukan highlight sinkron): “{latestText}”</p>}
+        {chunkStats.length > 0 && <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', textAlign: 'left', fontSize: '.85rem' }}>
+            <thead><tr><th>Chunk</th><th>Generasi</th><th>Durasi audio</th><th>Rasio kerja/audio</th></tr></thead>
+            <tbody>{chunkStats.map(c => <tr key={c.index}>
+              <td>{c.index}</td>
+              <td>{c.generationMs ?? '—'} ms</td>
+              <td>{c.durationMs ?? '—'} ms</td>
+              <td>{c.durationMs ? ((c.generationMs || 0) / c.durationMs).toFixed(2) + '×' : '—'}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>}
       </section>
 
-      <p className="lab-muted">Catatan: tombol Stop menghentikan playback segera; model yang sedang menghitung satu chunk mungkin membutuhkan waktu untuk menerima pembatalan. Browser Web Audio tidak otomatis setara dengan playback P9. Uji di Chrome/Edge PC dan HP setelah paket Kokoro terpasang.</p>
+      <p className="lab-muted">Catatan: buffer awal menunda playback sampai beberapa chunk siap (atau sintesis selesai). Gap antarchunk merupakan estimasi berdasarkan jadwal Web Audio; hasil bukan diagnosis perangkat otomatis. Tombol Stop menghentikan playback segera; model yang sedang menghitung satu chunk mungkin membutuhkan waktu untuk menerima pembatalan. Browser Web Audio tidak otomatis setara dengan playback P9. Uji di Chrome/Edge PC dan HP setelah paket Kokoro terpasang.</p>
     </main>
   );
 }
