@@ -14,6 +14,34 @@ const cancelled = new Set();
 const notify = (message, transfer = []) => self.postMessage(message, transfer);
 const toError = error => error instanceof Error ? error.message : String(error);
 
+// No model download: probe WebGPU in the same Worker used for inference.
+// A supported adapter does not guarantee successful FP32 model allocation.
+async function probeWebGPU() {
+  if (!self.isSecureContext) return {
+    supported: false, reason: 'WebGPU membutuhkan HTTPS atau localhost (secure context).'
+  };
+  const gpu = self.navigator?.gpu;
+  if (!gpu) return {
+    supported: false, reason: 'navigator.gpu tidak tersedia di Worker pada browser/perangkat ini.'
+  };
+  let adapter;
+  try {
+    adapter = await gpu.requestAdapter();
+  } catch (error) {
+    return { supported: false, reason: 'requestAdapter gagal: ' + toError(error) };
+  }
+  if (!adapter) return {
+    supported: false, reason: 'requestAdapter mengembalikan null (GPU tidak tersedia/diizinkan).'
+  };
+  return {
+    supported: true,
+    reason: 'WebGPU adapter tersedia di Worker; belum menguji memori/model.',
+    shaderF16: Boolean(adapter.features?.has?.('shader-f16')),
+    maxBufferMB: Number.isFinite(adapter.limits?.maxBufferSize)
+      ? Math.round(adapter.limits.maxBufferSize / 1048576) : null
+  };
+}
+
 async function loadModel(id, profile = 'wasm-q8') {
   const selected = PROFILES[profile];
   if (!selected) throw new Error('Profil Kokoro tidak tersedia.');
@@ -24,9 +52,8 @@ async function loadModel(id, profile = 'wasm-q8') {
     loadedProfile = profile;
     loader = (async () => {
       if (selected.device === 'webgpu') {
-        const gpu = self.navigator?.gpu;
-        const gpuAdapter = gpu && await gpu.requestAdapter().catch(() => null);
-        if (!gpuAdapter) throw new Error('WebGPU adapter tidak tersedia di worker/browser ini. Pilih WASM Q8.');
+        const check = await probeWebGPU();
+        if (!check.supported) throw new Error(check.reason);
       }
       kokoro = await import('kokoro-js');
       tts = await kokoro.KokoroTTS.from_pretrained(MODEL_ID, {
@@ -62,6 +89,10 @@ function emitAudio(id, text, rawAudio, generationMs) {
 async function processMessage(message) {
   const { type, id, text = '', voiceId = 'bf_emma', profile = 'wasm-q8' } = message;
   try {
+    if (type === 'probe-webgpu') {
+      notify({ type: 'probe', id, detail: await probeWebGPU() });
+      return;
+    }
     if (type === 'load') {
       await loadModel(id, profile);
       notify({ type: 'ready', id, profile });
