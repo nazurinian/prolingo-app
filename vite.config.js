@@ -31,7 +31,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         }
-      }
+      },      
+      allowedHosts: [
+        'hikam-pc.tail5ce032.ts.net'
+      ],
     },
     preview: {
       host: true,
