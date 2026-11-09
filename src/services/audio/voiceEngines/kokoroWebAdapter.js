@@ -14,6 +14,10 @@ export const KOKORO_BRITISH_VOICES = Object.freeze([
   { id: 'bm_fable', name: 'Fable', locale: 'en-GB' }
 ]);
 export const KOKORO_MAX_LAB_TEXT = 450;
+export const KOKORO_LAB_PROFILES = Object.freeze([
+  { id: 'wasm-q8', label: 'WASM / CPU · Q8 (~92 MB)', device: 'wasm', dtype: 'q8' },
+  { id: 'webgpu-fp32', label: 'WebGPU / GPU · FP32 (~326 MB)', device: 'webgpu', dtype: 'fp32' }
+]);
 
 export function validateKokoroLabText(text) {
   const clean = String(text ?? '').trim();
@@ -69,13 +73,18 @@ const aborted = () => {
 };
 
 export function createKokoroWebAdapter({
+  profile = 'wasm-q8',
   workerFactory = () => new Worker(new URL('./kokoroVoice.worker.js', import.meta.url), { type: 'module' })
 } = {}) {
+  if (!KOKORO_LAB_PROFILES.some(item => item.id === profile)) {
+    throw new TypeError('Profil Kokoro tidak dikenal.');
+  }
   let worker = null;
   let ready = false;
   let loading = null;
   let serial = 0;
   let activeStreamId = null;
+  let lastGenerationMs = null;
   const requests = new Map();
 
   const rejectAll = error => {
@@ -106,9 +115,12 @@ export function createKokoroWebAdapter({
         request.queue.push({
           text: data.text,
           samples: data.samples,
-          sampleRate: data.sampleRate
+          sampleRate: data.sampleRate,
+          generationMs: data.generationMs,
+          durationMs: data.durationMs
         });
       } else if (data.type === 'done' && request.kind === 'stream') {
+        lastGenerationMs = data.totalGenerationMs ?? null;
         requests.delete(data.id);
         request.queue.finish();
       } else if (data.type === 'error') {
@@ -129,7 +141,7 @@ export function createKokoroWebAdapter({
     loading = new Promise((resolve, reject) => {
       requests.set(id, { kind: 'load', resolve, reject, onProgress });
       try {
-        ensureWorker().postMessage({ type: 'load', id });
+        ensureWorker().postMessage({ type: 'load', id, profile });
       } catch (error) {
         requests.delete(id);
         reject(error);
@@ -171,9 +183,10 @@ export function createKokoroWebAdapter({
     };
     activeStreamId = id;
     requests.set(id, { kind: 'stream', queue });
+    lastGenerationMs = null;
     signal?.addEventListener('abort', stop, { once: true });
     try {
-      ensureWorker().postMessage({ type: mode, id, text: content, voiceId });
+      ensureWorker().postMessage({ type: mode, id, text: content, voiceId, profile });
       for await (const chunk of queue) {
         if (signal?.aborted) break;
         yield chunk;
@@ -194,6 +207,7 @@ export function createKokoroWebAdapter({
   return Object.freeze({
     id: 'kokoro',
     label: 'Kokoro Local AI (Web Lab)',
+    profile,
     output: VOICE_OUTPUT.STREAM,
     capabilities: Object.freeze({
       offline: 'after-model-and-runtime-cached',
@@ -210,6 +224,7 @@ export function createKokoroWebAdapter({
     stream,
     cancel,
     dispose,
-    isLoaded: () => ready
+    isLoaded: () => ready,
+    getTotalGenerationMs: () => lastGenerationMs
   });
 }
