@@ -40,6 +40,8 @@ function Lab() {
   const [firstAudioMs, setFirstAudioMs] = useState(null);
   const [latestText, setLatestText] = useState('');
   const [error, setError] = useState('');
+  const [gpuProbe, setGpuProbe] = useState(null);
+  const [probing, setProbing] = useState(false);
 
   useEffect(() => () => {
     controllerRef.current?.abort();
@@ -58,7 +60,22 @@ function Lab() {
     setReady(false);
     setProgress(null);
     setError('');
+    setGpuProbe(null);
     setStatus('Profil diganti. Muat model baru sebelum mencoba.');
+  };
+
+  const checkGpu = async () => {
+    if (probing || loading || playing) return;
+    setProbing(true);
+    setGpuProbe(null);
+    try {
+      const result = await engineRef.current.engine.probeWebGPU();
+      setGpuProbe(result);
+    } catch (e) {
+      setGpuProbe({ supported: false, reason: e?.message || String(e) });
+    } finally {
+      setProbing(false);
+    }
   };
 
   const load = async () => {
@@ -166,12 +183,17 @@ function Lab() {
   return (
     <main>
       <a href="/">← ProLingo Beta (tanpa perubahan)</a>
-      <h1>ProLingo · AI Voice Lab v0.2.1</h1>
+      <h1>ProLingo · AI Voice Lab v0.2.2</h1>
       <p>Halaman eksperimen mandiri. Tidak terhubung ke P9, Global Player, atau preferensi suara Stable. Model diunduh dari Hugging Face saat diminta; inferensi dilakukan di perangkat.</p>
 
       <section className="lab-card">
         <h2>1. Memuat model lokal</h2>
         <p>Pilih WASM Q8 untuk model kecil, atau WebGPU FP32 untuk membandingkan GPU (sekitar 326 MB model). Browser mungkin menghapus cache.</p>
+        <div className="lab-row" style={{ marginBottom: 12 }}>
+          <button type="button" className="secondary" disabled={probing || loading || playing} onClick={() => void checkGpu()}>{probing ? 'Memeriksa…' : 'Cek WebGPU HP (tanpa download)'}</button>
+          <span className="lab-muted">Secure context: {window.isSecureContext ? 'Ya' : 'Tidak'} · WebGPU halaman: {navigator.gpu ? 'Ada' : 'Tidak ada'}</span>
+        </div>
+        {gpuProbe && <div className={gpuProbe.supported ? 'lab-status' : 'lab-status lab-error'} style={{ marginBottom: 12 }} role="status">{gpuProbe.supported ? 'WebGPU Worker tersedia. ' : 'WebGPU Worker tidak tersedia. '}{gpuProbe.reason}{gpuProbe.supported && <> · Shader F16: {gpuProbe.shaderF16 ? 'Ya' : 'Tidak'} · Max buffer: {gpuProbe.maxBufferMB ?? 'tidak diketahui'} MB</>}</div>}
         <label>Profil komputasi
           <select value={profile} disabled={loading || playing} onChange={e => changeProfile(e.target.value)}>
             {KOKORO_LAB_PROFILES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -239,7 +261,7 @@ function Lab() {
         </div>}
       </section>
 
-      <p className="lab-muted">Catatan: buffer awal menunda playback sampai beberapa chunk siap (atau sintesis selesai). Gap antarchunk merupakan estimasi berdasarkan jadwal Web Audio; hasil bukan diagnosis perangkat otomatis. Tombol Stop menghentikan playback segera; model yang sedang menghitung satu chunk mungkin membutuhkan waktu untuk menerima pembatalan. Browser Web Audio tidak otomatis setara dengan playback P9. Uji di Chrome/Edge PC dan HP setelah paket Kokoro terpasang.</p>
+      <p className="lab-muted">Catatan: pemeriksaan WebGPU tidak mengunduh model; WebGPU tersedia tidak menjamin FP32 muat di RAM/GPU. Buffer awal menunda playback sampai beberapa chunk siap (atau sintesis selesai). Gap antarchunk merupakan estimasi berdasarkan jadwal Web Audio; hasil bukan diagnosis perangkat otomatis. Tombol Stop menghentikan playback segera; model yang sedang menghitung satu chunk mungkin membutuhkan waktu untuk menerima pembatalan. Browser Web Audio tidak otomatis setara dengan playback P9. Uji di Chrome/Edge PC dan HP setelah paket Kokoro terpasang.</p>
     </main>
   );
 }
