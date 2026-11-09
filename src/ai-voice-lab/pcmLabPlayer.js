@@ -4,6 +4,7 @@ export function createPcmLabPlayer({
 } = {}) {
   let context = null;
   let scheduledEnd = 0;
+  let hasScheduled = false;
   const sources = new Set();
   const idleWaiters = [];
 
@@ -31,7 +32,9 @@ export function createPcmLabPlayer({
     source.buffer = buffer;
     source.connect(context.destination);
     const now = context.currentTime;
+    const underrunMs = hasScheduled ? Math.max(0, Math.round((now - scheduledEnd) * 1000)) : 0;
     const start = Math.max(now + 0.045, scheduledEnd);
+    hasScheduled = true;
     scheduledEnd = start + buffer.duration;
     sources.add(source);
     source.onended = () => {
@@ -40,7 +43,7 @@ export function createPcmLabPlayer({
       notifyIdle();
     };
     source.start(start);
-    return { start, duration: buffer.duration, scheduledAhead: Math.max(0, scheduledEnd - now) };
+    return { start, duration: buffer.duration, scheduledAhead: Math.max(0, scheduledEnd - now), underrunMs };
   };
 
   const waitForIdle = () => sources.size === 0
@@ -53,6 +56,7 @@ export function createPcmLabPlayer({
     }
     // We only wait for onended to clear the set.
     scheduledEnd = context?.currentTime || 0;
+    hasScheduled = false;
     notifyIdle();
   };
 
