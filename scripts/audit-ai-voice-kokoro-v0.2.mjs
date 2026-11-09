@@ -31,6 +31,9 @@ const mockWorker = {
   postMessage(payload) {
     sent.push(payload);
     queueMicrotask(() => {
+      if (payload.type === 'probe-webgpu') this.onmessage({ data: {
+        type: 'probe', id: payload.id, detail: { supported: true, reason: 'mock adapter', shaderF16: false, maxBufferMB: 128 }
+      } });
       if (payload.type === 'load') this.onmessage({ data: { type: 'ready', id: payload.id } });
       if (payload.type === 'generate' || payload.type === 'stream') {
         this.onmessage({
@@ -47,6 +50,9 @@ const mockWorker = {
   terminate() {}
 };
 const kokoro = createKokoroWebAdapter({ workerFactory: () => mockWorker });
+const gpuProbe = await kokoro.probeWebGPU();
+assert.equal(gpuProbe.supported, true);
+assert.equal(gpuProbe.maxBufferMB, 128);
 await kokoro.load();
 assert.equal(kokoro.isLoaded(), true);
 let result = [];
