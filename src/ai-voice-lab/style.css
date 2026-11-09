@@ -1,0 +1,26 @@
+:root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color-scheme: dark; background: #0e111b; color: #f2f4fa; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: #a5bfff; }
+main { max-width: 860px; margin: 24px auto; padding: 0 18px 40px; }
+h1 { font-size: 1.7rem; margin: 12px 0 8px; letter-spacing: -.03em; }
+h2 { font-size: 1.05rem; margin: 8px 0; }
+p { color: #aeb7c9; line-height: 1.55; }
+.lab-card { background: #171e2d; border: 1px solid #343e54; border-radius: 16px; padding: 18px; margin-top: 16px; }
+.lab-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.lab-row > label { flex: 1; min-width: 165px; }
+.lab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label { display: block; font-size: .92rem; color: #d6deec; }
+select, textarea { display: block; width: 100%; font: inherit; border: 1px solid #46526b; border-radius: 9px; padding: 10px; background: #101725; color: #f2f4fa; margin-top: 7px; }
+textarea { min-height: 125px; resize: vertical; }
+button { font: inherit; font-weight: 600; color: white; background: #375eab; border: 1px solid #4c75c2; border-radius: 9px; padding: 10px 15px; cursor: pointer; }
+button:disabled { opacity: .48; cursor: not-allowed; }
+button.secondary { background: #263147; border-color: #4b5871; }
+button.danger { background: #80323a; border-color: #bd505b; }
+.lab-metric { border: 1px solid #364258; border-radius: 10px; padding: 11px; background: #111829; }
+.lab-metric strong { display: block; font-size: 1.12rem; }
+.lab-muted { font-size: .85rem; color: #aeb7c9; }
+.lab-status { border-left: 3px solid #85a5fa; padding: 9px 12px; background: #121b2d; border-radius: 5px; }
+.lab-error { border-left-color: #f17e84; color: #ffc7cb; }
+progress { width: 100%; height: 14px; }
+@media(max-width:580px) { .lab-grid { grid-template-columns: 1fr; } h1 { font-size: 1.4rem; } main { margin-top: 14px; } }
