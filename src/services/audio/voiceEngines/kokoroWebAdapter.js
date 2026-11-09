@@ -89,7 +89,7 @@ export function createKokoroWebAdapter({
 
   const rejectAll = error => {
     for (const request of requests.values()) {
-      if (request.kind === 'load') request.reject(error);
+      if (request.kind === 'load' || request.kind === 'probe') request.reject(error);
       else request.queue.finish(error);
     }
     requests.clear();
@@ -107,6 +107,9 @@ export function createKokoroWebAdapter({
       if (!request) return; // Older/cancelled session; ignore late messages.
       if (data.type === 'progress') {
         request.onProgress?.(data.detail);
+      } else if (data.type === 'probe' && request.kind === 'probe') {
+        requests.delete(data.id);
+        request.resolve(data.detail);
       } else if (data.type === 'ready' && request.kind === 'load') {
         requests.delete(data.id);
         ready = true;
@@ -126,12 +129,26 @@ export function createKokoroWebAdapter({
       } else if (data.type === 'error') {
         requests.delete(data.id);
         const error = makeError(data);
-        if (request.kind === 'load') request.reject(error);
+        if (request.kind === 'load' || request.kind === 'probe') request.reject(error);
         else request.queue.finish(error);
       }
     };
     worker.onerror = event => rejectAll(new Error(event?.message || 'Kokoro Worker tidak dapat dijalankan.'));
     return worker;
+  };
+
+  // Performs WebGPU capability check without fetching any model or voice files.
+  const probeWebGPU = () => {
+    const id = ++serial;
+    return new Promise((resolve, reject) => {
+      requests.set(id, { kind: 'probe', resolve, reject });
+      try {
+        ensureWorker().postMessage({ type: 'probe-webgpu', id });
+      } catch (error) {
+        requests.delete(id);
+        reject(error);
+      }
+    });
   };
 
   const load = ({ onProgress } = {}) => {
@@ -220,6 +237,7 @@ export function createKokoroWebAdapter({
     }),
     isAvailable: () => typeof Worker !== 'undefined',
     getVoices: () => KOKORO_BRITISH_VOICES,
+    probeWebGPU,
     load,
     stream,
     cancel,
