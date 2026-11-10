@@ -29,6 +29,13 @@ const PLAY_OPTIONS = [
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY
 ];
 
+// HF4C-R1: these option sets are required when the Playback tab is rendered.
+// Keeping them here (instead of in the card component) prevents a ReferenceError
+// when users open Text Player Settings.
+const ORDER_OPTIONS = [TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL, TEXT_STRUCTURED_ORDER_MODES.SHUFFLE];
+const REPEAT_OPTIONS = [TEXT_STRUCTURED_REPEAT_MODES.ONCE, TEXT_STRUCTURED_REPEAT_MODES.TWICE, TEXT_STRUCTURED_REPEAT_MODES.LOOP];
+const RESUME_OPTIONS = [TEXT_STRUCTURED_RESUME_MODES.CONTINUE, TEXT_STRUCTURED_RESUME_MODES.RESTART];
+
 const compactVoiceLabel = value => {
   const raw = String(value || '').trim();
   if (!raw) return 'Unknown';

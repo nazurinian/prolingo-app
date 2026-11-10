@@ -104,7 +104,7 @@ import { executeRecordStudyActivity } from './services/progress/studyTrackingInt
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
-import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredManualPlaybackProfile, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_ORDER_MODES, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredManualPlaybackProfile, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_ORDER_MODES, TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioRuntimeInventory } from './domain/text/textStructuredAudioInventoryDomain.js';
@@ -6561,6 +6561,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onFocusConsumed={handleTextLibrarySearchFocusConsumed}
         controlsWorkspaceOpen={textPlayerWorkspaceOpen}
         onCloseControlsWorkspace={() => setTextPlayerWorkspaceOpen(false)}
+        onStopPlayback={forceStopAll}
       />;
     }
     return renderPlaylistViewport({

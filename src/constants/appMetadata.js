@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.8-p9-hf4c';
+export const APP_VERSION = '6.0.3-beta.8-p9-hf4c-r1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P9-HF4C-PLAYER-AUDIO-UX';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P9 HF4-C • Player & Audio UX';
-export const APP_RELEASE_NAME = 'beta.8 P9 HF4-C Player & Audio UX';
+export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P9-HF4C-R1-PLAYER-UX-REPAIR';
+export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P9 HF4-C R1 • Player UX Repair';
+export const APP_RELEASE_NAME = 'beta.8 P9 HF4-C R1 Player UX Repair';
 export const APP_RELEASE_DATE = '2026-11-10';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: P9 HF4-C refines Player/Audio UX on top of HF4-A, with one-shot EN/ID play, inline Full text highlights, tabbed settings and Audio Library; HF4-A adds a view-only Card expansion policy (Follow Playback, Expand All, Custom), preserves the last open Card after Stop, and restores Full active-Card feedback without changing audio playback or Text DB v1. P7 HF3 keeps P7 HF2 behavior and fixes the mobile header overflow and shared CSV picker. P7 HF2 closes the remaining beta.8 global-player contract gaps on top of boot-safe HF1: Split remains the default global representation, EN/ID local playback priority is truly app-global across Documents, TTS Only has one global source of truth, bottom Global Player exposes Split/Full + TTS state + effective voice order, normal/manual Edge defaults are Sonia EN and Tuti ID, Browser EN prefers UK Female, while Bulk EN remains Libby. Text DB remains v1 and Table is untouched.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: P9 HF4-C R1 repairs blank Player Settings and quick-play ReferenceErrors; HF4-C refines Player/Audio UX on top of HF4-A, with one-shot EN/ID play, inline Full text highlights, tabbed settings and Audio Library; HF4-A adds a view-only Card expansion policy (Follow Playback, Expand All, Custom), preserves the last open Card after Stop, and restores Full active-Card feedback without changing audio playback or Text DB v1. P7 HF3 keeps P7 HF2 behavior and fixes the mobile header overflow and shared CSV picker. P7 HF2 closes the remaining beta.8 global-player contract gaps on top of boot-safe HF1: Split remains the default global representation, EN/ID local playback priority is truly app-global across Documents, TTS Only has one global source of truth, bottom Global Player exposes Split/Full + TTS state + effective voice order, normal/manual Edge defaults are Sonia EN and Tuti ID, Browser EN prefers UK Female, while Bulk EN remains Libby. Text DB remains v1 and Table is untouched.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  'HF4-C R1 fixes blank Player Settings from missing option constants, repairs one-shot EN/ID quick-play missing import, adds Stop audio to unlock controls in the settings modal, and simplifies paragraph/Card Play buttons to compact icon actions; no Text DB, Table, Edge TTS, or playback engine change',
   'HF4-C adds tabbed Player Settings, manual EN/ID one-time quick play, inline Full text highlighting, clearer Voice Priority, Audio sidebar Playback/Generate/Library navigation and unchanged beta.8 audio identities/IndexedDB schema.',
   'v6.0.3-beta.8-p9-hf4a adds Follow Playback / Expand All / Custom expansion controls, retains the last active Card after Stop, shows active Card border and full-text channel background in Full playback using the existing currentIndex cursor, and preserves Split sentence highlighting, audio contracts, Text DB v1, and Table functionality',
   'v6.0.3-beta.8-p7-hf3 is a narrow mobile UI hotfix: hide long technical version/checkpoint labels on phone-sized headers and the landing screen, keep header actions within narrow viewports, and mount the shared CSV file picker in the always-present Header so Mobile Data Import CSV and desktop Import CSV both work even when the desktop sidebar is unmounted. The CSV parser/import service, Text DB schema, audio/TTS, and existing P1-P7 behavior remain unchanged',

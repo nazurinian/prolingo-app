@@ -140,9 +140,9 @@ export const TextParagraphUnifiedReading = ({
   return (
     <div className="space-y-3" data-text-paragraph-unified="true" data-text-paragraph-split-mode={splitMode ? 'true' : 'false'}>
       {display.showText && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'text' ? 'border-indigo-400 bg-indigo-100/65 ring-1 ring-indigo-200 dark:border-indigo-600 dark:bg-indigo-900/30 dark:ring-indigo-800' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/30'}`} data-text-paragraph-channel="text" data-text-full-active={fullCardActive && speakingPart === 'text' ? 'true' : undefined}>
-        <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="mb-1.5 flex items-center gap-1.5">
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">TEXT</p>
-          <button type="button" disabled={disabled || !segments.some(item => normalize(item.text))} onClick={() => onPlayChannel?.('text')} className="min-h-11 rounded-lg border border-indigo-200 dark:border-indigo-700 px-3 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200 disabled:opacity-40" title="Play entire card in English only; one-time override" aria-label="Play Text EN only" data-text-paragraph-play-channel="text"><Play className="inline h-3.5 w-3.5 mr-1 fill-current"/>Play EN</button>
+          <button type="button" disabled={disabled || !segments.some(item => normalize(item.text))} onClick={() => onPlayChannel?.('text')} className="h-9 w-9 sm:h-8 sm:w-8 shrink-0 inline-flex items-center justify-center rounded-md border border-indigo-100 bg-indigo-50/70 text-indigo-600 dark:border-indigo-800 dark:bg-indigo-950/25 dark:text-indigo-300 disabled:opacity-40 transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-950/50" title="Play English only (entire card, one-time override)" aria-label="Play Text EN only" data-text-paragraph-play-channel="text"><Play className="h-3.5 w-3.5 fill-current"/></button>
         </div>
         <SentenceFlow
           channel="text"
@@ -161,10 +161,10 @@ export const TextParagraphUnifiedReading = ({
       </div>}
 
       {display.showMeaning && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'meaning' ? 'border-emerald-400 bg-emerald-100/65 ring-1 ring-emerald-200 dark:border-emerald-600 dark:bg-emerald-900/30 dark:ring-emerald-800' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/55'}`} data-text-paragraph-channel="meaning" data-text-full-active={fullCardActive && speakingPart === 'meaning' ? 'true' : undefined}>
-        <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="mb-1.5 flex items-center gap-1.5">
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">MEANING</p>
-          <button type="button" disabled={disabled || !segments.some(item => normalize(item.meaning))} onClick={() => onPlayChannel?.('meaning')} className="min-h-11 rounded-lg border border-emerald-200 dark:border-emerald-700 px-3 text-[10px] font-semibold text-emerald-700 dark:text-emerald-200 disabled:opacity-40" title="Play entire card in Indonesian only; one-time override" aria-label="Play Meaning ID only" data-text-paragraph-play-channel="meaning"><Play className="inline h-3.5 w-3.5 mr-1 fill-current"/>Play ID</button>
-          {activeMeaningOnly && activeSegment && <p className="text-[7px] font-bold text-emerald-600 dark:text-emerald-300">Active sentence only</p>}
+          <button type="button" disabled={disabled || !segments.some(item => normalize(item.meaning))} onClick={() => onPlayChannel?.('meaning')} className="h-9 w-9 sm:h-8 sm:w-8 shrink-0 inline-flex items-center justify-center rounded-md border border-emerald-100 bg-emerald-50/70 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/25 dark:text-emerald-300 disabled:opacity-40 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-950/50" title="Play Indonesian only (entire card, one-time override)" aria-label="Play Meaning ID only" data-text-paragraph-play-channel="meaning"><Play className="h-3.5 w-3.5 fill-current"/></button>
+          {activeMeaningOnly && activeSegment && <p className="ml-auto text-[9px] font-semibold text-emerald-600 dark:text-emerald-300">Active sentence only</p>}
         </div>
         {meaningSegments.length > 0
           ? <SentenceFlow

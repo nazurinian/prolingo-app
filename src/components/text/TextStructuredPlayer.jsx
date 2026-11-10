@@ -230,8 +230,8 @@ const StructuredPlayerCard = ({
           <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
             <Volume2 className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1"/><span className="hidden sm:inline">Audio</span>
           </button>
-          <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95 flex items-center justify-center" title="Play this card" aria-label="Play this card">
-            <Play className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1 fill-current"/><span className="hidden sm:inline">Card</span>
+          <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className="w-9 h-9 shrink-0 rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/35 dark:text-indigo-200 disabled:opacity-35 transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/50 active:scale-95 flex items-center justify-center" title="Play entire card with Manual Card settings" aria-label="Play this card" data-text-card-play-compact="true">
+            <Play className="w-3.5 h-3.5 fill-current"/>
           </button>
         </div>
       </div>
@@ -441,7 +441,8 @@ export const TextStructuredPlayer = ({
   focusTarget = null,
   onFocusConsumed,
   controlsWorkspaceOpen = false,
-  onCloseControlsWorkspace
+  onCloseControlsWorkspace,
+  onStopPlayback
 }) => {
   const [advancedControlsExpanded, setAdvancedControlsExpanded] = useState(false);
   const [audioGenerationExpanded, setAudioGenerationExpanded] = useState(false);
@@ -546,9 +547,11 @@ export const TextStructuredPlayer = ({
               <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
                 <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><PlayCircle className="w-4 h-4"/></div>
                 <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Player Settings</h2><p className="text-[9px] text-slate-400 truncate">{documentTree?.title || 'Text Workspace'} • order • repeat • delay • resume</p></div>
+                {structuredSessionActive && <button type="button" onClick={() => onStopPlayback?.()} className="min-h-10 shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-[10px] font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200" title="Stop playback so settings can be edited" data-text-settings-stop-playback="true"><Square className="inline h-3 w-3 mr-1"/>Stop audio</button>}
                 <button type="button" onClick={() => onCloseControlsWorkspace?.()} className="min-h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-[9px] font-black text-slate-500 hover:text-red-500"><X className="w-4 h-4 inline mr-1"/>Close</button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3 md:p-4">
+                {controlsBusy && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200" role="status" data-text-settings-busy-reason="true">{generationBusy ? 'Audio generation is running; settings are temporarily locked until it finishes.' : 'Audio is playing. Tap Stop audio above to unlock the settings.'}</p>}
                 <TextStructuredPlaybackControls
                   documentTree={documentTree}
                   preferences={playbackPreferences}
