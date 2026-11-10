@@ -1,4 +1,5 @@
 import { getTextStructuredGlobalAudioPlaybackOrder } from './textStructuredAudioPlaybackOrderDomain.js';
+import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode } from './textStructuredCardExpansionDomain.js';
 export const TEXT_STRUCTURED_DISPLAY_MODES = Object.freeze({
   TEXT_ONLY: 'text-only',
   MEANING_ONLY: 'meaning-only',
@@ -77,6 +78,7 @@ export const DEFAULT_TEXT_STRUCTURED_PREFERENCES = Object.freeze({
   manualCardRepeatMode: TEXT_STRUCTURED_MANUAL_REPEAT_MODES.ONCE,
   manualCardRepeatCount: 3,
   resumeMode: TEXT_STRUCTURED_RESUME_MODES.CONTINUE,
+  cardExpansionMode: TEXT_CARD_EXPANSION_MODES.FOLLOW,
   channelDelayMs: 0,
   segmentDelayMs: 0
 });
@@ -159,6 +161,7 @@ export const normalizeTextStructuredPreferences = candidate => {
     resumeMode: resumeModes.has(candidate?.resumeMode)
       ? candidate.resumeMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.resumeMode,
+    cardExpansionMode: normalizeTextCardExpansionMode(candidate?.cardExpansionMode),
     channelDelayMs: normalizeDelay(candidate?.channelDelayMs),
     segmentDelayMs: normalizeDelay(candidate?.segmentDelayMs)
   };

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Eye, FileDown, FileText, FolderOpen, Loader2, MessageSquare, Play, PlayCircle, RotateCcw, Server, SkipForward, Square, Upload, Users, Volume2, Wand2, X } from 'lucide-react';
 import {
@@ -29,6 +29,7 @@ import { getTextStructuredAudioDownloadProfile } from '../../domain/text/textStr
 import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx';
 import { TEXT_PARAGRAPH_CARD_ROLES, getTextParagraphCardRoleLabel, resolveTextParagraphCardRole } from '../../domain/text/textParagraphRoleDomain.js';
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
+import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -101,6 +102,11 @@ const StructuredPlayerCard = ({
   playingContext,
   playingScope,
   playingIndex,
+  isActiveCard = false,
+  isExpanded = false,
+  isFullRepresentation = false,
+  onToggleCardExpanded,
+  onEnsureCardExpanded,
   displayMode,
   playbackChannelMode,
   playbackPreferences = {},
@@ -143,7 +149,6 @@ const StructuredPlayerCard = ({
   onFocusConsumed,
   userNavigationRef = null
 }) => {
-  const [manualExpanded, setManualExpanded] = useState(false);
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
   const [segmentToolsId, setSegmentToolsId] = useState(null);
   const [paragraphSplitMode, setParagraphSplitMode] = useState(false);
@@ -153,10 +158,8 @@ const StructuredPlayerCard = ({
   const isParagraphCard = block.blockType === 'paragraph';
   const paragraphRole = resolveTextParagraphCardRole(block);
   const paragraphRoleLabel = isParagraphCard ? getTextParagraphCardRoleLabel(paragraphRole) : null;
-  const activeSegment = segments.find(segment => segment.id === playingIndex) || null;
-  const isActiveCard = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && Boolean(activeSegment) && (isPlaying || isPaused);
   const isFocusCard = focusTarget?.documentId === documentTree?.id && focusTarget?.blockId === block.id;
-  const expanded = manualExpanded || isActiveCard || isFocusCard;
+  const expanded = isExpanded || isFocusCard;
 
 
   useEffect(() => {
@@ -166,7 +169,7 @@ const StructuredPlayerCard = ({
   useEffect(() => {
     if (!cardRef.current) return undefined;
     if (isFocusCard) {
-      setManualExpanded(true);
+      onEnsureCardExpanded?.(block.id);
       if (isParagraphCard && focusTarget?.segmentId) setParagraphSplitMode(true);
       const frame = window.requestAnimationFrame(() => {
         const target = focusTarget?.segmentId
@@ -187,7 +190,7 @@ const StructuredPlayerCard = ({
       ensureTextTargetVisible(target, cardRef.current?.closest('[data-text-structured-player]'));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, userNavigationRef]);
+  }, [isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, onEnsureCardExpanded, block.id, userNavigationRef]);
 
   const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
   const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
@@ -208,7 +211,7 @@ const StructuredPlayerCard = ({
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-100 dark:ring-indigo-950/50 shadow-indigo-100/40 dark:shadow-none' : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
       <div className="flex items-start gap-1.5 p-2.5 sm:gap-2 sm:p-3 bg-slate-50/80 dark:bg-slate-900/40">
-        <button type="button" onClick={() => setManualExpanded(value => !value)} className="w-10 h-10 shrink-0 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 transition-all duration-150 active:scale-90 flex items-center justify-center" aria-label={expanded ? 'Collapse card' : 'Expand card'}>
+        <button type="button" onClick={() => onToggleCardExpanded?.(block.id)} aria-expanded={expanded} className="w-10 h-10 shrink-0 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 transition-all duration-150 active:scale-90 flex items-center justify-center" aria-label={expanded ? 'Collapse card' : 'Expand card'}>
           <ChevronRight className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90' : ''}`}/>
         </button>
         <div className="min-w-0 flex-1 py-0.5">
@@ -222,7 +225,7 @@ const StructuredPlayerCard = ({
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
-          {isParagraphCard && segments.length > 1 && <button type="button" onClick={() => { setParagraphSplitMode(value => !value); setManualExpanded(true); }} className={`min-h-10 sm:min-h-9 px-2 sm:px-2.5 rounded-lg border text-[8px] sm:text-[9px] font-black transition-all duration-150 active:scale-95 ${paragraphSplitMode ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/35 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`} aria-pressed={paragraphSplitMode} data-text-paragraph-split-toggle="true" title="Toggle sentence split reading mode"><span className="hidden sm:inline">Split </span>{paragraphSplitMode ? 'ON' : 'OFF'}</button>}
+          {isParagraphCard && segments.length > 1 && <button type="button" onClick={() => { setParagraphSplitMode(value => !value); onEnsureCardExpanded?.(block.id); }} className={`min-h-10 sm:min-h-9 px-2 sm:px-2.5 rounded-lg border text-[8px] sm:text-[9px] font-black transition-all duration-150 active:scale-95 ${paragraphSplitMode ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/35 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`} aria-pressed={paragraphSplitMode} data-text-paragraph-split-toggle="true" title="Toggle sentence split reading mode"><span className="hidden sm:inline">Split </span>{paragraphSplitMode ? 'ON' : 'OFF'}</button>}
           <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
             <Volume2 className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1"/><span className="hidden sm:inline">Audio</span>
           </button>
@@ -239,8 +242,9 @@ const StructuredPlayerCard = ({
             segments={segments}
             splitMode={paragraphSplitMode}
             displayMode={displayMode}
-            activeSegmentId={isActiveCard ? playingIndex : null}
+            activeSegmentId={isActiveCard && !isFullRepresentation ? playingIndex : null}
             isPlaybackActive={isActiveCard}
+            fullCardActive={isActiveCard && isFullRepresentation}
             speakingPart={speakingPart}
             focusSegmentId={isFocusCard ? focusTarget?.segmentId : null}
             audioCoverageMap={audioCoverageMap}
@@ -374,6 +378,8 @@ export const TextStructuredPlayer = ({
   playingContext,
   playingScope,
   playingIndex,
+  activeCursorSegmentId = null,
+  activeSessionRepresentationMode = null,
   displayMode,
   playbackChannelMode,
   playbackRepresentationMode,
@@ -438,12 +444,21 @@ export const TextStructuredPlayer = ({
   const [advancedControlsExpanded, setAdvancedControlsExpanded] = useState(false);
   const [audioGenerationExpanded, setAudioGenerationExpanded] = useState(false);
   const [playbackFeelExpanded, setPlaybackFeelExpanded] = useState(false);
+  const [customExpandedIds, setCustomExpandedIds] = useState(() => new Set());
+  const [lastActiveBlockId, setLastActiveBlockId] = useState(null);
+  const lastProcessedActiveBlockIdRef = useRef(null);
   const playerRef = useRef(null);
   const userNavigationRef = useRef(0);
   const blocks = documentTree?.blocks || [];
   const playbackList = useMemo(() => resolveStructuredTextPlaybackList(documentTree), [documentTree]);
   const playableList = useMemo(() => playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode)), [playbackList, playbackChannelMode]);
   const structuredSessionActive = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && (isPlaying || isPaused);
+  const expansionMode = normalizeTextCardExpansionMode(playbackPreferences.cardExpansionMode);
+  // Manual Segment playback is Split even when the global preference is Full.
+  // Use the real running session's representation to keep sentence highlights intact.
+  const effectiveRepresentationMode = structuredSessionActive && activeSessionRepresentationMode ? activeSessionRepresentationMode : playbackRepresentationMode;
+  const activeBlockId = resolveActiveTextCardId({ blocks, playingIndex, activeCursorSegmentId, playbackRepresentationMode: effectiveRepresentationMode, isSessionActive: structuredSessionActive });
+  const expandedCardIds = useMemo(() => resolveExpandedTextCardIds({ mode: expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds }), [expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds]);
   const generationBusy = Boolean(generationState?.running);
   const controlsBusy = structuredSessionActive || generationBusy;
   const conversationSpeakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
@@ -452,6 +467,46 @@ export const TextStructuredPlayer = ({
   const documentVoiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
   const documentDownloadProfile = useMemo(() => getTextStructuredAudioDownloadProfile(documentTree), [documentTree?.metadata]);
   const documentModeLabel = documentTree?.documentType === 'conversation' ? 'Conversation' : documentTree?.documentType === 'paragraph' ? 'Paragraph' : 'Conversation • MIX';
+
+  useEffect(() => {
+    lastProcessedActiveBlockIdRef.current = null;
+    setLastActiveBlockId(null);
+    setCustomExpandedIds(new Set());
+  }, [documentTree?.id]);
+
+  useEffect(() => {
+    if (!activeBlockId) {
+      lastProcessedActiveBlockIdRef.current = null;
+      return;
+    }
+    // A mode change alone must not reopen a Card the user has just closed.
+    if (lastProcessedActiveBlockIdRef.current === activeBlockId) return;
+    lastProcessedActiveBlockIdRef.current = activeBlockId;
+    setLastActiveBlockId(activeBlockId);
+    if (expansionMode === TEXT_CARD_EXPANSION_MODES.CUSTOM) {
+      setCustomExpandedIds(previous => previous.has(activeBlockId) ? previous : new Set([...previous, activeBlockId]));
+    }
+  }, [activeBlockId, expansionMode]);
+
+  const onChangeCardExpansionMode = useCallback((nextMode) => {
+    const normalized = normalizeTextCardExpansionMode(nextMode);
+    if (normalized === TEXT_CARD_EXPANSION_MODES.CUSTOM && expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) {
+      setCustomExpandedIds(new Set(expandedCardIds));
+    }
+    onPlaybackFeelChange?.({ cardExpansionMode: normalized });
+  }, [expansionMode, expandedCardIds, onPlaybackFeelChange]);
+
+  const onToggleCardExpanded = useCallback((blockId) => {
+    // Manual control takes precedence over auto-follow; preserve every currently open card.
+    setCustomExpandedIds(toggleTextCardExpandedId(expandedCardIds, blockId));
+    if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
+  }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
+
+  const onEnsureCardExpanded = useCallback((blockId) => {
+    if (expandedCardIds.has(blockId)) return;
+    setCustomExpandedIds(new Set([...expandedCardIds, blockId]));
+    if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
+  }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
 
   useEffect(() => {
     if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
@@ -472,6 +527,15 @@ export const TextStructuredPlayer = ({
             <div className="flex min-w-0 flex-wrap items-center gap-1 text-[8px] text-slate-400" data-text-workspace-compact-readiness="true"><span className="truncate">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'}</span><span className="rounded bg-emerald-100 dark:bg-emerald-950/30 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}</span>{documentCoverage?.needDownload ? <span className="rounded bg-amber-100 dark:bg-amber-950/30 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {documentCoverage.needDownload}</span> : null}</div>
           </div>
           <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3 py-2 sm:py-1.5 rounded-lg bg-indigo-600 text-white text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-md active:scale-95" title="Play Workspace"><Play className="w-3 h-3 inline mr-1 fill-current"/>Play</button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-indigo-100 dark:border-indigo-900 px-2.5 py-2" data-text-card-expansion-toolbar="true">
+          <span className="mr-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">Cards:</span>
+          {[
+            [TEXT_CARD_EXPANSION_MODES.FOLLOW, 'Follow Playback'],
+            [TEXT_CARD_EXPANSION_MODES.ALL, 'Expand All'],
+            [TEXT_CARD_EXPANSION_MODES.CUSTOM, 'Custom']
+          ].map(([mode, label]) => <button key={mode} type="button" onClick={() => onChangeCardExpansionMode(mode)} aria-pressed={expansionMode === mode} className={`min-h-10 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition-colors ${expansionMode === mode ? 'border-indigo-500 bg-indigo-100 text-indigo-800 dark:border-indigo-500 dark:bg-indigo-900/50 dark:text-indigo-200' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`} data-text-card-expansion-mode={mode}>{label}</button>)}
         </div>
 
         {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
@@ -514,6 +578,11 @@ export const TextStructuredPlayer = ({
           playingContext={playingContext}
           playingScope={playingScope}
           playingIndex={playingIndex}
+          isActiveCard={activeBlockId === block.id}
+          isExpanded={expandedCardIds.has(block.id)}
+          isFullRepresentation={effectiveRepresentationMode === 'full'}
+          onToggleCardExpanded={onToggleCardExpanded}
+          onEnsureCardExpanded={onEnsureCardExpanded}
           displayMode={displayMode}
           playbackChannelMode={playbackChannelMode}
           playbackPreferences={playbackPreferences}

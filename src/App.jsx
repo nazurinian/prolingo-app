@@ -6493,6 +6493,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         playingContext={playingContext}
         playingScope={playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT ? playbackContextRef.current?.scope || null : null}
         playingIndex={playingIndex}
+        activeCursorSegmentId={playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT && playbackContextRef.current?.documentId === activeTextDocumentTree?.id ? currentIndex : null}
+        activeSessionRepresentationMode={playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT && playbackContextRef.current?.documentId === activeTextDocumentTree?.id ? playbackContextRef.current?.playbackRepresentationMode : null}
         displayMode={textStructuredPreferences.displayMode}
         playbackChannelMode={textStructuredPreferences.playbackChannelMode}
         playbackRepresentationMode={textStructuredPreferences.playbackRepresentationMode}

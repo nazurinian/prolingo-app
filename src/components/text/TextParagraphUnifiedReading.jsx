@@ -112,6 +112,7 @@ export const TextParagraphUnifiedReading = ({
   displayMode,
   activeSegmentId = null,
   isPlaybackActive = false,
+  fullCardActive = false,
   speakingPart = null,
   focusSegmentId = null,
   audioCoverageMap = {},
@@ -123,16 +124,16 @@ export const TextParagraphUnifiedReading = ({
     () => segments.find(segment => segment.id === activeSegmentId) || null,
     [segments, activeSegmentId]
   );
-  const display = resolveStructuredTextDisplayState({ displayMode, isActive: Boolean(isPlaybackActive && activeSegment) });
+  const display = resolveStructuredTextDisplayState({ displayMode, isActive: Boolean(isPlaybackActive && (activeSegment || fullCardActive)) });
   const activeMeaningOnly = displayMode === TEXT_STRUCTURED_DISPLAY_MODES.TEXT_ACTIVE_MEANING;
-  const meaningSegments = activeMeaningOnly
+  const meaningSegments = activeMeaningOnly && !fullCardActive
     ? (activeSegment?.meaning ? [activeSegment] : [])
     : segments;
   const indexById = useMemo(() => new Map(segments.map((segment, index) => [segment.id, index])), [segments]);
 
   return (
     <div className="space-y-3" data-text-paragraph-unified="true" data-text-paragraph-split-mode={splitMode ? 'true' : 'false'}>
-      {display.showText && <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-3" data-text-paragraph-channel="text">
+      {display.showText && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'text' ? 'border-indigo-400 bg-indigo-100/65 ring-1 ring-indigo-200 dark:border-indigo-600 dark:bg-indigo-900/30 dark:ring-indigo-800' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/30'}`} data-text-paragraph-channel="text" data-text-full-active={fullCardActive && speakingPart === 'text' ? 'true' : undefined}>
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">Text</p>
         </div>
@@ -151,7 +152,7 @@ export const TextParagraphUnifiedReading = ({
         />
       </div>}
 
-      {display.showMeaning && <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/55 p-3" data-text-paragraph-channel="meaning">
+      {display.showMeaning && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'meaning' ? 'border-emerald-400 bg-emerald-100/65 ring-1 ring-emerald-200 dark:border-emerald-600 dark:bg-emerald-900/30 dark:ring-emerald-800' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/55'}`} data-text-paragraph-channel="meaning" data-text-full-active={fullCardActive && speakingPart === 'meaning' ? 'true' : undefined}>
         <div className="mb-1.5 flex items-center justify-between gap-2">
           <p className="text-[8px] font-black uppercase tracking-wide text-slate-400">Meaning</p>
           {activeMeaningOnly && activeSegment && <p className="text-[7px] font-bold text-emerald-600 dark:text-emerald-300">Active sentence only</p>}

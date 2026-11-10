@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ProLingo v6 Beta — Structured Text UX Audit</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener("DOMContentLoaded", function() {
+    if (window.mermaid) {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'neutral',
+        flowchart: { curve: 'basis' }
+      });
+    }
+  });
+</script>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 15mm 14mm 15mm 14mm;
+    @bottom-right {
+      content: "Page " counter(page);
+      font-size: 8pt;
+      color: #94a3b8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    background-color: #f8fafc;
+    line-height: 1.55;
+    font-size: 9.5pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: #ffffff;
+    padding: 24px 32px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  }
+
+  @media print {
+    body { background: #ffffff; }
+    .container { max-width: 100%; padding: 0; box-shadow: none; }
+    .no-print { display: none !important; }
+  }
+
+  /* Header Card */
+  .header-card {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 60%, #4338ca 100%);
+    color: #ffffff;
+    padding: 24px 28px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 14px rgba(49, 46, 129, 0.18);
+  }
+
+  .header-badge {
+    display: inline-block;
+    background-color: rgba(255, 255, 255, 0.18);
+    color: #e0e7ff;
+    font-size: 7.5pt;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .header-title {
+    font-size: 19pt;
+    font-weight: 900;
+    line-height: 1.2;
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+
+  .header-subtitle {
+    font-size: 10pt;
+    color: #c7d2fe;
+    font-weight: 500;
+    margin-bottom: 14px;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    padding-top: 12px;
+    font-size: 8pt;
+  }
+
+  .meta-item strong {
+    display: block;
+    color: #a5b4fc;
+    font-size: 7pt;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* Headings */
+  h2 {
+    font-size: 13pt;
+    font-weight: 800;
+    color: #1e1b4b;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 6px;
+    margin-top: 24px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    page-break-after: avoid;
+  }
+
+  h2 .num {
+    background-color: #4f46e5;
+    color: #ffffff;
+    font-size: 8.5pt;
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-right: 9px;
+    font-weight: 900;
+  }
+
+  h3 {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #334155;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    page-break-after: avoid;
+  }
+
+  p { margin-bottom: 10px; color: #334155; }
+  ul, ol { margin-left: 20px; margin-bottom: 10px; font-size: 9pt; }
+  li { margin-bottom: 4px; }
+
+  /* Callouts */
+  .callout {
+    padding: 11px 15px;
+    border-radius: 8px;
+    margin: 12px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+    border-left: 4px solid;
+  }
+
+  .callout-critical { background-color: #fef2f2; border-left-color: #ef4444; color: #991b1b; }
+  .callout-critical strong { color: #b91c1c; }
+  .callout-warning { background-color: #fffbeb; border-left-color: #f59e0b; color: #92400e; }
+  .callout-warning strong { color: #b45309; }
+  .callout-info { background-color: #eef2ff; border-left-color: #6366f1; color: #3730a3; }
+  .callout-info strong { color: #4338ca; }
+  .callout-success { background-color: #f0fdf4; border-left-color: #10b981; color: #065f46; }
+  .callout-success strong { color: #047857; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 8pt;
+    page-break-inside: avoid;
+    background-color: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border: 1px solid #e2e8f0;
+  }
+
+  th {
+    background-color: #f1f5f9;
+    color: #1e293b;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #cbd5e1;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+    color: #334155;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background-color: #f8fafc; }
+
+  /* Code & Badges */
+  code {
+    font-family: "JetBrains Mono", Consolas, Monaco, monospace;
+    font-size: 8pt;
+    background-color: #f1f5f9;
+    padding: 1px 4px;
+    border-radius: 4px;
+    color: #4338ca;
+    border: 1px solid #e2e8f0;
+  }
+
+  pre {
+    font-family: "JetBrains Mono", Consolas, Monaco, monospace;
+    font-size: 7.5pt;
+    background-color: #0f172a;
+    color: #e2e8f0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 10px 0;
+    line-height: 1.45;
+    page-break-inside: avoid;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 7pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .badge-emerald { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+  .badge-amber   { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .badge-indigo  { background-color: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; }
+  .badge-red     { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+  .badge-slate   { background-color: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+  /* Wireframe visual boxes */
+  .wireframe {
+    background-color: #f8fafc;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 11px 14px;
+    margin: 10px 0;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 7.5pt;
+    line-height: 1.45;
+    color: #334155;
+    page-break-inside: avoid;
+  }
+
+  .wireframe strong { color: #1e1b4b; }
+
+  /* Visual Diagram Containers */
+  .diagram-container {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 14px;
+    margin: 14px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    page-break-inside: avoid;
+  }
+
+  .diagram-title {
+    font-size: 8.5pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .diagram-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .diagram-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .d-node {
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 7.5pt;
+    border: 1.5px solid;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+
+  .d-node-danger {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+  }
+
+  .d-node-success {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+  }
+
+  .d-node-info {
+    background: #eef2ff;
+    border-color: #a5b4fc;
+    color: #3730a3;
+  }
+
+  .d-arrow-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-weight: 900;
+    font-size: 12pt;
+  }
+
+  /* 3-Pillar Visual Layout */
+  .pillar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    page-break-inside: avoid;
+  }
+
+  .pillar-box {
+    border-radius: 8px;
+    border: 1.5px solid;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  }
+
+  .pillar-header {
+    padding: 8px 10px;
+    font-weight: 800;
+    font-size: 8pt;
+    color: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .pillar-body {
+    padding: 10px;
+    font-size: 7.5pt;
+  }
+
+  .pillar-body ul {
+    margin-left: 14px;
+    margin-bottom: 0;
+  }
+
+  .pillar-body li {
+    margin-bottom: 4px;
+  }
+
+  .p-indigo .pillar-header { background: #4f46e5; }
+  .p-indigo { border-color: #c7d2fe; }
+
+  .p-violet .pillar-header { background: #7c3aed; }
+  .p-violet { border-color: #ddd6fe; }
+
+  .p-emerald .pillar-header { background: #059669; }
+  .p-emerald { border-color: #a7f3d0; }
+
+  .flow-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 12px;
+    margin-top: 8px;
+    font-size: 7.5pt;
+    font-weight: 700;
+    color: #475569;
+  }
+
+  .flow-banner span {
+    color: #4f46e5;
+  }
+
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- COVER / HEADER -->
+<div class="header-card">
+  <span class="header-badge">Architecture &amp; UX Review • READ ONLY</span>
+  <h1 class="header-title">ProLingo v6 Beta — Structured Text UX Audit</h1>
+  <p class="header-subtitle">Comprehensive Evaluation of Player Settings, Audio Sidebar, Paragraph Card Expansion &amp; Mobile Ergonomics</p>
+  <div class="meta-grid">
+    <div class="meta-item"><strong>Repository</strong>nazurinian/prolingo-app</div>
+    <div class="meta-item"><strong>Branch / Baseline</strong>v6-beta / v6.0.3-beta.8-p7-hf3</div>
+    <div class="meta-item"><strong>Date &amp; Time</strong>2026-11-10 12:00 WIB</div>
+    <div class="meta-item"><strong>Audit Status</strong>COMPLETE • 100% Read-Only</div>
+  </div>
+</div>
+
+<!-- SECTION 1 -->
+<h2><span class="num">1</span> Executive Summary &amp; Audit Baseline</h2>
+<p>
+  ProLingo v6 Beta has established an advanced audio playback architecture featuring Split/Full dual-representation modes, dual-channel audio sequencing (English Text and Indonesian Meaning), IndexedDB binary staging, Portable ZIP archives, and hierarchical speaker voice overrides. All existing P9-A automated runtime suites (Split/Full modes, Pause/Resume/Stop, Local First with TTS fallback, and localStorage persistence) pass successfully.
+</p>
+<p>
+  The goal of this independent audit is to identify usability bottlenecks, confusing terminology, nested dropdowns, and card expansion defects, providing an actionable redesign that makes the existing controls intuitive and ergonomic on both desktop and mobile—without modifying or replacing the audio engine.
+</p>
+
+<!-- VISUAL DIAGRAM 1: PAIN POINTS TO SOLUTIONS -->
+<div class="diagram-container">
+  <div class="diagram-title"><span>📊</span> Diagram 1: Current UX Bottlenecks vs Proposed Target Architecture</div>
+  
+  <div class="diagram-grid">
+    <div class="diagram-col">
+      <div style="font-size: 7.5pt; font-weight: 800; color: #b91c1c; text-transform: uppercase;">⚠️ Current Bottlenecks</div>
+      <div class="d-node d-node-danger"><strong>5-Box Stacked Modal:</strong> Excessive vertical height &amp; micro-typography (text-[7px])</div>
+      <div class="d-node d-node-danger"><strong>Card Collapse on Stop:</strong> Expanded reading state abruptly snaps shut on pause/stop</div>
+      <div class="d-node d-node-danger"><strong>Full Mode Active Blindness:</strong> playingIndex=null leaves active card unhighlighted</div>
+      <div class="d-node d-node-danger"><strong>Terminology Fragmentation:</strong> Local Allowed vs Local First vs Auto vs Custom</div>
+      <div class="d-node d-node-danger"><strong>Hidden Headings Quick-Play:</strong> No single-tap EN-only or ID-only play on card text</div>
+    </div>
+
+    <div class="d-arrow-col">
+      <div>➔</div>
+      <div>➔</div>
+      <div>➔</div>
+      <div>➔</div>
+      <div>➔</div>
+    </div>
+
+    <div class="diagram-col">
+      <div style="font-size: 7.5pt; font-weight: 800; color: #166534; text-transform: uppercase;">✨ Proposed Architecture</div>
+      <div class="d-node d-node-info"><strong>Tabbed / Segmented Settings:</strong> Fast 1-tap pills, no dropdowns for &lt;= 3 choices</div>
+      <div class="d-node d-node-success"><strong>3 Card Expansion Modes:</strong> Follow Playback, Expand All, Custom + The Stop Rule</div>
+      <div class="d-node d-node-success"><strong>Active Card in Full Mode:</strong> Track activeBlockId so cards highlight &amp; follow</div>
+      <div class="d-node d-node-info"><strong>Clean 3-Layer Audio IA:</strong> Strict separation of Heard, Generated, and Stored</div>
+      <div class="d-node d-node-success"><strong>Text &amp; Meaning Headings:</strong> [▶ Play EN] &amp; [▶ Play ID] single-tap buttons</div>
+    </div>
+  </div>
+</div>
+
+<div class="callout callout-info">
+  <strong>Key Audit Invariant:</strong> All recommendations strictly respect the HF2 architectural invariants: single global TTS Only source of truth, global local voice fallback priority, independent manual playback controls, separate Edge generation/download defaults, and strict backward compatibility with existing IndexedDB and Text DB v1 data contracts.
+</div>
+
+<!-- SECTION 2 -->
+<h2><span class="num">2</span> Settings Inventory &amp; True Engine Function Analysis</h2>
+<p>
+  A rigorous audit of the source files (<code>TextStructuredPlaybackControls.jsx</code>, <code>TextStructuredPlayer.jsx</code>, <code>TextStructuredAudioControls.jsx</code>, and <code>textStructuredPlaybackPreferenceDomain.js</code>) revealed that several settings perform functions quite different from what their visual UI labels imply:
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 22%;">Setting Identifier</th>
+      <th style="width: 22%;">Visible Label &amp; Location</th>
+      <th style="width: 28%;">True Engine Function</th>
+      <th style="width: 28%;">Observed UX Discrepancy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>playbackRepresentationMode</code></td>
+      <td>Segmented button: <code>SPLIT</code> / <code>FULL</code><br/>(Player Settings &amp; Bottom Bar)</td>
+      <td>Controls audio chunking &amp; reading granularity. Split uses sentence-level segments and visual tracking. Full plays uninterrupted continuous card audio.</td>
+      <td>Located inside a container titled "Playback Audio", misleading users into thinking it configures audio output devices rather than content representation.</td>
+    </tr>
+    <tr>
+      <td><code>audioSourceMode</code> / <code>ttsOnly</code></td>
+      <td>Button: <code>TTS ONLY • ON/OFF</code> (Settings)<br/><code>LOCAL FIRST / TTS ONLY</code> (Bottom Bar)</td>
+      <td>Global bypass: forces the browser Web Speech API for all documents, completely bypassing IndexedDB Staging and Portable ZIPs without deleting files.</td>
+      <td>Presents 3 conflicting labels: "LOCAL ALLOWED" in Audio Sidebar, "LOCAL FIRST" in Bottom Player, and "TTS ONLY • OFF — local audio allowed" in Player Settings.</td>
+    </tr>
+    <tr>
+      <td><code>globalAudioPlaybackOrderV1</code></td>
+      <td>Reorder list + Add button<br/>(Player Settings)</td>
+      <td>Defines multi-voice fallback sequence (e.g. <code>Sonia &gt; Libby</code>). The first voice with a <code>READY</code> local binary in Staging is played.</td>
+      <td>Placed inside Player Settings rather than Audio Sidebar, disconnecting voice priority from voice generation and inventory inspection.</td>
+    </tr>
+    <tr>
+      <td><code>displayMode</code></td>
+      <td>4 pills: <code>EN only</code>, <code>EN + active ID</code>, <code>EN + ID</code>, <code>ID only</code></td>
+      <td>Visual card filtering: conditionally hides or displays the English text block and Indonesian translation block.</td>
+      <td>Clear function, but placed directly next to "Global EN / ID order", causing users to confuse visual text display with audio playback channels.</td>
+    </tr>
+    <tr>
+      <td><code>playbackChannelMode</code></td>
+      <td>4 pills: <code>EN</code>, <code>EN → ID</code>, <code>ID → EN</code>, <code>ID</code></td>
+      <td>Audio sequence per segment during Document Play: plays EN only, ID only, or alternating bilingual channels.</td>
+      <td>Separated from other Global playback behaviour (order, repeat, delays) by the "Manual Play" block.</td>
+    </tr>
+    <tr>
+      <td><code>manualSegmentPlaybackChannelMode</code> &amp; <code>manualSegmentRepeatMode</code></td>
+      <td>2 Dropdowns: "Channels" &amp; "Repeat"<br/>(Player Settings)</td>
+      <td>Audio channels and repetition used when clicking "Only" on a segment row or tapping a sentence in Split reading mode.</td>
+      <td>No "(Follow Global)" option. Uses native dropdowns for only 4 choices, forcing 2-3 clicks to change.</td>
+    </tr>
+    <tr>
+      <td><code>manualCardPlaybackChannelMode</code> &amp; <code>manualCardRepeatMode</code></td>
+      <td>2 Dropdowns: "Channels" &amp; "Repeat"<br/>(Player Settings)</td>
+      <td>Audio channels and repetition used when clicking "Card" on a card header.</td>
+      <td>Duplicates the Segment Only controls identically, creating a dense wall of 4 native select boxes.</td>
+    </tr>
+    <tr>
+      <td><code>playbackOrderMode</code></td>
+      <td>Dropdown: <code>Sequential</code> / <code>Shuffle</code></td>
+      <td>Segment traversal sequence during Document Playback.</td>
+      <td>Uses a native dropdown for an exclusively binary (2-state) choice.</td>
+    </tr>
+    <tr>
+      <td><code>repeatMode</code></td>
+      <td>Dropdown: <code>Once</code> / <code>2×</code> / <code>Loop</code></td>
+      <td>Document loop iteration count.</td>
+      <td>Uses a native dropdown for only 3 static options.</td>
+    </tr>
+    <tr>
+      <td><code>channelDelayMs</code> &amp; <code>segmentDelayMs</code></td>
+      <td>Number inputs: <code>EN/ID gap</code> &amp; <code>Segment gap</code></td>
+      <td>Pause duration (ms) inserted between channels (EN/ID) and between consecutive segments.</td>
+      <td>Raw millisecond numeric input with tiny stepper arrows; awkward on mobile without quick presets (0.5s, 1s, 2s).</td>
+    </tr>
+    <tr>
+      <td><code>resumeMode</code></td>
+      <td>Dropdown: <code>Continue</code> / <code>Restart</code></td>
+      <td>Determines playback index after Stop (resume from last segment vs restart from Card 1).</td>
+      <td>Uses a native dropdown for a binary choice.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- SECTION 3 -->
+<h2><span class="num">3</span> Verified UX Problems &amp; Cognitive Friction Points</h2>
+
+<h3>3.1. Sudden Card Collapse on Stop (Critical Defect)</h3>
+<div class="callout callout-critical">
+  <strong>Source-Code Verified Defect:</strong> In <code>TextStructuredPlayer.jsx</code> (line 159):<br/>
+  <code>const expanded = manualExpanded || isActiveCard || isFocusCard;</code><br/>
+  When playback is active, <code>isActiveCard</code> is true, auto-expanding the card. When the user hits <strong>Stop</strong> (or when playback finishes the last segment and stops), <code>isActiveCard</code> immediately switches to <code>false</code>. If the user did not explicitly toggle the card's chevron (meaning <code>manualExpanded === false</code>), the card <strong>snaps shut instantly</strong>.
+</div>
+<p>
+  <strong>Impact:</strong> The learner is abruptly ejected from their visual reading context the moment audio stops, losing their place in the paragraph.
+</p>
+
+<h3>3.2. Active Card Indicator Blindness in FULL Representation Mode</h3>
+<div class="callout callout-critical">
+  <strong>Source-Code Verified Defect:</strong> In <code>textStructuredPlaybackSessionService.js</code> (lines 264–266):<br/>
+  <code>const suppressHighlight = normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;</code><br/>
+  <code>setPlayingIndex(suppressHighlight ? null : item.id);</code><br/>
+  <code>setCurrentIndex(item.id);</code><br/>
+  In Full mode, <code>playingIndex</code> is forced to <code>null</code> to suppress sentence-level highlighting. However, <code>StructuredPlayerCard</code> determines its active status via <code>segments.find(s =&gt; s.id === playingIndex)</code>. Because <code>playingIndex</code> is <code>null</code>, <code>isActiveCard</code> evaluates to <code>false</code> for every single card in the document!
+</div>
+<p>
+  <strong>Impact:</strong> During Full playback, the currently playing card receives no active border, displays no <code>ACTIVE</code> badge, never auto-expands, and fails to auto-scroll into view.
+</p>
+
+<h3>3.3. Disconnected Heading Quick-Play Controls</h3>
+<p>
+  Inside an expanded Paragraph card (<code>TextParagraphUnifiedReading.jsx</code>), the Text (English) and Meaning (Indonesian) blocks have plain uppercase text headings: <code>&lt;p&gt;Text&lt;/p&gt;</code> and <code>&lt;p&gt;Meaning&lt;/p&gt;</code> without any action buttons.
+  To listen to only the English paragraph, or only Indonesian, a user must currently change their global or manual preferences in Player Settings, or switch on Split mode and click sentences individually.
+</p>
+
+<h3>3.4. Overuse of Native Dropdowns &amp; Micro-Typography</h3>
+<p>
+  <code>TextStructuredPlaybackControls.jsx</code> uses heavy micro-typography (<code>text-[7px]</code>, <code>text-[8px]</code>, <code>text-[9px]</code>). Options with only 2 to 4 choices (Sequential/Shuffle, Continue/Restart, Repeat, Channels) are implemented as native <code>&lt;select&gt;</code> dropdowns, creating high tap friction and visual clutter.
+</p>
+
+<!-- SECTION 4 -->
+<h2><span class="num">4</span> Duplicated, Redundant &amp; Confusing UI Surfaces</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 25%;">Control / Concept</th>
+      <th style="width: 45%;">Surfaces Where It Currently Appears</th>
+      <th style="width: 30%;">UX Recommendation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Split vs Full Mode</strong></td>
+      <td>1. <code>BottomPlayerBar</code> (Toggle button)<br/>2. <code>TextStructuredPlaybackControls</code> (Button grid)</td>
+      <td>Keep on Bottom Bar for quick toggle; in Player Settings, group under "Reading Mode", not "Playback Audio".</td>
+    </tr>
+    <tr>
+      <td><strong>TTS Only Global Bypass</strong></td>
+      <td>1. <code>BottomPlayerBar</code> (LOCAL FIRST / TTS ONLY)<br/>2. <code>TextStructuredPlaybackControls</code> (ON/OFF btn)<br/>3. <code>TextStructuredAudioControls</code> (Status banner)</td>
+      <td>Harmonize labeling to <strong>LOCAL FIRST</strong> / <strong>TTS ONLY</strong> across all surfaces. Preserve single source of truth.</td>
+    </tr>
+    <tr>
+      <td><strong>Local Voice Priority Order</strong></td>
+      <td>1. <code>BottomPlayerBar</code> (Summary string)<br/>2. <code>TextStructuredPlaybackControls</code> (Reorder list)<br/>3. <code>TextStructuredCardAudioPanel</code> (Card override)</td>
+      <td>Move or co-locate priority ordering under Audio Sidebar "Playback" tab with a shortcut in Player Settings.</td>
+    </tr>
+    <tr>
+      <td><strong>Audio Channel Selectors</strong></td>
+      <td>1. Player Settings: Global EN/ID order<br/>2. Player Settings: Manual Segment Channels<br/>3. Player Settings: Manual Card Channels</td>
+      <td>Add explicit "(Follow Global)" default option to Manual Card and Segment dropdowns to show inheritance.</td>
+    </tr>
+    <tr>
+      <td><strong>Readiness Metrics</strong></td>
+      <td>1. Workspace Header (Compact pills)<br/>2. Card Header (Compact pills)<br/>3. Card Audio Panel (Coverage grid)<br/>4. Audio Sidebar (TextAudioDataPanel tiles)</td>
+      <td>Maintain compact counters on Workspace/Card headers; clarify "History*" definition via an inline tooltip.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 5 -->
+<h2><span class="num">5</span> Recommended Information Architecture</h2>
+<p>
+  To resolve confusion between what is heard, what is synthesized, and what is stored, we define a clear <strong>3-Pillar Information Architecture</strong>:
+</p>
+
+<!-- VISUAL DIAGRAM 2: 3 PILLARS OF AUDIO -->
+<div class="diagram-container">
+  <div class="diagram-title"><span>🏛️</span> Diagram 2: The Three Pillars of ProLingo Audio Architecture</div>
+  
+  <div class="pillar-grid">
+    <div class="pillar-box p-indigo">
+      <div class="pillar-header">1. WHAT IS PLAYED</div>
+      <div class="pillar-body">
+        <strong>Playback Engine (Live Output):</strong>
+        <ul>
+          <li><strong>Representation:</strong> Split vs Full</li>
+          <li><strong>Channels:</strong> EN, EN→ID, ID→EN, ID</li>
+          <li><strong>Routing:</strong> Local First vs TTS Only</li>
+          <li><strong>Local Priority:</strong> Sonia &gt; Ryan &gt; Libby</li>
+          <li><strong>Live Browser TTS:</strong> Female UK default, independent rates</li>
+          <li><strong>Feel:</strong> Delays, Repeat, Order, Resume</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pillar-box p-violet">
+      <div class="pillar-header">2. WHAT IS GENERATED</div>
+      <div class="pillar-body">
+        <strong>Edge Synthesis (Background):</strong>
+        <ul>
+          <li><strong>Service Health:</strong> Edge WebSocket check</li>
+          <li><strong>Global Defaults:</strong> EN (Sonia), ID (Tuti)</li>
+          <li><strong>Synthesis Tuning:</strong> Rate (±50%), Pitch (±20Hz)</li>
+          <li><strong>Presets:</strong> Default / Follow Player / Custom</li>
+          <li><strong>Actions:</strong> Generate Missing, Regen Card</li>
+          <li><em>Never changes live playback voice</em></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pillar-box p-emerald">
+      <div class="pillar-header">3. WHAT IS STORED</div>
+      <div class="pillar-body">
+        <strong>Storage &amp; Assets (IndexedDB):</strong>
+        <ul>
+          <li><strong>Staging (IndexedDB):</strong> Binary MP3/WAV blobs</li>
+          <li><strong>Portable ZIP:</strong> Package import &amp; validation</li>
+          <li><strong>Readiness Status:</strong> Ready, History*, Stale, Missing</li>
+          <li><strong>Storage Actions:</strong> Clear Staging, Clear Cache</li>
+          <li><strong>Folder:</strong> Deprecated &amp; locked in beta.8</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-banner">
+    <div>Edge Synthesis <span>➔ Generates MP3s into ➔</span> IndexedDB Staging</div>
+    <div>Portable ZIP <span>➔ Merges Blobs into ➔</span> IndexedDB Staging</div>
+    <div>IndexedDB Staging <span>➔ Feeds Ready Audio to ➔</span> Playback Engine</div>
+  </div>
+</div>
+
+<!-- SECTION 6 -->
+<h2><span class="num">6</span> Paragraph Card Expansion &amp; Active-Card Architecture</h2>
+
+<h3>6.1. Three First-Class Expansion Modes</h3>
+<p>
+  We introduce an explicit <code>cardExpansionMode</code> preference with three clear operating modes:
+</p>
+
+<!-- VISUAL DIAGRAM 3: EXPANSION STATE MACHINE -->
+<div class="diagram-container">
+  <div class="diagram-title"><span>🔄</span> Diagram 3: Card Expansion State Transition &amp; Persistence Rules</div>
+  
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px;">
+    <div style="border: 2px solid #4f46e5; background: #eef2ff; border-radius: 8px; padding: 10px; text-align: center;">
+      <div class="badge badge-indigo" style="margin-bottom: 4px;">DEFAULT</div>
+      <strong style="display: block; font-size: 8.5pt; color: #1e1b4b;">Follow Playback</strong>
+      <span style="font-size: 7.5pt; color: #475569;">Active card expands automatically as audio plays</span>
+    </div>
+
+    <div style="border: 2px solid #059669; background: #f0fdf4; border-radius: 8px; padding: 10px; text-align: center;">
+      <div class="badge badge-emerald" style="margin-bottom: 4px;">READING</div>
+      <strong style="display: block; font-size: 8.5pt; color: #065f46;">Expand All</strong>
+      <span style="font-size: 7.5pt; color: #475569;">All cards opened for seamless continuous reading</span>
+    </div>
+
+    <div style="border: 2px solid #d97706; background: #fffbeb; border-radius: 8px; padding: 10px; text-align: center;">
+      <div class="badge badge-amber" style="margin-bottom: 4px;">MANUAL</div>
+      <strong style="display: block; font-size: 8.5pt; color: #92400e;">Custom</strong>
+      <span style="font-size: 7.5pt; color: #475569;">Expansion governed exclusively by user clicks</span>
+    </div>
+  </div>
+
+  <div class="callout callout-success" style="margin: 6px 0;">
+    <strong>The Stop Rule:</strong> When playback stops (via Stop button, Pause, or end of list), the currently active card <strong>MUST REMAIN EXPANDED</strong>. It never snaps shut unexpectedly.
+  </div>
+  <div class="callout callout-info" style="margin: 6px 0;">
+    <strong>The Manual Transition Rule:</strong> If the user manually clicks any card's chevron while in <code>follow-playback</code> mode, the system automatically transitions the document to <code>custom</code> mode so the user's manual intent is preserved.
+  </div>
+</div>
+
+<h3>6.2. Active Card Resolution in FULL Mode</h3>
+<p>
+  To fix the bug where Full mode renders cards "blind", <code>TextStructuredPlayer.jsx</code> will track <code>activeBlockId</code> at the player level, decoupling card active detection from the sentence-level <code>playingIndex</code>:
+</p>
+<pre>const isActiveCard = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+  &amp;&amp; (isPlaying || isPaused)
+  &amp;&amp; (block.segments?.some(s =&gt; s.id === playingIndex) || block.id === activeBlockId);</pre>
+<p>
+  Sentence-level background highlighting remains suppressed in Full mode as required by P9-A, while the <strong>card</strong> properly receives its indigo border, <code>ACTIVE</code> badge, and auto-scroll behavior.
+</p>
+
+<h3>6.3. Quick-Play Controls on TEXT &amp; MEANING Headings</h3>
+<p>
+  In <code>TextParagraphUnifiedReading.jsx</code>, the TEXT and MEANING block headers are upgraded with single-tap quick-play buttons:
+</p>
+<div class="wireframe">
+┌────────────────────────────────────────────────────────────────────────┐<br/>
+│ <strong>TEXT</strong>                                        <strong>[▶ Play EN]</strong> [Copy]         │<br/>
+│ The mysterious traveler arrived at the ancient village as dusk fell... │<br/>
+├────────────────────────────────────────────────────────────────────────┤<br/>
+│ <strong>MEANING</strong>                                     <strong>[▶ Play ID]</strong> [Copy]         │<br/>
+│ Pengelana misterius itu tiba di desa kuno saat senja mulai turun...    │<br/>
+└────────────────────────────────────────────────────────────────────────┘
+</div>
+
+<!-- SECTION 7 -->
+<h2><span class="num">7</span> Global, Manual, and Voice Inheritance Model</h2>
+
+<!-- VISUAL DIAGRAM 4: INHERITANCE HIERARCHY -->
+<div class="diagram-container">
+  <div class="diagram-title"><span>🌳</span> Diagram 4: Audio Channel &amp; Voice Override Cascade</div>
+  
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+    <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px;">
+      <strong style="color: #4f46e5; font-size: 8pt; display: block; margin-bottom: 6px;">CHANNEL &amp; REPEAT INHERITANCE:</strong>
+      <ol style="font-size: 7.5pt; margin-left: 14px;">
+        <li><strong>Global Playback:</strong> Sets document sequence (EN/ID order) &amp; repeat.</li>
+        <li><strong>Card Play ('Card' button):</strong> Defaults to "(Follow Global)" or uses explicit card channel mode. Always sequential within the card.</li>
+        <li><strong>Segment Only ('Only' button):</strong> Defaults to "(Follow Global)" or uses explicit segment channel mode. Always Split representation.</li>
+        <li><strong>Heading Quick-Play:</strong> Overrides channel to <code>TEXT_ONLY</code> or <code>MEANING_ONLY</code> for a single run.</li>
+      </ol>
+    </div>
+
+    <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px;">
+      <strong style="color: #7c3aed; font-size: 8pt; display: block; margin-bottom: 6px;">VOICE RESOLUTION CASCADE:</strong>
+      <ol style="font-size: 7.5pt; margin-left: 14px;">
+        <li><strong>Segment Override</strong> (if explicit voice assigned)</li>
+        <li><strong>Speaker Assignment</strong> (in conversation cards)</li>
+        <li><strong>Card Override</strong> (card-specific voice assignment)</li>
+        <li><strong>Document Override</strong> (workspace voice assignment)</li>
+        <li><strong>Global Browser TTS Default</strong> (Web Speech API)</li>
+      </ol>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 8 -->
+<h2><span class="num">8</span> Desktop and Mobile Wireframes &amp; Control Recommendations</h2>
+
+<h3>8.1. Streamlined Player Settings (Tabbed Modal Dialog)</h3>
+<p>
+  Consolidates 5 stacked boxes into 3 logical tabs, replacing native dropdowns with instant segmented buttons:
+</p>
+<div class="wireframe">
+┌────────────────────────────────────────────────────────────────────────┐<br/>
+│ ⚙️ <strong>Text Player Settings</strong>                                          <strong>[✕]</strong>   │<br/>
+├────────────────────────────────────────────────────────────────────────┤<br/>
+│  <strong>[  General  ]</strong>        [  Manual Play  ]        [  Voice Priority  ]    │<br/>
+├────────────────────────────────────────────────────────────────────────┤<br/>
+│                                                                        │<br/>
+│  <strong>DISPLAY ON CARDS</strong>                                                      │<br/>
+│  [ EN only ]  [ EN + active ID ]  <strong>[ (●) EN + ID ]</strong>  [ ID only ]         │<br/>
+│                                                                        │<br/>
+│  <strong>GLOBAL PLAYBACK CHANNELS</strong>                                              │<br/>
+│  <strong>[ (●) EN ]</strong>   [ EN → ID ]   [ ID → EN ]   [ ID ]                       │<br/>
+│                                                                        │<br/>
+│  <strong>PLAYBACK BEHAVIOUR</strong>                                                    │<br/>
+│  Order:    <strong>[ (●) Sequential ]</strong>  [ Shuffle ]                             │<br/>
+│  Repeat:   <strong>[ (●) Once ]</strong>  [ 2× ]  [ Loop ]                              │<br/>
+│  On Stop:  <strong>[ (●) Continue from last ]</strong>  [ Restart from beginning ]      │<br/>
+│                                                                        │<br/>
+│  <strong>DELAYS &amp; PAUSES</strong>                                                       │<br/>
+│  EN / ID Gap:   [ None (0s) ]  <strong>[ (●) 0.5s ]</strong>  [ 1.0s ]  [ 1.5s ]  [Custom]│<br/>
+│  Sentence Gap:  [ None (0s) ]  [ 0.5s ]  <strong>[ (●) 1.0s ]</strong>  [ 2.0s ]  [Custom]│<br/>
+│                                                                        │<br/>
+└────────────────────────────────────────────────────────────────────────┘
+</div>
+
+<h3>8.2. Mobile Bottom Player Bar (Clean Ergonomic Touch Layout)</h3>
+<p>
+  Replaces the squeezed 1-row mobile layout with a stacked 2-row design providing minimum 44px touch targets:
+</p>
+<div class="wireframe">
+┌────────────────────────────────────────────────────────────────────────┐<br/>
+│ <strong>NOW PLAYING</strong>                                                            │<br/>
+│ 1. Chapter 1: The Departure • EN • "The morning sun..." (1/12)         │<br/>
+├────────────────────────────────────────────────────────────────────────┤<br/>
+│   [⏮ Prev]         <strong>[  ▶ PLAY  ]</strong>         [⏭ Next]         [⏹ Stop]     │<br/>
+├────────────────────────────────────────────────────────────────────────┤<br/>
+│   [ Split / Full ]        [ Local / TTS ]        [ ⚙️ Settings ]       │<br/>
+└────────────────────────────────────────────────────────────────────────┘
+</div>
+
+<!-- PAGE BREAK -->
+<div class="page-break"></div>
+
+<!-- SECTION 9 -->
+<h2><span class="num">9</span> Prioritized Recommendations Matrix</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 10%;">ID</th>
+      <th style="width: 32%;">Recommendation Description</th>
+      <th style="width: 18%;">Classification</th>
+      <th style="width: 15%;">Priority</th>
+      <th style="width: 25%;">P9-A Safety Flag</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>REC-01</strong></td>
+      <td><strong>Fix Card Collapse on Stop:</strong> Keep active card expanded when playback stops; never snap shut.</td>
+      <td>State / UI</td>
+      <td><span class="badge badge-red">P0 (Critical)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Purely view state; audio engine untouched.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-02</strong></td>
+      <td><strong>Restore Active Card in Full Mode:</strong> Highlight and follow active card during Full playback.</td>
+      <td>State / UI</td>
+      <td><span class="badge badge-red">P0 (Critical)</span></td>
+      <td><span class="badge badge-amber">🟡 Watch</span> Keep <code>setPlayingIndex(null)</code> sentence suppression intact.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-03</strong></td>
+      <td><strong>Add 3 Card Expansion Modes:</strong> Expose Follow Playback, Expand All, and Custom in toolbar.</td>
+      <td>State / UI</td>
+      <td><span class="badge badge-indigo">P1 (High)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Backward compatible preference addition.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-04</strong></td>
+      <td><strong>Heading Quick-Play Buttons:</strong> Add [▶ Play EN] and [▶ Play ID] on paragraph block headings.</td>
+      <td>UI Only</td>
+      <td><span class="badge badge-indigo">P1 (High)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Uses existing card playback dispatchers.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-05</strong></td>
+      <td><strong>Segmented Buttons for Dropdowns:</strong> Replace 2-3 option dropdowns with 1-tap segmented pills.</td>
+      <td>UI Only</td>
+      <td><span class="badge badge-indigo">P1 (High)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Normalizes to identical preference values.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-06</strong></td>
+      <td><strong>"Follow Global" Manual Option:</strong> Explicitly indicate inheritance on Manual Channel selectors.</td>
+      <td>UI / Copy</td>
+      <td><span class="badge badge-slate">P2 (Med)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Aligns UI with existing domain fallback.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-07</strong></td>
+      <td><strong>Standardize Delay Presets:</strong> Add 0s, 0.5s, 1s, 2s preset pills alongside numeric custom input.</td>
+      <td>UI Only</td>
+      <td><span class="badge badge-slate">P2 (Med)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Output values remain millisecond numbers.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-08</strong></td>
+      <td><strong>Streamline Audio Sidebar:</strong> Partition clearly into Playback, Generation, and Storage.</td>
+      <td>UI / Copy</td>
+      <td><span class="badge badge-slate">P2 (Med)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Preserves existing handlers and DOM IDs.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-09</strong></td>
+      <td><strong>Mobile Bottom Bar 2-Row Layout:</strong> Stack transport controls above toggles for 44px tap targets.</td>
+      <td>UI Only</td>
+      <td><span class="badge badge-slate">P2 (Med)</span></td>
+      <td><span class="badge badge-amber">🟡 Watch</span> Keep <code>data-text-global-player-controls</code> test tag.</td>
+    </tr>
+    <tr>
+      <td><strong>REC-10</strong></td>
+      <td><strong>Clarify History* Status Copy:</strong> Add tooltip explaining binary absence from Staging.</td>
+      <td>Copy Only</td>
+      <td><span class="badge badge-slate">P3 (Low)</span></td>
+      <td><span class="badge badge-emerald">🟢 Safe</span> Pure copy clarification.</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- SECTION 10 -->
+<h2><span class="num">10</span> Implementation Plan &amp; Regression Testing</h2>
+<p>
+  Implementation should proceed in 3 disciplined, incremental phases:
+</p>
+<ol style="font-size: 8.5pt;">
+  <li><strong>Phase 1 (Card Expansion &amp; Full Mode Fix):</strong> Update <code>TextStructuredPlayer.jsx</code> to implement <code>cardExpansionMode</code>, maintain card expansion on Stop, and track <code>activeBlockId</code> during Full mode. Verify via <code>audit-v603-beta8-p3-runtime-playback.mjs</code>.</li>
+  <li><strong>Phase 2 (Paragraph Heading Quick-Play &amp; Player Settings UI):</strong> Update <code>TextParagraphUnifiedReading.jsx</code> to add quick-play buttons, and convert <code>TextStructuredPlaybackControls.jsx</code> dropdowns to segmented pills.</li>
+  <li><strong>Phase 3 (Mobile Player Bar &amp; Audio Sidebar Polish):</strong> Restructure mobile BottomPlayerBar touch targets and clarify Audio Sidebar tab partitioning.</li>
+</ol>
+
+<div class="callout callout-warning">
+  <strong>Audit Script Protection:</strong> When executing any future UI modifications, the following exact test strings and attributes must be preserved intact to prevent breaking <code>audit-v603-beta8-p7-hf2</code> and <code>audit-v603-beta8-p7-ui-simplification</code>:
+  <code>data-text-global-player-controls="true"</code>, <code>data-text-global-tts-only="true"</code>, <code>data-text-global-playback-mode="true"</code>, <code>"Toggle global Split / Full"</code>, <code>"Toggle global TTS Only"</code>, <code>"LOCAL FIRST"</code>, <code>"TTS ONLY"</code>, and <code>"first Ready wins"</code>.
+</div>
+
+<!-- SECTION 11 -->
+<h2><span class="num">11</span> Evidence Ledger</h2>
+<ul style="font-size: 8.5pt;">
+  <li><strong>Source-Code Findings:</strong> Directly verified in <code>TextStructuredPlayer.jsx</code> (line 159), <code>textStructuredPlaybackSessionService.js</code> (lines 264–266), <code>TextParagraphUnifiedReading.jsx</code> (lines 135–175), and <code>TextStructuredPlaybackControls.jsx</code> (lines 77–88, 148–153).</li>
+  <li><strong>UX Hypotheses:</strong> Grounded in standard Nielsen-Norman Group usability heuristics (recognition over recall, error prevention, touch target sizing &ge; 44px, immediate affordance for bilingual learning).</li>
+  <li><strong>Automated Test Evidence:</strong> Ran <code>node scripts/audit-v603-beta8-p7-hf3-mobile-ui.mjs</code> (6/6 pass), <code>node scripts/audit-v603-beta8-p7-hf2-global-player-defaults.mjs</code> (19/19 functional pass), and <code>node scripts/audit-v603-beta8-p7-ui-simplification.mjs</code> (16/16 functional pass).</li>
+</ul>
+
+<p style="margin-top: 25px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 8pt; color: #94a3b8; text-align: center;">
+  ProLingo v6 Beta Structured Text UX Audit • Delivered as READ ONLY • Confidential &amp; Internal
+</p>
+
+</div>
+
+</body>
+</html>
