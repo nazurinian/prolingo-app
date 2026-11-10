@@ -18,6 +18,7 @@ import {
   getStructuredTextRepeatModeLabel,
   getStructuredTextResumeModeLabel,
   hasStructuredTextPlayableChannel,
+  resolveTextStructuredManualPlaybackProfile,
   resolveStructuredTextDisplayState
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
@@ -192,8 +193,8 @@ const StructuredPlayerCard = ({
     return () => window.cancelAnimationFrame(frame);
   }, [isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, onEnsureCardExpanded, block.id, userNavigationRef]);
 
-  const manualSegmentChannelMode = playbackPreferences?.manualSegmentPlaybackChannelMode || playbackChannelMode;
-  const manualCardChannelMode = playbackPreferences?.manualCardPlaybackChannelMode || playbackChannelMode;
+  const manualSegmentChannelMode = resolveTextStructuredManualPlaybackProfile(playbackPreferences, 'segment').playbackChannelMode;
+  const manualCardChannelMode = resolveTextStructuredManualPlaybackProfile(playbackPreferences, 'card').playbackChannelMode;
   const firstSegment = segments[0] || null;
   const collapsedDisplay = resolveStructuredTextDisplayState({ displayMode, isActive: false });
   const cardHasPlayableSegment = segments.some(segment => hasStructuredTextPlayableChannel(segment, manualCardChannelMode));
@@ -251,6 +252,7 @@ const StructuredPlayerCard = ({
             playableSegmentIds={paragraphPlayableSegmentIds}
             disabled={generationBusy}
             onPlaySegment={onPlaySegment}
+            onPlayChannel={channel => onPlayCard?.(block.id, { playbackChannelMode: channel === 'meaning' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY : TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY })}
           />
           <div className="flex items-center justify-between gap-2 pt-1">
             <p className="text-[8px] text-slate-400">Card Play reads the full Paragraph in Segment order. Split Mode only changes the reading surface and sentence click behaviour.</p>

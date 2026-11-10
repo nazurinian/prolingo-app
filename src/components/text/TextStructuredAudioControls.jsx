@@ -8,6 +8,7 @@ import { getTextStructuredAudioDownloadChannelMode, getTextStructuredAudioDownlo
 import { getTextStructuredAudioSyncProfile } from '../../domain/text/textStructuredAudioSyncProfileDomain.js';
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
+import { PlaybackProfileOrderEditor } from './TextStructuredPlaybackControls.jsx';
 
 const clean = value => String(value ?? '').trim();
 const compactVoiceLabel = value => {
@@ -94,7 +95,9 @@ export default function TextStructuredAudioControls({
   edgeHealth = null,
   onEdgeHealthCheck,
   audioLibrary = null,
-  playbackSourceStatus = null
+  playbackSourceStatus = null,
+  playbackOrder = null,
+  onGlobalPlaybackOrderChange = null
 }) {
   const speakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
   const voiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
@@ -143,16 +146,15 @@ export default function TextStructuredAudioControls({
   };
 
   return <div className="space-y-3" data-text-audio-sidebar="true">
-    <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/60 p-1" role="tablist" aria-label="Text Audio controls" data-text-audio-subtabs="true">
-      <button type="button" role="tab" aria-selected={audioSurface === 'playback'} onClick={() => setAudioSurface('playback')} className={`min-h-10 rounded-lg px-2 text-[9px] font-black transition ${audioSurface === 'playback' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>PLAYBACK</button>
-      <button type="button" role="tab" aria-selected={audioSurface === 'download'} onClick={() => setAudioSurface('download')} className={`min-h-10 rounded-lg px-2 text-[9px] font-black transition ${audioSurface === 'download' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>SETUP & SOURCES</button>
+    <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/60 p-1" role="tablist" aria-label="Text Audio controls" data-text-audio-subtabs="true">
+      {[['playback', 'Playback Voices'], ['download', 'Generate Audio'], ['library', 'Audio Library']].map(([tab, label]) => <button type="button" role="tab" key={tab} aria-selected={audioSurface === tab} onClick={() => setAudioSurface(tab)} className={`min-h-11 rounded-lg px-1 text-[10px] font-semibold leading-tight transition ${audioSurface === tab ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`} data-text-audio-tab={tab}>{label}</button>)}
     </div>
-    <p className="px-1 text-[8px] leading-relaxed text-slate-400">PLAYBACK = how audio is heard. SETUP & SOURCES = Edge generation/download defaults plus Staging / Portable ZIP. Actual exports live in Segment MP3, Card Audio, or Batch.</p>
+    <p className="px-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">{audioSurface === 'playback' ? 'What you hear: Browser TTS voices, Local First routing and local voice priority.' : audioSurface === 'download' ? 'What you create: Edge generation voice and quality settings. This does not change playback voices.' : 'What is stored: local audio status, generated Staging files, Portable ZIP and voice inventory.'}</p>
     {audioSurface === 'playback' && <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-3" data-text-playback-audio-settings="true">
-      <div className="flex items-center gap-2 mb-2"><Headphones className="w-4 h-4 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Playback Audio</p><p className="text-[8px] text-slate-400">Voice + speed plus AUTO/CUSTOM local routing. Split/Full and TTS Only live in the bottom Global Player.</p></div></div>
+      <div className="flex items-center gap-2 mb-2"><Headphones className="w-4 h-4 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Playback Voices</p><p className="text-[10px] text-slate-500">Browser TTS voice + speed, Local First and local file selection. Split/Full and TTS Only live in the bottom Global Player.</p></div></div>
       <div className="mb-3 space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-local-audio-mode="true">
         <div className={`flex min-h-10 w-full items-center justify-between rounded-lg border px-3 text-[9px] font-black ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300'}`} data-text-global-tts-status="true">
-          <span>GLOBAL PLAYER</span><span>{localAudioEnabled ? 'LOCAL ALLOWED' : 'TTS ONLY'}</span>
+          <span>GLOBAL PLAYER SOURCE</span><span>{localAudioEnabled ? 'LOCAL FIRST' : 'TTS ONLY'}</span>
         </div>
         <div className="grid grid-cols-2 gap-1">
           <button type="button" disabled={disabled || !localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)} className={`min-h-9 rounded-lg border px-2 text-[8px] font-black disabled:opacity-40 ${sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'}`}>AUTO</button>
@@ -163,9 +165,17 @@ export default function TextStructuredAudioControls({
           <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5">Sources • Staging {stagingCount} • ZIP {zipCount} • Folder {folderLocked ? 'LOCKED' : 'legacy'}</div>
           <div className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1.5">Local voices • EN {localVoiceCountEn} • ID {localVoiceCountId}</div>
         </div>
-        <p className="text-[7px] leading-relaxed text-slate-400">Add Portable ZIP from <b>SETUP & SOURCES</b>; matching Split/Full audio is merged into Staging. Folder is deprecated/locked in beta.8.</p>
+        <p className="text-[7px] leading-relaxed text-slate-400">Import Portable ZIP from <b>AUDIO LIBRARY</b>; matching Split/Full audio is merged into Staging. Folder is deprecated/locked in beta.8.</p>
       </div>
       <SourceStatus status={playbackSourceStatus}/>
+      <details className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/80 dark:bg-slate-900/30 p-3" data-text-audio-local-voice-priority="true">
+        <summary className="cursor-pointer text-[11px] font-semibold text-indigo-800 dark:text-indigo-200">Local Voice Priority · EN/ID</summary>
+        <p className="my-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">If several generated voices are Ready, the first Ready voice wins. This is not the EN→ID Language Playback Order. Choose voices below; the choice syncs with Text Player Settings.</p>
+        <div className="grid gap-2">
+          <PlaybackProfileOrderEditor channel="text" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onGlobalPlaybackOrderChange}/>
+          <PlaybackProfileOrderEditor channel="meaning" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onGlobalPlaybackOrderChange}/>
+        </div>
+      </details>
 
       {hasParagraphCards && <div className="space-y-2" data-text-audio-paragraph="true">
         <div className="flex items-center gap-1.5"><Volume2 className="w-3.5 h-3.5 text-indigo-500"/><span className="text-[9px] font-black text-slate-600 dark:text-slate-300">Paragraph narrator</span></div>
@@ -241,7 +251,7 @@ export default function TextStructuredAudioControls({
     </section>}
 
     {audioSurface === 'download' && <section className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/35 dark:bg-violet-950/15 p-3" data-text-download-defaults="true">
-      <div className="flex items-center gap-2 mb-2"><Server className="w-4 h-4 text-violet-600 dark:text-violet-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Generation / Download Setup & Sources</p><p className="text-[8px] text-slate-400">This panel only defines voices, render settings, inheritance, and local audio sources. Export one Segment from its MP3 action, one Card from Card Audio, or many Cards/Workspaces from Bulk Audio.</p></div><button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="ml-auto min-h-9 px-2 rounded-lg border border-violet-200 dark:border-violet-800 text-[8px] font-black text-violet-700 dark:text-violet-300">TEST EDGE</button></div>
+      <div className="flex items-center gap-2 mb-2"><Server className="w-4 h-4 text-violet-600 dark:text-violet-300"/><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">Generate / Download Audio</p><p className="text-[10px] text-slate-500">Set the Edge voices used to create audio. These do not change the Browser TTS voice currently heard. Export one Segment from its MP3 action, one Card from Card Audio, or many Cards/Workspaces from Bulk Audio.</p></div><button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="ml-auto min-h-9 px-2 rounded-lg border border-violet-200 dark:border-violet-800 text-[8px] font-black text-violet-700 dark:text-violet-300">TEST EDGE</button></div>
       <div className="grid gap-2 md:grid-cols-2">
         <label className="text-[8px] font-bold text-slate-500">Global Edge EN<select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]">{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
         <label className="text-[8px] font-bold text-slate-500">Global Edge ID<select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]">{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></label>
@@ -267,7 +277,15 @@ export default function TextStructuredAudioControls({
         </div>
         {hasConversationCards && speakers.length > 0 && <div className="mt-2 space-y-1.5"><p className="text-[7px] font-black uppercase text-slate-400">Optional speaker custom Edge overrides</p>{speakers.map(({ id, label }) => <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[8px] font-black text-slate-500 truncate">{label}</span><select value={downloadProfile.speakerIds?.text?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">EN • Workspace preset</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={downloadProfile.speakerIds?.meaning?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[8px]"><option value="">ID • Workspace preset</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>)}</div>}
       </div>
-      <div className="mt-3"><TextAudioDataPanel audioLibrary={audioLibrary} compact={false} disabled={disabled}/></div>
+    </section>}
+
+    {audioSurface === 'library' && <section className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/35 dark:bg-emerald-950/15 p-3 space-y-3" data-text-audio-library-surface="true">
+      <div className="flex items-start gap-2"><Headphones className="mt-0.5 w-4 h-4 text-emerald-600"/><div><p className="text-[12px] font-bold text-emerald-800 dark:text-emerald-200">Your Local Audio Library</p><p className="text-[10px] text-slate-500">Check which voices/files are available, inspect staging and import Portable Audio ZIP archives. History does not always mean the binary is Ready.</p></div></div>
+      <div className="grid grid-cols-2 gap-2 text-center text-[11px] font-semibold">
+        <div className="rounded-lg border border-emerald-200 p-2 bg-white dark:bg-slate-800">{localVoiceCountEn} EN voices</div>
+        <div className="rounded-lg border border-emerald-200 p-2 bg-white dark:bg-slate-800">{localVoiceCountId} ID voices</div>
+      </div>
+      <TextAudioDataPanel audioLibrary={audioLibrary} compact={false} disabled={disabled}/>
     </section>}
   </div>;
 }

@@ -40,7 +40,7 @@ export const renderMainAppShellView = (props) => {
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
     saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt, renderMobileTools, renderPlaylist, isPaused,
     isPlaying, playingIndex, speakingPart, activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll,
-    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, textPlaybackRepresentationMode, textTtsOnly, textPlaybackOrder, onTextPlaybackRepresentationModeChange, onTextTtsOnlyChange, onOpenTextPlayer, isChangeReviewOpen,
+    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, textPlaybackRepresentationMode, textTtsOnly, textPlaybackOrder, textPlaybackChannelMode, textActiveCursorSegmentId, onTextPlaybackRepresentationModeChange, onTextTtsOnlyChange, onOpenTextPlayer, isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen, closeManualEditor,
     manualEditingId, importedRowCount, sequenceHighWater, manualForm, setManualForm, manualAdvancedOpen,
     setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen, setTableContent, setCsvBaselineContent, setSourcePack,
@@ -383,6 +383,8 @@ export const renderMainAppShellView = (props) => {
         textPlaybackRepresentationMode={textPlaybackRepresentationMode}
         textTtsOnly={textTtsOnly}
         textPlaybackOrder={textPlaybackOrder}
+        textPlaybackChannelMode={textPlaybackChannelMode}
+        textActiveCursorSegmentId={textActiveCursorSegmentId}
         onTextPlaybackRepresentationModeChange={onTextPlaybackRepresentationModeChange}
         onTextTtsOnlyChange={onTextTtsOnlyChange}
         onOpenTextPlayer={onOpenTextPlayer}

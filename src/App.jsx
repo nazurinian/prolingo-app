@@ -3599,12 +3599,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const handleStructuredTextPlayCard = (blockId) => {
+  const handleStructuredTextPlayCard = (blockId, channelOverride = null) => {
     const manual = resolveTextStructuredManualPlaybackProfile(textStructuredPreferences, 'card');
+    // Heading quick-play overrides EN/ID for this one session; never mutates saved preferences.
+    const requestedChannel = channelOverride?.playbackChannelMode;
+    const oneShotChannel = requestedChannel === TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY
+      || requestedChannel === TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY
+      ? requestedChannel : manual.playbackChannelMode;
     return startStructuredTextPlayback({
       blockId,
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
-      playbackChannelMode: manual.playbackChannelMode,
+      playbackChannelMode: oneShotChannel,
       playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
       repeatMode: manual.repeatMode,
       repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
@@ -6660,6 +6665,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textPlaybackRepresentationMode: textStructuredPreferences.playbackRepresentationMode,
     textTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
     textPlaybackOrder: structuredTextAudioPlaybackOrder,
+    textPlaybackChannelMode: textStructuredPreferences.playbackChannelMode,
+    textActiveCursorSegmentId: playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT ? currentIndex : null,
     onTextPlaybackRepresentationModeChange: handleStructuredTextPlaybackRepresentationModeChange,
     onTextTtsOnlyChange: handleStructuredTextGlobalTtsOnlyChange,
     onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true),

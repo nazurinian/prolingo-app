@@ -21,6 +21,8 @@ const BottomPlayerBar = ({
   textPlaybackRepresentationMode = 'split',
   textTtsOnly = false,
   textPlaybackOrder = null,
+  textPlaybackChannelMode = 'text-only',
+  textActiveCursorSegmentId = null,
   onTextPlaybackRepresentationModeChange,
   onTextTtsOnlyChange,
   onOpenTextPlayer
@@ -36,6 +38,9 @@ const BottomPlayerBar = ({
     const profiles = Array.isArray(textPlaybackOrder?.channels?.[channel]) ? textPlaybackOrder.channels[channel] : [];
     return profiles.map(profile => compactVoiceLabel(profile?.voiceId || profile)).filter(Boolean).join(' > ') || 'Auto';
   };
+  const languageOrderLabel = ({ 'text-only': 'EN', 'meaning-only': 'ID', 'text-meaning': 'EN → ID', 'meaning-text': 'ID → EN' })[textPlaybackChannelMode] || 'EN';
+  // Full sessions suppress playingIndex per sentence. Use the already tracked cursor only for the label.
+  const displayPlayingIndex = (isPlaying || isPaused) ? (playingIndex ?? (isStructuredText ? textActiveCursorSegmentId : null)) : null;
   const representationIsFull = textPlaybackRepresentationMode === 'full';
   const toggleRepresentation = () => onTextPlaybackRepresentationModeChange?.(representationIsFull ? 'split' : 'full');
 
@@ -67,9 +72,9 @@ const BottomPlayerBar = ({
            <div className="flex flex-col min-w-0 pr-1">
              <p className="text-[10px] font-bold text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : 'NOW PLAYING'}</p>
              <p className="text-xs font-semibold truncate text-slate-800 dark:text-slate-200">
-               {playingIndex !== null 
+               {displayPlayingIndex !== null 
                  ? (() => {
-                     const item = activePlaybackList.find(p => p.id === playingIndex);
+                     const item = activePlaybackList.find(p => p.id === displayPlayingIndex);
                      const seqIdx = activePlaybackList.indexOf(item);
                      if (!item) return "Ready";
                      const itemLabel = getMobileItemLabel(item);
@@ -77,6 +82,7 @@ const BottomPlayerBar = ({
                    })()
                  : "Ready"}
              </p>
+             {isStructuredText && <p className="truncate text-[9px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
            </div>
            <div className="relative -left-1 flex items-center gap-1.5">
               <button onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
@@ -114,15 +120,16 @@ const BottomPlayerBar = ({
                <p className="text-[10px] font-bold text-slate-400 tracking-wider">GLOBAL PLAYER ({isPaused ? 'PAUSED' : (playingContext ? playingContext.toUpperCase() : 'IDLE')})</p>
              </div>
              <p className="text-sm font-semibold truncate text-slate-800 dark:text-white">
-               {playingIndex !== null 
+               {displayPlayingIndex !== null 
                  ? (() => {
-                     const item = activePlaybackList.find(p => p.id === playingIndex);
+                     const item = activePlaybackList.find(p => p.id === displayPlayingIndex);
                      const seqIdx = activePlaybackList.indexOf(item);
                      if (!item) return "Ready";
                      return `${seqIdx + 1}. ${getDesktopItemLabel(item)} (${seqIdx + 1}/${activePlaybackList.length} Items)`;
                    })()
                  : "Ready"}
              </p>
+             {isStructuredText && <p className="truncate text-[9px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
            </div>
 
            <div className="flex items-center gap-4">
@@ -142,7 +149,7 @@ const BottomPlayerBar = ({
                    <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 rounded-lg border px-3 text-[9px] font-black ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}</button>
                    <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-[9px] font-black text-slate-500 hover:text-indigo-600 dark:text-slate-300" title="Open Text Player settings"><SlidersHorizontal className="w-3.5 h-3.5"/>SETTINGS</button>
                  </div>
-                 <p className="max-w-64 truncate text-[7px] font-bold text-slate-400" title={`EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>EN {globalOrderLabel('text')} • ID {globalOrderLabel('meaning')}</p>
+                 <p className="max-w-72 truncate text-[9px] font-semibold text-slate-500 dark:text-slate-400" title={`Global language ${languageOrderLabel} • Local voice EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>LANG {languageOrderLabel} • LOCAL VOICE: EN {globalOrderLabel('text')} · ID {globalOrderLabel('meaning')}</p>
                </>
              ) : (
                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">

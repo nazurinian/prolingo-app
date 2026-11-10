@@ -47,6 +47,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, disab
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-2"><p className="text-sm font-black text-slate-500">{coverage.missing || 0}</p><p className="text-[7px] font-black uppercase text-slate-400">Missing</p></div>
       </div>
 
+      <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400" data-text-audio-history-explanation="true"><b>Ready</b> = playable local file is present. <b>History</b> = a downloaded/generated voice was recorded, but its local binary may be absent. <b>Other/Stale</b> = available under a different voice or needs regeneration. <b>Missing</b> = no matching playable file.</p>
       <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-white dark:bg-slate-900/40 p-2.5 space-y-2" data-text-audio-staging="true">
         <div className="flex items-center gap-2">
           <Database className="w-3.5 h-3.5 text-emerald-500"/>

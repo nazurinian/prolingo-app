@@ -40,6 +40,8 @@ export const TEXT_STRUCTURED_REPEAT_MODES = Object.freeze({
   LOOP: 'loop'
 });
 
+export const TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL = 'inherit-global';
+
 export const TEXT_STRUCTURED_MANUAL_REPEAT_MODES = Object.freeze({
   ONCE: 'once',
   TWICE: 'twice',
@@ -144,14 +146,18 @@ export const normalizeTextStructuredPreferences = candidate => {
     repeatMode: repeatModes.has(candidate?.repeatMode)
       ? candidate.repeatMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.repeatMode,
-    manualSegmentPlaybackChannelMode: playbackModes.has(candidate?.manualSegmentPlaybackChannelMode)
+    manualSegmentPlaybackChannelMode: candidate?.manualSegmentPlaybackChannelMode === TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL
+      ? TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL
+      : playbackModes.has(candidate?.manualSegmentPlaybackChannelMode)
       ? candidate.manualSegmentPlaybackChannelMode
       : (playbackModes.has(candidate?.playbackChannelMode) ? candidate.playbackChannelMode : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualSegmentPlaybackChannelMode),
     manualSegmentRepeatMode: manualRepeatModes.has(candidate?.manualSegmentRepeatMode)
       ? candidate.manualSegmentRepeatMode
       : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualSegmentRepeatMode,
     manualSegmentRepeatCount: normalizeManualRepeatCount(candidate?.manualSegmentRepeatCount),
-    manualCardPlaybackChannelMode: playbackModes.has(candidate?.manualCardPlaybackChannelMode)
+    manualCardPlaybackChannelMode: candidate?.manualCardPlaybackChannelMode === TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL
+      ? TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL
+      : playbackModes.has(candidate?.manualCardPlaybackChannelMode)
       ? candidate.manualCardPlaybackChannelMode
       : (playbackModes.has(candidate?.playbackChannelMode) ? candidate.playbackChannelMode : DEFAULT_TEXT_STRUCTURED_PREFERENCES.manualCardPlaybackChannelMode),
     manualCardRepeatMode: manualRepeatModes.has(candidate?.manualCardRepeatMode)
@@ -247,7 +253,8 @@ export const getStructuredTextResumeModeLabel = mode => ({
 export const resolveTextStructuredManualPlaybackProfile = (preferences, target = 'segment') => {
   const normalized = normalizeTextStructuredPreferences(preferences || {});
   const isCard = target === 'card';
-  const playbackChannelMode = isCard ? normalized.manualCardPlaybackChannelMode : normalized.manualSegmentPlaybackChannelMode;
+  const selectedMode = isCard ? normalized.manualCardPlaybackChannelMode : normalized.manualSegmentPlaybackChannelMode;
+  const playbackChannelMode = selectedMode === TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL ? normalized.playbackChannelMode : selectedMode;
   const manualRepeatMode = isCard ? normalized.manualCardRepeatMode : normalized.manualSegmentRepeatMode;
   const repeatCount = isCard ? normalized.manualCardRepeatCount : normalized.manualSegmentRepeatCount;
   return { playbackChannelMode, repeatMode: manualRepeatMode, repeatCount };
