@@ -85,11 +85,11 @@ const BottomPlayerBar = ({
              {isStructuredText && <p className="truncate text-[9px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
            </div>
            <div className="relative -left-1 flex items-center gap-1.5">
-              <button onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
+              <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
               <button onClick={handleGlobalPlay} className={`p-2.5 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800' : 'bg-indigo-600 text-white'}`}>
                 {isPlaying && !isPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
-              <button onClick={() => handleSmartNav('next')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
+              <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
               <button onClick={forceStopAll} className="ml-1.5 p-1.5 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
            </div>
            <div className="flex justify-end gap-1 pl-1">
@@ -133,11 +133,11 @@ const BottomPlayerBar = ({
            </div>
 
            <div className="flex items-center gap-4">
-                <button onClick={() => handleSmartNav('prev')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipBack className="w-6 h-6 fill-current"/></button>
+                <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipBack className="w-6 h-6 fill-current"/></button>
                 <button onClick={handleGlobalPlay} className={`p-4 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-800' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                   {isPlaying && !isPaused ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
                 </button>
-                <button onClick={() => handleSmartNav('next')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipForward className="w-6 h-6 fill-current"/></button>
+                <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipForward className="w-6 h-6 fill-current"/></button>
                 <button onClick={forceStopAll} className="p-3 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full transition active:scale-95" title="Stop"><XCircle className="w-5 h-5"/></button>
            </div>
 

@@ -103,7 +103,7 @@ import { executeCycleMasteryState } from './services/progress/masteryInteraction
 import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
-import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextAdjacentSegment, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
+import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextNavigationTarget, resolveStructuredTextPlaybackOrder, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
 import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredManualPlaybackProfile, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_ORDER_MODES, TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
@@ -286,6 +286,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [structuredTextPlaybackSourceStatus, setStructuredTextPlaybackSourceStatus] = useState(null);
   const structuredTextAudioRuntimeUrlsRef = useRef({});
   const structuredTextFullAudioRuntimeUrlsRef = useRef({});
+  // HF4-D: Text-only cursor and shuffled card order survive Stop, while
+  // Table and other documents keep their independent navigation state.
+  const structuredTextResumeCursorRef = useRef({ documentId: null, segmentId: null, orderedList: null });
   // Final Text C6: Text binary staging is separate from core Text DB and keeps Blob data out of React state.
   const [structuredTextAudioStagingSummary, setStructuredTextAudioStagingSummary] = useState({ count: 0, bytes: 0, voices: {} });
   const structuredTextAudioStagingSummaryRef = useRef({ count: 0, bytes: 0, voices: {} });
@@ -3542,9 +3545,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     playbackOrderMode = textStructuredPreferences.playbackOrderMode,
     playbackRepresentationMode = textStructuredPreferences.playbackRepresentationMode,
     repeatMode = textStructuredPreferences.repeatMode,
-    repeatCount = null
+    repeatCount = null,
+    orderedListOverride = null
   } = {}) => {
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1' || !activeTextDocumentTree) return false;
+    // Remember an explicit manual Card/Segment target before the 120ms async
+    // transition. An immediate Stop must still resume at the chosen Card.
+    const requestedSegmentId = cursorSegmentId || startSegmentId
+      || (blockId ? activeTextDocumentTree.blocks?.find(block => block.id === blockId)?.segments?.[0]?.id : null);
+    if (requestedSegmentId) {
+      structuredTextResumeCursorRef.current = {
+        documentId: activeTextDocumentTree.id,
+        segmentId: requestedSegmentId,
+        orderedList: Array.isArray(orderedListOverride) ? [...orderedListOverride] : null
+      };
+    }
     return executeStructuredTextPlaybackSessionService({
       documentTree: activeTextDocumentTree,
       startSegmentId,
@@ -3569,6 +3584,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackRepresentationMode,
       repeatMode,
       repeatCount,
+      orderedListOverride,
+      onPlaybackCursor: ({ documentId, segmentId, orderedList }) => {
+        if (documentId !== activeTextDocumentTree?.id || !segmentId) return;
+        structuredTextResumeCursorRef.current = {
+          documentId, segmentId,
+          orderedList: Array.isArray(orderedList) ? [...orderedList] : null
+        };
+      },
+      onPlaybackCompleted: ({ documentId, segmentId }) => {
+        if (documentId !== activeTextDocumentTree?.id) return;
+        structuredTextResumeCursorRef.current = { documentId, segmentId, orderedList: null };
+      },
       channelDelayMs: textStructuredPreferences.channelDelayMs,
       segmentDelayMs: textStructuredPreferences.segmentDelayMs,
       playStructuredChannel: playStructuredTextChannel,
@@ -3635,11 +3662,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       else pausePlayback();
       return;
     }
+    const saved = structuredTextResumeCursorRef.current;
     const allowResumeCursor = textStructuredPreferences.resumeMode !== TEXT_STRUCTURED_RESUME_MODES.RESTART;
-    const resumeId = allowResumeCursor && structuredTextActivePlaybackList.some(item => item.id === playingIndex) ? playingIndex : null;
+    const cursorId = allowResumeCursor && saved.documentId === activeTextDocumentId
+      && structuredTextActivePlaybackList.some(item => item.id === saved.segmentId)
+      ? saved.segmentId : null;
+    const savedOrderedList = cursorId && Array.isArray(saved.orderedList)
+      ? saved.orderedList : null;
+    // DOCUMENT (rather than FROM_HERE) includes the complete current card in
+    // Full mode and keeps the user free to navigate Prev back to earlier cards.
     startStructuredTextPlayback({
-      startSegmentId: resumeId,
-      scope: resumeId ? TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE : TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+      cursorSegmentId: cursorId,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
+      orderedListOverride: savedOrderedList
     });
   };
 
@@ -3648,53 +3683,54 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       handleSmartNav(direction);
       return;
     }
-    const playbackContext = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      ? playbackContextRef.current
-      : null;
-    const activeSessionOrder = Array.isArray(playbackContext?.orderedList) && playbackContext.orderedList.length
-      ? playbackContext.orderedList
-      : structuredTextActivePlaybackList;
-    const anchorId = activeSessionOrder.some(item => item.id === playingIndex)
-      ? playingIndex
-      : activeSessionOrder[0]?.id;
-    const target = resolveStructuredTextAdjacentSegment({
-      list: activeSessionOrder,
-      currentId: anchorId,
-      direction
+    if (!structuredTextActivePlaybackList.length) return;
+    const session = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+      && playbackContextRef.current?.documentId === activeTextDocumentId
+      ? playbackContextRef.current : null;
+    const saved = structuredTextResumeCursorRef.current;
+    const cursorId = (saved.documentId === activeTextDocumentId ? saved.segmentId : null)
+      || session?.cursorSegmentId || null;
+    const representationMode = session?.playbackRepresentationMode
+      || textStructuredPreferences.playbackRepresentationMode;
+    const playbackOrderMode = session?.playbackOrderMode || textStructuredPreferences.playbackOrderMode;
+    const completeList = structuredTextActivePlaybackList;
+    const matchesFullList = list => Array.isArray(list)
+      && list.length === completeList.length
+      && new Set(list.map(item => item.id)).size === completeList.length
+      && list.every(item => completeList.some(candidate => candidate.id === item.id));
+    // Freeze one Shuffle order for the whole navigation session. Never reshuffle
+    // on every Next / Prev click, and never shuffle sentences within a card.
+    const snapshot = matchesFullList(session?.orderedList) ? session.orderedList
+      : matchesFullList(saved.documentId === activeTextDocumentId ? saved.orderedList : null)
+        ? saved.orderedList : null;
+    const ordered = snapshot || resolveStructuredTextPlaybackOrder({
+      list: completeList,
+      orderMode: playbackOrderMode,
+      anchorId: cursorId
+    });
+    const target = resolveStructuredTextNavigationTarget({
+      list: ordered,
+      currentId: cursorId,
+      direction,
+      representationMode
     });
     if (!target) return;
-
-    const currentScope = playbackContext?.scope || TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT;
-    const preservedPlayback = playbackContext ? {
-      playbackChannelMode: playbackContext.playbackChannelMode,
-      playbackOrderMode: playbackContext.playbackOrderMode,
-      playbackRepresentationMode: playbackContext.playbackRepresentationMode,
-      repeatMode: playbackContext.repeatMode,
-      repeatCount: playbackContext.repeatCount
-    } : {};
-    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT) return;
-    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD) {
-      startStructuredTextPlayback({
-        blockId: playbackContext?.blockId || target.blockId,
-        cursorSegmentId: target.id,
-        scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
-        ...preservedPlayback
-      });
-      return;
-    }
-    if (currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE) {
-      startStructuredTextPlayback({
-        startSegmentId: playbackContext?.scopeStartSegmentId || activeSessionOrder[0]?.id || target.id,
-        cursorSegmentId: target.id,
-        scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
-        ...preservedPlayback
-      });
-      return;
-    }
+    // Synchronous cursor update avoids two quick Next taps targeting the same
+    // old card before React/async audio start has committed its state.
+    structuredTextResumeCursorRef.current = {
+      documentId: activeTextDocumentId, segmentId: target.id, orderedList: [...ordered]
+    };
+    // Force an exact new cursor, so Full navigates by Card and Split by sentence.
+    // A manual Card/Sentence play can also escape its previous restricted scope.
     startStructuredTextPlayback({
       cursorSegmentId: target.id,
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
-      ...preservedPlayback
+      orderedListOverride: ordered,
+      playbackRepresentationMode: representationMode,
+      playbackOrderMode,
+      playbackChannelMode: session?.playbackChannelMode || textStructuredPreferences.playbackChannelMode,
+      repeatMode: session?.repeatMode || textStructuredPreferences.repeatMode,
+      repeatCount: session?.repeatCount ?? null
     });
   };
 

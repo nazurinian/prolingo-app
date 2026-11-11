@@ -152,7 +152,6 @@ const StructuredPlayerCard = ({
 }) => {
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
   const [segmentToolsId, setSegmentToolsId] = useState(null);
-  const [paragraphSplitMode, setParagraphSplitMode] = useState(false);
   const [paragraphSentenceDetailsOpen, setParagraphSentenceDetailsOpen] = useState(false);
   const cardRef = useRef(null);
   const segments = block.segments || [];
@@ -164,14 +163,9 @@ const StructuredPlayerCard = ({
 
 
   useEffect(() => {
-    if (isParagraphCard && segments.length <= 1 && paragraphSplitMode) setParagraphSplitMode(false);
-  }, [isParagraphCard, segments.length, paragraphSplitMode]);
-
-  useEffect(() => {
     if (!cardRef.current) return undefined;
     if (isFocusCard) {
       onEnsureCardExpanded?.(block.id);
-      if (isParagraphCard && focusTarget?.segmentId) setParagraphSplitMode(true);
       const frame = window.requestAnimationFrame(() => {
         const target = focusTarget?.segmentId
           ? cardRef.current?.querySelector(`[data-text-player-segment="${focusTarget.segmentId}"]`)
@@ -226,7 +220,6 @@ const StructuredPlayerCard = ({
           {!expanded && <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 truncate animate-in fade-in duration-150">{preview}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0" data-text-card-quick-actions="true">
-          {isParagraphCard && segments.length > 1 && <button type="button" onClick={() => { setParagraphSplitMode(value => !value); onEnsureCardExpanded?.(block.id); }} className={`min-h-10 sm:min-h-9 px-2 sm:px-2.5 rounded-lg border text-[8px] sm:text-[9px] font-black transition-all duration-150 active:scale-95 ${paragraphSplitMode ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/35 text-indigo-700 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`} aria-pressed={paragraphSplitMode} data-text-paragraph-split-toggle="true" title="Toggle sentence split reading mode"><span className="hidden sm:inline">Split </span>{paragraphSplitMode ? 'ON' : 'OFF'}</button>}
           <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-10 h-10 sm:w-auto sm:h-auto sm:min-h-9 sm:px-2 sm:py-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-violet-700 dark:text-violet-300 text-[9px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio" aria-label="Open card audio controls">
             <Volume2 className="w-3.5 h-3.5 sm:w-3 sm:h-3 sm:mr-1"/><span className="hidden sm:inline">Audio</span>
           </button>
@@ -241,7 +234,7 @@ const StructuredPlayerCard = ({
         {isParagraphCard && segments.length > 0 && <>
           <TextParagraphUnifiedReading
             segments={segments}
-            splitMode={paragraphSplitMode}
+            splitMode={!isFullRepresentation}
             displayMode={displayMode}
             activeSegmentId={isActiveCard && !isFullRepresentation ? playingIndex : null}
             isPlaybackActive={isActiveCard}
@@ -255,7 +248,7 @@ const StructuredPlayerCard = ({
             onPlayChannel={channel => onPlayCard?.(block.id, { playbackChannelMode: channel === 'meaning' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY : TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY })}
           />
           <div className="flex items-center justify-between gap-2 pt-1">
-            <p className="text-[8px] text-slate-400">Card Play reads the full Paragraph in Segment order. Split Mode only changes the reading surface and sentence click behaviour.</p>
+            <p className="text-[8px] text-slate-400">Card Play reads this Paragraph. Split/Full follows the Global Player; tap a sentence in Split for Manual Segment playback.</p>
             <button type="button" onClick={() => setParagraphSentenceDetailsOpen(value => !value)} className={`shrink-0 min-h-9 px-2.5 rounded-lg border text-[8px] font-black ${paragraphSentenceDetailsOpen ? 'border-violet-400 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'}`} aria-expanded={paragraphSentenceDetailsOpen}>{paragraphSentenceDetailsOpen ? 'Hide' : 'Sentence'} Audio</button>
           </div>
         </>}

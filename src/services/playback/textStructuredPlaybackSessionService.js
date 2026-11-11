@@ -61,6 +61,9 @@ export const executeStructuredTextPlaybackSessionService = ({
   playbackRepresentationMode = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
   repeatMode = TEXT_STRUCTURED_REPEAT_MODES.ONCE,
   repeatCount = null,
+  orderedListOverride = null,
+  onPlaybackCursor = null,
+  onPlaybackCompleted = null,
   channelDelayMs = 0,
   segmentDelayMs = 0,
   safePlayTransition,
@@ -92,8 +95,6 @@ export const executeStructuredTextPlaybackSessionService = ({
   });
   const scopedList = resolved.playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode));
   const cursorId = cursorSegmentId || startSegmentId || null;
-  const resolvedCursorIndex = cursorId ? scopedList.findIndex(item => item.id === cursorId) : 0;
-  const initialCursorIndex = resolvedCursorIndex >= 0 ? resolvedCursorIndex : 0;
   if (!scopedList.length) {
     addLog?.('Text Player', 'Playback not started: no Segment in this scope has content for the selected Text Play mode.');
     return false;
@@ -103,7 +104,6 @@ export const executeStructuredTextPlaybackSessionService = ({
     ? TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
     : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT;
   const fullRuntimeEnabled = normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
-    && playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL
     && typeof resolveBlockChannelPlaybackPlan === 'function'
     && typeof playStructuredFullStep === 'function';
 
@@ -121,7 +121,7 @@ export const executeStructuredTextPlaybackSessionService = ({
     setIsPaused(false);
     pauseStateRef.current = false;
     const repeatLabel = repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP ? repeatMode : `${repeatLimit}×`;
-    const representationLabel = fullRuntimeEnabled ? 'full' : normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL ? 'full→split' : 'split';
+    const representationLabel = fullRuntimeEnabled ? 'full' : normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL ? 'full→split (runtime unavailable)' : 'split';
     addLog?.('Text Player', `${documentTree.title || documentTree.id} • ${scope} • ${scopedList.length} segment${scopedList.length === 1 ? '' : 's'} • ${playbackChannelMode} • ${representationLabel} • ${playbackOrderMode} • ${repeatLabel}.`);
 
     if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
@@ -129,8 +129,27 @@ export const executeStructuredTextPlaybackSessionService = ({
 
     let pass = 0;
     while (pass < repeatLimit && !shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) {
+      const validIds = new Set(scopedList.map(item => item.id));
+      const overrideValid = pass === 0 && Array.isArray(orderedListOverride)
+        && orderedListOverride.length === scopedList.length
+        && new Set(orderedListOverride.map(item => item.id)).size === validIds.size
+        && orderedListOverride.every(item => validIds.has(item.id));
+      const orderedList = overrideValid
+        ? orderedListOverride.map(item => scopedList.find(source => source.id === item.id))
+        : resolveStructuredTextPlaybackOrder({
+            list: scopedList,
+            orderMode: playbackOrderMode,
+            anchorId: pass === 0 && playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE ? cursorId : null,
+            random
+          });
       if (fullRuntimeEnabled) {
-        const groups = buildScopedBlockGroups({ scopedList, fullList: resolved.fullList, documentTree });
+        const groups = buildScopedBlockGroups({ scopedList: orderedList, fullList: resolved.fullList, documentTree });
+        // Full navigation is card-based: a cursor anywhere in a card restarts that
+        // card's single Full artifact from its beginning.
+        const cursorGroupIndex = pass === 0 && cursorId
+          ? groups.findIndex(group => group.items.some(item => item.id === cursorId))
+          : 0;
+        const firstGroupIndex = cursorGroupIndex >= 0 ? cursorGroupIndex : 0;
         const channelOrder = resolveStructuredTextPlaybackChannelOrder(playbackChannelMode);
 
         if (playbackContextRef) {
@@ -153,16 +172,24 @@ export const executeStructuredTextPlaybackSessionService = ({
             segmentDelayMs,
             repeatPass: pass + 1,
             baseList: [...resolved.fullList],
-            orderedList: [...scopedList]
+            orderedList: [...orderedList]
           };
         }
 
-        for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+        for (let groupIndex = firstGroupIndex; groupIndex < groups.length; groupIndex += 1) {
           const group = groups[groupIndex];
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
           await waitWhilePaused();
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
           prepareMediaPlayingState({ silentAudioRef });
+          const cardFirstSegment = group.items[0]?.id || null;
+          if (cardFirstSegment) {
+            if (playbackContextRef?.current?.sessionId === playbackSession) {
+              playbackContextRef.current.cursorSegmentId = cardFirstSegment;
+              playbackContextRef.current.blockId = group.blockId;
+            }
+            onPlaybackCursor?.({ documentId: documentTree.id, segmentId: cardFirstSegment, blockId: group.blockId, orderedList });
+          }
 
           for (let channelIndex = 0; channelIndex < channelOrder.length; channelIndex += 1) {
             const channel = channelOrder[channelIndex];
@@ -184,10 +211,9 @@ export const executeStructuredTextPlaybackSessionService = ({
               const item = step.segmentId
                 ? group.items.find(candidate => candidate.id === step.segmentId) || group.items[0]
                 : group.items[0];
-              setCurrentIndex(step.segmentId || item?.id || null);
-              // Full Mode intentionally suppresses sentence highlight even when its
-              // runtime route falls back to Split audio/TTS.
-              setPlayingIndex(step.highlight ? (step.segmentId || item?.id || null) : null);
+              setCurrentIndex(cardFirstSegment || item?.id || null);
+              // Full mode highlights the card/whole channel, never individual sentences.
+              setPlayingIndex(null);
               setSpeakingPart(step.channel || channel);
 
               if (step.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_LOCAL
@@ -220,15 +246,8 @@ export const executeStructuredTextPlaybackSessionService = ({
           }
         }
       } else {
-        // Accepted beta.7 Split runtime path remains the compatibility/default
-        // execution path. When Full is requested with Shuffle, we deliberately
-        // use Split order because a single Full Artifact cannot represent shuffle.
-        const orderedList = resolveStructuredTextPlaybackOrder({
-          list: scopedList,
-          orderMode: playbackOrderMode,
-          anchorId: pass === 0 ? cursorId : null,
-          random
-        });
+        // Split follows sentence units. Shuffle only rearranges cards; within
+        // each card, all sentences retain their authored sequence.
         if (playbackContextRef) {
           playbackContextRef.current = {
             sessionId: playbackSession,
@@ -253,7 +272,8 @@ export const executeStructuredTextPlaybackSessionService = ({
           };
         }
 
-        const firstItemIndex = pass === 0 && playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL ? initialCursorIndex : 0;
+        const scopedCursorIndex = pass === 0 && cursorId ? orderedList.findIndex(item => item.id === cursorId) : 0;
+        const firstItemIndex = scopedCursorIndex >= 0 ? scopedCursorIndex : 0;
         for (let itemIndex = firstItemIndex; itemIndex < orderedList.length; itemIndex += 1) {
           const item = orderedList[itemIndex];
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
@@ -264,6 +284,11 @@ export const executeStructuredTextPlaybackSessionService = ({
           const suppressHighlight = normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
           setPlayingIndex(suppressHighlight ? null : item.id);
           setCurrentIndex(item.id);
+          if (playbackContextRef?.current?.sessionId === playbackSession) {
+            playbackContextRef.current.cursorSegmentId = item.id;
+            playbackContextRef.current.blockId = item.blockId;
+          }
+          onPlaybackCursor?.({ documentId: documentTree.id, segmentId: item.id, blockId: item.blockId, orderedList });
           const channelSteps = resolveStructuredTextPlaybackChannelSteps(item, playbackChannelMode);
 
           for (let stepIndex = 0; stepIndex < channelSteps.length; stepIndex += 1) {
@@ -303,6 +328,11 @@ export const executeStructuredTextPlaybackSessionService = ({
     setSpeakingPart(null);
     setPlayingIndex(null);
     if (!stopSignalRef.current) {
+      if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT || scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE) {
+        const firstId = resolved.fullList.find(item => hasStructuredTextPlayableChannel(item, playbackChannelMode))?.id || null;
+        if (firstId) setCurrentIndex(firstId);
+        onPlaybackCompleted?.({ documentId: documentTree.id, segmentId: firstId });
+      }
       addLog?.('Text Player', 'Structured Text playback finished.');
       forceStopAll();
     }

@@ -87,34 +87,57 @@ export const resolveStructuredTextPlaybackScopeList = ({
 };
 
 
+// Text playback always preserves the authored sentence order inside each card.
+// Shuffle changes only the order of cards (not the order of sentences).
 export const resolveStructuredTextPlaybackOrder = ({
-  list,
-  orderMode = 'sequential',
-  anchorId = null,
-  random = Math.random
+  list, orderMode = 'sequential', anchorId = null, random = Math.random
 }) => {
   const items = Array.isArray(list) ? [...list] : [];
   if (orderMode !== 'shuffle' || items.length < 2) return items;
-
-  let anchor = null;
-  let pool = items;
-  if (anchorId) {
-    const anchorIndex = items.findIndex(item => item?.id === anchorId || item?.segmentId === anchorId);
-    if (anchorIndex >= 0) {
-      anchor = items[anchorIndex];
-      pool = items.filter((_, index) => index !== anchorIndex);
+  const groups = [];
+  const byCard = new Map();
+  items.forEach(item => {
+    const id = item.blockId || item.textId || item.id;
+    if (!byCard.has(id)) {
+      const group = { id, items: [] };
+      byCard.set(id, group);
+      groups.push(group);
     }
-  }
-
+    byCard.get(id).items.push(item);
+  });
+  if (groups.length < 2) return items;
+  const anchorItem = anchorId ? items.find(item => item.id === anchorId || item.segmentId === anchorId) : null;
+  const anchorGroupId = anchorItem?.blockId || anchorItem?.textId || anchorItem?.id || null;
+  const anchorGroup = anchorGroupId ? byCard.get(anchorGroupId) : null;
+  const pool = anchorGroup ? groups.filter(group => group.id !== anchorGroupId) : [...groups];
   for (let index = pool.length - 1; index > 0; index -= 1) {
-    const value = Number(random?.());
-    const safeRandom = Number.isFinite(value) ? Math.min(0.999999999, Math.max(0, value)) : 0;
+    const sampled = Number(random?.());
+    const safeRandom = Number.isFinite(sampled) ? Math.max(0, Math.min(0.999999999, sampled)) : 0;
     const swapIndex = Math.floor(safeRandom * (index + 1));
     [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
   }
-  return anchor ? [anchor, ...pool] : pool;
+  return [...(anchorGroup ? [anchorGroup] : []), ...pool].flatMap(group => group.items);
 };
 
+// The same UI Prev / Next buttons navigate by sentence in Split and by card in Full.
+// Manual navigation wraps, matching the established Table transport controls.
+export const resolveStructuredTextNavigationTarget = ({
+  list, currentId = null, direction = 'next', representationMode = 'split'
+}) => {
+  const items = Array.isArray(list) ? list : [];
+  if (!items.length) return null;
+  const candidates = representationMode === 'full'
+    ? items.filter((item, index) => items.findIndex(other => other.blockId === item.blockId) === index)
+    : items;
+  const active = currentId ? items.find(item => item.id === currentId || item.segmentId === currentId) : null;
+  const activeIndex = active
+    ? candidates.findIndex(item => representationMode === 'full' ? item.blockId === active.blockId : item.id === active.id)
+    : -1;
+  // With no cursor: Next chooses item/card 1; Prev chooses the last.
+  if (activeIndex < 0) return direction === 'prev' ? candidates.at(-1) : candidates[0];
+  const delta = direction === 'prev' ? -1 : 1;
+  return candidates[(activeIndex + delta + candidates.length) % candidates.length];
+};
 
 export const resolveStructuredTextAdjacentSegment = ({ list, currentId, direction }) => {
   const items = Array.isArray(list) ? list : [];
