@@ -66,12 +66,20 @@ const BottomPlayerBar = ({
   };
 
   return (
-  <div className={`bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-2xl z-50 flex-shrink-0 ${isMobile ? 'fixed inset-x-0 bottom-0 w-full px-2 pt-2 prolingo-mobile-bottom-safe' : 'p-4'}`}>
+  <div className={`bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-700/80 shadow-2xl z-50 flex-shrink-0 prolingo-text-bottom-player ${isMobile ? 'fixed inset-x-0 bottom-0 w-full px-2.5 pt-2 prolingo-mobile-bottom-safe' : 'px-4 py-3'}`}>
     <div className="max-w-4xl mx-auto">
        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 md:hidden">
            <div className="flex flex-col min-w-0 pr-1">
-             <p className="text-[10px] font-bold text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : 'NOW PLAYING'}</p>
-             <p className="text-xs font-semibold truncate text-slate-800 dark:text-slate-200">
+             <div className="flex items-center gap-1.5 prolingo-text-player-kicker">
+               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isPlaying && !isPaused ? 'bg-emerald-500 animate-pulse' : isPaused ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+               <p className="text-[9px] font-black text-slate-400 tracking-wider">{isPaused ? 'PAUSED' : (isPlaying ? 'NOW PLAYING' : 'READY')}</p>
+               {isStructuredText && (isPlaying || isPaused) && speakingPart && (
+                 <span className={`rounded px-1 py-0.2 text-[8px] font-black uppercase ${speakingPart === 'meaning' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300'}`}>
+                   {speakingPart === 'meaning' ? 'ID' : 'EN'}
+                 </span>
+               )}
+             </div>
+             <p className="text-xs font-bold truncate text-slate-800 dark:text-slate-100 prolingo-text-player-label">
                {displayPlayingIndex !== null 
                  ? (() => {
                      const item = activePlaybackList.find(p => p.id === displayPlayingIndex);
@@ -84,20 +92,20 @@ const BottomPlayerBar = ({
              </p>
              {isStructuredText && <p className="truncate text-[9px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
            </div>
-           <div className="relative -left-1 flex items-center gap-1.5">
-              <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipBack className="w-4 h-4 fill-current"/></button>
-              <button onClick={handleGlobalPlay} className={`p-2.5 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800' : 'bg-indigo-600 text-white'}`}>
+           <div className="flex items-center gap-1.5 prolingo-text-player-controls">
+              <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="w-9 h-9 flex items-center justify-center text-slate-600 hover:text-indigo-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-200 rounded-full active:scale-95 transition-all"><SkipBack className="w-4 h-4 fill-current"/></button>
+              <button onClick={handleGlobalPlay} aria-label={isPlaying && !isPaused ? 'Pause playback' : 'Start playback'} className={`w-10 h-10 rounded-full shadow-md transform transition-all active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-amber-500 text-white ring-2 ring-amber-200 dark:ring-amber-900' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
                 {isPlaying && !isPaused ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
               </button>
-              <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="p-1.5 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full active:scale-95 transition-colors"><SkipForward className="w-4 h-4 fill-current"/></button>
-              <button onClick={forceStopAll} className="ml-1.5 p-1.5 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
+              <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="w-9 h-9 flex items-center justify-center text-slate-600 hover:text-indigo-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-200 rounded-full active:scale-95 transition-all"><SkipForward className="w-4 h-4 fill-current"/></button>
+              <button onClick={forceStopAll} aria-label="Stop playback" className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-800 rounded-full active:scale-95 transition-colors" title="Stop"><XCircle className="w-4 h-4"/></button>
            </div>
-           <div className="flex justify-end gap-1 pl-1">
+           <div className="flex justify-end gap-1 pl-0.5">
               {isStructuredText ? (
                 <div className="flex items-center gap-1" data-text-global-player-controls="true">
-                  <button type="button" onClick={toggleRepresentation} className="min-h-9 min-w-[44px] rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-1 text-[8px] font-black text-indigo-700 dark:text-indigo-300" title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
-                  <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 min-w-[42px] rounded-md border px-1 text-[8px] font-black ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS' : 'LOCAL'}</button>
-                  <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 min-w-9 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/30" title="Open Text Player settings"><SlidersHorizontal className="w-4 h-4"/></button>
+                  <button type="button" onClick={toggleRepresentation} className={`min-h-9 min-w-[44px] rounded-lg border px-1.5 text-[9px] font-black transition-colors ${representationIsFull ? 'border-violet-300 dark:border-violet-700 bg-violet-100/80 dark:bg-violet-950/50 text-violet-800 dark:text-violet-200' : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'}`} title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
+                  <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 min-w-[42px] rounded-lg border px-1.5 text-[9px] font-black transition-colors ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS' : 'LOCAL'}</button>
+                  <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40 transition-colors" title="Open Text Player settings" aria-label="Open Text Player settings"><SlidersHorizontal className="w-4 h-4"/></button>
                 </div>
               ) : (
                 <button onClick={cyclePlaybackMode} className="flex flex-col items-center justify-center gap-0.5 min-w-[42px] p-1 rounded hover:bg-slate-50 dark:hover:bg-slate-700">
@@ -114,12 +122,17 @@ const BottomPlayerBar = ({
        </div>
 
        <div className="hidden md:flex items-center justify-between gap-4">
-           <div className="w-64 flex flex-col">
-             <div className="flex items-center gap-2 mb-1">
-               <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-600'}`}></span>
-               <p className="text-[10px] font-bold text-slate-400 tracking-wider">GLOBAL PLAYER ({isPaused ? 'PAUSED' : (playingContext ? playingContext.toUpperCase() : 'IDLE')})</p>
+           <div className="w-72 flex flex-col min-w-0">
+             <div className="flex items-center gap-2 mb-0.5">
+               <span className={`w-2 h-2 rounded-full ${isPlaying && !isPaused ? 'bg-emerald-500 animate-pulse' : isPaused ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600'}`}></span>
+               <p className="text-[10px] font-black text-slate-400 tracking-wider">GLOBAL PLAYER ({isPaused ? 'PAUSED' : (playingContext ? playingContext.toUpperCase() : 'IDLE')})</p>
+               {isStructuredText && (isPlaying || isPaused) && speakingPart && (
+                 <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${speakingPart === 'meaning' ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                   {speakingPart === 'meaning' ? 'ID' : 'EN'}
+                 </span>
+               )}
              </div>
-             <p className="text-sm font-semibold truncate text-slate-800 dark:text-white">
+             <p className="text-sm font-bold truncate text-slate-800 dark:text-white">
                {displayPlayingIndex !== null 
                  ? (() => {
                      const item = activePlaybackList.find(p => p.id === displayPlayingIndex);
@@ -129,27 +142,27 @@ const BottomPlayerBar = ({
                    })()
                  : "Ready"}
              </p>
-             {isStructuredText && <p className="truncate text-[9px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
+             {isStructuredText && <p className="truncate text-[10px] font-semibold text-indigo-600 dark:text-indigo-300" title={`Global language order: ${languageOrderLabel}`}>GLOBAL LANG {languageOrderLabel}</p>}
            </div>
 
-           <div className="flex items-center gap-4">
-                <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipBack className="w-6 h-6 fill-current"/></button>
-                <button onClick={handleGlobalPlay} className={`p-4 rounded-full shadow-lg transform transition active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-red-50 dark:bg-red-900 text-red-500 border-2 border-red-100 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-800' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
-                  {isPlaying && !isPaused ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-1" />}
+           <div className="flex items-center gap-3">
+                <button title={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} aria-label={isStructuredText ? (representationIsFull ? 'Previous card' : 'Previous sentence') : 'Previous item'} onClick={() => handleSmartNav('prev')} className="w-11 h-11 flex items-center justify-center text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-full transition-all active:scale-95"><SkipBack className="w-5 h-5 fill-current"/></button>
+                <button onClick={handleGlobalPlay} aria-label={isPlaying && !isPaused ? 'Pause playback' : 'Start playback'} className={`w-13 h-13 p-3.5 rounded-full shadow-lg transform transition-all active:scale-95 flex items-center justify-center ${isPlaying && !isPaused ? 'bg-amber-500 text-white ring-2 ring-amber-200 dark:ring-amber-900 hover:bg-amber-600' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
+                  {isPlaying && !isPaused ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current ml-0.5" />}
                 </button>
-                <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="p-3 text-slate-500 hover:text-indigo-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300 rounded-full transition active:scale-95"><SkipForward className="w-6 h-6 fill-current"/></button>
-                <button onClick={forceStopAll} className="p-3 text-slate-400 hover:text-red-500 bg-slate-100 dark:bg-slate-700 rounded-full transition active:scale-95" title="Stop"><XCircle className="w-5 h-5"/></button>
+                <button title={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} aria-label={isStructuredText ? (representationIsFull ? 'Next card' : 'Next sentence') : 'Next item'} onClick={() => handleSmartNav('next')} className="w-11 h-11 flex items-center justify-center text-slate-600 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200/70 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-full transition-all active:scale-95"><SkipForward className="w-5 h-5 fill-current"/></button>
+                <button onClick={forceStopAll} aria-label="Stop playback" className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 bg-slate-100 hover:bg-red-50 dark:bg-slate-800 dark:hover:bg-red-950/30 rounded-full transition-all active:scale-95" title="Stop"><XCircle className="w-5 h-5"/></button>
            </div>
 
-           <div className="w-64 flex flex-col items-end gap-1">
+           <div className="w-72 flex flex-col items-end gap-1">
              {isStructuredText ? (
                <>
                  <div className="flex items-center gap-1.5" data-text-global-player-controls="true">
-                   <button type="button" onClick={toggleRepresentation} className="min-h-9 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-3 text-[9px] font-black text-indigo-700 dark:text-indigo-300" title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
-                   <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 rounded-lg border px-3 text-[9px] font-black ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}</button>
-                   <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-[9px] font-black text-slate-500 hover:text-indigo-600 dark:text-slate-300" title="Open Text Player settings"><SlidersHorizontal className="w-3.5 h-3.5"/>SETTINGS</button>
+                   <button type="button" onClick={toggleRepresentation} className={`min-h-9 rounded-xl border px-3 text-[10px] font-black transition-colors ${representationIsFull ? 'border-violet-300 dark:border-violet-700 bg-violet-100/80 dark:bg-violet-950/50 text-violet-800 dark:text-violet-200' : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'}`} title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
+                   <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 rounded-xl border px-3 text-[10px] font-black transition-colors ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}</button>
+                   <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-[10px] font-black text-slate-600 hover:text-indigo-600 hover:border-indigo-300 dark:text-slate-200 transition-colors" title="Open Text Player settings"><SlidersHorizontal className="w-3.5 h-3.5"/>SETTINGS</button>
                  </div>
-                 <p className="max-w-72 truncate text-[9px] font-semibold text-slate-500 dark:text-slate-400" title={`Global language ${languageOrderLabel} • Local voice EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>LANG {languageOrderLabel} • LOCAL VOICE: EN {globalOrderLabel('text')} · ID {globalOrderLabel('meaning')}</p>
+                 <p className="max-w-72 truncate text-[9px] font-semibold text-slate-500 dark:text-slate-400" title={`Global language ${languageOrderLabel} • Local voice EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>LANG {languageOrderLabel} • LOCAL VOICE: EN {globalOrderLabel('text')} • ID {globalOrderLabel('meaning')}</p>
                </>
              ) : (
                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">

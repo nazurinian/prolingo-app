@@ -68,9 +68,9 @@ const SentenceFlow = ({
         'data-text-paragraph-sentence-channel': channel
       };
       const classes = fullChannelHighlighted
-        ? `inline align-baseline transition-colors rounded-sm ${splitMode && !sentenceDisabled ? 'cursor-pointer' : ''} ${channel === 'meaning' ? 'bg-emerald-200/80 dark:bg-emerald-800/65' : 'bg-indigo-200/80 dark:bg-indigo-800/65'}`
+        ? `inline align-baseline transition-colors rounded-sm ${splitMode && !sentenceDisabled ? 'cursor-pointer' : ''} ${channel === 'meaning' ? 'bg-emerald-200/80 dark:bg-emerald-800/70 text-emerald-950 dark:text-emerald-50' : 'bg-indigo-200/80 dark:bg-indigo-800/70 text-indigo-950 dark:text-indigo-50'}`
         : splitMode
-          ? `inline align-baseline transition-colors duration-150 focus:outline-none ${sentenceDisabled ? 'cursor-default' : 'cursor-pointer'} ${speaking ? 'bg-indigo-200 dark:bg-indigo-800/70' : ''}`
+          ? `inline align-baseline transition-colors duration-150 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${sentenceDisabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60'} ${speaking ? (channel === 'meaning' ? 'bg-emerald-200/90 dark:bg-emerald-800/75 text-emerald-950 dark:text-emerald-50 font-semibold ring-1 ring-emerald-400/50' : 'bg-indigo-200/90 dark:bg-indigo-800/75 text-indigo-950 dark:text-indigo-50 font-semibold ring-1 ring-indigo-400/50') : active ? 'bg-slate-200/60 dark:bg-slate-800/50 underline decoration-indigo-400/60 decoration-2 underline-offset-4' : ''}`
           : `inline transition-colors ${focused ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`;
 
       if (splitMode) {
@@ -136,13 +136,23 @@ export const TextParagraphUnifiedReading = ({
     ? (activeSegment?.meaning ? [activeSegment] : [])
     : segments;
   const indexById = useMemo(() => new Map(segments.map((segment, index) => [segment.id, index])), [segments]);
+  const activeSentenceNumber = activeSegment ? (indexById.get(activeSegment.id) ?? 0) + 1 : null;
+  const textChannelSpeaking = Boolean((fullCardActive || activeSegment) && speakingPart === 'text');
+  const meaningChannelSpeaking = Boolean((fullCardActive || activeSegment) && speakingPart === 'meaning');
 
   return (
     <div className="space-y-3" data-text-paragraph-unified="true" data-text-paragraph-split-mode={splitMode ? 'true' : 'false'}>
-      {display.showText && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'text' ? 'border-indigo-400 bg-indigo-100/65 ring-1 ring-indigo-200 dark:border-indigo-600 dark:bg-indigo-900/30 dark:ring-indigo-800' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/30'}`} data-text-paragraph-channel="text" data-text-full-active={fullCardActive && speakingPart === 'text' ? 'true' : undefined}>
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">TEXT</p>
-          <button type="button" disabled={disabled || !segments.some(item => normalize(item.text))} onClick={() => onPlayChannel?.('text')} className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-full text-indigo-600 dark:text-indigo-300 disabled:opacity-40 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500" title="Play English only (entire card, one-time override)" aria-label="Play Text EN only" data-text-paragraph-play-channel="text"><Play className="h-3 w-3 fill-current"/></button>
+      {display.showText && <div className={`rounded-xl border p-3.5 transition-all ${fullCardActive && speakingPart === 'text' ? 'border-indigo-400 bg-indigo-100/65 ring-1 ring-indigo-200 dark:border-indigo-600 dark:bg-indigo-900/30 dark:ring-indigo-800 shadow-sm' : textChannelSpeaking ? 'border-indigo-400/90 bg-indigo-50/40 ring-1 ring-indigo-200/80 dark:border-indigo-500/80 dark:bg-indigo-950/25 dark:ring-indigo-800/60 shadow-sm' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900/30'}`} data-text-paragraph-channel="text" data-text-full-active={fullCardActive && speakingPart === 'text' ? 'true' : undefined}>
+        <div className="mb-2 flex items-center gap-1.5 border-b border-slate-100 dark:border-slate-800/80 pb-1.5">
+          <span className="inline-flex items-center justify-center rounded bg-indigo-100 dark:bg-indigo-950/70 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300">EN</span>
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">TEXT</p>
+          <button type="button" disabled={disabled || !segments.some(item => normalize(item.text))} onClick={() => onPlayChannel?.('text')} className="h-7 w-7 relative before:absolute before:-inset-1 before:content-[''] shrink-0 inline-flex items-center justify-center rounded-full border border-indigo-200/80 dark:border-indigo-800/70 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 disabled:opacity-40 transition-all hover:bg-indigo-100 dark:hover:bg-indigo-900/60 hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500" title="Play EN — Play English only (entire card, one-time override)" aria-label="Play EN — Play Text EN only" data-touch-target="h-9 w-9" data-text-paragraph-play-channel="text"><Play className="h-3 w-3 fill-current"/></button>
+          {textChannelSpeaking && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-sm animate-pulse">
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              {fullCardActive ? 'Playing EN • Full' : `Playing EN${activeSentenceNumber ? ` • #${activeSentenceNumber}` : ''}`}
+            </span>
+          )}
         </div>
         <SentenceFlow
           channel="text"
@@ -160,11 +170,19 @@ export const TextParagraphUnifiedReading = ({
         />
       </div>}
 
-      {display.showMeaning && <div className={`rounded-xl border p-3 transition-colors ${fullCardActive && speakingPart === 'meaning' ? 'border-emerald-400 bg-emerald-100/65 ring-1 ring-emerald-200 dark:border-emerald-600 dark:bg-emerald-900/30 dark:ring-emerald-800' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/55'}`} data-text-paragraph-channel="meaning" data-text-full-active={fullCardActive && speakingPart === 'meaning' ? 'true' : undefined}>
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">MEANING</p>
-          <button type="button" disabled={disabled || !segments.some(item => normalize(item.meaning))} onClick={() => onPlayChannel?.('meaning')} className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-full text-emerald-700 dark:text-emerald-300 disabled:opacity-40 transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500" title="Play Indonesian only (entire card, one-time override)" aria-label="Play Meaning ID only" data-text-paragraph-play-channel="meaning"><Play className="h-3 w-3 fill-current"/></button>
-          {activeMeaningOnly && activeSegment && <p className="ml-auto text-[9px] font-semibold text-emerald-600 dark:text-emerald-300">Active sentence only</p>}
+      {display.showMeaning && <div className={`rounded-xl border p-3.5 transition-all ${fullCardActive && speakingPart === 'meaning' ? 'border-emerald-400 bg-emerald-100/65 ring-1 ring-emerald-200 dark:border-emerald-600 dark:bg-indigo-900/30 dark:ring-emerald-800 shadow-sm' : meaningChannelSpeaking ? 'border-emerald-400/90 bg-emerald-50/40 ring-1 ring-emerald-200/80 dark:border-emerald-500/80 dark:bg-emerald-950/25 dark:ring-emerald-800/60 shadow-sm' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/55'}`} data-text-paragraph-channel="meaning" data-text-full-active={fullCardActive && speakingPart === 'meaning' ? 'true' : undefined}>
+        <div className="mb-2 flex items-center gap-1.5 border-b border-slate-200/70 dark:border-slate-800/80 pb-1.5">
+          <span className="inline-flex items-center justify-center rounded bg-emerald-100 dark:bg-emerald-950/70 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300">ID</span>
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">MEANING</p>
+          <button type="button" disabled={disabled || !segments.some(item => normalize(item.meaning))} onClick={() => onPlayChannel?.('meaning')} className="h-7 w-7 relative before:absolute before:-inset-1 before:content-[''] shrink-0 inline-flex items-center justify-center rounded-full border border-emerald-200/80 dark:border-emerald-800/70 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 disabled:opacity-40 transition-all hover:bg-emerald-100 dark:hover:bg-emerald-900/60 hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500" title="Play ID — Play Indonesian only (entire card, one-time override)" aria-label="Play ID — Play Meaning ID only" data-touch-target="h-9 w-9" data-text-paragraph-play-channel="meaning"><Play className="h-3 w-3 fill-current"/></button>
+          {meaningChannelSpeaking ? (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-sm animate-pulse">
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              {fullCardActive ? 'Playing ID • Full' : `Playing ID${activeSentenceNumber ? ` • #${activeSentenceNumber}` : ''}`}
+            </span>
+          ) : (
+            activeMeaningOnly && activeSegment && <p className="ml-auto text-[9px] font-semibold text-emerald-600 dark:text-emerald-300">Active sentence only</p>
+          )}
         </div>
         {meaningSegments.length > 0
           ? <SentenceFlow
