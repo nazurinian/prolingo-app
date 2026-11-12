@@ -220,7 +220,12 @@ export const executeStructuredTextPlaybackSessionService = ({
                 || step.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_TTS) {
                 await playStructuredFullStep(step, group.block, item);
               } else {
-                await playStructuredChannel(step.content, item, step.channel || channel);
+                await playStructuredChannel(step.content, item, step.channel || channel, {
+                  representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
+                  ignoreSegmentOverride: step.ignoreSegmentVoiceOverride !== false,
+                  block: group.block,
+                  step
+                });
               }
 
               const hasNextStep = stepIndex < steps.length - 1;

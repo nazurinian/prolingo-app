@@ -1,7 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronDown, Headphones, Link2, MessageSquare, Server, Users, Volume2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Headphones, Link2, MessageSquare, Server, Users, Volume2 } from 'lucide-react';
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
-import { getTextStructuredVoiceOverrideProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
+import {
+  formatTextStructuredBrowserVoiceLabel,
+  getTextStructuredVoiceOverrideProfile,
+  getTextStructuredVoiceSourceDisplayLabel,
+  resolveTextStructuredBrowserVoiceResolution
+} from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { getTextStructuredPlaybackRateProfile } from '../../domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { getTextStructuredLocalAudioProfile } from '../../domain/text/textStructuredLocalAudioProfileDomain.js';
 import { getTextStructuredAudioDownloadChannelMode, getTextStructuredAudioDownloadProfile, TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES } from '../../domain/text/textStructuredAudioDownloadProfileDomain.js';
@@ -52,13 +57,13 @@ const VoiceSelect = ({ label, value, options, fallbackLabel, disabled, helper = 
   <span className="flex items-center justify-between gap-1">
     <span>{label}</span>
     <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${value ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
-      {value ? 'Override' : 'Inherited'}
+      {value ? 'Workspace Narrator' : 'Inherits Global Browser TTS'}
     </span>
   </span>
   <select value={value || ''} disabled={disabled} onChange={event => onChange?.(event.target.value || null)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
     <option value="">{fallbackLabel}</option>
-    {value && !options.includes(value) && <option value={value}>Unavailable • {compactVoiceLabel(value)}</option>}
-    {options.map(name => <option key={name} value={name}>{compactVoiceLabel(name)}</option>)}
+    {value && !options.includes(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
+    {options.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
   </select>
   {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
 </label>;
@@ -80,16 +85,41 @@ const LocalVoiceSelect = ({ label, value, options, disabled, helper = null, onCh
 </label>;
 
 const SourceStatus = ({ status }) => {
-  if (!status) return <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-2 text-[9px] text-slate-400">Live playback source telemetry will appear here when audio plays.</div>;
-  const isLocal = status.source === 'local';
-  const isTts = status.source === 'tts';
-  const label = isLocal ? `LOCAL • ${status.origin || 'Audio'}` : isTts ? 'TTS • Browser' : 'SOURCE UNAVAILABLE';
-  return <div className={`rounded-xl border px-3 py-2 ${isLocal ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/25' : isTts ? 'border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/25' : 'border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/25'}`} data-text-playback-source-status={status.source}>
+  if (!status) return <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-2 text-[9px] text-slate-400" data-text-playback-source-status="idle">Live playback source telemetry (Local MP3 vs Browser TTS) will appear here when audio plays.</div>;
+  const isLocal = status.source === 'local' || status.mode === 'local';
+  const isTts = status.source === 'tts' || status.mode === 'tts';
+  const label = isLocal
+    ? `Local MP3 • ${status.origin || 'Staged Audio'}`
+    : isTts
+      ? 'Browser TTS (SpeechSynthesis)'
+      : 'Source Unavailable';
+  const effectiveVoice = isLocal
+    ? (compactVoiceLabel(status.voiceId || status.effectiveVoice) || 'Local MP3')
+    : formatTextStructuredBrowserVoiceLabel(status.effectiveVoice || status.voiceId || status.voice);
+  const requestedVoice = !isLocal && status.requestedVoice
+    ? formatTextStructuredBrowserVoiceLabel(status.requestedVoice)
+    : null;
+  const sourceRoleLabel = status.effectiveSourceLabel
+    || (status.voiceSource ? getTextStructuredVoiceSourceDisplayLabel(status.voiceSource) : null);
+
+  return <div className={`rounded-xl border px-3 py-2 space-y-1 ${isLocal ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/25' : isTts ? 'border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/25' : 'border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/25'}`} data-text-playback-source-status={status.source || status.mode || 'unknown'}>
     <div className="flex items-center justify-between gap-2">
       <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">{label}</span>
       <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${status.channel === 'meaning' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200'}`}>{status.channel === 'meaning' ? 'ID' : 'EN'}</span>
     </div>
-    <p className="mt-0.5 truncate text-[9px] font-medium text-slate-600 dark:text-slate-300">{compactVoiceLabel(status.voiceId) || 'Default voice'}{status.syncedToFirstSpeaker ? ' • Following Speaker 1' : ''}</p>
+    <p className="truncate text-[9px] font-bold text-slate-700 dark:text-slate-200">
+      Effective: {effectiveVoice}{sourceRoleLabel ? ` (${sourceRoleLabel})` : ''}{status.syncedToFirstSpeaker ? ' • Following Speaker 1' : ''}
+    </p>
+    {requestedVoice && requestedVoice !== effectiveVoice && (
+      <p className="truncate text-[8px] text-slate-500 dark:text-slate-400">
+        Requested: {requestedVoice}{status.requestedSourceLabel ? ` (${status.requestedSourceLabel})` : ''}
+      </p>
+    )}
+    {status.fallbackReason && (
+      <p className="text-[8px] font-semibold text-amber-700 dark:text-amber-300" data-text-playback-fallback-reason="true">
+        {status.fallbackReason}
+      </p>
+    )}
   </div>;
 };
 
@@ -165,8 +195,32 @@ export default function TextStructuredAudioControls({
   const renderDocumentChannel = (channel, label, voices, fallback, globalRate, localOptions) => {
     const rate = rateProfile.channels?.[channel] || globalRate || 1;
     const localVoice = localProfile.channels?.[channel] || '';
-    return <div className="grid gap-2">
-      <VoiceSelect label={`${label} • Browser TTS Voice`} value={voiceProfile.channels?.[channel] || ''} options={voices} fallbackLabel={`Global Default • ${compactVoiceLabel(fallback)}`} disabled={disabled} onChange={value => onDocumentVoiceChange?.(value, channel)}/>
+    const resolution = resolveTextStructuredBrowserVoiceResolution({
+      documentTree,
+      block: null,
+      segment: null,
+      channel,
+      globalVoiceName: fallback,
+      availableBrowserVoices: channel === 'meaning' ? indonesianVoices : englishVoices,
+      ignoreSegmentOverride: true,
+      representationMode: 'full'
+    });
+    return <div className="grid gap-2" data-text-workspace-narrator-channel={channel}>
+      <VoiceSelect
+        label={`${label} • Workspace Narrator (Browser TTS)`}
+        value={voiceProfile.channels?.[channel] || ''}
+        options={voices}
+        fallbackLabel={`Global Browser TTS • ${formatTextStructuredBrowserVoiceLabel(fallback)}`}
+        disabled={disabled}
+        helper={`Effective: ${formatTextStructuredBrowserVoiceLabel(resolution.effectiveVoiceName)} (${resolution.effectiveSourceLabel})`}
+        onChange={value => onDocumentVoiceChange?.(value, channel)}
+      />
+      {resolution.fallbackUsed && resolution.fallbackReason && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/35 px-2.5 py-1.5 text-[8px] font-semibold text-amber-800 dark:text-amber-200 flex items-start gap-1.5" data-text-workspace-voice-fallback={channel}>
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
+          <span>{resolution.fallbackReason}</span>
+        </div>
+      )}
       <RateControl label={`${label} Playback Speed`} value={rate} disabled={disabled} onChange={value => onDocumentRateChange?.(value, channel)}/>
       {customLocal && <LocalVoiceSelect label={`${label} • Pinned Local Voice`} value={localVoice} options={localOptions || []} disabled={disabled} onChange={value => onDocumentLocalAudioVoiceChange?.(value, channel)}/>}
     </div>;
@@ -180,6 +234,7 @@ export default function TextStructuredAudioControls({
         ? { label: 'OFFLINE', cls: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' }
         : null;
 
+  // SETUP & SOURCES: Playback Voices / Generate Audio / Audio Library
   return <div className="space-y-3" data-text-audio-sidebar="true">
     <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-900/70 p-1" role="tablist" aria-label="Text Audio controls" data-text-audio-subtabs="true">
       {[['playback', 'Playback Voices'], ['download', 'Generate Audio'], ['library', 'Audio Library']].map(([tab, label]) => <button type="button" role="tab" key={tab} aria-selected={audioSurface === tab} onClick={() => setAudioSurface(tab)} className={`min-h-10 rounded-lg px-1.5 text-[10px] font-bold leading-tight transition-all ${audioSurface === tab ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600'}`} data-text-audio-tab={tab}>{label}</button>)}

@@ -17,9 +17,65 @@ export const TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS = Object.freeze({
   MISSING: 'missing'
 });
 
-const uniqueVoiceIds = (candidate, fallback = null) => {
+export const TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES = Object.freeze({
+  SINGLE: 'single',
+  MULTIPLE: 'multiple'
+});
+
+const uniqueVoiceIds = (candidate, fallback = null, allowEmpty = false) => {
   const list = (Array.isArray(candidate) ? candidate : []).map(clean).filter(Boolean);
+  if (allowEmpty) return [...new Set(list)];
   return [...new Set((list.length ? list : [fallback]).filter(Boolean))];
+};
+
+export const applyTextStructuredBulkVoiceSelectionChange = ({
+  currentVoiceIds = [],
+  targetVoiceId = '',
+  mode = TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE
+} = {}) => {
+  const normalizedTarget = clean(targetVoiceId);
+  const current = uniqueVoiceIds(currentVoiceIds, null, true);
+  if (!normalizedTarget) return current;
+  if (mode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE) {
+    return [normalizedTarget];
+  }
+  const exists = current.includes(normalizedTarget);
+  return exists
+    ? current.filter(id => id !== normalizedTarget)
+    : [...current, normalizedTarget];
+};
+
+export const validateTextStructuredBulkVoiceDraft = ({
+  includeText = true,
+  includeMeaning = true,
+  textVoiceIds = [],
+  meaningVoiceIds = []
+} = {}) => {
+  const textChannelEnabled = Boolean(includeText);
+  const meaningChannelEnabled = Boolean(includeMeaning);
+  const textVoices = uniqueVoiceIds(textVoiceIds, null, true);
+  const meaningVoices = uniqueVoiceIds(meaningVoiceIds, null, true);
+  const textEmptyWarning = textChannelEnabled && textVoices.length === 0
+    ? 'EN (Text) channel is enabled with 0 voices selected. Select at least one EN voice or disable EN (Text) to generate.'
+    : null;
+  const meaningEmptyWarning = meaningChannelEnabled && meaningVoices.length === 0
+    ? 'ID (Meaning) channel is enabled with 0 voices selected. Select at least one ID voice or disable ID (Meaning) to generate.'
+    : null;
+  const noChannelsEnabled = !textChannelEnabled && !meaningChannelEnabled;
+  const hasInvalidEnabledChannel = Boolean(textEmptyWarning || meaningEmptyWarning);
+  const warnings = [textEmptyWarning, meaningEmptyWarning].filter(Boolean);
+  return {
+    textChannelEnabled,
+    meaningChannelEnabled,
+    textVoices,
+    meaningVoices,
+    textEmptyWarning,
+    meaningEmptyWarning,
+    noChannelsEnabled,
+    hasInvalidEnabledChannel,
+    canGenerate: !noChannelsEnabled && !hasInvalidEnabledChannel,
+    warnings
+  };
 };
 
 const activeStagingRecords = candidate => {
@@ -80,16 +136,28 @@ export const buildTextStructuredBulkGenerationPlan = ({
   audioVariants = [],
   runtimeAudioUrls = {},
   runtimeFullAudio = {},
-  stagingRecords = []
+  stagingRecords = [],
+  allowEmptyVoiceSelection = false
 } = {}) => {
   const scopeByDocument = selectedScopeByDocument(selection);
   const selectedDocumentIds = new Set((selection?.documents || []).map(document => upper(document?.id)).filter(Boolean));
-  const textVoices = uniqueVoiceIds(preferences?.bulkTextVoiceIds, preferences?.edgeTextVoiceId);
-  const meaningVoices = uniqueVoiceIds(preferences?.bulkMeaningVoiceIds, preferences?.edgeMeaningVoiceId);
+  const respectEmptyDraft = Boolean(allowEmptyVoiceSelection || preferences?.allowEmptyVoiceSelection);
+  const textVoices = respectEmptyDraft && Array.isArray(preferences?.bulkTextVoiceIds)
+    ? uniqueVoiceIds(preferences.bulkTextVoiceIds, null, true)
+    : uniqueVoiceIds(preferences?.bulkTextVoiceIds, preferences?.edgeTextVoiceId, false);
+  const meaningVoices = respectEmptyDraft && Array.isArray(preferences?.bulkMeaningVoiceIds)
+    ? uniqueVoiceIds(preferences.bulkMeaningVoiceIds, null, true)
+    : uniqueVoiceIds(preferences?.bulkMeaningVoiceIds, preferences?.edgeMeaningVoiceId, false);
   const includeSplit = preferences?.bulkGenerateSplit !== false;
   const includeFull = preferences?.bulkGenerateFull === true;
   const includeText = preferences?.generateText !== false;
   const includeMeaning = preferences?.generateMeaning !== false;
+  const voiceValidation = validateTextStructuredBulkVoiceDraft({
+    includeText,
+    includeMeaning,
+    textVoiceIds: textVoices,
+    meaningVoiceIds: meaningVoices
+  });
   const stagingPhysical = new Set(activeStagingRecords(stagingRecords).map(stagingPhysicalIdentity).filter(Boolean));
   const requirements = [];
 
@@ -229,6 +297,7 @@ export const buildTextStructuredBulkGenerationPlan = ({
     requirements,
     coverage,
     selectedVoices: { text: textVoices, meaning: meaningVoices },
+    voiceValidation,
     representations: { split: includeSplit, full: includeFull }
   };
 };

@@ -1,7 +1,12 @@
 import React from 'react';
-import { CheckSquare, FileArchive, Loader2, Music, Square, X, Download, FolderTree, Layers, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckSquare, Circle, CheckCircle2, FileArchive, Loader2, Music, Square, X, Download, FolderTree, Layers, Sparkles } from 'lucide-react';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
 import { getTextStructuredBatchTelemetrySnapshot, subscribeTextStructuredBatchTelemetry } from '../../services/audio/textStructuredBatchTelemetryService.js';
+import {
+  TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES,
+  applyTextStructuredBulkVoiceSelectionChange,
+  validateTextStructuredBulkVoiceDraft
+} from '../../domain/text/textStructuredBulkGenerationDomain.js';
 
 const compactVoiceLabel = value => {
   const raw = String(value || '').trim();
@@ -10,13 +15,23 @@ const compactVoiceLabel = value => {
   return tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw;
 };
 
-const ToggleRow = ({ checked, disabled = false, onClick, children, tone = 'indigo' }) => {
+const ToggleRow = ({ checked, disabled = false, onClick, children, tone = 'indigo', selectionMode = 'multiple', testId = undefined }) => {
   const activeClass = tone === 'amber'
     ? 'text-amber-700 dark:text-amber-300'
     : 'text-indigo-700 dark:text-indigo-300';
+  const isSingle = selectionMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE;
   return (
-    <button type="button" disabled={disabled} onClick={onClick} className={`flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[10px] font-bold transition-colors ${checked ? `${activeClass} bg-slate-100/70 dark:bg-slate-800/70` : 'text-slate-500 dark:text-slate-400'} ${disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}>
-      {checked ? <CheckSquare className="h-3.5 w-3.5 flex-shrink-0"/> : <Square className="h-3.5 w-3.5 flex-shrink-0"/>}
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      data-text-bulk-voice-option={testId}
+      aria-pressed={checked}
+      className={`flex min-w-0 w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[10px] font-bold transition-colors ${checked ? `${activeClass} bg-slate-100/80 dark:bg-slate-800/80` : 'text-slate-500 dark:text-slate-400'} ${disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'}`}
+    >
+      {isSingle
+        ? (checked ? <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0"/> : <Circle className="h-3.5 w-3.5 flex-shrink-0"/>)
+        : (checked ? <CheckSquare className="h-3.5 w-3.5 flex-shrink-0"/> : <Square className="h-3.5 w-3.5 flex-shrink-0"/>)}
       <span className="truncate">{children}</span>
     </button>
   );
@@ -37,22 +52,105 @@ export const TextBatchPopup = ({
   showClose = true
 }) => {
   const [bulkExportConfirmFormat, setBulkExportConfirmFormat] = React.useState(null);
+  const savedTextVoiceIds = Array.isArray(structuredTextBatch?.preferences?.bulkTextVoiceIds)
+    ? structuredTextBatch.preferences.bulkTextVoiceIds
+    : [];
+  const savedMeaningVoiceIds = Array.isArray(structuredTextBatch?.preferences?.bulkMeaningVoiceIds)
+    ? structuredTextBatch.preferences.bulkMeaningVoiceIds
+    : [];
+
+  const [textVoiceMode, setTextVoiceMode] = React.useState(() => (
+    savedTextVoiceIds.length > 1
+      ? TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE
+      : TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+  ));
+  const [meaningVoiceMode, setMeaningVoiceMode] = React.useState(() => (
+    savedMeaningVoiceIds.length > 1
+      ? TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE
+      : TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+  ));
+  const [draftTextEmpty, setDraftTextEmpty] = React.useState(() => savedTextVoiceIds.length === 0 && Boolean(structuredTextBatch?.preferences?.bulkTextVoiceIds));
+  const [draftMeaningEmpty, setDraftMeaningEmpty] = React.useState(() => savedMeaningVoiceIds.length === 0 && Boolean(structuredTextBatch?.preferences?.bulkMeaningVoiceIds));
+
+  React.useEffect(() => {
+    if (Array.isArray(structuredTextBatch?.preferences?.bulkTextVoiceIds)) {
+      if (structuredTextBatch.preferences.bulkTextVoiceIds.length === 0) {
+        setDraftTextEmpty(true);
+      }
+    }
+  }, [structuredTextBatch?.preferences?.bulkTextVoiceIds]);
+
+  React.useEffect(() => {
+    if (Array.isArray(structuredTextBatch?.preferences?.bulkMeaningVoiceIds)) {
+      if (structuredTextBatch.preferences.bulkMeaningVoiceIds.length === 0) {
+        setDraftMeaningEmpty(true);
+      }
+    }
+  }, [structuredTextBatch?.preferences?.bulkMeaningVoiceIds]);
+
   const liveTelemetry = React.useSyncExternalStore(
     subscribeTextStructuredBatchTelemetry,
     getTextStructuredBatchTelemetrySnapshot,
     getTextStructuredBatchTelemetrySnapshot
   );
-  const generationCoverage = structuredTextBatch?.generationCoverage || structuredTextBatch?.coverage || {};
+  const rawGenerationCoverage = structuredTextBatch?.generationCoverage || structuredTextBatch?.coverage || {};
   const exportCoverage = structuredTextBatch?.exportCoverage || {};
   const exportFormat = structuredTextBatch?.preferences?.bulkExportFormat || 'portable-zip';
   const exportVoicePolicy = structuredTextBatch?.preferences?.bulkExportVoicePolicy || 'all-selected';
   const exportRepresentation = structuredTextBatch?.preferences?.bulkExportRepresentation || 'split';
   const textScope = structuredTextBatch?.scope || { scopeMode: 'workspace', cardId: null };
   const scopeMode = textScope?.scopeMode || 'workspace';
-  const bulkTextVoiceIds = structuredTextBatch?.preferences?.bulkTextVoiceIds || [];
-  const bulkMeaningVoiceIds = structuredTextBatch?.preferences?.bulkMeaningVoiceIds || [];
-  const bulkTextVoiceSummary = (structuredTextBatch?.bulkTextVoicesResolved || bulkTextVoiceIds).map(compactVoiceLabel);
-  const bulkMeaningVoiceSummary = (structuredTextBatch?.bulkMeaningVoicesResolved || bulkMeaningVoiceIds).map(compactVoiceLabel);
+
+  const includeTextChannel = structuredTextBatch?.preferences?.generateText !== false;
+  const includeMeaningChannel = structuredTextBatch?.preferences?.generateMeaning !== false;
+
+  const bulkTextVoiceIds = draftTextEmpty ? [] : savedTextVoiceIds;
+  const bulkMeaningVoiceIds = draftMeaningEmpty ? [] : savedMeaningVoiceIds;
+
+  const voiceValidation = validateTextStructuredBulkVoiceDraft({
+    includeText: includeTextChannel,
+    includeMeaning: includeMeaningChannel,
+    textVoiceIds: bulkTextVoiceIds,
+    meaningVoiceIds: bulkMeaningVoiceIds
+  });
+
+  // Never silently substitute previous/default voices when UI draft is empty (0 selected).
+  const bulkTextVoiceSummary = draftTextEmpty
+    ? []
+    : (structuredTextBatch?.bulkTextVoicesResolved?.length && !draftTextEmpty
+      ? structuredTextBatch.bulkTextVoicesResolved
+      : bulkTextVoiceIds
+    ).map(compactVoiceLabel);
+
+  const bulkMeaningVoiceSummary = draftMeaningEmpty
+    ? []
+    : (structuredTextBatch?.bulkMeaningVoicesResolved?.length && !draftMeaningEmpty
+      ? structuredTextBatch.bulkMeaningVoicesResolved
+      : bulkMeaningVoiceIds
+    ).map(compactVoiceLabel);
+
+  // If the user has an invalid enabled channel (0 voices selected) and parent coverage was not
+  // recomputed with allowEmptyVoiceSelection, ensure UI coverage never misleads with substituted counts.
+  const generationCoverage = voiceValidation.hasInvalidEnabledChannel && !structuredTextBatch?.allowEmptyVoiceSelectionApplied
+    ? {
+        ...rawGenerationCoverage,
+        total: 0,
+        covered: 0,
+        ready: 0,
+        reusable: 0,
+        stale: 0,
+        missing: 0,
+        needDownload: 0,
+        needGenerate: 0,
+        needGenerateMissing: 0,
+        needGenerateWithStale: 0,
+        logicalRequirements: 0,
+        uniquePhysicalRequirements: 0,
+        splitLogical: 0,
+        fullLogical: 0
+      }
+    : rawGenerationCoverage;
+
   const englishBulkVoices = (structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-'));
   const meaningBulkVoices = (structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || '')));
   const cardOptions = structuredTextBatch?.cardOptions || [];
@@ -82,13 +180,57 @@ export const TextBatchPopup = ({
     }
   };
 
-  const toggleBulkVoice = (key, voiceId) => {
-    const current = Array.isArray(structuredTextBatch?.preferences?.[key]) ? structuredTextBatch.preferences[key] : [];
-    const exists = current.includes(voiceId);
-    if (exists && current.length <= 1) return;
-    const next = exists ? current.filter(id => id !== voiceId) : [...current, voiceId];
-    structuredTextBatch?.onPreferencesChange?.({ [key]: next });
+  const handleVoiceModeChange = (channel, nextMode) => {
+    const normalizedMode = nextMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+      ? TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+      : TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE;
+    if (channel === 'text') {
+      setTextVoiceMode(normalizedMode);
+      if (normalizedMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE && bulkTextVoiceIds.length > 1) {
+        const single = [bulkTextVoiceIds[0]];
+        setDraftTextEmpty(false);
+        structuredTextBatch?.onVoiceDraftChange?.({ channel: 'text', empty: false, voiceIds: single, mode: normalizedMode });
+        structuredTextBatch?.onPreferencesChange?.({ bulkTextVoiceIds: single });
+      }
+    } else {
+      setMeaningVoiceMode(normalizedMode);
+      if (normalizedMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE && bulkMeaningVoiceIds.length > 1) {
+        const single = [bulkMeaningVoiceIds[0]];
+        setDraftMeaningEmpty(false);
+        structuredTextBatch?.onVoiceDraftChange?.({ channel: 'meaning', empty: false, voiceIds: single, mode: normalizedMode });
+        structuredTextBatch?.onPreferencesChange?.({ bulkMeaningVoiceIds: single });
+      }
+    }
   };
+
+  const toggleBulkVoice = (key, voiceId, explicitMode = null) => {
+    const isMeaning = key === 'bulkMeaningVoiceIds';
+    const mode = explicitMode || (isMeaning ? meaningVoiceMode : textVoiceMode);
+    const current = isMeaning ? bulkMeaningVoiceIds : bulkTextVoiceIds;
+    const next = applyTextStructuredBulkVoiceSelectionChange({
+      currentVoiceIds: current,
+      targetVoiceId: voiceId,
+      mode
+    });
+
+    if (isMeaning) {
+      const isEmpty = next.length === 0;
+      setDraftMeaningEmpty(isEmpty);
+      structuredTextBatch?.onVoiceDraftChange?.({ channel: 'meaning', empty: isEmpty, voiceIds: next, mode });
+      if (!isEmpty) {
+        structuredTextBatch?.onPreferencesChange?.({ [key]: next });
+      }
+      return;
+    }
+
+    const isEmpty = next.length === 0;
+    setDraftTextEmpty(isEmpty);
+    structuredTextBatch?.onVoiceDraftChange?.({ channel: 'text', empty: isEmpty, voiceIds: next, mode });
+    if (!isEmpty) {
+      structuredTextBatch?.onPreferencesChange?.({ [key]: next });
+    }
+  };
+
   const toggleBulkRepresentation = key => {
     const split = structuredTextBatch?.preferences?.bulkGenerateSplit !== false;
     const full = structuredTextBatch?.preferences?.bulkGenerateFull === true;
@@ -125,6 +267,18 @@ export const TextBatchPopup = ({
   const progressTotal = Number(liveTelemetry?.total || generationCoverage?.total || 0);
   const progressDone = Number(liveTelemetry?.processed || 0);
   const progressPercent = progressTotal > 0 ? Math.min(100, Math.round((progressDone / progressTotal) * 100)) : 0;
+
+  const enPlanStatusText = !includeTextChannel
+    ? 'Channel disabled (not generated)'
+    : bulkTextVoiceSummary.length > 0
+      ? bulkTextVoiceSummary.join(' + ')
+      : '0 selected (choose at least 1 EN voice)';
+
+  const idPlanStatusText = !includeMeaningChannel
+    ? 'Channel disabled (not generated)'
+    : bulkMeaningVoiceSummary.length > 0
+      ? bulkMeaningVoiceSummary.join(' + ')
+      : '0 selected (choose at least 1 ID voice)';
 
   return (
     <div ref={batchPanelRef} className={panelClass} data-text-batch-workspace="true">
@@ -207,8 +361,8 @@ export const TextBatchPopup = ({
           <div className="rounded-lg border border-indigo-100 dark:border-indigo-900/60 bg-white/85 dark:bg-slate-900/40 p-2 space-y-1">
             <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Channels to Generate</p>
             <div className="grid grid-cols-2 gap-1.5">
-              <ToggleRow checked={structuredTextBatch?.preferences?.generateText !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateText: structuredTextBatch?.preferences?.generateText === false })}>EN (Text)</ToggleRow>
-              <ToggleRow checked={structuredTextBatch?.preferences?.generateMeaning !== false} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateMeaning: structuredTextBatch?.preferences?.generateMeaning === false })} tone="amber">ID (Meaning)</ToggleRow>
+              <ToggleRow checked={includeTextChannel} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateText: !includeTextChannel })}>EN (Text)</ToggleRow>
+              <ToggleRow checked={includeMeaningChannel} disabled={running} onClick={() => structuredTextBatch?.onPreferencesChange?.({ generateMeaning: !includeMeaningChannel })} tone="amber">ID (Meaning)</ToggleRow>
             </div>
           </div>
 
@@ -248,30 +402,154 @@ export const TextBatchPopup = ({
             </div>
           </div>
 
-          {/* Multi-voice selectors */}
-          <details className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-white/85 dark:bg-slate-900/40 p-2" open={bulkTextVoiceIds.length > 1}>
-            <summary className="cursor-pointer text-[9px] font-black text-indigo-700 dark:text-indigo-300">EN Edge Voices ({bulkTextVoiceIds.length}) • {bulkTextVoiceSummary.join(' + ') || '—'}</summary>
-            <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
-              {englishBulkVoices.map(voice => <ToggleRow key={voice.id} checked={bulkTextVoiceIds.includes(voice.id)} disabled={running} onClick={() => toggleBulkVoice('bulkTextVoiceIds', voice.id)}>{voice.label || voice.id}</ToggleRow>)}
+          {/* EN Edge Voices: Single Voice vs Multiple Voices */}
+          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeTextChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : voiceValidation.textEmptyWarning ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-indigo-100 dark:border-indigo-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-en-voice-section="true">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black text-indigo-700 dark:text-indigo-300">
+                  EN Edge Voices ({includeTextChannel ? bulkTextVoiceIds.length : 'Channel Off'}) • {includeTextChannel ? (bulkTextVoiceSummary.join(' + ') || 'None selected') : 'Disabled'}
+                </p>
+                <p className="text-[8px] text-slate-500 dark:text-slate-400">
+                  {textVoiceMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+                    ? 'Single Voice mode: tapping any voice directly replaces the active EN voice.'
+                    : 'Multiple Voices mode: check one or more EN voices to generate in parallel.'}
+                </p>
+              </div>
+              <div className="inline-flex rounded-lg border border-indigo-200 dark:border-indigo-800 bg-slate-100 dark:bg-slate-800 p-0.5" data-text-bulk-en-voice-mode="true">
+                {[
+                  [TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE, 'Single Voice'],
+                  [TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE, 'Multiple Voices']
+                ].map(([modeId, modeLabel]) => (
+                  <button
+                    key={modeId}
+                    type="button"
+                    disabled={running || !includeTextChannel}
+                    aria-pressed={textVoiceMode === modeId}
+                    onClick={() => handleVoiceModeChange('text', modeId)}
+                    data-text-bulk-en-mode-btn={modeId}
+                    className={`rounded-md px-2 py-1 text-[8px] font-black transition ${
+                      textVoiceMode === modeId
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
+                    } disabled:opacity-40`}
+                  >
+                    {modeLabel}
+                  </button>
+                ))}
+              </div>
             </div>
-          </details>
 
-          <details className="rounded-lg border border-amber-100 dark:border-amber-900 bg-white/85 dark:bg-slate-900/40 p-2" open={bulkMeaningVoiceIds.length > 1}>
-            <summary className="cursor-pointer text-[9px] font-black text-amber-700 dark:text-amber-300">ID Edge Voices ({bulkMeaningVoiceIds.length}) • {bulkMeaningVoiceSummary.join(' + ') || '—'}</summary>
-            <div className="mt-2 max-h-32 space-y-1 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
-              {meaningBulkVoices.map(voice => <ToggleRow key={voice.id} checked={bulkMeaningVoiceIds.includes(voice.id)} disabled={running} onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voice.id)} tone="amber">{voice.label || voice.id}</ToggleRow>)}
+            {includeTextChannel ? (
+              <div className="max-h-40 space-y-1 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
+                {englishBulkVoices.map(voice => (
+                  <ToggleRow
+                    key={voice.id}
+                    checked={bulkTextVoiceIds.includes(voice.id)}
+                    disabled={running}
+                    selectionMode={textVoiceMode}
+                    testId={`text:${voice.id}`}
+                    onClick={() => toggleBulkVoice('bulkTextVoiceIds', voice.id, textVoiceMode)}
+                  >
+                    {voice.label || voice.id}
+                  </ToggleRow>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[8px] italic text-slate-500 dark:text-slate-400" data-text-bulk-en-disabled-note="true">
+                EN (Text) channel is unchecked above and will be skipped during generation.
+              </p>
+            )}
+
+            {voiceValidation.textEmptyWarning && (
+              <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-100/80 dark:bg-amber-950/50 px-2.5 py-1.5 text-[8px] font-bold text-amber-900 dark:text-amber-200 flex items-start gap-1.5" role="alert" data-text-bulk-voice-warning="text">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
+                <span>{voiceValidation.textEmptyWarning}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ID Edge Voices: Single Voice vs Multiple Voices */}
+          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeMeaningChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : voiceValidation.meaningEmptyWarning ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-amber-100 dark:border-amber-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-id-voice-section="true">
+            <div className="flex flex-wrap items-center justify-between gap-1.5">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black text-amber-700 dark:text-amber-300">
+                  ID Edge Voices ({includeMeaningChannel ? bulkMeaningVoiceIds.length : 'Channel Off'}) • {includeMeaningChannel ? (bulkMeaningVoiceSummary.join(' + ') || 'None selected') : 'Disabled'}
+                </p>
+                <p className="text-[8px] text-slate-500 dark:text-slate-400">
+                  {meaningVoiceMode === TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE
+                    ? 'Single Voice mode: tapping any voice directly replaces the active ID voice.'
+                    : 'Multiple Voices mode: check one or more ID voices to generate in parallel.'}
+                </p>
+              </div>
+              <div className="inline-flex rounded-lg border border-amber-200 dark:border-amber-800 bg-slate-100 dark:bg-slate-800 p-0.5" data-text-bulk-id-voice-mode="true">
+                {[
+                  [TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE, 'Single Voice'],
+                  [TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE, 'Multiple Voices']
+                ].map(([modeId, modeLabel]) => (
+                  <button
+                    key={modeId}
+                    type="button"
+                    disabled={running || !includeMeaningChannel}
+                    aria-pressed={meaningVoiceMode === modeId}
+                    onClick={() => handleVoiceModeChange('meaning', modeId)}
+                    data-text-bulk-id-mode-btn={modeId}
+                    className={`rounded-md px-2 py-1 text-[8px] font-black transition ${
+                      meaningVoiceMode === modeId
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-amber-600'
+                    } disabled:opacity-40`}
+                  >
+                    {modeLabel}
+                  </button>
+                ))}
+              </div>
             </div>
-          </details>
 
-          <details className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/30 p-2">
-            <summary className="cursor-pointer text-[8px] font-black uppercase tracking-wide text-slate-500">Manual / Single-Card Fallback Voice</summary>
+            {includeMeaningChannel ? (
+              <div className="max-h-32 space-y-1 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
+                {meaningBulkVoices.map(voice => (
+                  <ToggleRow
+                    key={voice.id}
+                    checked={bulkMeaningVoiceIds.includes(voice.id)}
+                    disabled={running}
+                    tone="amber"
+                    selectionMode={meaningVoiceMode}
+                    testId={`meaning:${voice.id}`}
+                    onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voice.id, meaningVoiceMode)}
+                  >
+                    {voice.label || voice.id}
+                  </ToggleRow>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[8px] italic text-slate-500 dark:text-slate-400" data-text-bulk-id-disabled-note="true">
+                ID (Meaning) channel is unchecked above and will be skipped during generation.
+              </p>
+            )}
+
+            {voiceValidation.meaningEmptyWarning && (
+              <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-100/80 dark:bg-amber-950/50 px-2.5 py-1.5 text-[8px] font-bold text-amber-900 dark:text-amber-200 flex items-start gap-1.5" role="alert" data-text-bulk-voice-warning="meaning">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
+                <span>{voiceValidation.meaningEmptyWarning}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Part F: Renamed & Clarified Global Edge Generation Defaults (Shared with Sidebar) */}
+          <details className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/30 p-2.5" data-text-bulk-global-edge-defaults="true">
+            <summary className="cursor-pointer text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+              Global Edge Generation Defaults (Shared with Sidebar)
+            </summary>
+            <p className="mt-1.5 text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">
+              Shared with the Audio Sidebar&apos;s <b>Generate Audio</b> tab and ordinary manual / single-Card generation. Also acts as the fallback voice when <b>FOLLOW PLAYER</b> cannot be mapped to an Edge voice.
+            </p>
             <div className="mt-2 grid gap-2">
-              <label className="text-[8px] font-bold text-slate-500">Edge EN fallback
+              <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
                   {englishBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
                 </select>
               </label>
-              <label className="text-[8px] font-bold text-slate-500">Edge ID / Meaning fallback
+              <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge ID / Meaning Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
                   {meaningBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
                 </select>
@@ -283,9 +561,13 @@ export const TextBatchPopup = ({
         {/* 3. Resolved Generate Plan Summary */}
         <div className="rounded-xl border border-sky-200/80 dark:border-sky-900 bg-sky-50/50 dark:bg-sky-950/15 p-2.5 text-[9px]" data-text-batch-resolved-voices="true">
           <div className="font-black uppercase tracking-wide text-sky-700 dark:text-sky-300">Generate Plan</div>
-          <div className="mt-1 grid grid-cols-2 gap-1 text-slate-600 dark:text-slate-300">
-            <p className="truncate" title={bulkTextVoiceSummary.join(' + ')}><b>EN:</b> {bulkTextVoiceSummary.length ? bulkTextVoiceSummary.join(' + ') : '—'}</p>
-            <p className="truncate" title={bulkMeaningVoiceSummary.join(' + ')}><b>ID:</b> {bulkMeaningVoiceSummary.length ? bulkMeaningVoiceSummary.join(' + ') : '—'}</p>
+          <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1 text-slate-600 dark:text-slate-300">
+            <p className="truncate" title={enPlanStatusText} data-text-bulk-plan-en="true">
+              <b>EN:</b> <span className={voiceValidation.textEmptyWarning ? 'font-bold text-amber-700 dark:text-amber-300' : ''}>{enPlanStatusText}</span>
+            </p>
+            <p className="truncate" title={idPlanStatusText} data-text-bulk-plan-id="true">
+              <b>ID:</b> <span className={voiceValidation.meaningEmptyWarning ? 'font-bold text-amber-700 dark:text-amber-300' : ''}>{idPlanStatusText}</span>
+            </p>
           </div>
           <p className="mt-0.5 text-slate-600 dark:text-slate-300"><b>Representation:</b> {splitSelected ? 'Split' : ''}{splitSelected && fullSelected ? ' + ' : ''}{fullSelected ? 'Full' : ''}</p>
           <p className="mt-1 text-[8px] font-bold text-sky-700 dark:text-sky-300">Generation selection never changes playback priority.</p>
@@ -299,10 +581,10 @@ export const TextBatchPopup = ({
           </div>
 
           {/* Visual 4-pill status summary */}
-          <div className="grid grid-cols-4 gap-1.5 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-center">
             <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/80 dark:bg-emerald-950/30 p-1.5">
               <p className="text-xs font-black text-emerald-700 dark:text-emerald-300">{generationCoverage?.ready || 0}</p>
-              <p className="text-[7px] font-black uppercase text-emerald-800 dark:text-emerald-400">Ready</p>
+              <p className="text-[7px] font-black uppercase text-emerald-800 dark:text-emerald-400">Ready Logical</p>
             </div>
             <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/80 dark:bg-amber-950/30 p-1.5">
               <p className="text-xs font-black text-amber-700 dark:text-amber-300">{generationCoverage?.missing || 0}</p>
@@ -312,21 +594,33 @@ export const TextBatchPopup = ({
               <p className="text-xs font-black text-rose-700 dark:text-rose-300">{generationCoverage?.stale || 0}</p>
               <p className="text-[7px] font-black uppercase text-rose-800 dark:text-rose-400">Stale</p>
             </div>
-            <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/80 dark:bg-sky-950/30 p-1.5">
+            <div className="rounded-lg border border-sky-200 dark:border-sky-900 bg-sky-50/80 dark:bg-sky-950/30 p-1.5" title="Physical audio already exists in Staging/ZIP and only needs logical linking">
               <p className="text-xs font-black text-sky-700 dark:text-sky-300">{generationCoverage?.reusable || 0}</p>
-              <p className="text-[7px] font-black uppercase text-sky-800 dark:text-sky-400">Shared RF</p>
+              <p className="text-[7px] font-black uppercase text-sky-800 dark:text-emerald-400">Reusable Physical</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 text-[8px] text-slate-500 dark:text-slate-400">
-            <span>Ready logical: {generationCoverage?.ready || 0}</span><span>Reusable physical: {generationCoverage?.reusable || 0}</span>
-            <span>Missing: {generationCoverage?.missing || 0}</span><span>Stale: {generationCoverage?.stale || 0}</span>
-            <span>Logical req.: {generationCoverage?.logicalRequirements || 0}</span><span>Unique physical: {generationCoverage?.uniquePhysicalRequirements || 0}</span>
-            <span>Split logical: {generationCoverage?.splitLogical || 0}</span><span>Full logical: {generationCoverage?.fullLogical || 0}</span>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-lg border border-violet-100 dark:border-violet-900/60 bg-white/80 dark:bg-slate-900/40 p-2 text-[8px] text-slate-600 dark:text-slate-300" data-text-bulk-coverage-breakdown="true">
+            <span><b>Ready logical:</b> {generationCoverage?.ready || 0}</span>
+            <span><b>Reusable physical:</b> {generationCoverage?.reusable || 0}</span>
+            <span><b>Missing:</b> {generationCoverage?.missing || 0}</span>
+            <span><b>Stale:</b> {generationCoverage?.stale || 0}</span>
+            <span><b>Logical requirements:</b> {generationCoverage?.logicalRequirements || 0}</span>
+            <span><b>Unique physical requirements:</b> {generationCoverage?.uniquePhysicalRequirements || 0}</span>
+            <span><b>Split requirements:</b> {generationCoverage?.splitLogical || 0}</span>
+            <span><b>Full requirements:</b> {generationCoverage?.fullLogical || 0}</span>
           </div>
-          <p className="text-[8px] leading-relaxed text-slate-400">
-            Eligible Paragraph Cards: {generationCoverage?.eligibleBlockCount || 0}{generationCoverage?.skippedConversationBlockCount ? ` • Conversation skipped: ${generationCoverage.skippedConversationBlockCount} (use Card Audio)` : ''}. Shared Split RF / identical Full identity is generated once physically.
+          <p className="text-[8px] leading-relaxed text-slate-500 dark:text-slate-400" data-text-bulk-coverage-explanation="true">
+            <b>Logical requirements</b> count every selected Split sentence + Full card slot across chosen voices. <b>Unique physical requirements</b> count deduplicated renders (shared RF / Full identity synthesized once). <b>Reusable physical</b> means the audio binary is already staged and only needs linking. Eligible Paragraph Cards: {generationCoverage?.eligibleBlockCount || 0}{generationCoverage?.skippedConversationBlockCount ? ` • Conversation skipped: ${generationCoverage.skippedConversationBlockCount} (use Card Audio)` : ''}.
           </p>
+
+          {!voiceValidation.canGenerate && (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-2 text-[8px] font-bold text-amber-800 dark:text-amber-200" data-text-bulk-generate-blocked-reason="true">
+              {voiceValidation.noChannelsEnabled
+                ? 'Enable at least one channel (EN or ID) to generate audio.'
+                : voiceValidation.warnings.join(' ')}
+            </div>
+          )}
 
           {/* Primary Generation / Stop Controls */}
           <div className="space-y-1.5 pt-1">
@@ -337,16 +631,16 @@ export const TextBatchPopup = ({
               </button>
             ) : (
               <>
-                <button type="button" disabled={!(generationCoverage?.needGenerateMissing || 0)} onClick={structuredTextBatch?.downloadMissing} className="w-full min-h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 py-2 px-3 text-xs font-black text-white shadow-sm disabled:opacity-35 transition-colors">
+                <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.needGenerateMissing || 0)} onClick={structuredTextBatch?.downloadMissing} data-text-bulk-generate-missing="true" className="w-full min-h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 py-2 px-3 text-xs font-black text-white shadow-sm disabled:opacity-35 transition-colors">
                   <Download className="mr-1.5 inline h-3.5 w-3.5"/>
                   GENERATE MISSING ({generationCoverage?.needGenerateMissing || 0})
                 </button>
                 {(generationCoverage?.stale || 0) > 0 && (
-                  <button type="button" disabled={!(generationCoverage?.needGenerateWithStale || 0)} onClick={structuredTextBatch?.downloadMissingAndStale} className="w-full min-h-9 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 py-1.5 text-[10px] font-black text-amber-800 dark:text-amber-300 disabled:opacity-35">
+                  <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.needGenerateWithStale || 0)} onClick={structuredTextBatch?.downloadMissingAndStale} data-text-bulk-generate-missing-stale="true" className="w-full min-h-9 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 py-1.5 text-[10px] font-black text-amber-800 dark:text-amber-300 disabled:opacity-35">
                     GENERATE MISSING + STALE ({generationCoverage?.needGenerateWithStale || 0})
                   </button>
                 )}
-                <button type="button" disabled={!(generationCoverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} className="w-full min-h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-35">
+                <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} data-text-bulk-regenerate-selected="true" className="w-full min-h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-35">
                   REGENERATE SELECTED ({generationCoverage?.total || 0})
                 </button>
               </>

@@ -95,6 +95,8 @@ const StructuredPlayerCard = ({
   onStartFromSegment,
   audioRuntimeStatusMap,
   audioCoverageMap,
+  runtimeFullAudio = {},
+  playbackSourceStatus = null,
   onAttachAudioFile,
   onRemoveAudioVariant,
   onGenerateAudio,
@@ -110,6 +112,7 @@ const StructuredPlayerCard = ({
   edgeGenerationVoices = [],
   onCardVoiceChange,
   onSegmentVoiceChange,
+  onApplyCardPlayerChanges,
   onCardDownloadVoiceChange,
   onCardDownloadModeChange,
   onSegmentDownloadVoiceChange,
@@ -385,11 +388,14 @@ const StructuredPlayerCard = ({
       availableLocalVoices={availableLocalVoices}
       cardCoverage={cardCoverage}
       audioCoverageMap={audioCoverageMap}
+      runtimeFullAudio={runtimeFullAudio}
+      playbackSourceStatus={playbackSourceStatus}
       generationRunning={generationBusy}
       disabled={playbackBusy || generationBusy}
       onClose={() => setAudioPanelOpen(false)}
       onCardVoiceChange={onCardVoiceChange}
       onSegmentVoiceChange={onSegmentVoiceChange}
+      onApplyCardPlayerChanges={onApplyCardPlayerChanges}
       onCardDownloadVoiceChange={onCardDownloadVoiceChange}
       onCardDownloadModeChange={onCardDownloadModeChange}
       onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}
@@ -435,6 +441,8 @@ export const TextStructuredPlayer = ({
   onStartFromSegment,
   audioRuntimeStatusMap,
   audioCoverageMap,
+  runtimeFullAudio = {},
+  playbackSourceStatus = null,
   documentCoverage = null,
   onAttachAudioFile,
   onRemoveAudioVariant,
@@ -449,6 +457,7 @@ export const TextStructuredPlayer = ({
   onSpeakerDownloadVoiceChange,
   onCardVoiceChange,
   onSegmentVoiceChange,
+  onApplyCardPlayerChanges,
   onCardDownloadVoiceChange,
   onCardDownloadModeChange,
   onSegmentDownloadVoiceChange,
@@ -658,6 +667,8 @@ export const TextStructuredPlayer = ({
           onStartFromSegment={onStartFromSegment}
           audioRuntimeStatusMap={audioRuntimeStatusMap}
           audioCoverageMap={audioCoverageMap}
+          runtimeFullAudio={runtimeFullAudio}
+          playbackSourceStatus={playbackSourceStatus}
           onAttachAudioFile={onAttachAudioFile}
           onRemoveAudioVariant={onRemoveAudioVariant}
           onGenerateAudio={onGenerateAudio}
@@ -674,6 +685,7 @@ export const TextStructuredPlayer = ({
           playbackBusy={structuredSessionActive}
           onCardVoiceChange={onCardVoiceChange}
           onSegmentVoiceChange={onSegmentVoiceChange}
+          onApplyCardPlayerChanges={onApplyCardPlayerChanges}
           onCardDownloadVoiceChange={onCardDownloadVoiceChange}
           onCardDownloadModeChange={onCardDownloadModeChange}
           onSegmentDownloadVoiceChange={onSegmentDownloadVoiceChange}

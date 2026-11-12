@@ -130,9 +130,13 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
   block,
   segment,
   channel = 'text',
-  defaultVoiceName = null
+  defaultVoiceName = null,
+  ignoreSegmentOverride = false,
+  representationMode = 'split'
 }) => {
   const normalizedChannel = normalizeChannel(channel);
+  const isFullRepresentation = String(representationMode || '').toLowerCase() === 'full';
+  const skipSegmentOverride = Boolean(ignoreSegmentOverride) || isFullRepresentation;
   const speakerKey = normalizeTextStructuredSpeakerKey(segment?.speaker);
   const speakerId = getTextStructuredSegmentSpeakerId(segment);
   const segmentProfile = getTextStructuredVoiceOverrideProfile(segment);
@@ -140,9 +144,10 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
   const documentProfile = getTextStructuredVoiceOverrideProfile(documentTree);
   const documentSpeakerMap = getTextStructuredSpeakerVoiceMap(documentTree);
   const documentSpeakerProfileV2 = getTextStructuredSpeakerVoiceProfileV2(documentTree);
+  const segmentOverrideVoiceName = clean(segmentProfile.channels?.[normalizedChannel]) || null;
 
   const candidates = [
-    { source: 'segment', voiceName: segmentProfile.channels?.[normalizedChannel] },
+    ...(skipSegmentOverride ? [] : [{ source: 'segment', voiceName: segmentOverrideVoiceName }]),
     { source: 'card-speaker', voiceName: speakerId ? blockProfile.speakerIds?.[normalizedChannel]?.[speakerId] : null },
     { source: 'card-speaker-legacy', voiceName: speakerKey ? blockProfile.speakers?.[normalizedChannel]?.[speakerKey] : null },
     { source: 'document-speaker', voiceName: speakerId ? documentSpeakerProfileV2?.[normalizedChannel]?.[speakerId] : null },
@@ -156,21 +161,52 @@ export const resolveTextStructuredEffectiveVoiceProfile = ({
     channel: normalizedChannel,
     voiceName: clean(selected.voiceName) || null,
     source: selected.source,
-    inherited: selected.source === 'global' || selected.source === 'document' || selected.source === 'document-speaker'
+    inherited: selected.source === 'global' || selected.source === 'document' || selected.source === 'document-speaker',
+    ignoredSegmentOverride: Boolean(skipSegmentOverride && segmentOverrideVoiceName),
+    segmentOverrideVoiceName
   };
 };
+
+export const resolveTextStructuredFullCardVoiceProfile = ({
+  documentTree,
+  block,
+  segment = null,
+  channel = 'text',
+  defaultVoiceName = null
+}) => resolveTextStructuredEffectiveVoiceProfile({
+  documentTree,
+  block,
+  segment,
+  channel,
+  defaultVoiceName,
+  ignoreSegmentOverride: true,
+  representationMode: 'full'
+});
 
 export const resolveTextStructuredEffectiveVoiceForItem = ({
   documentTree,
   item,
+  block: explicitBlock = null,
   channel = 'text',
-  defaultVoiceName = null
+  defaultVoiceName = null,
+  ignoreSegmentOverride = false,
+  representationMode = 'split'
 }) => {
-  const blockId = item?.blockId || item?.textId;
+  const blockId = item?.blockId || item?.textId || explicitBlock?.id;
   const segmentId = item?.segmentId || item?.id;
-  const block = (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate?.id === blockId) || null;
+  const block = explicitBlock
+    || (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).find(candidate => candidate?.id === blockId)
+    || null;
   const segment = (Array.isArray(block?.segments) ? block.segments : []).find(candidate => candidate?.id === segmentId) || null;
-  return resolveTextStructuredEffectiveVoiceProfile({ documentTree, block, segment, channel, defaultVoiceName });
+  return resolveTextStructuredEffectiveVoiceProfile({
+    documentTree,
+    block,
+    segment,
+    channel,
+    defaultVoiceName,
+    ignoreSegmentOverride,
+    representationMode
+  });
 };
 
 export const getTextStructuredVoiceOverrideLabel = source => ({
@@ -182,7 +218,171 @@ export const getTextStructuredVoiceOverrideLabel = source => ({
   card: 'Card override',
   document: 'Document default',
   global: 'Global default',
+  'browser-fallback': 'Browser fallback voice',
+  'system-default': 'Browser system default',
   none: 'No voice'
 }[source] || 'Voice');
+
+export const getTextStructuredVoiceSourceDisplayLabel = source => ({
+  segment: 'Segment override',
+  'card-speaker': 'Card speaker override',
+  'card-speaker-legacy': 'Card speaker override',
+  'document-speaker': 'Workspace speaker profile',
+  'document-speaker-legacy': 'Workspace speaker profile',
+  card: 'Card override',
+  document: 'Workspace Narrator',
+  global: 'Global Browser TTS',
+  'browser-fallback': 'Browser fallback voice',
+  'system-default': 'Browser system default',
+  none: 'Browser system default'
+}[source] || 'Browser TTS');
+
+export const formatTextStructuredBrowserVoiceLabel = (voiceLike, { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}) => {
+  const isObject = voiceLike && typeof voiceLike === 'object';
+  const rawName = isObject ? clean(voiceLike.name || voiceLike.voiceURI || voiceLike.label) : clean(voiceLike);
+  if (!rawName) return fallbackLabel;
+  if (isObject || includeEngineHint) {
+    return `${rawName} (Browser TTS)`;
+  }
+  return rawName;
+};
+
+export const resolveTextStructuredBrowserVoiceResolution = ({
+  documentTree = null,
+  block = null,
+  segment = null,
+  channel = 'text',
+  globalVoiceName = null,
+  defaultVoiceName = null,
+  requestedVoiceName: explicitRequestedVoiceName = null,
+  requestedSource: explicitRequestedSource = null,
+  availableBrowserVoices = null,
+  ignoreSegmentOverride = false,
+  representationMode = 'split'
+} = {}) => {
+  const normalizedChannel = normalizeChannel(channel);
+  const isFullRepresentation = String(representationMode || '').toLowerCase() === 'full';
+  const skipSegmentOverride = Boolean(ignoreSegmentOverride) || isFullRepresentation;
+  const segmentProfile = getTextStructuredVoiceOverrideProfile(segment);
+  const blockProfile = getTextStructuredVoiceOverrideProfile(block);
+  const documentProfile = getTextStructuredVoiceOverrideProfile(documentTree);
+
+  const globalBrowserVoiceName = clean(globalVoiceName || defaultVoiceName) || null;
+  const workspaceNarratorVoiceName = clean(documentProfile.channels?.[normalizedChannel]) || null;
+  const cardOverrideVoiceName = clean(blockProfile.channels?.[normalizedChannel]) || null;
+  const segmentOverrideVoiceName = clean(segmentProfile.channels?.[normalizedChannel]) || null;
+
+  const requestedProfile = clean(explicitRequestedVoiceName)
+    ? {
+        voiceName: clean(explicitRequestedVoiceName),
+        source: clean(explicitRequestedSource) || 'card',
+        ignoredSegmentOverride: false
+      }
+    : resolveTextStructuredEffectiveVoiceProfile({
+        documentTree,
+        block,
+        segment,
+        channel: normalizedChannel,
+        defaultVoiceName: globalBrowserVoiceName,
+        ignoreSegmentOverride: skipSegmentOverride,
+        representationMode
+      });
+
+  const requestedVoiceName = requestedProfile.voiceName;
+  const requestedSource = requestedProfile.source;
+  const requestedSourceLabel = getTextStructuredVoiceSourceDisplayLabel(requestedSource);
+
+  const hasBrowserVoiceList = Array.isArray(availableBrowserVoices);
+  const browserVoiceNames = hasBrowserVoiceList
+    ? availableBrowserVoices
+      .map(entry => (typeof entry === 'string' ? clean(entry) : clean(entry?.name)))
+      .filter(Boolean)
+    : [];
+  const browserVoiceSet = new Set(browserVoiceNames);
+
+  if (!requestedVoiceName) {
+    const fallbackBrowserVoice = browserVoiceNames[0] || null;
+    const effectiveSource = fallbackBrowserVoice ? 'browser-fallback' : 'system-default';
+    const effectiveSourceLabel = getTextStructuredVoiceSourceDisplayLabel(effectiveSource);
+    const available = Boolean(fallbackBrowserVoice || !hasBrowserVoiceList);
+    return {
+      channel: normalizedChannel,
+      globalBrowserVoiceName,
+      workspaceNarratorVoiceName,
+      cardOverrideVoiceName,
+      segmentOverrideVoiceName,
+      ignoredSegmentOverride: requestedProfile.ignoredSegmentOverride,
+      requestedVoiceName: null,
+      requestedSource: 'none',
+      requestedSourceLabel,
+      effectiveVoiceName: fallbackBrowserVoice,
+      effectiveSource,
+      effectiveSourceLabel,
+      availableInBrowser: available,
+      requestedVoiceAvailable: available,
+      fallbackUsed: false,
+      fallbackReason: null
+    };
+  }
+
+  const isRequestedAvailable = !hasBrowserVoiceList || browserVoiceSet.has(requestedVoiceName);
+  if (isRequestedAvailable) {
+    return {
+      channel: normalizedChannel,
+      globalBrowserVoiceName,
+      workspaceNarratorVoiceName,
+      cardOverrideVoiceName,
+      segmentOverrideVoiceName,
+      ignoredSegmentOverride: requestedProfile.ignoredSegmentOverride,
+      requestedVoiceName,
+      requestedSource,
+      requestedSourceLabel,
+      effectiveVoiceName: requestedVoiceName,
+      effectiveSource: requestedSource,
+      effectiveSourceLabel: requestedSourceLabel,
+      availableInBrowser: true,
+      requestedVoiceAvailable: true,
+      fallbackUsed: false,
+      fallbackReason: null
+    };
+  }
+
+  const hierarchyFallbacks = [
+    ...(skipSegmentOverride ? [] : [{ source: 'segment', voiceName: segmentOverrideVoiceName }]),
+    { source: 'card', voiceName: cardOverrideVoiceName },
+    { source: 'document', voiceName: workspaceNarratorVoiceName },
+    { source: 'global', voiceName: globalBrowserVoiceName }
+  ].filter(candidate => clean(candidate.voiceName) && candidate.voiceName !== requestedVoiceName && browserVoiceSet.has(candidate.voiceName));
+
+  const matchedFallback = hierarchyFallbacks[0] || (browserVoiceNames[0]
+    ? { source: 'browser-fallback', voiceName: browserVoiceNames[0] }
+    : { source: 'system-default', voiceName: null });
+
+  const effectiveVoiceName = clean(matchedFallback.voiceName) || null;
+  const effectiveSource = matchedFallback.source;
+  const effectiveSourceLabel = getTextStructuredVoiceSourceDisplayLabel(effectiveSource);
+  const fallbackTargetText = effectiveVoiceName
+    ? `${effectiveVoiceName} (${effectiveSourceLabel})`
+    : 'Browser system default';
+
+  return {
+    channel: normalizedChannel,
+    globalBrowserVoiceName,
+    workspaceNarratorVoiceName,
+    cardOverrideVoiceName,
+    segmentOverrideVoiceName,
+    ignoredSegmentOverride: requestedProfile.ignoredSegmentOverride,
+    requestedVoiceName,
+    requestedSource,
+    requestedSourceLabel,
+    effectiveVoiceName,
+    effectiveSource,
+    effectiveSourceLabel,
+    availableInBrowser: false,
+    requestedVoiceAvailable: false,
+    fallbackUsed: true,
+    fallbackReason: `Requested voice "${requestedVoiceName}" (${requestedSourceLabel}) is unavailable in this browser; falling back to ${fallbackTargetText}.`
+  };
+};
 
 export const TEXT_STRUCTURED_VOICE_OVERRIDE_CHANNELS = Object.freeze([...CHANNELS]);

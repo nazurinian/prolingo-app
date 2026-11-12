@@ -18,6 +18,11 @@ export const TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES = Object.freeze({
   FULL_TTS: 'full-tts'
 });
 
+export const TEXT_STRUCTURED_TTS_FALLBACK_POLICIES = Object.freeze({
+  SPLIT_SEGMENT: 'split-segment',
+  FULL_CARD: 'full-card'
+});
+
 const clean = value => String(value ?? '').trim();
 const normalizeChannel = value => String(value || '').toLowerCase() === 'meaning' ? 'meaning' : 'text';
 const runtimeReady = entry => Boolean(entry?.url || entry?.stagingBacked || entry?.zipBacked || entry?.folderBacked || entry?.blob || entry?.binaryReady);
@@ -192,23 +197,30 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT;
 
   if (normalizedMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT) {
+    const splitPlan = buildTextStructuredSplitRuntimePlan({
+      documentTree,
+      block,
+      channel: normalizedChannel,
+      audioVariants,
+      runtimeAudioUrls,
+      fallbackVoiceId,
+      fallbackEngine,
+      fallbackRate,
+      fallbackPitch,
+      globalPlaybackOrder,
+      globalTtsOnly,
+      highlight: true
+    });
     return {
       mode: normalizedMode,
       route: 'split',
-      ...buildTextStructuredSplitRuntimePlan({
-        documentTree,
-        block,
-        channel: normalizedChannel,
-        audioVariants,
-        runtimeAudioUrls,
-        fallbackVoiceId,
-        fallbackEngine,
-        fallbackRate,
-        fallbackPitch,
-        globalPlaybackOrder,
-        globalTtsOnly,
-        highlight: true
-      })
+      ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.SPLIT_SEGMENT,
+      ...splitPlan,
+      steps: splitPlan.steps.map(step => ({
+        ...step,
+        ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.SPLIT_SEGMENT,
+        ignoreSegmentVoiceOverride: false
+      }))
     };
   }
 
@@ -229,6 +241,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     return {
       mode: normalizedMode,
       route: 'empty',
+      ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
       playbackOrder,
@@ -245,6 +258,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     return {
       mode: normalizedMode,
       route: 'full-tts-only',
+      ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
       playbackOrder,
@@ -258,7 +272,9 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         segmentId: null,
         content: fullRepresentation.content,
         highlight: false,
-        runtimeFull: null
+        runtimeFull: null,
+        ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
+        ignoreSegmentVoiceOverride: true
       }],
       total: 1,
       localCount: 0,
@@ -278,6 +294,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     return {
       mode: normalizedMode,
       route: 'full-local',
+      ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
       playbackOrder,
@@ -293,7 +310,9 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         highlight: false,
         runtimeFull: readyFull,
         voiceId: readyFull.profile?.voiceId || readyFull.artifact?.descriptor?.voiceId || null,
-        profileRank: readyFull.profileRank || null
+        profileRank: readyFull.profileRank || null,
+        ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
+        ignoreSegmentVoiceOverride: true
       }],
       total: 1,
       localCount: 1,
@@ -322,6 +341,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     return {
       mode: normalizedMode,
       route: 'full-tts-fallback',
+      ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
       playbackOrder,
@@ -336,7 +356,9 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         segmentId: null,
         content: fullRepresentation.content,
         highlight: false,
-        runtimeFull: null
+        runtimeFull: null,
+        ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
+        ignoreSegmentVoiceOverride: true
       }],
       total: 1,
       localCount: 0,
@@ -347,13 +369,19 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   return {
     mode: normalizedMode,
     route: 'split-fallback',
+    ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
     representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
     channel: normalizedChannel,
     playbackOrder,
     ttsOnly,
     fullRepresentation,
     splitFallback,
-    steps: splitFallback.steps.map(step => ({ ...step, highlight: false })),
+    steps: splitFallback.steps.map(step => ({
+      ...step,
+      highlight: false,
+      ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
+      ignoreSegmentVoiceOverride: true
+    })),
     total: splitFallback.total,
     localCount: splitFallback.localCount,
     ttsCount: splitFallback.ttsCount

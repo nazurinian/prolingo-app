@@ -121,7 +121,7 @@ import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSel
 import { buildTextStructuredBulkGenerationPlan, selectTextStructuredBulkGenerationRequirements, summarizeTextStructuredBulkPhysicalWork, TEXT_STRUCTURED_BULK_REPRESENTATIONS, TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS } from './domain/text/textStructuredBulkGenerationDomain.js';
 import { buildTextStructuredBulkExportPlan, TEXT_STRUCTURED_BULK_EXPORT_FORMATS } from './domain/text/textStructuredBulkExportDomain.js';
 import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
-import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
+import { buildTextStructuredVoiceOverrideMetadata, getTextStructuredVoiceSourceDisplayLabel, resolveTextStructuredEffectiveVoiceForItem } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { buildTextStructuredLocalAudioProfileMetadata, collectTextStructuredAvailableLocalVoices, getTextStructuredLocalAudioProfile, resolveTextStructuredCustomLocalAudioVoice } from './domain/text/textStructuredLocalAudioProfileDomain.js';
 import { buildTextStructuredAudioSyncProfileMetadata, getTextStructuredAudioSyncProfile } from './domain/text/textStructuredAudioSyncProfileDomain.js';
@@ -884,11 +884,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     playbackMeaningVoiceName: defaultStructuredMeaningVoiceId,
     edgeVoices: initialEdgeVoices
   }), [structuredTextAudioGenerationPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId]);
-  const resolveStructuredTextChannelVoiceState = useCallback((item, channel) => {
+  const resolveStructuredTextChannelVoiceState = useCallback((item, channel, options = {}) => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const isMeaning = normalizedChannel === 'meaning';
     const defaultVoice = isMeaning ? selectedTextIndonesianVoice : selectedTextBrowserVoice;
     const defaultVoiceId = isMeaning ? defaultStructuredMeaningVoiceId : defaultStructuredTextVoiceId;
+    const representationMode = options?.representationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
+      || options?.representationMode === 'full'
+      ? 'full'
+      : 'split';
+    const ignoreSegmentOverride = Boolean(options?.ignoreSegmentOverride) || representationMode === 'full';
     const syncVoice = item?.blockType === 'conversation'
       && structuredTextAudioSyncProfile.voice?.[normalizedChannel] === true
       && structuredTextConversationSpeakers.length > 0;
@@ -908,6 +913,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         item,
         channel: normalizedChannel,
         defaultVoiceName: defaultVoiceId,
+        ignoreSegmentOverride,
+        representationMode
       });
     }
     const requestedVoiceId = assignment.voiceName || defaultVoice?.name || null;
@@ -915,12 +922,31 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const exactVoice = requestedVoiceId
       ? (Array.isArray(pool) ? pool : []).find(voice => String(voice?.name || '').trim() === requestedVoiceId)
       : null;
+    const requestedSourceLabel = getTextStructuredVoiceSourceDisplayLabel(assignment.source, { channel: normalizedChannel });
+    const fallbackUsed = Boolean(requestedVoiceId && !exactVoice);
+    const effectiveVoice = exactVoice || defaultVoice || null;
+    const effectiveSource = fallbackUsed ? 'global-fallback' : assignment.source;
+    const effectiveSourceLabel = getTextStructuredVoiceSourceDisplayLabel(effectiveSource, { channel: normalizedChannel });
+    const fallbackReason = fallbackUsed
+      ? (effectiveVoice?.name
+          ? `Requested browser voice "${requestedVoiceId}" (${requestedSourceLabel}) is unavailable on this device; using Global Browser TTS "${effectiveVoice.name}".`
+          : `Requested browser voice "${requestedVoiceId}" (${requestedSourceLabel}) is unavailable on this device and no fallback browser voice is ready.`)
+      : null;
     return {
       requestedVoiceId,
-      ttsVoice: exactVoice || defaultVoice || null,
+      requestedSource: assignment.source,
+      requestedSourceLabel,
+      effectiveVoiceName: effectiveVoice?.name || null,
+      effectiveSource,
+      effectiveSourceLabel,
+      fallbackUsed,
+      fallbackReason,
+      ttsVoice: effectiveVoice,
       mappedVoiceAvailable: Boolean(exactVoice),
       assignmentSource: assignment.source,
-      syncedToFirstSpeaker: syncVoice
+      syncedToFirstSpeaker: syncVoice,
+      ignoreSegmentOverride,
+      representationMode
     };
   }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, voices, indonesianVoices]);
   const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
@@ -3291,14 +3317,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (!playbackStillCurrent()) return;
       if (runtimeUrl) {
         const origin = runtime?.zipBacked ? 'ZIP' : runtime?.stagingBacked ? 'Staging' : runtime?.folderBacked ? 'Folder (legacy)' : 'Local';
+        const localVoiceId = runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null;
         setStructuredTextPlaybackSourceStatus({
           source: 'local',
+          mode: 'local',
           origin,
           representation: 'full',
           channel: normalizedChannel,
           blockId: block?.id || null,
           segmentId: null,
-          voiceId: runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null,
+          voiceId: localVoiceId,
+          effectiveVoice: localVoiceId,
+          effectiveSourceLabel: `Local MP3 (${origin})`,
           filename: runtime?.filename || runtimeFull?.artifact?.filename || null,
           updatedAt: Date.now()
         });
@@ -3316,18 +3346,29 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     if (!playbackStillCurrent()) return;
-    const voiceState = resolveStructuredTextChannelVoiceState(firstSegmentItem, normalizedChannel);
+    const voiceState = resolveStructuredTextChannelVoiceState(firstSegmentItem, normalizedChannel, {
+      representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
+      ignoreSegmentOverride: true,
+      block
+    });
     const targetVoice = voiceState.ttsVoice;
     const targetVoiceId = voiceState.requestedVoiceId;
     if (!targetVoice) {
       setStructuredTextPlaybackSourceStatus({
         source: 'unavailable',
+        mode: 'unavailable',
         origin: 'Browser TTS',
         representation: 'full',
         channel: normalizedChannel,
         blockId: block?.id || null,
         segmentId: null,
         voiceId: targetVoiceId || null,
+        requestedVoice: targetVoiceId || null,
+        requestedSourceLabel: voiceState.requestedSourceLabel,
+        effectiveVoice: null,
+        effectiveSourceLabel: voiceState.effectiveSourceLabel,
+        fallbackUsed: Boolean(voiceState.fallbackUsed),
+        fallbackReason: voiceState.fallbackReason || null,
         updatedAt: Date.now()
       });
       addLog('Warn', `Full Text ${normalizedChannel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS voice is not ready; full channel skipped.`);
@@ -3335,12 +3376,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     setStructuredTextPlaybackSourceStatus({
       source: 'tts',
+      mode: 'tts',
       origin: 'Browser TTS',
       representation: 'full',
       channel: normalizedChannel,
       blockId: block?.id || null,
       segmentId: null,
       voiceId: targetVoice?.name || targetVoiceId || null,
+      requestedVoice: targetVoiceId || null,
+      requestedSourceLabel: voiceState.requestedSourceLabel,
+      effectiveVoice: targetVoice?.name || targetVoiceId || null,
+      effectiveSourceLabel: voiceState.effectiveSourceLabel,
+      fallbackUsed: Boolean(voiceState.fallbackUsed),
+      fallbackReason: voiceState.fallbackReason || null,
       updatedAt: Date.now()
     });
     return executeBrowserTtsPlaybackService({
@@ -3359,13 +3407,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const playStructuredTextChannel = async (textToRead, item, channel) => {
-    const voiceState = resolveStructuredTextChannelVoiceState(item, channel);
+  const playStructuredTextChannel = async (textToRead, item, channel, options = {}) => {
+    const voiceState = resolveStructuredTextChannelVoiceState(item, channel, options);
     const targetVoice = voiceState.ttsVoice;
     const targetVoiceId = voiceState.requestedVoiceId;
     const playbackSessionId = playbackSessionRef.current;
     const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
-    const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
+    const block = options?.block || (activeTextDocumentTree?.blocks || []).find(candidate => candidate.id === item?.blockId) || null;
     const segment = (block?.segments || []).find(candidate => candidate.id === (item?.segmentId || item?.id)) || item;
     const effectiveTtsOnly = resolveTextStructuredEffectiveTtsOnly({
       documentTree: activeTextDocumentTree,
@@ -3469,12 +3517,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
                 : runtimeAudio.variant?.source === 'generated'
                   ? 'Generated'
                   : 'Local';
+          const localVoiceId = runtimeAudio.variant?.voiceId || customLocalVoiceId || targetVoiceId || null;
           setStructuredTextPlaybackSourceStatus({
             source: 'local',
+            mode: 'local',
             origin: localOrigin,
             channel: normalizedChannel,
+            blockId: block?.id || item?.blockId || null,
             segmentId: item?.segmentId || item?.id || null,
-            voiceId: runtimeAudio.variant?.voiceId || customLocalVoiceId || targetVoiceId || null,
+            voiceId: localVoiceId,
+            effectiveVoice: localVoiceId,
+            effectiveSourceLabel: `Local MP3 (${localOrigin})`,
             filename: runtimeAudio.filename || null,
             syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
             updatedAt: Date.now()
@@ -3498,10 +3551,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (!targetVoice) {
       setStructuredTextPlaybackSourceStatus({
         source: 'unavailable',
+        mode: 'unavailable',
         origin: 'Browser TTS',
         channel: channel === 'meaning' ? 'meaning' : 'text',
+        blockId: block?.id || item?.blockId || null,
         segmentId: item?.segmentId || item?.id || null,
         voiceId: targetVoiceId || null,
+        requestedVoice: targetVoiceId || null,
+        requestedSourceLabel: voiceState.requestedSourceLabel,
+        effectiveVoice: null,
+        effectiveSourceLabel: voiceState.effectiveSourceLabel,
+        fallbackUsed: Boolean(voiceState.fallbackUsed),
+        fallbackReason: voiceState.fallbackReason || null,
         syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
         updatedAt: Date.now()
       });
@@ -3513,10 +3574,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     setStructuredTextPlaybackSourceStatus({
       source: 'tts',
+      mode: 'tts',
       origin: 'Browser TTS',
       channel: channel === 'meaning' ? 'meaning' : 'text',
+      blockId: block?.id || item?.blockId || null,
       segmentId: item?.segmentId || item?.id || null,
       voiceId: targetVoice?.name || targetVoiceId || null,
+      requestedVoice: targetVoiceId || null,
+      requestedSourceLabel: voiceState.requestedSourceLabel,
+      effectiveVoice: targetVoice?.name || targetVoiceId || null,
+      effectiveSourceLabel: voiceState.effectiveSourceLabel,
+      fallbackUsed: Boolean(voiceState.fallbackUsed),
+      fallbackReason: voiceState.fallbackReason || null,
       syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
       updatedAt: Date.now()
     });
@@ -4428,6 +4497,105 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     if (result) addLog('Text Voice', `${segment.id} • ${channel} → ${voiceName || 'inherit'}.`);
     return result;
+  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+
+  const handleStructuredTextApplyCardPlayerChanges = useCallback(async (blockId, draftChanges = {}) => {
+    if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
+    const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
+    if (!block) return null;
+    forceStopAll();
+    let nextBlockMetadata = { ...(block.metadata || {}) };
+    const cardChannels = draftChanges.cardChannels || draftChanges.cardVoices;
+    if (cardChannels && typeof cardChannels === 'object') {
+      ['text', 'meaning'].forEach(ch => {
+        if (Object.prototype.hasOwnProperty.call(cardChannels, ch)) {
+          nextBlockMetadata = buildTextStructuredVoiceOverrideMetadata({
+            metadata: nextBlockMetadata,
+            channel: ch,
+            voiceName: cardChannels[ch] || null
+          });
+        }
+      });
+    }
+    if (draftChanges.speakerIds && typeof draftChanges.speakerIds === 'object') {
+      ['text', 'meaning'].forEach(ch => {
+        const chMap = draftChanges.speakerIds[ch];
+        if (chMap && typeof chMap === 'object') {
+          Object.entries(chMap).forEach(([speakerId, voiceName]) => {
+            nextBlockMetadata = buildTextStructuredVoiceOverrideMetadata({
+              metadata: nextBlockMetadata,
+              channel: ch,
+              voiceName: voiceName || null,
+              speakerId
+            });
+          });
+        }
+      });
+    }
+    const speakersMap = draftChanges.speakers || draftChanges.speakerVoices;
+    if (speakersMap && typeof speakersMap === 'object') {
+      ['text', 'meaning'].forEach(ch => {
+        const chMap = speakersMap[ch];
+        if (chMap && typeof chMap === 'object') {
+          Object.entries(chMap).forEach(([speakerKey, voiceName]) => {
+            nextBlockMetadata = buildTextStructuredVoiceOverrideMetadata({
+              metadata: nextBlockMetadata,
+              channel: ch,
+              voiceName: voiceName || null,
+              speaker: speakerKey,
+              speakerId: speakerKey.startsWith('SPK_') ? speakerKey : null
+            });
+          });
+        }
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(draftChanges, 'playbackOrder')) {
+      ['text', 'meaning'].forEach(ch => {
+        if (draftChanges.playbackOrder && Object.prototype.hasOwnProperty.call(draftChanges.playbackOrder, ch)) {
+          nextBlockMetadata = buildTextStructuredAudioPlaybackOrderMetadata({
+            metadata: nextBlockMetadata,
+            channel: ch,
+            profiles: draftChanges.playbackOrder[ch] || []
+          });
+        }
+      });
+    } else if (Object.prototype.hasOwnProperty.call(draftChanges, 'cardPlaybackOrder')) {
+      nextBlockMetadata = buildTextStructuredAudioPlaybackOrderMetadata({
+        metadata: nextBlockMetadata,
+        order: draftChanges.cardPlaybackOrder || null
+      });
+    }
+    await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_BLOCK,
+      payload: { id: block.id, metadata: nextBlockMetadata }
+    });
+    const segmentMap = draftChanges.segmentChannels || draftChanges.segmentVoices;
+    if (segmentMap && typeof segmentMap === 'object') {
+      for (const segment of block.segments || []) {
+        const segDraft = segmentMap[segment.id];
+        if (!segDraft || typeof segDraft !== 'object') continue;
+        let nextSegMetadata = { ...(segment.metadata || {}) };
+        ['text', 'meaning'].forEach(ch => {
+          if (Object.prototype.hasOwnProperty.call(segDraft, ch)) {
+            nextSegMetadata = buildTextStructuredVoiceOverrideMetadata({
+              metadata: nextSegMetadata,
+              channel: ch,
+              voiceName: segDraft[ch] || null
+            });
+          }
+        });
+        const prevOverride = JSON.stringify(segment.metadata?.audioVoiceOverrideV1 || null);
+        const nextOverride = JSON.stringify(nextSegMetadata?.audioVoiceOverrideV1 || null);
+        if (prevOverride !== nextOverride) {
+          await handleTextLibraryStructuredCommand({
+            type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+            payload: { id: segment.id, metadata: nextSegMetadata }
+          });
+        }
+      }
+    }
+    addLog('Text Voice', `Applied Card Player settings for ${block.id}.`);
+    return true;
   }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextCardDownloadVoiceChange = useCallback(async (blockId, channel = 'text', voiceId = null, speakerLike = null) => {
@@ -6549,6 +6717,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onPlaySegment={handleStructuredTextPlaySegment}
         onStartFromSegment={handleStructuredTextStartFromSegment}
         audioRuntimeStatusMap={structuredTextAudioRuntimeStatusMap}
+        runtimeFullAudio={structuredTextFullAudioRuntimeUrls}
+        playbackSourceStatus={structuredTextPlaybackSourceStatus}
         audioCoverageMap={structuredTextAudioCoverageMap}
         documentCoverage={structuredTextDocumentCoverage}
         onAttachAudioFile={handleStructuredTextAttachAudioFile}
@@ -6566,6 +6736,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onGlobalPlaybackOrderChange={handleStructuredTextGlobalPlaybackOrderChange}
         onGlobalTtsOnlyChange={handleStructuredTextGlobalTtsOnlyChange}
         onCardPlaybackOrderChange={handleStructuredTextCardPlaybackOrderChange}
+        onApplyCardPlayerChanges={handleStructuredTextApplyCardPlayerChanges}
         onSpeakerVoiceChange={handleStructuredTextSpeakerVoiceChange}
         onSpeakerDownloadVoiceChange={handleStructuredTextSpeakerDownloadVoiceChange}
         onCardVoiceChange={handleStructuredTextCardVoiceChange}
