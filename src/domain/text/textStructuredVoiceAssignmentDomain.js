@@ -237,14 +237,23 @@ export const getTextStructuredVoiceSourceDisplayLabel = source => ({
   none: 'Browser system default'
 }[source] || 'Browser TTS');
 
+// Display-only labels. Keep raw browser voice names in preference values and IDs.
 export const formatTextStructuredBrowserVoiceLabel = (voiceLike, { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}) => {
-  const isObject = voiceLike && typeof voiceLike === 'object';
+  const isObject = Boolean(voiceLike && typeof voiceLike === 'object');
   const rawName = isObject ? clean(voiceLike.name || voiceLike.voiceURI || voiceLike.label) : clean(voiceLike);
   if (!rawName) return fallbackLabel;
-  if (isObject || includeEngineHint) {
-    return `${rawName} (Browser TTS)`;
-  }
-  return rawName;
+  const compactName = /^Microsoft /i.test(rawName)
+    ? rawName.replace(/^Microsoft /i, '').replace(/ Online.*$/i, '').replace(/ Desktop.*$/i, '').replace(/ - .+$/i, '').trim()
+    : rawName;
+  const language = clean(isObject ? voiceLike.lang : '');
+  const natural = /[(]Natural[)]/i.test(rawName);
+  const standard = /[(]Standard[)]| Desktop/i.test(rawName);
+  const uk = /en[-_]GB/i.test(language) || /English [(]United Kingdom[)]/i.test(rawName);
+  const us = /en[-_]US/i.test(language) || /English [(]United States[)]/i.test(rawName);
+  const id = /id[-_]ID/i.test(language) || /Indonesian [(]Indonesia[)]/i.test(rawName);
+  const variant = natural ? 'Natural' : standard ? 'Standard' : null;
+  const locale = uk ? 'UK' : us ? 'US' : id ? 'ID' : null;
+  return [compactName || rawName, variant, locale, includeEngineHint ? 'Browser TTS' : null].filter(Boolean).join(' · ');
 };
 
 export const resolveTextStructuredBrowserVoiceResolution = ({
