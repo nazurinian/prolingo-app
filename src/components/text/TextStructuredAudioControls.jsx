@@ -277,14 +277,15 @@ export default function TextStructuredAudioControls({
         <summary className="cursor-pointer select-none py-2 text-[11px] font-black uppercase text-indigo-700 dark:text-indigo-300">1. Audio Source & Local MP3 <span className="ml-1 text-[9px] normal-case font-semibold text-slate-500 dark:text-slate-400">({localAudioEnabled ? (customLocal ? 'Custom' : 'Auto') : 'TTS Only'})</span></summary>
         <div className="space-y-3 pt-1">
       <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 p-2.5" data-text-local-audio-mode="true">
-        <div className={`flex min-h-9 w-full items-center justify-between rounded-lg border px-3 text-[9px] font-black ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-300' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-300'}`} data-text-global-tts-status="true">
-          <span>GLOBAL PLAYER SOURCE</span>
-          <span className="rounded px-1.5 py-0.5 bg-white/80 dark:bg-slate-900/60">{localAudioEnabled ? 'LOCAL FIRST' : 'TTS ONLY'}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5" data-text-audio-source-choice="true">
-          <button type="button" disabled={disabled} aria-pressed={localAudioEnabled} onClick={() => { if (!localAudioEnabled) onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST); }} className={`min-h-10 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${localAudioEnabled ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`} data-text-audio-source-local="true">LOCAL FIRST</button>
-          <button type="button" disabled={disabled} aria-pressed={!localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY)} className={`min-h-10 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${!localAudioEnabled ? 'bg-amber-600 border-amber-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`} data-text-audio-source-tts="true">TTS ONLY</button>
-        </div>
+        <button type="button" disabled={disabled} aria-pressed={!localAudioEnabled}
+          aria-label={`Global Player Source: ${localAudioEnabled ? 'Local First' : 'TTS Only'}. Switch to ${localAudioEnabled ? 'TTS Only' : 'Local First'}.`}
+          onClick={() => onAudioSourceModeChange?.(localAudioEnabled ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)}
+          className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[9px] font-black transition-colors disabled:opacity-40 ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-300 hover:border-emerald-400' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-300 hover:border-amber-400'}`}
+          data-text-global-tts-status="true" data-text-audio-source-toggle="true"
+          title={`Click to switch to ${localAudioEnabled ? 'TTS Only' : 'Local First'}`}>
+          <span className="min-w-0"><span className="block">GLOBAL PLAYER SOURCE</span><span className="block text-[8px] font-medium opacity-70">Click to change</span></span>
+          <span className="shrink-0 rounded px-1.5 py-1 bg-white/80 dark:bg-slate-900/60">{localAudioEnabled ? 'LOCAL FIRST' : 'TTS ONLY'}</span>
+        </button>
         {localAudioEnabled && <div className="space-y-1.5">
           <p className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Local MP3 voice selection</p>
           <div className="grid grid-cols-2 gap-1.5">
@@ -294,7 +295,7 @@ export default function TextStructuredAudioControls({
         </div>}
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
           {!localAudioEnabled
-            ? 'TTS Only bypasses local MP3 and uses Browser TTS. Select LOCAL FIRST above to use downloaded audio.'
+            ? 'TTS Only bypasses local MP3 and uses Browser TTS. Tap the source button above to switch back.'
             : customLocal
               ? 'CUSTOM pins a local MP3 voice per narrator/speaker, with Browser TTS fallback if missing.'
               : 'AUTO uses the Ready local MP3 priority order, then Browser TTS if no matching file is available.'}
