@@ -259,6 +259,7 @@ export default function TextStructuredAudioControls({
           ? 'What you create: Edge neural generation voices & prosody. Generating audio never alters your playback voice.'
           : 'What is stored: Ready/Missing/Stale coverage, IndexedDB Staging binaries, and Portable Audio ZIP archives.'}
     </p>
+    <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" data-text-audio-tab-divider="true" />
 
     {audioSurface === 'playback' && <section className="min-w-0 space-y-3" data-text-playback-audio-settings="true">
       <div className="flex items-start gap-2">
@@ -269,21 +270,34 @@ export default function TextStructuredAudioControls({
         </div>
       </div>
 
+      <SourceStatus status={playbackSourceStatus}/>
+      <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />
+
+      <details className="min-w-0 space-y-2" data-text-playback-source-menu="true">
+        <summary className="cursor-pointer select-none py-2 text-[11px] font-black uppercase text-indigo-700 dark:text-indigo-300">1. Audio Source & Local MP3 <span className="ml-1 text-[9px] normal-case font-semibold text-slate-500 dark:text-slate-400">({localAudioEnabled ? (customLocal ? 'Custom' : 'Auto') : 'TTS Only'})</span></summary>
+        <div className="space-y-3 pt-1">
       <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 p-2.5" data-text-local-audio-mode="true">
         <div className={`flex min-h-9 w-full items-center justify-between rounded-lg border px-3 text-[9px] font-black ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-300' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-300'}`} data-text-global-tts-status="true">
           <span>GLOBAL PLAYER SOURCE</span>
           <span className="rounded px-1.5 py-0.5 bg-white/80 dark:bg-slate-900/60">{localAudioEnabled ? 'LOCAL FIRST' : 'TTS ONLY'}</span>
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" disabled={disabled || !localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)} className={`min-h-9 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>AUTO (Priority Order)</button>
-          <button type="button" disabled={disabled || !localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL)} className={`min-h-9 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${sourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>CUSTOM (Pin Local Voice)</button>
+        <div className="grid grid-cols-2 gap-1.5" data-text-audio-source-choice="true">
+          <button type="button" disabled={disabled} aria-pressed={localAudioEnabled} onClick={() => { if (!localAudioEnabled) onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST); }} className={`min-h-10 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${localAudioEnabled ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`} data-text-audio-source-local="true">LOCAL FIRST</button>
+          <button type="button" disabled={disabled} aria-pressed={!localAudioEnabled} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY)} className={`min-h-10 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${!localAudioEnabled ? 'bg-amber-600 border-amber-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`} data-text-audio-source-tts="true">TTS ONLY</button>
         </div>
+        {localAudioEnabled && <div className="space-y-1.5">
+          <p className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Local MP3 voice selection</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button type="button" disabled={disabled} aria-pressed={!customLocal} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)} className={`min-h-9 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${!customLocal ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>AUTO · Priority</button>
+            <button type="button" disabled={disabled} aria-pressed={customLocal} onClick={() => onAudioSourceModeChange?.(TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL)} className={`min-h-9 rounded-lg border px-2 text-[9px] font-black transition-colors disabled:opacity-40 ${customLocal ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>CUSTOM · Pin Voice</button>
+          </div>
+        </div>}
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
           {!localAudioEnabled
-            ? 'TTS Only is controlled globally from the bottom Global Player. Switch the bottom bar to LOCAL FIRST to play local Edge audio.'
+            ? 'TTS Only bypasses local MP3 and uses Browser TTS. Select LOCAL FIRST above to use downloaded audio.'
             : customLocal
-              ? 'CUSTOM pins one specific local voice per narrator/speaker, falling back to Browser TTS if absent. TTS Only is controlled globally from the bottom Global Player.'
-              : 'AUTO plays Ready local audio in your Local Voice Priority order before falling back to Browser TTS. TTS Only is controlled globally from the bottom Global Player.'}
+              ? 'CUSTOM pins a local MP3 voice per narrator/speaker, with Browser TTS fallback if missing.'
+              : 'AUTO uses the Ready local MP3 priority order, then Browser TTS if no matching file is available.'}
         </p>
         <div className="grid grid-cols-2 gap-1.5 text-[8px] font-bold text-slate-600 dark:text-slate-300">
           <div className="rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-2.5 py-1.5">Staging: {stagingCount} • ZIP: {zipCount}</div>
@@ -291,19 +305,17 @@ export default function TextStructuredAudioControls({
         </div>
       </div>
 
-      <SourceStatus status={playbackSourceStatus}/>
-
-      {localAudioEnabled && !customLocal && <details className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/90 dark:bg-slate-900/40 p-3" data-text-audio-local-voice-priority="true" defaultOpen={false}>
-        <summary className="cursor-pointer text-[11px] font-bold text-indigo-800 dark:text-indigo-200 flex items-center justify-between">
+      {localAudioEnabled && !customLocal && <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/90 dark:bg-slate-900/40 p-3" data-text-audio-local-voice-priority="true">
+        <div className="text-[11px] font-bold text-indigo-800 dark:text-indigo-200 flex items-center justify-between gap-2">
           <span>Local Voice Priority (EN & ID)</span>
           <span className="rounded bg-indigo-100 dark:bg-indigo-950/70 px-1.5 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300">EN {localVoiceCountEn} • ID {localVoiceCountId}</span>
-        </summary>
-        <p className="my-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">When multiple downloaded voices are Ready for a sentence or card, the highest-ranked Ready voice plays first. (Synced with Text Player Settings.)</p>
+        </div>
+        <p className="my-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">When multiple downloaded voices are Ready, use the first matching voice in this priority order.</p>
         <div className="grid gap-2">
           <PlaybackProfileOrderEditor channel="text" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onGlobalPlaybackOrderChange}/>
           <PlaybackProfileOrderEditor channel="meaning" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onGlobalPlaybackOrderChange}/>
         </div>
-      </details>}
+      </section>}
 
       {customLocal && <section className="space-y-2 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-white/90 dark:bg-slate-900/45 p-2.5" data-text-audio-custom-local-pins="true">
         <p className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">Pinned Local Voice</p>
@@ -315,6 +327,15 @@ export default function TextStructuredAudioControls({
         {hasConversationCards && <p className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">For Conversations, set each speaker's pinned voice under Conversation Speakers below.</p>}
       </section>}
 
+        </div>
+      </details>
+
+      <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" data-text-playback-menu-divider="true" />
+
+      <details className="min-w-0 space-y-2" data-text-playback-voices-menu="true">
+        <summary className="cursor-pointer select-none py-2 text-[11px] font-black uppercase text-sky-700 dark:text-sky-300">2. Browser TTS · Global & Workspace</summary>
+        <div className="space-y-3 pt-1">
+          <p className="px-1 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400"><b>Global</b> is the default voice for all Text Workspaces. <b>Workspace</b> can override it for this document. Conversation speakers may each have their own voice. Both menus can stay open independently; these settings do not change downloaded MP3.</p>
       <section className="space-y-2 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50/35 dark:bg-sky-950/15 p-2.5" data-text-global-browser-tts-settings="true">
         <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Default for Text Workspaces unless overridden below. Table has its own Browser TTS preferences. These choices do not regenerate or change downloaded MP3 files.</p>
@@ -323,6 +344,7 @@ export default function TextStructuredAudioControls({
           <TextGlobalVoiceSelect channel="meaning" title="ID · Global Default" selected={preferences.browserMeaningVoiceName} effectiveName={defaultMeaningVoiceName} options={indonesianNames} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
         </div>
       </section>
+      {hasParagraphCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
 
       {hasParagraphCards && <div className="space-y-2 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-audio-paragraph="true">
         <div className="flex items-center justify-between gap-1.5">
@@ -335,6 +357,7 @@ export default function TextStructuredAudioControls({
         {renderDocumentChannel('text', 'EN (Text)', englishNames, defaultTextVoiceName, globalTextRate, availableLocalVoices?.channels?.text || [])}
         {renderDocumentChannel('meaning', 'ID (Meaning)', indonesianNames, defaultMeaningVoiceName, globalMeaningRate, availableLocalVoices?.channels?.meaning || [])}
       </div>}
+      {hasConversationCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
 
       {hasConversationCards && <div className="space-y-2.5 rounded-xl border border-sky-200/80 dark:border-sky-900/60 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-audio-conversation="true">
         <div className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-sky-500"/><span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Conversation Speakers ({speakers.length})</span></div>
@@ -401,6 +424,8 @@ export default function TextStructuredAudioControls({
         })}
         {speakers.length === 0 && <p className="text-[9px] text-amber-600 dark:text-amber-300">No speaker identity detected yet. Add Conversation segments first.</p>}
       </div>}
+        </div>
+      </details>
     </section>}
 
     {audioSurface === 'download' && <section className="min-w-0 space-y-3" data-text-download-defaults="true">
