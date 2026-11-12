@@ -452,7 +452,7 @@ export default function TextStructuredAudioControls({
       )}
 
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
-        <summary className="cursor-pointer text-[10px] font-black uppercase uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
+        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
         <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared default EN/ID MP3 voices and generation rate/pitch. Workspace DEFAULT inherits these voices. Separate from Browser TTS playback.</p>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
