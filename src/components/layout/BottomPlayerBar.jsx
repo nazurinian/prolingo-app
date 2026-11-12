@@ -19,12 +19,10 @@ const BottomPlayerBar = ({
   playingContext,
   structuredTextModeActive = false,
   textPlaybackRepresentationMode = 'split',
-  textTtsOnly = false,
   textPlaybackOrder = null,
   textPlaybackChannelMode = 'text-only',
   textActiveCursorSegmentId = null,
   onTextPlaybackRepresentationModeChange,
-  onTextTtsOnlyChange,
   onOpenTextPlayer
 }) => {
   const isStructuredText = structuredTextModeActive || playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT;
@@ -104,7 +102,6 @@ const BottomPlayerBar = ({
               {isStructuredText ? (
                 <div className="flex items-center gap-1" data-text-global-player-controls="true">
                   <button type="button" onClick={toggleRepresentation} className={`min-h-9 min-w-[44px] rounded-lg border px-1.5 text-[9px] font-black transition-colors ${representationIsFull ? 'border-violet-300 dark:border-violet-700 bg-violet-100/80 dark:bg-violet-950/50 text-violet-800 dark:text-violet-200' : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'}`} title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
-                  <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 min-w-[42px] rounded-lg border px-1.5 text-[9px] font-black transition-colors ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS' : 'LOCAL'}</button>
                   <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40 transition-colors" title="Open Text Player settings" aria-label="Open Text Player settings"><SlidersHorizontal className="w-4 h-4"/></button>
                 </div>
               ) : (
@@ -159,7 +156,6 @@ const BottomPlayerBar = ({
                <>
                  <div className="flex items-center gap-1.5" data-text-global-player-controls="true">
                    <button type="button" onClick={toggleRepresentation} className={`min-h-9 rounded-xl border px-3 text-[10px] font-black transition-colors ${representationIsFull ? 'border-violet-300 dark:border-violet-700 bg-violet-100/80 dark:bg-violet-950/50 text-violet-800 dark:text-violet-200' : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'}`} title="Toggle global Split / Full">{representationIsFull ? 'FULL' : 'SPLIT'}</button>
-                   <button type="button" onClick={() => onTextTtsOnlyChange?.(!textTtsOnly)} className={`min-h-9 rounded-xl border px-3 text-[10px] font-black transition-colors ${textTtsOnly ? 'border-amber-300 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300' : 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'}`} title="Toggle global TTS Only">{textTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}</button>
                    <button type="button" onClick={onOpenTextPlayer} className="flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-[10px] font-black text-slate-600 hover:text-indigo-600 hover:border-indigo-300 dark:text-slate-200 transition-colors" title="Open Text Player settings"><SlidersHorizontal className="w-3.5 h-3.5"/>SETTINGS</button>
                  </div>
                  <p className="max-w-72 truncate text-[9px] font-semibold text-slate-500 dark:text-slate-400" title={`Global language ${languageOrderLabel} • Local voice EN ${globalOrderLabel('text')} • ID ${globalOrderLabel('meaning')}`}>LANG {languageOrderLabel} • LOCAL VOICE: EN {globalOrderLabel('text')} • ID {globalOrderLabel('meaning')}</p>
