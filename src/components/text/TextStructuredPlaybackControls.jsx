@@ -148,7 +148,6 @@ export default function TextStructuredPlaybackControls({
   onPlaybackChannelModeChange,
   onPlaybackRepresentationModeChange,
   onGlobalPlaybackOrderChange,
-  onGlobalTtsOnlyChange,
   onPlaybackFeelChange
 }) {
   const [activeTab, setActiveTab] = useState('playback');
@@ -162,7 +161,6 @@ export default function TextStructuredPlaybackControls({
   ];
 
   const isFull = playbackRepresentationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
-  const isTtsOnly = playbackOrder?.ttsOnly === true;
   const currentLangLabel = getStructuredTextPlaybackModeLabel(preferences.playbackChannelMode || TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY);
   const currentOrderLabel = getStructuredTextOrderModeLabel(preferences.playbackOrderMode || TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL);
   const currentDisplayLabel = getStructuredTextDisplayModeLabel(preferences.displayMode || TEXT_STRUCTURED_DISPLAY_MODES.TEXT_MEANING);
