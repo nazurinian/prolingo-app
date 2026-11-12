@@ -11,13 +11,24 @@ export const resolveTextStructuredBrowserVoice = (voices, preferredName = null) 
   return list[0] || null;
 };
 
+// Existing saved selections always win. Prefer Sonia / Gadis only when unset
+// and present in the browser's reported SpeechSynthesis voice list.
+const findNamedBrowserVoice = (voices, name) => (Array.isArray(voices) ? voices : [])
+  .find(voice => new RegExp('(^|[^a-z])' + name + '([^a-z]|$)', 'i').test(cleanName(voice?.name))) || null;
+
 export const resolveTextStructuredBrowserVoiceState = ({
   englishVoices,
   indonesianVoices,
   preferences
 }) => ({
-  textVoice: resolveTextStructuredBrowserVoice(englishVoices, preferences?.browserTextVoiceName),
-  meaningVoice: resolveTextStructuredBrowserVoice(indonesianVoices, preferences?.browserMeaningVoiceName)
+  textVoice: resolveTextStructuredBrowserVoice(
+    englishVoices,
+    preferences?.browserTextVoiceName || findNamedBrowserVoice(englishVoices, 'Sonia')?.name
+  ),
+  meaningVoice: resolveTextStructuredBrowserVoice(
+    indonesianVoices,
+    preferences?.browserMeaningVoiceName || findNamedBrowserVoice(indonesianVoices, 'Gadis')?.name
+  )
 });
 
 export const resolveTextStructuredVoicePreferencePatch = ({ channel, voice }) => {
