@@ -68,6 +68,19 @@ const VoiceSelect = ({ label, value, options, fallbackLabel, disabled, helper = 
   {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
 </label>;
 
+const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, options, disabled, onChange }) => (
+  <label className="block rounded-xl border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900/45 p-2.5 text-[9px] font-bold text-slate-700 dark:text-slate-200">
+    <span className="block mb-1.5">{title}</span>
+    <select data-text-global-voice-select={channel} value={selected || ''} disabled={disabled}
+      onChange={event => onChange?.(event.target.value || null, channel)}
+      className="w-full min-w-0 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-800 px-2.5 py-2 text-[10px] text-slate-700 dark:text-slate-200">
+      <option value="">AUTO · {formatTextStructuredBrowserVoiceLabel(effectiveName)}</option>
+      {selected && !options.includes(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
+      {options.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
+    </select>
+  </label>
+);
+
 const DownloadPresetSelect = ({ value, disabled, onChange }) => <select value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT} disabled={disabled} onChange={event => onChange?.(event.target.value)} className="w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-semibold text-violet-800 dark:text-violet-200 disabled:opacity-55" data-text-download-preset-select="true">
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}>DEFAULT • Inherit Global Edge Voice</option>
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER}>FOLLOW PLAYER • Match Browser TTS Voice</option>
@@ -136,6 +149,7 @@ export default function TextStructuredAudioControls({
   disabled = false,
   onAudioSourceModeChange,
   onDocumentVoiceChange,
+  onGlobalBrowserTtsVoiceChange,
   onSpeakerVoiceChange,
   onDocumentRateChange,
   onSpeakerRateChange,
@@ -292,11 +306,20 @@ export default function TextStructuredAudioControls({
         </div>
       </details>
 
+      <section className="space-y-2 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50/35 dark:bg-sky-950/15 p-2.5" data-text-global-browser-tts-settings="true">
+        <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
+        <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Default for Text Workspaces unless overridden below. Table has its own Browser TTS preferences. These choices do not regenerate or change downloaded MP3 files.</p>
+        <div className="grid gap-2">
+          <TextGlobalVoiceSelect channel="text" title="EN · Global Default" selected={preferences.browserTextVoiceName} effectiveName={defaultTextVoiceName} options={englishNames} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
+          <TextGlobalVoiceSelect channel="meaning" title="ID · Global Default" selected={preferences.browserMeaningVoiceName} effectiveName={defaultMeaningVoiceName} options={indonesianNames} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
+        </div>
+      </section>
+
       {hasParagraphCards && <div className="space-y-2 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-audio-paragraph="true">
         <div className="flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5">
             <Volume2 className="w-3.5 h-3.5 text-indigo-500"/>
-            <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Paragraph Narrator (Browser TTS)</span>
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">This Workspace Narrator (Browser TTS)</span>
           </div>
           <span className="text-[8px] font-semibold text-slate-400">EN {englishNames.length} • ID {indonesianNames.length}</span>
         </div>
