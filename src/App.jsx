@@ -6615,6 +6615,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     disabled: isSystemBusy || structuredTextAudioGenerationState.running,
     onAudioSourceModeChange: handleStructuredTextAudioSourceModeChange,
     onDocumentVoiceChange: handleStructuredTextDocumentVoiceChange,
+    onGlobalBrowserTtsVoiceChange: (voiceName, channel) => {
+      setTextStructuredPreferences(previous => ({
+        ...previous,
+        [channel === 'meaning' ? 'browserMeaningVoiceName' : 'browserTextVoiceName']: voiceName || null
+      }));
+    },
     onSpeakerVoiceChange: handleStructuredTextSpeakerVoiceChange,
     onDocumentRateChange: handleStructuredTextDocumentRateChange,
     onSpeakerRateChange: handleStructuredTextSpeakerRateChange,
