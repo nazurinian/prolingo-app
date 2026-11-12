@@ -227,19 +227,6 @@ export default function TextStructuredPlaybackControls({
           onChange={onPlaybackChannelModeChange}
         />
 
-        <div className="space-y-1.5 pt-1 border-t border-indigo-100 dark:border-indigo-900/60">
-          <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">Audio Source Routing (Shared with Bottom Bar)</p>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onGlobalTtsOnlyChange?.(!isTtsOnly)}
-            className={`min-h-10 w-full rounded-xl border px-3 py-2 text-left text-[11px] font-bold transition-colors ${isTtsOnly ? 'border-amber-400 bg-amber-100 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300' : 'border-emerald-300 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-200'}`}
-            data-text-global-tts-only="true"
-          >
-            {isTtsOnly ? 'TTS ONLY · local audio bypassed (Browser TTS always used)' : 'LOCAL FIRST · use saved local audio first, fall back to Browser TTS'}
-          </button>
-        </div>
-
         <details open={showAdvancedPriority} onToggle={e => setShowAdvancedPriority(e.currentTarget.open)} className="rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/90 dark:bg-slate-900/35 p-3">
           <summary className="cursor-pointer text-[11px] font-bold text-indigo-700 dark:text-indigo-200">Advanced · Local Voice Priority (Global EN / ID order)</summary>
           <p className="mt-1.5 mb-2.5 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
