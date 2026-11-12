@@ -44,7 +44,11 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
 
     {isOpen && <div className={`${!embedded ? 'border-t border-violet-100 dark:border-violet-900' : ''} p-3 space-y-3`} data-text-audio-data-panel-details="true">
       {/* 1. Ready / Missing / Stale / History Indicators */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center" data-text-audio-library-indicators="true">
+      <div className="space-y-0.5">
+        <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Audio Status</p>
+        <p className="text-[9px] text-slate-500 dark:text-slate-400">Counts follow the selected generation target, not all stored voice variants.</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-center" data-text-audio-library-indicators="true">
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/25 px-2.5 py-2">
           <p className="text-base font-black leading-tight text-emerald-600 dark:text-emerald-400">{coverage.ready || 0}</p>
           <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">Ready</p>
@@ -69,7 +73,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
 
       {/* 2. Available Local Voices */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-3 space-y-2" data-text-audio-library-voices="true">
-        <div className="flex items-center justify-between gap-2" data-text-library-row="title">
+        <div className="flex flex-col items-start gap-1.5" data-text-library-row="title">
           <p className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Available Local Voices</p>
           <span className="shrink-0 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[9px] font-black text-slate-600 dark:text-slate-300">
             {voices.length} voice{voices.length === 1 ? '' : 's'}
@@ -99,12 +103,12 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
 
       {/* 3. Portable ZIP Import */}
       <div className="rounded-xl border border-violet-200 dark:border-violet-900/80 bg-white dark:bg-slate-900/40 p-3 space-y-2.5" data-text-audio-library-zip="true">
-        <div className="flex items-center justify-between gap-2" data-text-library-row="title">
+        <div className="flex flex-col items-start gap-1.5" data-text-library-row="title">
           <div className="flex items-center gap-2 min-w-0">
             <Archive className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0"/>
             <p className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200 truncate">Portable Audio ZIP</p>
           </div>
-          <span className="shrink-0 rounded-md bg-violet-100 dark:bg-violet-950/60 px-2 py-0.5 text-[8px] font-black text-violet-700 dark:text-violet-300">
+          <span className="w-fit max-w-full break-words rounded-md bg-violet-100 dark:bg-violet-950/60 px-2 py-0.5 text-[8px] font-black text-violet-700 dark:text-violet-300">
             {archiveCount} archive{archiveCount === 1 ? '' : 's'}
           </span>
         </div>
@@ -132,7 +136,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800" data-text-library-row="actions">
+        <div className="grid grid-cols-1 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800" data-text-library-row="actions">
           <input ref={zipInputRef} type="file" accept=".zip,application/zip,application/x-zip-compressed" multiple className="hidden" onChange={async event => {
             const files = Array.from(event.target.files || []);
             event.target.value = '';
@@ -143,7 +147,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
             disabled={disabled}
             onClick={() => zipInputRef.current?.click()}
             data-text-audio-import-zip="true"
-            className="min-h-9 flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[9px] font-black disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
+            className="min-h-10 w-full px-3.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[9px] font-black disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
           >
             <Upload className="w-3.5 h-3.5"/>
             <span>Import ZIP</span>
@@ -168,12 +172,12 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
 
       {/* 4. IndexedDB Staging (with Refresh Cache & Guarded Clear Staging) */}
       <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/80 bg-white dark:bg-slate-900/40 p-3 space-y-2.5" data-text-audio-staging="true">
-        <div className="flex items-center justify-between gap-2" data-text-library-row="title">
+        <div className="flex flex-col items-start gap-1.5" data-text-library-row="title">
           <div className="flex items-center gap-2 min-w-0">
             <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0"/>
             <p className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200 truncate">Text Staging (IndexedDB)</p>
           </div>
-          <span className="shrink-0 rounded-md bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[8px] font-black text-emerald-700 dark:text-emerald-300">
+          <span className="w-fit max-w-full break-words rounded-md bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[8px] font-black text-emerald-700 dark:text-emerald-300">
             {staging.count || 0} file{(staging.count || 0) === 1 ? '' : 's'} • {formatBytes(staging.bytes || 0)}
           </span>
         </div>
@@ -184,13 +188,13 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800" data-text-library-row="actions">
+        <div className="grid grid-cols-1 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800" data-text-library-row="actions">
           <button
             type="button"
             disabled={disabled}
             onClick={audioLibrary.onClearRuntimeCache}
             data-text-audio-refresh-cache="true"
-            className="min-h-9 flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[9px] font-black text-slate-700 dark:text-slate-200 hover:border-slate-300 disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
+            className="min-h-10 w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[9px] font-black text-slate-700 dark:text-slate-200 hover:border-slate-300 disabled:opacity-40 transition-colors inline-flex items-center justify-center gap-1.5"
           >
             <RefreshCw className="w-3 h-3"/>
             <span>Refresh Cache</span>
@@ -203,7 +207,7 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
               audioLibrary.onClearStaging?.();
             }}
             data-text-audio-clear-staging="true"
-            className="min-h-9 flex-1 sm:flex-none px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900 text-[9px] font-black text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-35 transition-colors inline-flex items-center justify-center gap-1.5"
+            className="min-h-10 w-full px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-900 text-[9px] font-black text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-35 transition-colors inline-flex items-center justify-center gap-1.5"
             title="Release Text Staging binary but keep Text metadata/history"
           >
             <Trash2 className="w-3 h-3"/>
@@ -213,7 +217,9 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
       </div>
 
       {/* 5. Deprecated Folder Lock */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
+      <details className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/30 p-2.5">
+        <summary className="cursor-pointer text-[9px] font-black text-slate-500 dark:text-slate-400">Advanced · Legacy Audio Folder</summary>
+        <div className="pt-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <FolderOpen className="w-3.5 h-3.5 text-slate-400 shrink-0"/>
@@ -224,7 +230,8 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
           </div>
           <button type="button" disabled className="shrink-0 min-h-8 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-400 opacity-60">LOCKED</button>
         </div>
-      </div>
+        </div>
+      </details>
 
       {(zip.legacyCount || folder.legacyCount) > 0 && <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/20 px-2.5 py-2 text-[9px] leading-relaxed text-amber-700 dark:text-amber-300">Legacy filenames such as <span className="font-mono">TEXT_000002_en-GB-SoniaNeural_text</span> are detected but intentionally not auto-bound.</p>}
     </div>}
