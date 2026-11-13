@@ -67,9 +67,12 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
         </div>
       </div>
 
-      <p className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 px-2.5 py-2 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300" data-text-audio-history-explanation="true">
-        <b>Ready</b> = playable local file is present. <b>History</b> = a downloaded/generated voice was recorded, but its local binary may be absent. <b>Stale / Other</b> = text changed or audio is under another voice. <b>Missing</b> = no matching playable file.
-      </p>
+      <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 px-2.5 py-2.5 space-y-2 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300" data-text-audio-history-explanation="true">
+        <p><b>Ready</b> — playable local file is present.</p>
+        <p><b>History</b> — a download/generation was recorded, but its local binary may be absent.</p>
+        <p><b>Stale / Other</b> — text changed or audio is associated with another voice.</p>
+        <p><b>Missing</b> — no matching playable file.</p>
+      </div>
 
       {/* 2. Available Local Voices */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-3 space-y-2" data-text-audio-library-voices="true">
@@ -81,15 +84,15 @@ export const TextAudioDataPanel = ({ audioLibrary = null, compact = false, embed
         </div>
         <div data-text-library-row="metadata">
           {voices.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-2 gap-2" data-text-audio-local-voice-grid="true">
               {voices.map(voice => (
                 <span
                   key={voice.id}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[9px] font-black text-slate-700 dark:text-slate-200"
+                  className="flex min-w-0 items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[9px] font-black text-slate-700 dark:text-slate-200"
                   title={`${voice.id} • ${voice.sources?.join(', ') || 'local'}`}
                 >
-                  <span>{voiceLabel(voice.id)}</span>
-                  <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[8px] font-bold text-emerald-700 dark:text-emerald-300">{voice.count}</span>
+                  <span className="min-w-0 truncate">{voiceLabel(voice.id)}</span>
+                  <span className="shrink-0 rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[8px] font-bold text-emerald-700 dark:text-emerald-300">{voice.count}</span>
                 </span>
               ))}
             </div>
