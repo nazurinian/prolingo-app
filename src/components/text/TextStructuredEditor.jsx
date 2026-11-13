@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react';
 import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
+import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 import { TEXT_AUDIO_COVERAGE_STATUS, summarizeTextStructuredAudioCoverage } from '../../domain/text/textStructuredAudioCoverageDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 import {
@@ -348,7 +349,7 @@ export const TextStructuredEditor = ({ documentTree, isBusy, error, onCommand, c
               <h3 className="text-xs font-black text-slate-800 dark:text-white">{documentType === 'paragraph' ? (compact ? 'Cards & Sentences' : 'Structured Card / Sentence Editor') : (compact ? 'Cards & Segments' : 'Structured Card / Segment Editor')}</h3>
               {!compact && <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">DIRECT INDEXEDDB</span>}
             </div>
-            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • {documentType === 'conversation' ? 'Multi-speaker • Text + Meaning' : documentType === 'paragraph' ? 'Single narrator • Text + Meaning' : 'Conversation MIX • Paragraph narrator + actual Card speakers'}</p>
+            <p className="mt-1 text-[9px] text-slate-400">{blocks.length} card{blocks.length === 1 ? '' : 's'} • {segmentCount} segment{segmentCount === 1 ? '' : 's'} • {documentType === 'conversation' ? 'Multi-speaker • Text + Meaning' : documentType === 'paragraph' ? 'Single narrator • Text + Meaning' : `${getTextWorkspaceLabel(documentTree)} • Paragraph narrator + actual Card speakers`}</p>
             {documentAudio.total > 0 && <p className={`mt-1 text-[8px] font-bold ${documentAudio.needDownload ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>Audio coverage {documentAudio.covered}/{documentAudio.total}{documentAudio.needDownload ? ` • ${documentAudio.needDownload} need download` : ' • complete'}</p>}
           </div>
           <button type="button" disabled={isBusy} onClick={() => setCreatingCard(value => !value)} className="min-h-10 px-3 py-2 rounded-lg bg-emerald-600 text-white text-[10px] font-black disabled:opacity-40 active:scale-95 transition"><Plus className="w-3 h-3 inline mr-1"/>Card</button>

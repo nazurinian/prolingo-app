@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
+import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDomain';
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
   Settings, FileText, Table2, ChevronDown, ChevronUp, ListPlus
@@ -79,7 +80,7 @@ const Header = ({
                     {(textLibraryCatalog?.rootDocuments || []).length > 0 && <optgroup label="Library Root">{textLibraryCatalog.rootDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>}
                     {(textLibraryCatalog?.collections || []).map(collection => <optgroup key={collection.id} label={collection.title}>{(collection.documents || []).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>)}
                   </select>
-                  {activeTextDocument && <span className="hidden lg:inline-flex text-[9px] font-black px-2 py-1 rounded bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 whitespace-nowrap">{activeTextDocument.editorModel === 'legacy-line-v1' ? 'LEGACY' : `${activeTextDocument.documentType.toUpperCase()} • STRUCTURED`}</span>}
+                  {activeTextDocument && <span className="hidden lg:inline-flex text-[9px] font-black px-2 py-1 rounded bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 whitespace-nowrap">{getTextWorkspaceBadge(activeTextDocument)}</span>}
                 </div>
               ) : (
                 <>

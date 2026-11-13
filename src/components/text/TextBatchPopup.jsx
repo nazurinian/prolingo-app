@@ -7,6 +7,8 @@ import {
   applyTextStructuredBulkVoiceSelectionChange,
   validateTextStructuredBulkVoiceDraft
 } from '../../domain/text/textStructuredBulkGenerationDomain.js';
+import { TEXT_STRUCTURED_EDITOR_MODEL } from '../../constants/textDatabaseConstants.js';
+import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 
 const compactVoiceLabel = value => {
   const raw = String(value || '').trim();
@@ -327,7 +329,7 @@ export const TextBatchPopup = ({
 
           {scopeMode === 'selected' && <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-cyan-100 dark:border-cyan-900 bg-white/80 dark:bg-slate-900/45 p-2" data-text-batch-selected-workspaces="true">
             {workspaceOptions.map(workspace => <ToggleRow key={workspace.id} checked={selectedWorkspaceIds.includes(workspace.id)} disabled={running} onClick={() => toggleSelectedWorkspace(workspace.id)}>
-              {workspace.title} • {workspace.collectionTitle || 'Unfiled'} • {workspace.documentType === 'mixed' ? 'Conversation MIX' : workspace.documentType || 'text'}
+              {workspace.title} • {workspace.collectionTitle || 'Unfiled'} • {getTextWorkspaceLabel(workspace, TEXT_STRUCTURED_EDITOR_MODEL)}
             </ToggleRow>)}
             {!workspaceOptions.length && <p className="text-[8px] text-slate-400">No structured Workspaces available.</p>}
           </div>}

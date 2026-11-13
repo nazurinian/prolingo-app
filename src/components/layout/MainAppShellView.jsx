@@ -16,6 +16,7 @@ import ManualEditorModal from '../modals/ManualEditorModal';
 import { RevertAllConfirmModal, DeleteVocabularyModal, ClearViewModal, DeleteDeckModal } from '../modals/ConfirmDialog';
 import { createEmptySourcePack } from '../../utils/multiSourceUtils';
 import { MOBILE_AUX_TOP_OFFSET, MOBILE_BOTTOM_PLAYER_RESERVE_CSS, getMobilePlayerTopOffset } from '../../constants/layoutConstants';
+import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDomain';
 
 export const renderMainAppShellView = (props) => {
   const {
@@ -59,7 +60,6 @@ export const renderMainAppShellView = (props) => {
     ...(textLibraryCatalog?.rootDocuments || []),
     ...(textLibraryCatalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
   ] : [];
-  const getTextModeLabel = document => document?.editorModel === 'legacy-line-v1' ? 'LEGACY' : document?.documentType === 'conversation' ? 'CONV' : document?.documentType === 'paragraph' ? 'PARA' : 'MIXED';
 
   return (
     <div className={`bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans flex flex-col relative transition-colors ${isMobile ? 'min-h-[100dvh] overflow-x-hidden' : 'h-screen overflow-hidden'}`}>
@@ -357,7 +357,7 @@ export const renderMainAppShellView = (props) => {
                     {isMobile && mode === 'text' && <div className="mb-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-900/95 p-2 shadow-sm" data-mobile-text-document-strip="true">
                       <div className="flex items-center gap-1.5 overflow-x-auto overscroll-x-contain custom-scrollbar pb-0.5">
                         {mobileTextDocuments.map(document => <button key={document.id} type="button" disabled={textLibraryCommandBusy} onClick={() => handleTextLibrarySelectDocument?.(document.id)} className={`shrink-0 min-h-10 max-w-[180px] rounded-lg border px-2.5 py-1.5 text-left ${document.id === activeTextDocumentId ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
-                          <span className="block truncate text-[9px] font-black">{document.title}</span><span className={`block text-[7px] font-bold ${document.id === activeTextDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{getTextModeLabel(document)}</span>
+                          <span className="block truncate text-[9px] font-black">{document.title}</span><span className={`block text-[7px] font-bold ${document.id === activeTextDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{getTextWorkspaceBadge(document)}</span>
                         </button>)}
                         {!mobileTextDocuments.length && <span className="shrink-0 px-2 text-[9px] text-slate-400">No Text data yet</span>}
                         <button type="button" onClick={() => { setSidebarSection?.('data'); handleMobileTabSwitch?.('tools'); }} className="shrink-0 min-h-10 rounded-lg border border-indigo-200 dark:border-indigo-800 px-3 text-[9px] font-black text-indigo-700 dark:text-indigo-300">DATA</button>

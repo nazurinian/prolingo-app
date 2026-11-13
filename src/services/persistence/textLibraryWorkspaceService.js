@@ -5,6 +5,7 @@ import {
   resolveTextLibraryDocumentTree
 } from '../../domain/text/textLibraryDomain.js';
 import { createEmptyTextIdentityState } from '../../domain/text/textIdentityDomain.js';
+import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 import { executeTextAudioVariantUpsert, executeTextLibraryCommand } from './textLibraryCommandService.js';
 import { syncLegacyTextProjectionToDatabase } from './textLibraryIndexedDbService.js';
 
@@ -116,9 +117,7 @@ export const executeTextLibraryCreateDocument = async ({
     setTextIdentityState,
     setTextContent
   });
-  const modeLabel = projection.document?.editorModel === TEXT_LEGACY_EDITOR_MODEL
-    ? 'Legacy'
-    : (projection.document?.documentType === 'conversation' ? 'Conversation' : projection.document?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility');
+  const modeLabel = getTextWorkspaceLabel(projection.document);
   addLog?.('Text Library', `Created ${modeLabel} Document ${result.id}: ${projection.document?.title || result.id}.`);
   return result;
 };

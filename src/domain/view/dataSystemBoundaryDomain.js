@@ -97,9 +97,17 @@ export const resolveGuardedBatchOpenValue = ({
  * Returns true when live scope still matches the expected Legacy/Table Audio Folder
  * scope captured when an async operation began.
  */
-export const isMatchingAudioFolderScope = (liveScope, expectedMode, expectedEditorModel = null) => {
+export const isMatchingAudioFolderScope = (
+  liveScope,
+  expectedMode,
+  expectedEditorModel = null,
+  expectedDocumentId = null
+) => {
   if (!liveScope || liveScope.mode !== expectedMode) return false;
-  if (expectedMode === 'text' && liveScope.activeTextEditorModel !== expectedEditorModel) return false;
+  if (expectedMode === 'text') {
+    if (liveScope.activeTextEditorModel !== expectedEditorModel) return false;
+    if (expectedDocumentId && liveScope.activeTextDocumentId !== expectedDocumentId) return false;
+  }
   return isLegacyAudioFolderSupported(liveScope);
 };
 
@@ -134,7 +142,7 @@ export const getTextSystemBoundarySummary = ({
         'Configure Edge defaults and connection checks in Text → Audio → Generate Audio, per-card/speaker overrides in Card Audio or Bulk Audio, and offline packs in Audio Library (Staging & Portable ZIP).',
       storageTitle: 'Text Data & Storage',
       storageSummary:
-        'Structured workbooks, blocks, segments, and staged audio are stored separately under Text Library IndexedDB.',
+        'Text Library IndexedDB stores documents, cards, segments, and metadata. Shared Audio Staging IndexedDB stores audio metadata and blobs separated by Table and Text mode.',
       storageDetail:
         'Manage Collections, documents, workspace creation, and document actions in Text → Data.'
     };
@@ -150,7 +158,7 @@ export const getTextSystemBoundarySummary = ({
         'Structured Text Edge generation applies only to Structured workbooks in Text → Audio → Generate Audio.',
       storageTitle: 'Text Data & Storage',
       storageSummary:
-        'Legacy Text documents are stored separately under Text Library IndexedDB.',
+        'Text Library IndexedDB stores documents, cards, segments, and metadata separately from Shared Audio Staging IndexedDB (audio metadata and blobs separated by Table and Text mode).',
       storageDetail:
         'Manage Collections and documents in Text → Data.'
     };
@@ -165,7 +173,7 @@ export const getTextSystemBoundarySummary = ({
       'Structured Text configures Edge-only generation in Text → Audio → Generate Audio, while Legacy Text documents use Legacy Audio Folder.',
     storageTitle: 'Text Data & Storage',
     storageSummary:
-      'Text documents and workspaces are stored separately under Text Library IndexedDB.',
+      'Text Library IndexedDB stores documents, cards, segments, and metadata. Shared Audio Staging IndexedDB stores audio metadata and blobs separated by Table and Text mode.',
     storageDetail:
       'Manage Collections, documents, and workspace actions in Text → Data.'
   };

@@ -5,6 +5,7 @@ import { ArrowRightToLine, BookOpen, Lock, Unlock, Layers, Upload, X, FileDown, 
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
 import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
+import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 
 export default function DesktopDataWorkspace({
   mode, textareaRef, isSystemBusy, isLocked, textContent, handleInputContentChange, handleInsertTab,
@@ -19,7 +20,8 @@ export default function DesktopDataWorkspace({
 }) {
   const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
   const [textDataSection, setTextDataSection] = useState('library');
-  const textModeLabel = activeTextEditorModel === 'legacy-line-v1' ? 'Legacy' : activeTextDocument?.documentType === 'conversation' ? 'Conversation' : activeTextDocument?.documentType === 'paragraph' ? 'Paragraph' : activeTextEditorModel === 'structured-v1' && activeTextDocument?.documentType === 'mixed' ? 'Conversation MIX' : 'Mixed compatibility';
+  const textModeLabel = getTextWorkspaceLabel(activeTextDocument, activeTextEditorModel);
+  const textModeBadge = getTextWorkspaceBadge(activeTextDocument, activeTextEditorModel);
   const textBlockCount = activeTextDocumentTree?.blocks?.length || 0;
   const textSegmentCount = useMemo(() => (activeTextDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0), [activeTextDocumentTree]);
   const textSourceCount = activeTextDocumentTree?.__packActions?.sourceAttachments?.length || 0;
@@ -33,7 +35,7 @@ export default function DesktopDataWorkspace({
                       <p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Data</p>
                       <p className="mt-0.5 text-[8px] text-slate-400 truncate">{textModeLabel} • {activeTextDocument?.title || 'No active Workspace'}</p>
                     </div>
-                    <span className="px-1.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeLabel.toUpperCase()}</span>
+                    <span className="px-1.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-indigo-100 dark:border-indigo-900 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeBadge}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 text-center">
                     <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black text-slate-700 dark:text-slate-200">{textBlockCount}</p><p className="text-[7px] font-black uppercase text-slate-400">{activeTextEditorModel === 'legacy-line-v1' ? 'Lines' : 'Cards'}</p></div>

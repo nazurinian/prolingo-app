@@ -26,6 +26,7 @@ import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx
 import { TEXT_PARAGRAPH_CARD_ROLES, getTextParagraphCardRoleLabel, resolveTextParagraphCardRole } from '../../domain/text/textParagraphRoleDomain.js';
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
+import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -506,7 +507,7 @@ export const TextStructuredPlayer = ({
   const generationBusy = Boolean(generationState?.running);
   const controlsBusy = structuredSessionActive || generationBusy;
   const conversationSpeakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
-  const documentModeLabel = documentTree?.documentType === 'conversation' ? 'Conversation' : documentTree?.documentType === 'paragraph' ? 'Paragraph' : 'Conversation • MIX';
+  const documentModeLabel = getTextWorkspaceLabel(documentTree);
   const isGlobalTtsOnly = playbackPreferences?.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
 
   useEffect(() => {

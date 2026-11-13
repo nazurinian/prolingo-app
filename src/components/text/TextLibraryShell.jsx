@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
+import {
+  TEXT_LIBRARY_FILTER_OPTIONS,
+  TEXT_WORKSPACE_CREATE_OPTIONS,
+  getTextWorkspaceFilterEmptyLabel,
+  getTextWorkspaceLabel,
+  resolveTextWorkspaceType
+} from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 import { AlertTriangle, BookOpen, ChevronRight, Copy, Database, Download, Edit3, FileText, Layers, Link2, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Trash2, Unlink, Upload, X } from 'lucide-react';
-
-const typeLabel = document => document?.editorModel === 'legacy-line-v1' ? 'Legacy' : document?.documentType === 'conversation' ? 'Conversation' : document?.documentType === 'paragraph' ? 'Paragraph' : document?.editorModel === 'structured-v1' && document?.documentType === 'mixed' ? 'Conversation • MIX' : 'Mixed (compatibility)';
-const typeKey = document => document?.editorModel === 'legacy-line-v1' ? 'legacy' : document?.documentType === 'paragraph' ? 'paragraph' : document?.editorModel === 'structured-v1' && ['conversation', 'mixed'].includes(document?.documentType) ? 'conversation' : 'mixed';
 
 const formatBytes = value => { const bytes = Math.max(0, Number(value || 0)); if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; };
 
@@ -76,7 +80,9 @@ export const TextLibraryShell = ({
     ...(catalog?.rootDocuments || []).map(document => ({ ...document, collectionTitle: 'Unfiled / Library Root' })),
     ...(catalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
   ], [catalog]);
-  const filteredDocuments = libraryFilter === 'all' ? allDocuments : allDocuments.filter(document => typeKey(document) === libraryFilter);
+  const filteredDocuments = libraryFilter === 'all'
+    ? allDocuments
+    : allDocuments.filter(document => resolveTextWorkspaceType(document) === libraryFilter);
 
   const createDemo = async mode => {
     if (isBusy || demoBusy) return;
@@ -339,20 +345,20 @@ export const TextLibraryShell = ({
       </div>
 
       {dataSection === 'library' && <div className="space-y-2" data-text-library-mode-tabs="true">
-        <div className="grid grid-cols-4 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/60 p-1" role="tablist" aria-label="Text Library mode filter">
-          {[['all','All'],['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation']].map(([key,label]) => <button key={key} type="button" role="tab" aria-selected={libraryFilter === key} onClick={() => setLibraryFilter(key)} className={`min-h-10 rounded-lg px-1.5 py-2 text-[9px] font-black transition ${libraryFilter === key ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>{label}</button>)}
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/60 p-1" role="tablist" aria-label="Text Library mode filter">
+          {TEXT_LIBRARY_FILTER_OPTIONS.map(({ key, label }) => <button key={key} type="button" role="tab" aria-selected={libraryFilter === key} onClick={() => setLibraryFilter(key)} className={`min-h-10 rounded-lg px-1.5 py-2 text-[9px] font-black transition ${libraryFilter === key ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>{label}</button>)}
         </div>
         {filteredDocuments.length > 0 ? <div className="max-h-48 overflow-y-auto overscroll-contain custom-scrollbar space-y-1" data-text-library-unified-list="true">
           {filteredDocuments.map(document => <button key={document.id} type="button" disabled={isBusy} onClick={() => onSelectDocument?.(document.id)} className={`w-full min-h-11 rounded-lg border px-2.5 py-2 text-left transition ${document.id === activeDocumentId ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 text-slate-600 dark:text-slate-300'}`}>
-            <div className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-[10px] font-black">{document.title}</span><span className={`shrink-0 rounded px-1.5 py-0.5 text-[7px] font-black uppercase ${document.id === activeDocumentId ? 'bg-white/15 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>{typeLabel(document)}</span></div>
+            <div className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-[10px] font-black">{document.title}</span><span className={`shrink-0 rounded px-1.5 py-0.5 text-[7px] font-black uppercase ${document.id === activeDocumentId ? 'bg-white/15 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>{getTextWorkspaceLabel(document)}</span></div>
             <p className={`mt-0.5 truncate text-[8px] ${document.id === activeDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{document.collectionTitle} • {document.id}</p>
           </button>)}
-        </div> : <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-3 text-center" data-text-library-empty-filter="true"><p className="text-[10px] font-black text-slate-600 dark:text-slate-300">No {libraryFilter === 'all' ? 'Text' : typeLabel({ editorModel: libraryFilter === 'legacy' ? 'legacy-line-v1' : 'structured-v1', documentType: libraryFilter })} workspaces</p><p className="mt-1 text-[8px] text-slate-400">Create fresh data in CREATE, import an existing JSON source in TRANSFER, or load a starter demo.</p></div>}
+        </div> : <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-3 text-center" data-text-library-empty-filter="true"><p className="text-[10px] font-black text-slate-600 dark:text-slate-300">No {getTextWorkspaceFilterEmptyLabel(libraryFilter)} workspaces</p><p className="mt-1 text-[8px] text-slate-400">Create fresh data in CREATE, import an existing JSON source in TRANSFER, or load a starter demo.</p></div>}
       </div>}
 
       {dataSection === 'create' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-text-create-actions="true">
         <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'document' ? null : 'document')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'document' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
-          <span className="block text-[10px] font-black"><Plus className="w-3 h-3 inline mr-1"/>Create Workspace</span><span className={`mt-0.5 block text-[8px] ${createMode === 'document' ? 'text-indigo-100' : 'text-slate-400'}`}>Legacy, Paragraph, Conversation, or Conversation MIX</span>
+          <span className="block text-[10px] font-black"><Plus className="w-3 h-3 inline mr-1"/>Create Workspace</span><span className={`mt-0.5 block text-[8px] ${createMode === 'document' ? 'text-indigo-100' : 'text-slate-400'}`}>Legacy, Paragraph, Conversation, or Mixed</span>
         </button>
         <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'collection' ? null : 'collection')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'collection' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
           <span className="block text-[10px] font-black"><Layers className="w-3 h-3 inline mr-1"/>Create Book Collection</span><span className={`mt-0.5 block text-[8px] ${createMode === 'collection' ? 'text-indigo-100' : 'text-slate-400'}`}>Optional organiser; Workspaces may stay Unfiled</span>
@@ -439,7 +445,7 @@ export const TextLibraryShell = ({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{activeDocument.title}</p>
-              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{typeLabel(activeDocument)}</span>
+              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{getTextWorkspaceLabel(activeDocument)}</span>
               {!compact && <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${activeDocument.editorModel === 'structured-v1' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{activeDocument.editorModel === 'structured-v1' ? 'STRUCTURED V1' : 'LEGACY'}</span>}
             </div>
             {!compact && <p className="text-[8px] font-mono text-slate-400 mt-1">{activeDocument.id}</p>}
@@ -583,7 +589,7 @@ export const TextLibraryShell = ({
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-[12rem] flex-1">
             <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Workspace actions</p>
-            <p className="text-[8px] text-slate-400 truncate">{typeLabel(activeDocument)} • {activeDocument.id}</p>
+            <p className="text-[8px] text-slate-400 truncate">{getTextWorkspaceLabel(activeDocument)} • {activeDocument.id}</p>
           </div>
           <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title || ''); setRenameOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300"><Edit3 className="w-3 h-3 inline mr-1"/>Rename</button>
           {onMoveDocument && <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={() => { setMoveCollectionId(activeDocument.collectionId || ''); setMoveOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300 disabled:opacity-40" title={activeDocumentAttachment ? 'Attached source Workspaces keep source ownership location. Detach first before moving.' : 'Move Workspace to Unfiled / Library Root or another Book Collection'}><Layers className="w-3 h-3 inline mr-1"/>Move</button>}
@@ -637,14 +643,14 @@ export const TextLibraryShell = ({
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Workspace title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">
-            {[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation'],['mixed','Conversation MIX']].map(([key,label]) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
+            {TEXT_WORKSPACE_CREATE_OPTIONS.map(({ key, label }) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
           </div>
           <select value={newDocumentCollectionId} onChange={event => setNewDocumentCollectionId(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
             <option value="">Unfiled / Library Root</option>
             {(catalog?.collections || []).map(collection => <option key={collection.id} value={collection.id}>{collection.title}</option>)}
           </select>
         </div>
-        {newDocumentType === 'mixed' && <p className="text-[8px] leading-relaxed text-sky-600 dark:text-sky-300">Conversation MIX can order Paragraph TITLE/PARAGRAPH Cards and Conversation Cards inside one Workspace. Paragraph uses narrator rules; each Conversation Card uses only its referenced speakers.</p>}
+        {newDocumentType === 'mixed' && <p className="text-[8px] leading-relaxed text-sky-600 dark:text-sky-300">Mixed can combine Paragraph Cards (Title and Paragraph roles) and Conversation Cards inside one Workspace. Paragraph uses narrator rules; each Conversation Card uses only its referenced speakers.</p>}
         <button type="button" disabled={isBusy || !newDocumentTitle.trim()} onClick={submitDocument} className="w-full flex items-center justify-center gap-1 py-1.5 rounded bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40"><Plus className="w-3 h-3"/>Create & Open</button>
       </div>}
 

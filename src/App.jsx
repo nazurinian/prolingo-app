@@ -6213,10 +6213,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
       || !isLegacyAudioFolderSupported(liveScope)
       || liveScope.mode !== mode
-      || (mode === 'text' && liveScope.activeTextEditorModel !== activeTextEditorModel)
+      || (mode === 'text' && (
+        liveScope.activeTextEditorModel !== activeTextEditorModel
+        || (activeTextDocumentId && liveScope.activeTextDocumentId !== activeTextDocumentId)
+      ))
     ) {
-      addLog?.('Info', 'Skipped Legacy Audio Folder load: only supported in Table or Legacy Text mode.');
-      return { count: 0, orphanCount: 0, blocked: true, reason: 'legacy-audio-folder-unsupported' };
+      addLog?.('Info', 'Skipped Legacy Audio Folder load: workspace scope changed before scan completed.');
+      return { count: 0, orphanCount: 0, blocked: true, stale: true, reason: 'legacy-audio-folder-unsupported' };
     }
     clearGeneratedAudioMetaForMode(mode);
     if (mode === 'table') revokeTableFolderVariantUrls();
@@ -6376,8 +6379,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         .map(item => `${getVocabIdentity(item)}:${getRecordAudioNo(item) || ''}`)
         .join('|');
     }
-    return playlist.map(item => String(item?.id || '')).join('|');
-  }, [mode, activeTextEditorModel, playlist]);
+    return `${activeTextDocumentId || ''}:${playlist.map(item => String(item?.id || '')).join('|')}`;
+  }, [mode, activeTextEditorModel, activeTextDocumentId, playlist]);
 
   const getAudioAutoRestoreState = () => {
     if (!folderInputRef.audioAutoRestoreState) {
@@ -6414,10 +6417,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     // Manual reconnect/change always supersedes any slower automatic scan.
     const restoreState = getAudioAutoRestoreState();
-    restoreState.generations[mode] = (restoreState.generations[mode] || 0) + 1;
+    const generation = (restoreState.generations[mode] || 0) + 1;
+    restoreState.generations[mode] = generation;
     const expectedMode = mode;
     const expectedEditorModel = liveScope.activeTextEditorModel;
-    const shouldContinue = () => isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel);
+    const expectedDocumentId = expectedMode === 'text' ? liveScope.activeTextDocumentId : null;
+    const shouldContinue = () => (
+      getAudioAutoRestoreState().generations[expectedMode] === generation
+      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel, expectedDocumentId)
+    );
     return executeRememberedAudioFolderOpenService({
       mode,
       activeTextEditorModel: expectedEditorModel,
@@ -6451,9 +6459,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.generations[mode] = generation;
     const expectedMode = mode;
     const expectedEditorModel = liveScope.activeTextEditorModel;
+    const expectedDocumentId = expectedMode === 'text' ? liveScope.activeTextDocumentId : null;
     const shouldContinue = () => (
       getAudioAutoRestoreState().generations[expectedMode] === generation
-      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel)
+      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel, expectedDocumentId)
     );
 
     return executeRememberedAudioFolderOpenService({
@@ -6501,9 +6510,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.generations[mode] = generation;
     const expectedMode = mode;
     const expectedEditorModel = activeTextEditorModel;
+    const expectedDocumentId = expectedMode === 'text' ? activeTextDocumentId : null;
     const shouldContinue = () => (
       getAudioAutoRestoreState().generations[expectedMode] === generation
-      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel)
+      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel, expectedDocumentId)
     );
 
     executeRememberedAudioFolderRestoreService({

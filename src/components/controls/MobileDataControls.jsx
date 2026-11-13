@@ -5,6 +5,7 @@ import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetCon
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
 import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
 import { isLegacyTextMode, isStructuredTextMode } from '../../domain/view/dataSystemBoundaryDomain';
+import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 
 export default function MobileDataControls({
   mode, isMultiSourceMode, dirtySourceKeys, isSystemBusy, isCsvDirty, openFullPackPicker,
@@ -21,7 +22,9 @@ export default function MobileDataControls({
 }) {
   const [textMobileSurface, setTextMobileSurface] = useState('library');
   const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
-  const textModeLabel = activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Legacy' : activeTextDocument?.documentType === 'conversation' ? 'Conversation' : activeTextDocument?.documentType === 'paragraph' ? 'Paragraph' : 'Mixed compatibility';
+  const resolvedEditorModel = activeTextEditorModel || activeTextDocument?.editorModel || null;
+  const textModeLabel = getTextWorkspaceLabel(activeTextDocument, resolvedEditorModel);
+  const textModeBadge = getTextWorkspaceBadge(activeTextDocument, resolvedEditorModel);
   const textBlockCount = activeTextDocumentTree?.blocks?.length || 0;
   const textSegmentCount = useMemo(() => (activeTextDocumentTree?.blocks || []).reduce((sum, block) => sum + (block.segments?.length || 0), 0), [activeTextDocumentTree]);
 
@@ -31,7 +34,6 @@ export default function MobileDataControls({
   }, [mode, activeTextDocument?.editorModel, textMobileSurface]);
 
   if (mode === 'text') {
-    const resolvedEditorModel = activeTextEditorModel || activeTextDocument?.editorModel || null;
     const canEditStructured = isStructuredTextMode(mode, resolvedEditorModel);
     const isLegacyText = isLegacyTextMode(mode, resolvedEditorModel);
     const workspace = <div className="space-y-3" data-text-mobile-workspace="true">
@@ -60,7 +62,7 @@ export default function MobileDataControls({
     </div>;
     return <div className="space-y-3" data-text-mobile-mini="true">
       <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
-        <div className="flex items-start gap-2"><BookOpen className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0 flex-1"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Data</p><p className="text-[8px] text-slate-400 truncate">{textModeLabel} • {activeTextDocument?.title || 'No active document'}</p></div><span className="rounded-md border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 px-1.5 py-1 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeLabel.toUpperCase()}</span></div>
+        <div className="flex items-start gap-2"><BookOpen className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0 flex-1"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Data</p><p className="text-[8px] text-slate-400 truncate">{textModeLabel} • {activeTextDocument?.title || 'No active document'}</p></div><span className="rounded-md border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 px-1.5 py-1 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeBadge}</span></div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-center"><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textBlockCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Lines' : 'Cards'}</p></div><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textSegmentCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Playable' : 'Segments'}</p></div></div>
         <p className="mt-2 text-[8px] text-slate-400">{canEditStructured ? 'DATA = Library • JSON Sources • CRUD • Backup • Bulk Audio' : 'DATA = Library • CRUD • Backup (Bulk Audio requires Structured Text)'}</p>
         <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="mt-3 w-full min-h-11 rounded-lg bg-indigo-600 text-white text-[10px] font-black active:scale-[0.99]" data-text-mobile-open-workspace="true">OPEN DATA WORKSPACE</button>
