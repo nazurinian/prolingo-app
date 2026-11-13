@@ -32,6 +32,13 @@ import {
   buildTextStructuredFullAudioArtifactsMetadata,
   normalizeTextStructuredFullArtifactRecord
 } from './textStructuredSplitFullDomain.js';
+import {
+  TEXT_STRUCTURED_RESET_SCOPES,
+  buildResetTextBlockAudioMetadata,
+  buildResetTextSegmentAudioMetadata,
+  buildResetTextSpeakerAudioMetadata,
+  buildResetTextWorkspaceAudioMetadata
+} from './textStructuredResetDomain.js';
 
 const COMMAND_TYPES = Object.freeze({
   CREATE_COLLECTION: 'collection.create',
@@ -56,7 +63,8 @@ const COMMAND_TYPES = Object.freeze({
   UPSERT_AUDIO_VARIANT: 'audioVariant.upsert',
   DELETE_AUDIO_VARIANT: 'audioVariant.delete',
   UPSERT_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.upsert',
-  DELETE_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.delete'
+  DELETE_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.delete',
+  RESET_AUDIO_PREFERENCES: 'audioPreferences.reset'
 });
 
 export const TEXT_LIBRARY_COMMAND_TYPES = COMMAND_TYPES;
@@ -810,6 +818,119 @@ const deleteFullAudioArtifact = (snapshot, payload, now) => {
   });
 };
 
+const metadataSignature = metadata => JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {});
+
+const resetAudioPreferences = (snapshot, payload, now) => {
+  const scope = String(payload?.scope || '').trim();
+  const docPatchById = new Map();
+  const blockPatchById = new Map();
+  const segmentPatchById = new Map();
+  let targetId = null;
+  let documentId = null;
+
+  if (scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE) {
+    const document = requireStructuredDocument(snapshot, payload?.documentId);
+    targetId = document.id;
+    documentId = document.id;
+    const includeSpeakers = Boolean(payload?.includeSpeakers);
+    docPatchById.set(document.id, buildResetTextWorkspaceAudioMetadata(document.metadata, { includeSpeakers }));
+    if (payload?.includeCardsAndSegments === true) {
+      snapshot.blocks
+        .filter(item => item.documentId === document.id)
+        .forEach(item => blockPatchById.set(item.id, buildResetTextBlockAudioMetadata(item.metadata, { includeSpeakers })));
+      snapshot.segments
+        .filter(item => item.documentId === document.id)
+        .forEach(item => segmentPatchById.set(item.id, buildResetTextSegmentAudioMetadata(item.metadata)));
+    }
+  } else if (scope === TEXT_STRUCTURED_RESET_SCOPES.SPEAKERS) {
+    const document = requireStructuredDocument(snapshot, payload?.documentId);
+    targetId = payload?.speakerId || payload?.speaker || document.id;
+    documentId = document.id;
+    const speakerOptions = {
+      speakerId: payload?.speakerId || null,
+      speaker: payload?.speaker || null,
+      includeSync: payload?.includeSync !== false
+    };
+    docPatchById.set(document.id, buildResetTextSpeakerAudioMetadata(document.metadata, { ...speakerOptions, isDocument: true }));
+    snapshot.blocks
+      .filter(item => item.documentId === document.id)
+      .forEach(item => blockPatchById.set(item.id, buildResetTextSpeakerAudioMetadata(item.metadata, {
+        speakerId: speakerOptions.speakerId,
+        speaker: speakerOptions.speaker,
+        includeSync: false,
+        isDocument: false
+      })));
+  } else if (scope === TEXT_STRUCTURED_RESET_SCOPES.CARD) {
+    const block = requireBlock(snapshot, payload?.blockId);
+    requireStructuredDocument(snapshot, block.documentId);
+    targetId = block.id;
+    documentId = block.documentId;
+    blockPatchById.set(block.id, buildResetTextBlockAudioMetadata(block.metadata, {
+      includeSpeakers: payload?.includeSpeakers !== false
+    }));
+    if (payload?.includeSegments !== false) {
+      snapshot.segments
+        .filter(item => item.blockId === block.id)
+        .forEach(item => segmentPatchById.set(item.id, buildResetTextSegmentAudioMetadata(item.metadata)));
+    }
+  } else if (scope === TEXT_STRUCTURED_RESET_SCOPES.SEGMENT) {
+    const segment = requireSegment(snapshot, payload?.segmentId);
+    requireStructuredDocument(snapshot, segment.documentId);
+    targetId = segment.id;
+    documentId = segment.documentId;
+    segmentPatchById.set(segment.id, buildResetTextSegmentAudioMetadata(segment.metadata));
+  } else {
+    throw new Error(`Unsupported Text audio preference reset scope: ${scope || '(missing)'}`);
+  }
+
+  const changedDocumentIds = [];
+  const changedBlockIds = [];
+  const changedSegmentIds = [];
+
+  const nextBlocks = snapshot.blocks.map(item => {
+    if (!blockPatchById.has(item.id)) return item;
+    const nextMetadata = blockPatchById.get(item.id);
+    if (metadataSignature(item.metadata) === metadataSignature(nextMetadata)) return item;
+    changedBlockIds.push(item.id);
+    return { ...item, metadata: nextMetadata, updatedAt: now };
+  });
+
+  const nextSegments = snapshot.segments.map(item => {
+    if (!segmentPatchById.has(item.id)) return item;
+    const nextMetadata = segmentPatchById.get(item.id);
+    if (metadataSignature(item.metadata) === metadataSignature(nextMetadata)) return item;
+    changedSegmentIds.push(item.id);
+    return { ...item, metadata: nextMetadata, updatedAt: now };
+  });
+
+  const hasChildChanges = changedBlockIds.length > 0 || changedSegmentIds.length > 0;
+  const nextDocuments = snapshot.documents.map(item => {
+    if (item.id !== documentId && !docPatchById.has(item.id)) return item;
+    const patchedMetadata = docPatchById.has(item.id) ? docPatchById.get(item.id) : item.metadata;
+    const docMetadataChanged = docPatchById.has(item.id) && metadataSignature(item.metadata) !== metadataSignature(patchedMetadata);
+    if (!docMetadataChanged && !hasChildChanges) return item;
+    if (docMetadataChanged) changedDocumentIds.push(item.id);
+    return { ...item, metadata: patchedMetadata, updatedAt: now };
+  });
+
+  return finalize({
+    ...snapshot,
+    documents: nextDocuments,
+    blocks: nextBlocks,
+    segments: nextSegments
+  }, {
+    entity: 'audioPreferences',
+    action: 'reset',
+    scope,
+    id: targetId,
+    documentId,
+    changedCount: changedDocumentIds.length + changedBlockIds.length + changedSegmentIds.length,
+    changedDocumentIds,
+    changedBlockIds,
+    changedSegmentIds
+  });
+};
+
 export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.now()) => {
   const snapshot = normalizeTextLibraryRuntimeSnapshot(snapshotCandidate);
   const type = command?.type;
@@ -838,6 +959,7 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.DELETE_AUDIO_VARIANT: return deleteAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_FULL_AUDIO_ARTIFACT: return upsertFullAudioArtifact(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_FULL_AUDIO_ARTIFACT: return deleteFullAudioArtifact(snapshot, payload, now);
+    case COMMAND_TYPES.RESET_AUDIO_PREFERENCES: return resetAudioPreferences(snapshot, payload, now);
     default: throw new Error(`Unknown Text Library command: ${type || '(missing)'}`);
   }
 };

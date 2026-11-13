@@ -3,6 +3,12 @@ import {
   TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION,
   normalizeTextStructuredAudioGenerationPreferences
 } from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import {
+  TEXT_STRUCTURED_RESET_SCOPES,
+  buildResetTextStructuredBulkGenerationPreferences,
+  buildResetTextStructuredGlobalEdgeAndBulkPreferences,
+  buildResetTextStructuredGlobalEdgePreferences
+} from '../../domain/text/textStructuredResetDomain.js';
 
 export const TEXT_STRUCTURED_AUDIO_GENERATION_PREFERENCE_KEY = 'prolingo_text_structured_audio_generation_preferences_v1';
 
@@ -33,4 +39,20 @@ export const executeTextStructuredAudioGenerationPreferencePersistenceEffect = p
     console.warn('Unable to persist structured Text audio generation preferences:', error);
   }
   return normalized;
+};
+
+/**
+ * Resets Global Edge and/or Bulk Structured Text audio generation preferences while keeping
+ * independent Sonia/Gadis vs Libby/Tuti defaults intact.
+ */
+export const resetTextStructuredAudioGenerationPreferences = (
+  currentPreferences = {},
+  { scope = TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_EDGE_AND_BULK } = {}
+) => {
+  const next = scope === TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_EDGE
+    ? buildResetTextStructuredGlobalEdgePreferences(currentPreferences)
+    : scope === TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_BULK
+      ? buildResetTextStructuredBulkGenerationPreferences(currentPreferences)
+      : buildResetTextStructuredGlobalEdgeAndBulkPreferences();
+  return executeTextStructuredAudioGenerationPreferencePersistenceEffect(next);
 };
