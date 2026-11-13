@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, HelpCircle, Plus, Repeat2, Sliders, Trash2, Volume2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, HelpCircle, Plus, Repeat2, RotateCcw, Sliders, Trash2, Volume2 } from 'lucide-react';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
 import {
   TEXT_STRUCTURED_DISPLAY_MODES,
   TEXT_STRUCTURED_MANUAL_REPEAT_MODES,
@@ -144,14 +145,17 @@ export default function TextStructuredPlaybackControls({
   playbackOrder = null,
   availableLocalVoices = null,
   disabled = false,
+  resetDisabled = false,
   onDisplayModeChange,
   onPlaybackChannelModeChange,
   onPlaybackRepresentationModeChange,
   onGlobalPlaybackOrderChange,
-  onPlaybackFeelChange
+  onPlaybackFeelChange,
+  onResetPlaybackPreferences = null
 }) {
   const [activeTab, setActiveTab] = useState('playback');
   const [showAdvancedPriority, setShowAdvancedPriority] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
   const tabs = [
@@ -178,6 +182,19 @@ export default function TextStructuredPlaybackControls({
           <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-700 dark:text-slate-300">{currentLangLabel}</span>
           <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/70 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">{currentOrderLabel}</span>
           <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-600 dark:text-slate-400">{currentDisplayLabel}</span>
+          {onResetPlaybackPreferences && (
+            <button
+              type="button"
+              disabled={resetDisabled}
+              onClick={() => setConfirmResetOpen(true)}
+              data-text-reset-playback="true"
+              className="ml-1 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-2 py-1 text-[9px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:opacity-40 transition-colors"
+              title="Reset Text Player, Manual Play, Display, and Local Priority defaults"
+            >
+              <RotateCcw className="w-3 h-3"/>
+              <span>Reset Defaults</span>
+            </button>
+          )}
         </div>
       </div>
       <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
@@ -352,5 +369,18 @@ export default function TextStructuredPlaybackControls({
         </div>
       </div>
     </section>}
+
+    <SafetyConfirmDialog
+      open={confirmResetOpen}
+      title="Reset Text Player Settings to Defaults?"
+      message="Restores Global Playback (Split, EN only, Sequential, Once, Continue), Manual Play, Display mode, delays, and Global Local Voice Priority, and clears active Shuffle order. Global Browser TTS voices, Staging MP3 files, Workspace/Card/Segment overrides, and Table settings are preserved."
+      confirmLabel="Reset Defaults"
+      tone="amber"
+      onCancel={() => setConfirmResetOpen(false)}
+      onConfirm={() => {
+        setConfirmResetOpen(false);
+        onResetPlaybackPreferences?.();
+      }}
+    />
   </div>;
 }

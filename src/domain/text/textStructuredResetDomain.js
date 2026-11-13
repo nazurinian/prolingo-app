@@ -377,3 +377,45 @@ export const buildResetTextSegmentAudioMetadata = (metadata) => {
   delete result[TEXT_STRUCTURED_AUDIO_SYNC_PROFILE_KEY];
   return result;
 };
+
+/**
+ * Evaluates whether a Text settings reset may safely proceed given active ZIP imports,
+ * IndexedDB transactions, or system locks.
+ */
+export const canExecuteTextStructuredReset = ({
+  zipImportActive = false,
+  textLibraryCommandBusy = false,
+  isSystemBusy = false,
+  generationRunning = false,
+  requireGenerationIdle = false
+} = {}) => {
+  if (zipImportActive) {
+    return {
+      allowed: false,
+      blockedBy: 'zip-import',
+      reason: 'Wait for or cancel the active Portable Audio ZIP import before resetting audio settings.'
+    };
+  }
+  if (textLibraryCommandBusy) {
+    return {
+      allowed: false,
+      blockedBy: 'database-transaction',
+      reason: 'Wait for the current Text Library database transaction to finish before resetting audio settings.'
+    };
+  }
+  if (isSystemBusy) {
+    return {
+      allowed: false,
+      blockedBy: 'system-busy',
+      reason: 'Wait for the active system operation to finish before resetting audio settings.'
+    };
+  }
+  if (requireGenerationIdle && generationRunning) {
+    return {
+      allowed: false,
+      blockedBy: 'generation-running',
+      reason: 'Audio generation is currently running; wait for cancellation to finish before resetting metadata.'
+    };
+  }
+  return { allowed: true, blockedBy: null, reason: null };
+};

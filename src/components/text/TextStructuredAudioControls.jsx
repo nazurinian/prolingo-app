@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, Headphones, Link2, MessageSquare, Server, Users, Volume2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Headphones, Link2, MessageSquare, RotateCcw, Server, Users, Volume2 } from 'lucide-react';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
 import { collectTextStructuredConversationSpeakers, getTextStructuredSpeakerAssignedVoiceName } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import {
   formatTextStructuredBrowserVoiceLabel,
@@ -189,7 +190,12 @@ export default function TextStructuredAudioControls({
   audioLibrary = null,
   playbackSourceStatus = null,
   playbackOrder = null,
-  onGlobalPlaybackOrderChange = null
+  onGlobalPlaybackOrderChange = null,
+  resetDisabled = false,
+  onResetGlobalBrowserTts = null,
+  onResetGlobalEdge = null,
+  onResetWorkspaceAudio = null,
+  onResetSpeakersAudio = null
 }) {
   const speakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
   const voiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
@@ -207,6 +213,7 @@ export default function TextStructuredAudioControls({
   const edgeMeaning = useMemo(() => (edgeGenerationVoices || []).filter(voice => !String(voice?.lang || '').startsWith('en-')), [edgeGenerationVoices]);
   const [audioSurface, setAudioSurface] = useState('playback');
   const [localReadyExpanded, setLocalReadyExpanded] = useState({});
+  const [resetConfirmTarget, setResetConfirmTarget] = useState(null);
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
   const sourceMode = preferences.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
@@ -368,7 +375,26 @@ export default function TextStructuredAudioControls({
         <div className="space-y-3 pt-1">
           <p className="px-1 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400"><b>Global</b> sets the Text-wide default. <b>Workspace</b> overrides it only here. Card and Segment voices are configured in Card Audio → Player. Conversation speakers have their own assignments. MP3 downloads are separate.</p>
       <section className="space-y-2 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50/35 dark:bg-sky-950/15 p-2.5" data-text-global-browser-tts-settings="true">
-        <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
+          {onResetGlobalBrowserTts && (
+            <button
+              type="button"
+              disabled={disabled || resetDisabled}
+              onClick={() => setResetConfirmTarget({
+                kind: 'global-browser-tts',
+                title: 'Reset Text Global Browser TTS?',
+                message: 'Clears default Text Browser TTS EN/ID voice selections and resets Browser TTS speeds to default (1.0×). Workspace/Card/Speaker overrides, Staging MP3 files, and Table settings are preserved.'
+              })}
+              data-text-reset-global-browser-tts="true"
+              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-40 transition-colors"
+              title="Reset Global Browser TTS voices and speeds"
+            >
+              <RotateCcw className="w-2.5 h-2.5"/>
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Default for Text Workspaces unless overridden below. Table has its own Browser TTS preferences. These choices do not regenerate or change downloaded MP3 files.</p>
         <div className="grid gap-2">
           <TextGlobalVoiceSelect channel="text" title="EN · Global Default" selected={preferences.browserTextVoiceName} effectiveName={defaultTextVoiceName} voices={englishVoiceOptions} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
@@ -383,7 +409,26 @@ export default function TextStructuredAudioControls({
             <Volume2 className="w-3.5 h-3.5 text-indigo-500"/>
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">This Workspace Narrator (Browser TTS)</span>
           </div>
-          <span className="text-[8px] font-semibold text-slate-400">EN {englishVoiceOptions.length} • ID {indonesianVoiceOptions.length}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[8px] font-semibold text-slate-400">EN {englishVoiceOptions.length} • ID {indonesianVoiceOptions.length}</span>
+            {onResetWorkspaceAudio && (
+              <button
+                type="button"
+                disabled={disabled || resetDisabled}
+                onClick={() => setResetConfirmTarget({
+                  kind: 'workspace',
+                  title: `Reset Workspace "${documentTree?.title || 'Workspace'}" Audio Preferences?`,
+                  message: 'Removes this Workspace’s Narrator Browser TTS/speed/Local Priority overrides and resets Workspace MP3 Voice Preset to Global Edge inheritance. Card, Segment, and Speaker overrides as well as downloaded Staging MP3 binaries are preserved.'
+                })}
+                data-text-reset-workspace="true"
+                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 px-2 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+                title="Reset this Workspace's audio overrides to Global defaults"
+              >
+                <RotateCcw className="w-2.5 h-2.5"/>
+                <span>Reset Workspace</span>
+              </button>
+            )}
+          </div>
         </div>
         {renderDocumentChannel('text', 'EN (Text)', englishVoiceOptions, defaultTextVoiceName, globalTextRate, availableLocalVoices?.channels?.text || [])}
         {renderDocumentChannel('meaning', 'ID (Meaning)', indonesianVoiceOptions, defaultMeaningVoiceName, globalMeaningRate, availableLocalVoices?.channels?.meaning || [])}
@@ -391,7 +436,26 @@ export default function TextStructuredAudioControls({
       {hasConversationCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
 
       {hasConversationCards && <div className="space-y-2.5 rounded-xl border border-sky-200/80 dark:border-sky-900/60 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-audio-conversation="true">
-        <div className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-sky-500"/><span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Conversation Speakers ({speakers.length})</span></div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2"><Users className="w-3.5 h-3.5 text-sky-500"/><span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Conversation Speakers ({speakers.length})</span></div>
+          {onResetSpeakersAudio && speakers.length > 0 && (
+            <button
+              type="button"
+              disabled={disabled || resetDisabled}
+              onClick={() => setResetConfirmTarget({
+                kind: 'all-speakers',
+                title: 'Reset All Conversation Speaker Audio Settings?',
+                message: 'Clears Speaker Browser TTS, speed, Custom Local, and Speaker Edge overrides (plus Speaker Sync) across this Workspace while keeping speaker identities, Cards, Segments, and Staging MP3 audio intact.'
+              })}
+              data-text-reset-all-speakers="true"
+              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50/80 dark:bg-sky-950/30 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-100 disabled:opacity-40 transition-colors"
+              title="Reset all Speaker voice, speed, sync, and download overrides"
+            >
+              <RotateCcw className="w-2.5 h-2.5"/>
+              <span>Reset All Speakers</span>
+            </button>
+          )}
+        </div>
         {speakers.length > 1 && <div className="grid grid-cols-2 gap-1.5" data-text-audio-sync-grid="true">
           {[
             { key: 'en-voice', label: 'EN VOICE', active: syncProfile.voice?.text === true, tone: 'sky', click: () => onSyncSpeakerVoice?.('text', !(syncProfile.voice?.text === true)) },
@@ -435,7 +499,30 @@ export default function TextStructuredAudioControls({
           }));
           const localReadyOpen = Boolean(localReadyExpanded[id]);
           return <div key={id} className={`rounded-xl border bg-white/95 dark:bg-slate-900/50 p-2.5 ${index === 0 ? 'border-indigo-200 dark:border-indigo-900' : 'border-sky-100 dark:border-sky-900'}`} data-text-audio-speaker={id}>
-            <div className="mb-2 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-500"/><span className="text-[10px] font-black text-slate-700 dark:text-slate-200">{index + 1}. {label}</span>{index === 0 && speakers.length > 1 && <span className="ml-auto rounded bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.5 text-[8px] font-black text-indigo-600 dark:text-indigo-300">SYNC MASTER</span>}</div>
+            <div className="mb-2 flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-sky-500"/>
+              <span className="text-[10px] font-black text-slate-700 dark:text-slate-200">{index + 1}. {label}</span>
+              {index === 0 && speakers.length > 1 && <span className="rounded bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.5 text-[8px] font-black text-indigo-600 dark:text-indigo-300">SYNC MASTER</span>}
+              {onResetSpeakersAudio && (
+                <button
+                  type="button"
+                  disabled={disabled || resetDisabled}
+                  onClick={() => setResetConfirmTarget({
+                    kind: 'speaker',
+                    speakerId: id,
+                    speaker: label,
+                    title: `Reset Speaker "${label}" Audio Settings?`,
+                    message: `Restores "${label}" to Workspace/Global voice, speed, Custom Local, and Edge inheritance while keeping its speaker identity and downloaded Staging MP3 binaries.`
+                  })}
+                  data-text-reset-speaker={id}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 hover:border-sky-300 disabled:opacity-40 transition-colors"
+                  title={`Reset audio preferences for ${label}`}
+                >
+                  <RotateCcw className="w-2.5 h-2.5"/>
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
             <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
               <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
@@ -484,10 +571,14 @@ export default function TextStructuredAudioControls({
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
         <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
-        <button type="button" disabled={disabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural')}
-          onClick={() => onGenerationPreferencesChange?.({ edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural' })}
+        <button type="button" disabled={disabled || resetDisabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural' && Number(generationPreferences?.edgeRate || 0) === 0 && Number(generationPreferences?.edgePitch || 0) === 0)}
+          onClick={() => setResetConfirmTarget({
+            kind: 'global-edge',
+            title: 'Reset Global Edge Generation Defaults?',
+            message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
+          })}
           className="mb-2 min-h-9 w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 px-2.5 text-[9px] font-black text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
-          data-text-global-edge-restore-default="true">Use defaults · Sonia EN / Gadis ID</button>
+          data-text-global-edge-restore-default="true">Reset Global Edge · Sonia EN / Gadis ID · 0% / 0Hz</button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
             <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">
@@ -574,5 +665,24 @@ export default function TextStructuredAudioControls({
       </div>
       <TextAudioDataPanel audioLibrary={audioLibrary} compact={false} embedded={true} disabled={disabled}/>
     </section>}
+
+    <SafetyConfirmDialog
+      open={Boolean(resetConfirmTarget)}
+      title={resetConfirmTarget?.title || 'Reset Audio Preferences?'}
+      message={resetConfirmTarget?.message || ''}
+      confirmLabel="Reset"
+      tone="amber"
+      onCancel={() => setResetConfirmTarget(null)}
+      onConfirm={() => {
+        const target = resetConfirmTarget;
+        setResetConfirmTarget(null);
+        if (!target) return;
+        if (target.kind === 'global-browser-tts') onResetGlobalBrowserTts?.();
+        else if (target.kind === 'global-edge') onResetGlobalEdge?.();
+        else if (target.kind === 'workspace') onResetWorkspaceAudio?.();
+        else if (target.kind === 'all-speakers') onResetSpeakersAudio?.({ includeSync: true });
+        else if (target.kind === 'speaker') onResetSpeakersAudio?.({ speakerId: target.speakerId, speaker: target.speaker, includeSync: false });
+      }}
+    />
   </div>;
 }

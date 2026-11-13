@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckSquare, Circle, CheckCircle2, FileArchive, Loader2, Music, Square, X, Download, FolderTree, Layers, Sparkles } from 'lucide-react';
+import { AlertTriangle, CheckSquare, Circle, CheckCircle2, FileArchive, Loader2, Music, RotateCcw, Square, X, Download, FolderTree, Layers, Sparkles } from 'lucide-react';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
 import { getTextStructuredBatchTelemetrySnapshot, subscribeTextStructuredBatchTelemetry } from '../../services/audio/textStructuredBatchTelemetryService.js';
 import {
@@ -114,6 +114,7 @@ export const TextBatchPopup = ({
   showClose = true
 }) => {
   const [bulkExportConfirmFormat, setBulkExportConfirmFormat] = React.useState(null);
+  const [bulkResetConfirmOpen, setBulkResetConfirmOpen] = React.useState(false);
   const savedTextVoiceIds = Array.isArray(structuredTextBatch?.preferences?.bulkTextVoiceIds)
     ? structuredTextBatch.preferences.bulkTextVoiceIds
     : [];
@@ -240,6 +241,7 @@ export const TextBatchPopup = ({
   const selectedWorkspaceIds = textScope?.selectedDocumentIds || [];
   const resolvedWorkspaces = structuredTextBatch?.workspacesResolved || structuredTextBatch?.documentsResolved || [];
   const running = Boolean(structuredTextBatch?.running);
+  const resetDisabled = Boolean(structuredTextBatch?.resetDisabled);
   const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && workspaceOptions.some(workspace => workspace.collectionId === structuredTextBatch.activeCollectionId);
   const selectedCard = cardOptions.find(card => card.id === textScope?.cardId) || cardOptions[0] || null;
   const failedJobs = structuredTextBatch?.generationState?.failedJobs || [];
@@ -380,7 +382,22 @@ export const TextBatchPopup = ({
           <Layers className="w-4 h-4 text-teal-400 shrink-0"/>
           <span className="truncate">Bulk Audio • Structured Text</span>
         </div>
-        <span className="ml-auto shrink-0 rounded-full bg-teal-500/25 px-2 py-0.5 text-[8px] font-black uppercase text-teal-100">Edge • Workspace-aware</span>
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <span className="rounded-full bg-teal-500/25 px-2 py-0.5 text-[8px] font-black uppercase text-teal-100">Edge • Workspace-aware</span>
+          {structuredTextBatch?.resetPreferences && (
+            <button
+              type="button"
+              disabled={running || resetDisabled}
+              onClick={() => setBulkResetConfirmOpen(true)}
+              data-text-reset-bulk-preferences="true"
+              className="inline-flex items-center gap-1 rounded-lg border border-amber-400/50 bg-amber-500/20 px-2 py-1 text-[9px] font-black text-amber-100 hover:bg-amber-500/35 disabled:opacity-40 transition-colors"
+              title="Reset Bulk Audio generation and export preferences to defaults"
+            >
+              <RotateCcw className="w-3 h-3"/>
+              <span>Reset Bulk</span>
+            </button>
+          )}
+        </div>
         {showClose && <button type="button" onClick={() => setIsBatchOpen(false)} className="rounded-lg p-1 hover:bg-white/10" aria-label="Close Text Batch"><X className="w-4 h-4"/></button>}
       </div>
 
@@ -924,6 +941,23 @@ export const TextBatchPopup = ({
         confirmLabel={bulkExportConfirmFormat === 'portable-zip' ? 'Export Portable ZIP' : bulkExportConfirmFormat === 'audio-only-zip' ? 'Export Audio ZIP' : 'Export Direct Files'}
         onCancel={() => setBulkExportConfirmFormat(null)}
         onConfirm={() => { const format = bulkExportConfirmFormat; setBulkExportConfirmFormat(null); structuredTextBatch?.exportBulk?.({ format }); }}
+      />
+
+      <SafetyConfirmDialog
+        open={bulkResetConfirmOpen}
+        title="Reset Bulk Audio Preferences to Defaults?"
+        message="Restores Bulk Audio defaults: Split ON, Full OFF, EN + ID channels enabled, Libby EN / Tuti ID voices, and default export preferences (Auto Export OFF). Global Edge defaults (Sonia/Gadis, rate/pitch), Staging MP3 binaries, and Workspace/Card overrides stay intact."
+        confirmLabel="Reset Bulk"
+        tone="amber"
+        onCancel={() => setBulkResetConfirmOpen(false)}
+        onConfirm={() => {
+          setBulkResetConfirmOpen(false);
+          setDraftTextEmpty(false);
+          setDraftMeaningEmpty(false);
+          setTextVoiceMode(TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE);
+          setMeaningVoiceMode(TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.SINGLE);
+          structuredTextBatch?.resetPreferences?.();
+        }}
       />
 
     </div>

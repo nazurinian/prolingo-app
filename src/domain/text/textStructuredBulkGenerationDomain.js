@@ -1,4 +1,5 @@
 import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredFullArtifactIdentity, buildTextStructuredFullRepresentation, getTextStructuredFullAudioArtifacts } from './textStructuredSplitFullDomain.js';
 
@@ -186,6 +187,56 @@ const resolveFullLogicalState = ({ requirement, block, runtimeFullAudio, staging
 const selectedScopeByDocument = selection => new Map((selection?.documents || []).map(document => [upper(document?.id), new Set(document?.scope?.blockIds || [])]));
 const isP5EligibleBlock = block => lower(block?.blockType || 'paragraph') === 'paragraph';
 
+const createFullBlockRequirement = ({
+  documentTree,
+  block,
+  channel,
+  language,
+  voiceId,
+  downloadVoiceSource = 'bulk-selection',
+  representation = null,
+  preferences = {},
+  runtimeFullAudio = {},
+  stagingPhysical = new Set()
+}) => {
+  const resolvedRepresentation = representation || buildTextStructuredFullRepresentation({ block, channel });
+  if (!clean(resolvedRepresentation?.content) || !clean(voiceId)) return null;
+  const identity = buildTextStructuredFullArtifactIdentity({
+    block,
+    channel,
+    language,
+    engine: 'edge',
+    voiceId,
+    rate: preferences?.edgeRate || 0,
+    pitch: preferences?.edgePitch || 0,
+    rendererVersion: TEXT_AUDIO_RENDERER_PROFILE_VERSION,
+    codecProfile: TEXT_AUDIO_CODEC_PROFILE
+  });
+  const requirement = {
+    representation: TEXT_STRUCTURED_BULK_REPRESENTATIONS.FULL,
+    documentId: documentTree.id,
+    documentTitle: documentTree.title || 'Text Workspace',
+    collectionId: documentTree.collectionId || null,
+    blockId: block.id,
+    blockTitle: block.title || null,
+    segmentId: null,
+    channel,
+    language,
+    voiceId,
+    downloadVoiceId: voiceId,
+    downloadVoiceSource,
+    content: resolvedRepresentation.content,
+    segmentCount: resolvedRepresentation.segmentCount,
+    physicalKey: lower(identity.fullArtifactFingerprint),
+    fullArtifactFingerprint: lower(identity.fullArtifactFingerprint),
+    fullArtifactDescriptor: identity.descriptor
+  };
+  return {
+    ...requirement,
+    ...resolveFullLogicalState({ requirement, block, runtimeFullAudio, stagingPhysical })
+  };
+};
+
 export const buildTextStructuredBulkGenerationPlan = ({
   documentTrees = [],
   selection = null,
@@ -278,37 +329,19 @@ export const buildTextStructuredBulkGenerationPlan = ({
           const representation = buildTextStructuredFullRepresentation({ block, channel });
           if (!clean(representation?.content)) continue;
           for (const voiceId of voices) {
-            const identity = buildTextStructuredFullArtifactIdentity({
+            const requirement = createFullBlockRequirement({
+              documentTree,
               block,
               channel,
               language,
-              engine: 'edge',
               voiceId,
-              rate: preferences?.edgeRate || 0,
-              pitch: preferences?.edgePitch || 0,
-              rendererVersion: TEXT_AUDIO_RENDERER_PROFILE_VERSION,
-              codecProfile: TEXT_AUDIO_CODEC_PROFILE
-            });
-            const requirement = {
-              representation: TEXT_STRUCTURED_BULK_REPRESENTATIONS.FULL,
-              documentId: documentTree.id,
-              documentTitle: documentTree.title || 'Text Workspace',
-              collectionId: documentTree.collectionId || null,
-              blockId: block.id,
-              blockTitle: block.title || null,
-              segmentId: null,
-              channel,
-              language,
-              voiceId,
-              downloadVoiceId: voiceId,
               downloadVoiceSource: 'bulk-selection',
-              content: representation.content,
-              segmentCount: representation.segmentCount,
-              physicalKey: lower(identity.fullArtifactFingerprint),
-              fullArtifactFingerprint: lower(identity.fullArtifactFingerprint),
-              fullArtifactDescriptor: identity.descriptor
-            };
-            requirements.push({ ...requirement, ...resolveFullLogicalState({ requirement, block, runtimeFullAudio, stagingPhysical }) });
+              representation,
+              preferences,
+              runtimeFullAudio,
+              stagingPhysical
+            });
+            if (requirement) requirements.push(requirement);
           }
         }
       }
@@ -389,6 +422,58 @@ export const selectTextStructuredBulkGenerationRequirements = (plan, { mode = 'm
     item.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING
     || item.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE
   );
+};
+
+export const buildTextStructuredCardMissingFullRequirements = ({
+  documentTree = null,
+  block = null,
+  channels = null,
+  preferences = {},
+  runtimeFullAudio = {},
+  stagingRecords = null
+} = {}) => {
+  if (!documentTree?.id || !block?.id || !isP5EligibleBlock(block)) return [];
+  const requestedChannels = (Array.isArray(channels) && channels.length ? channels : ['text', 'meaning'])
+    .map(ch => (ch === 'meaning' ? 'meaning' : 'text'));
+  const targetChannels = [...new Set(requestedChannels)];
+  const stagingPhysical = new Set(activeStagingRecords(stagingRecords).map(stagingPhysicalIdentity).filter(Boolean));
+  const firstSegment = (block.segments || [])[0] || null;
+  const requirements = [];
+
+  for (const channel of targetChannels) {
+    const language = channel === 'meaning'
+      ? (documentTree?.meaningLanguage || 'id')
+      : (documentTree?.textLanguage || 'en');
+    const resolved = resolveTextStructuredEffectiveDownloadVoice({
+      documentTree,
+      block,
+      segment: firstSegment,
+      channel,
+      preferences
+    });
+    const voiceId = clean(resolved?.voiceId)
+      || (channel === 'meaning' ? clean(preferences?.edgeMeaningVoiceId) : clean(preferences?.edgeTextVoiceId));
+    if (!voiceId) continue;
+    const requirement = createFullBlockRequirement({
+      documentTree,
+      block,
+      channel,
+      language,
+      voiceId,
+      downloadVoiceSource: resolved?.source || 'global-edge',
+      preferences,
+      runtimeFullAudio,
+      stagingPhysical
+    });
+    if (!requirement) continue;
+    if (
+      requirement.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING
+      || requirement.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE
+    ) {
+      requirements.push(requirement);
+    }
+  }
+  return requirements;
 };
 
 export const summarizeTextStructuredBulkPhysicalWork = requirementsCandidate => {

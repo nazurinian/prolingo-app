@@ -3,7 +3,6 @@ import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Do
 import {
   collectTextStructuredCardSpeakers,
   formatTextStructuredBrowserVoiceLabel,
-  getTextStructuredVoiceOverrideLabel,
   getTextStructuredVoiceOverrideProfile,
   getTextStructuredVoiceSourceDisplayLabel,
   resolveTextStructuredBrowserVoiceResolution,
@@ -28,6 +27,8 @@ import { BrowserTtsVoiceOptgroups, EdgeVoiceOptgroups } from '../common/GroupedV
 import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
 import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
+import { buildTextStructuredCardMissingFullRequirements } from '../../domain/text/textStructuredBulkGenerationDomain.js';
+import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
 
 const clean = value => String(value ?? '').trim();
 
@@ -227,13 +228,19 @@ export const TextStructuredCardAudioPanel = ({
   onCancelGeneration,
   onCardPlaybackOrderChange,
   onExportSegmentAudio,
-  onExportFullCardAudio
+  onExportFullCardAudio,
+  resetDisabled = false,
+  onResetCardAudioPreferences = null,
+  onResetSegmentAudioPreferences = null
 }) => {
   const [activeSurface, setActiveSurface] = useState(() => (initialSurface === 'download' ? 'download' : 'player'));
   const [showSegments, setShowSegments] = useState(false);
   const [showPlayerSegments, setShowPlayerSegments] = useState(true);
   const [expandedSpeakerKey, setExpandedSpeakerKey] = useState(null);
   const [workflowExpanded, setWorkflowExpanded] = useState(false);
+  const [includeMissingFullByBlockId, setIncludeMissingFullByBlockId] = useState({});
+  const [confirmResetTarget, setConfirmResetTarget] = useState(null);
+  const includeMissingFullAudio = Boolean(block?.id && includeMissingFullByBlockId[block.id]);
   const overlayRef = useLiveOverlayViewportRef(true);
   const segments = Array.isArray(block?.segments) ? block.segments : [];
   const savedPlayerBaseline = useMemo(() => buildInitialPlayerDraft(block, segments), [block, segments]);
@@ -569,10 +576,31 @@ export const TextStructuredCardAudioPanel = ({
       return [channel, targetVoiceIds.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))];
     })
   );
+  const missingFullRequirements = useMemo(() => (
+    isConversation
+      ? []
+      : buildTextStructuredCardMissingFullRequirements({
+          documentTree,
+          block,
+          preferences: generationPreferences,
+          runtimeFullAudio
+        })
+  ), [isConversation, documentTree, block, generationPreferences, runtimeFullAudio]);
+  const unavailableMissingFullVoices = !isConversation && includeMissingFullAudio
+    ? missingFullRequirements
+        .map(req => clean(req?.voiceId))
+        .filter(voiceId => voiceId && isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))
+    : [];
   const unavailableMissingCardEdgeVoices = [
     ...new Set([
       ...(unavailableMissingVoicesByChannel.text || []),
       ...(unavailableMissingVoicesByChannel.meaning || [])
+    ])
+  ];
+  const unavailableMissingEffectiveCardEdgeVoices = [
+    ...new Set([
+      ...unavailableMissingCardEdgeVoices,
+      ...unavailableMissingFullVoices
     ])
   ];
   const unavailableRegenCardEdgeVoices = [
@@ -581,8 +609,10 @@ export const TextStructuredCardAudioPanel = ({
       ...(unavailableRegenVoicesByChannel.meaning || [])
     ])
   ];
-  const hasUnavailableMissingCardEdgeVoice = unavailableMissingCardEdgeVoices.length > 0;
+  const hasUnavailableMissingEffectiveCardEdgeVoice = unavailableMissingEffectiveCardEdgeVoices.length > 0;
   const hasUnavailableRegenCardEdgeVoice = unavailableRegenCardEdgeVoices.length > 0;
+  const hasMissingFullToGenerate = !isConversation && includeMissingFullAudio && missingFullRequirements.length > 0;
+  const hasCardMissingToGenerate = Boolean(cardCoverage?.needDownload) || hasMissingFullToGenerate;
   const cardPlaybackStatus = playbackSourceStatus && (!playbackSourceStatus.blockId || playbackSourceStatus.blockId === block?.id)
     ? playbackSourceStatus
     : null;
@@ -621,6 +651,24 @@ export const TextStructuredCardAudioPanel = ({
               {isConversation ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'} detected` : 'Player TTS & Edge Download surfaces'} • {segments.length} segment{segments.length === 1 ? '' : 's'}
             </p>
           </div>
+          {onResetCardAudioPreferences && (
+            <button
+              type="button"
+              disabled={disabled || resetDisabled || generationRunning}
+              onClick={() => setConfirmResetTarget({
+                scope: 'card',
+                id: block.id,
+                title: `Reset Card "${block?.title || 'Card'}" Audio Overrides?`,
+                message: 'Clears saved Card Player & Download overrides, Card local priority, Card-speaker overrides, and its Segment overrides back to Workspace/Global inheritance (and discards unsaved drafts in this sheet). Downloaded Staging MP3 binaries and Full Card artifacts stay intact.'
+              })}
+              data-text-reset-card-audio="true"
+              className="shrink-0 min-h-8 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/35 px-2.5 text-[9px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:opacity-40 transition-colors"
+              title="Reset saved Card & Segment audio overrides to Workspace/Global inheritance"
+            >
+              <RotateCcw className="w-3 h-3"/>
+              <span>Reset Card</span>
+            </button>
+          )}
           <button type="button" onClick={onClose} className="w-10 h-10 shrink-0 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition" aria-label="Close audio settings"><X className="w-4 h-4"/></button>
         </div>
 
@@ -1000,8 +1048,33 @@ export const TextStructuredCardAudioPanel = ({
               <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 p-2.5" data-text-card-full-readiness="true">
                 <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">Full Card Artifact Readiness (Independent from Split)</span>
-                  <span className="text-[8px] font-semibold text-slate-400">Generated via Bulk Audio (Full option)</span>
+                  <span className="text-[8px] font-semibold text-slate-400">
+                    {isConversation
+                      ? 'Paragraph Full MP3 option applies to Paragraph cards'
+                      : 'Generated via Bulk Audio or Card Generate Missing when enabled'}
+                  </span>
                 </div>
+                {!isConversation && (
+                  <label className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200/80 dark:border-violet-900 bg-white/85 dark:bg-slate-900/50 px-2.5 py-1.5 cursor-pointer" data-text-card-include-missing-full="true">
+                    <input
+                      type="checkbox"
+                      checked={includeMissingFullAudio}
+                      disabled={disabled || generationRunning}
+                      onChange={event => {
+                        const checked = Boolean(event.target.checked);
+                        if (!block?.id) return;
+                        setIncludeMissingFullByBlockId(prev => ({ ...prev, [block.id]: checked }));
+                      }}
+                      className="h-3.5 w-3.5 rounded accent-violet-600"
+                    />
+                    <span className="text-[9px] font-black text-violet-800 dark:text-violet-200">Also generate missing Full audio</span>
+                    <span className="ml-auto text-[8px] text-slate-400">
+                      {missingFullRequirements.length > 0
+                        ? `${missingFullRequirements.map(req => (req.channel === 'meaning' ? 'ID' : 'EN')).join(' + ')} Full missing`
+                        : 'Skips Ready & Stale Full'}
+                    </span>
+                  </label>
+                )}
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                   {['text', 'meaning'].map(channel => {
                     const fullInfo = cardFullReadinessByChannel[channel];
@@ -1162,6 +1235,24 @@ export const TextStructuredCardAudioPanel = ({
                     <div className="flex items-start gap-2">
                       <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded bg-slate-100 dark:bg-slate-800 px-1 text-[9px] font-black text-slate-600 dark:text-slate-300">#{index + 1}</span>
                       <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-700 dark:text-slate-200 truncate">{segment.speaker ? `${segment.speaker} • ` : ''}{clue(segment, 'text')}</p>
+                      {onResetSegmentAudioPreferences && (
+                        <button
+                          type="button"
+                          disabled={disabled || resetDisabled || generationRunning}
+                          onClick={() => setConfirmResetTarget({
+                            scope: 'segment',
+                            id: segment.id,
+                            title: `Reset Segment #${index + 1} Audio Overrides?`,
+                            message: 'Clears saved Segment Browser TTS and Edge download voice overrides back to Card/Workspace inheritance without deleting downloaded Staging MP3 binaries.'
+                          })}
+                          data-text-reset-segment-audio={segment.id}
+                          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 hover:border-amber-300 disabled:opacity-40 transition-colors"
+                          title={`Reset Segment #${index + 1} audio overrides`}
+                        >
+                          <RotateCcw className="w-2.5 h-2.5"/>
+                          <span>Reset</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Generate vs Export MP3 per channel */}
@@ -1284,16 +1375,16 @@ export const TextStructuredCardAudioPanel = ({
                 </span>
               </div>
               <p className="mt-0.5 text-[8px] leading-relaxed text-slate-400">
-                Generates local Split audio into Staging (shared RF deduplicated). Audio-Only and Portable ZIP exports are centralized in Bulk Audio.
+                {`Generates local Split audio${!isConversation && includeMissingFullAudio ? ' and missing Full Card audio' : ''} into Staging (shared RF deduplicated). Bulk Audio preferences stay unchanged.`}
               </p>
             </div>
             {generationRunning
               ? <button type="button" onClick={() => onCancelGeneration?.()} className="min-h-10 shrink-0 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3.5 text-[9px] font-black text-red-600 hover:bg-red-100 transition-colors"><Square className="mr-1 inline h-3 w-3 fill-current"/>STOP</button>
-              : <button type="button" disabled={disabled || hasUnavailableMissingCardEdgeVoice || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} data-text-card-generate-missing="true" className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
+              : <button type="button" disabled={disabled || hasUnavailableMissingEffectiveCardEdgeVoice || !hasCardMissingToGenerate} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true, includeMissingFull: !isConversation && includeMissingFullAudio })} data-text-card-generate-missing="true" className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
           </div>
-          {(hasUnavailableMissingCardEdgeVoice || hasUnavailableRegenCardEdgeVoice) && (
+          {(hasUnavailableMissingEffectiveCardEdgeVoice || hasUnavailableRegenCardEdgeVoice) && (
             <p className="mt-1.5 text-[8px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-text-card-footer-unavailable-warning="true">
-              Unavailable Edge voice selected ({(hasUnavailableMissingCardEdgeVoice ? unavailableMissingCardEdgeVoices : unavailableRegenCardEdgeVoices).map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}). {hasUnavailableMissingCardEdgeVoice ? 'Switch voice before generating missing slots.' : 'Missing slots in other channels can still generate; switch voice before regenerating this channel.'}
+              Unavailable Edge voice selected ({(hasUnavailableMissingEffectiveCardEdgeVoice ? unavailableMissingEffectiveCardEdgeVoices : unavailableRegenCardEdgeVoices).map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}). {hasUnavailableMissingEffectiveCardEdgeVoice ? 'Switch voice before generating missing slots.' : 'Missing slots in other channels can still generate; switch voice before regenerating this channel.'}
             </p>
           )}
 
@@ -1310,6 +1401,26 @@ export const TextStructuredCardAudioPanel = ({
           </div>}
         </div>
       )}
+
+      <SafetyConfirmDialog
+        open={Boolean(confirmResetTarget)}
+        title={confirmResetTarget?.title || 'Reset Audio Overrides?'}
+        message={confirmResetTarget?.message || ''}
+        confirmLabel="Reset"
+        tone="amber"
+        onCancel={() => setConfirmResetTarget(null)}
+        onConfirm={() => {
+          const target = confirmResetTarget;
+          setConfirmResetTarget(null);
+          if (!target) return;
+          if (target.scope === 'card') {
+            handleResetPlayerDraft();
+            onResetCardAudioPreferences?.(target.id);
+          } else if (target.scope === 'segment') {
+            onResetSegmentAudioPreferences?.(target.id);
+          }
+        }}
+      />
     </div>
   </div>;
 };

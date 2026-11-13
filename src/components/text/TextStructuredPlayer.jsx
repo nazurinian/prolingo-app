@@ -126,6 +126,9 @@ const StructuredPlayerCard = ({
   onExportCardZip,
   onExportFullCardAudio,
   playbackBusy = false,
+  resetDisabled = false,
+  onResetCardAudioPreferences = null,
+  onResetSegmentAudioPreferences = null,
   focusTarget = null,
   onFocusConsumed,
   userNavigationRef = null
@@ -409,6 +412,9 @@ const StructuredPlayerCard = ({
       onExportSegmentAudio={onExportSegmentAudio}
       onExportCardZip={onExportCardZip}
       onExportFullCardAudio={onExportFullCardAudio}
+      resetDisabled={resetDisabled}
+      onResetCardAudioPreferences={onResetCardAudioPreferences}
+      onResetSegmentAudioPreferences={onResetSegmentAudioPreferences}
     />, document.body)}
   </>);
 };
@@ -486,7 +492,11 @@ export const TextStructuredPlayer = ({
   onFocusConsumed,
   controlsWorkspaceOpen = false,
   onCloseControlsWorkspace,
-  onStopPlayback
+  onStopPlayback,
+  resetDisabled = false,
+  onResetPlaybackPreferences = null,
+  onResetCardAudioPreferences = null,
+  onResetSegmentAudioPreferences = null
 }) => {
   const [customExpandedIds, setCustomExpandedIds] = useState(() => new Set());
   const [lastActiveBlockId, setLastActiveBlockId] = useState(null);
@@ -628,12 +638,14 @@ export const TextStructuredPlayer = ({
                   playbackOrder={playbackOrder}
                   availableLocalVoices={availableLocalVoices}
                   disabled={controlsBusy}
+                  resetDisabled={generationBusy || resetDisabled}
                   onDisplayModeChange={onDisplayModeChange}
                   onPlaybackChannelModeChange={onPlaybackChannelModeChange}
                   onPlaybackRepresentationModeChange={onPlaybackRepresentationModeChange}
                   onGlobalPlaybackOrderChange={onGlobalPlaybackOrderChange}
                   onGlobalTtsOnlyChange={onGlobalTtsOnlyChange}
                   onPlaybackFeelChange={onPlaybackFeelChange}
+                  onResetPlaybackPreferences={onResetPlaybackPreferences}
                 />
               </div>
             </div>
@@ -698,6 +710,9 @@ export const TextStructuredPlayer = ({
           onExportSegmentAudio={onExportSegmentAudio}
           onExportCardZip={onExportCardZip}
           onExportFullCardAudio={onExportFullCardAudio}
+          resetDisabled={resetDisabled}
+          onResetCardAudioPreferences={onResetCardAudioPreferences}
+          onResetSegmentAudioPreferences={onResetSegmentAudioPreferences}
           focusTarget={focusTarget}
           onFocusConsumed={onFocusConsumed}
           userNavigationRef={userNavigationRef}
