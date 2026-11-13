@@ -453,7 +453,11 @@ export default function TextStructuredAudioControls({
 
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
-        <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared default EN/ID MP3 voices and generation rate/pitch. Workspace DEFAULT inherits these voices. Separate from Browser TTS playback.</p>
+        <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
+        <button type="button" disabled={disabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural')}
+          onClick={() => onGenerationPreferencesChange?.({ edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural' })}
+          className="mb-2 min-h-9 w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 px-2.5 text-[9px] font-black text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
+          data-text-global-edge-restore-default="true">Use defaults · Sonia EN / Gadis ID</button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
             <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
