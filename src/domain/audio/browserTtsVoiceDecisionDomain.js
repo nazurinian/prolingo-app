@@ -52,13 +52,17 @@ export const resolveBrowserTtsVoiceState = (allVoices) => {
 
   // Default EN Browser TTS: UK female when the browser exposes one; otherwise
   // any en-GB voice, then the historical regional fallback order above.
-  const defaultEng = engVoices[0] || null;
+  const defaultEng = engVoices.find(voice =>
+    isUkEnglish(voice) && /(^|[^a-z])sonia([^a-z]|$)/i.test(clean(voice?.name))
+  ) || engVoices[0] || null;
 
   const idVoices = source.filter(v => {
     const lang = lower(v?.lang);
     return lang.includes('id') || lang.includes('indones');
   });
-  const defaultId = idVoices.find(v => lower(v?.name).includes('google') || lower(v?.name).includes('indonesia')) || idVoices[0] || null;
+  const defaultId = idVoices.find(v => /(^|[^a-z])gadis([^a-z]|$)/i.test(clean(v?.name)))
+    || idVoices.find(v => lower(v?.name).includes('google') || lower(v?.name).includes('indonesia'))
+    || idVoices[0] || null;
 
   return { engVoices, defaultEng, idVoices, defaultId };
 };
