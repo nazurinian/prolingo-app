@@ -639,7 +639,7 @@ export const TextLibraryShell = ({
       </div>}
 
       {dataSection === 'create' && createMode === 'document' && <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 p-2 space-y-2">
-        <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">New Structured Workspace</p>
+        <p className="text-[9px] font-black uppercase tracking-wide text-indigo-600 dark:text-indigo-300">New Text Workspace</p>
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Workspace title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">

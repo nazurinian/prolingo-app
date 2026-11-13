@@ -225,9 +225,14 @@ await runTest('Stage 0 Item 2: isMatchingAudioFolderScope rejects Legacy docA ->
   ), false);
 
   const appSource = read('src/App.jsx');
+  const boundarySource = read('src/domain/view/dataSystemBoundaryDomain.js');
   assert.match(appSource, /isMatchingAudioFolderScope\(latestAudioFolderScopeRef\.current,\s*expectedMode,\s*expectedEditorModel,\s*expectedDocumentId\)/);
   assert.match(appSource, /const expectedDocumentId = expectedMode === 'text' \? (?:liveScope\.activeTextDocumentId|activeTextDocumentId) : null;/);
-  assert.match(appSource, /return `\$\{activeTextDocumentId \|\| ''\}:/);
+  assert.ok(
+    /return `\$\{activeTextDocumentId \|\| ''\}:/.test(appSource)
+      || (/buildLegacyTextAudioDatasetSignature\(\{/.test(appSource) && /return `\$\{activeTextDocumentId \|\| ''\}:/.test(boundarySource)),
+    'Audio dataset identity signature must include activeTextDocumentId in Text mode'
+  );
 });
 
 await runTest('Stage 0 Item 2: Pending Legacy folder picker & remembered-handle permission reject stale docA -> docB switch without mutating state or IndexedDB', async () => {

@@ -112,6 +112,60 @@ export const isMatchingAudioFolderScope = (
 };
 
 /**
+ * Builds the Legacy Text dataset identity signature only once the hydrated
+ * document has playable Legacy lines whose IDs are synced with `playlist`.
+ * Empty Legacy Workspaces and un-synced transition renders return `''`.
+ */
+export const buildLegacyTextAudioDatasetSignature = ({
+  mode,
+  activeTextEditorModel = null,
+  activeTextDocumentId = '',
+  textDatabaseStatus = null,
+  textIdentityState = null,
+  playlist = []
+} = {}) => {
+  if (!isLegacyTextMode(mode, activeTextEditorModel)) return '';
+  if (textDatabaseStatus !== 'hydrated' && textDatabaseStatus !== 'ready') return '';
+  const expectedItems = Array.isArray(textIdentityState?.items) ? textIdentityState.items : [];
+  if (!expectedItems.length) return '';
+  const legacyPlaylistItems = (Array.isArray(playlist) ? playlist : []).filter(item => !item?.isStructured);
+  if (
+    legacyPlaylistItems.length !== expectedItems.length
+    || legacyPlaylistItems.some((item, index) => String(item?.id || '') !== String(expectedItems[index]?.id || ''))
+  ) {
+    return '';
+  }
+  return `${activeTextDocumentId || ''}:${legacyPlaylistItems.map(item => String(item?.id || '')).join('|')}`;
+};
+
+/**
+ * Determines whether stale Legacy Text runtime audio state (`localAudioMapText`,
+ * `audioStatusText`, `'text:'` generated meta, and auto-restore signature) must be
+ * cleared because the active Text document changed or an active Legacy Workspace has 0 lines.
+ * Never affects Table mode or Structured Text Staging/ZIP audio.
+ */
+export const shouldClearLegacyTextAudioOnDocumentState = ({
+  previousDocumentId = null,
+  activeTextDocumentId = null,
+  mode,
+  activeTextEditorModel = null,
+  textDatabaseStatus = null,
+  textIdentityState = null
+} = {}) => {
+  if (previousDocumentId && previousDocumentId !== activeTextDocumentId) {
+    return { shouldClear: true, reason: 'document-changed' };
+  }
+  if (
+    isLegacyTextMode(mode, activeTextEditorModel)
+    && (textDatabaseStatus === 'hydrated' || textDatabaseStatus === 'ready')
+    && (!Array.isArray(textIdentityState?.items) || textIdentityState.items.length === 0)
+  ) {
+    return { shouldClear: true, reason: 'empty-legacy-workspace' };
+  }
+  return { shouldClear: false, reason: 'none' };
+};
+
+/**
  * Table Gemini/Edge generator controls and credentials belong exclusively to Table mode.
  * Structured Text stays Edge-only inside Text -> Audio -> Generate Audio.
  */

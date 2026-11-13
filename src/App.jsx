@@ -88,7 +88,7 @@ import { executeGlobalPlaybackSessionService } from './services/playback/globalP
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
-import { getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode, isMatchingAudioFolderScope, resolveGuardedBatchOpenValue } from './domain/view/dataSystemBoundaryDomain';
+import { buildLegacyTextAudioDatasetSignature, getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode, isMatchingAudioFolderScope, resolveGuardedBatchOpenValue, shouldClearLegacyTextAudioOnDocumentState } from './domain/view/dataSystemBoundaryDomain';
 import { executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
 import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeForegroundPlaybackVisibilityEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
@@ -6372,15 +6372,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // not for search/filter/sort because those do not change `playlist` identity.
   const audioDatasetIdentitySignature = useMemo(() => {
     if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) return '';
-    if (!playlist.length) return '';
     if (mode === 'table') {
+      if (!playlist.length) return '';
       return playlist
         .filter(item => item?.isStructured)
         .map(item => `${getVocabIdentity(item)}:${getRecordAudioNo(item) || ''}`)
         .join('|');
     }
-    return `${activeTextDocumentId || ''}:${playlist.map(item => String(item?.id || '')).join('|')}`;
-  }, [mode, activeTextEditorModel, activeTextDocumentId, playlist]);
+    return buildLegacyTextAudioDatasetSignature({
+      mode,
+      activeTextEditorModel,
+      activeTextDocumentId,
+      textDatabaseStatus,
+      textIdentityState,
+      playlist
+    });
+  }, [mode, activeTextEditorModel, activeTextDocumentId, textDatabaseStatus, textIdentityState, playlist]);
 
   const getAudioAutoRestoreState = () => {
     if (!folderInputRef.audioAutoRestoreState) {
@@ -6388,6 +6395,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     return folderInputRef.audioAutoRestoreState;
   };
+
+  const localAudioMapTextRef = useRef(localAudioMapText);
+  const previousLegacyAudioDocumentIdRef = useRef(activeTextDocumentId);
+  useLayoutEffect(() => {
+    localAudioMapTextRef.current = localAudioMapText;
+  });
 
   const handleFolderSelect = (e) => {
     const liveScope = latestAudioFolderScopeRef.current;
@@ -6497,6 +6510,42 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.tableAudioBatchHistoryCount = activeTableAudioBatchSessions.length;
   folderInputRef.tableAudioFolderSummary = { active: Object.keys(tableAudioFolderVariantInventory || {}).length > 0, matchedCount: Object.values(tableAudioFolderVariantInventory || {}).reduce((sum, list) => sum + (Array.isArray(list) ? list.length : 0), 0) };
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
+
+  useEffect(() => {
+    const previousDocumentId = previousLegacyAudioDocumentIdRef.current;
+    previousLegacyAudioDocumentIdRef.current = activeTextDocumentId;
+
+    const { shouldClear, reason } = shouldClearLegacyTextAudioOnDocumentState({
+      previousDocumentId,
+      activeTextDocumentId,
+      mode,
+      activeTextEditorModel,
+      textDatabaseStatus,
+      textIdentityState
+    });
+    if (!shouldClear) return;
+
+    const currentMap = localAudioMapTextRef.current || {};
+    const urls = Object.values(currentMap);
+    const restoreState = getAudioAutoRestoreState();
+    const hasLegacyMeta = Object.keys(generatedAudioMetaRef.current || {}).some(key => key.startsWith('text:'));
+    const hasStaleLegacyRuntime = urls.length > 0 || Boolean(restoreState.signatures.text) || hasLegacyMeta;
+    if (reason === 'empty-legacy-workspace' && !hasStaleLegacyRuntime) return;
+
+    urls.forEach(url => {
+      try { URL.revokeObjectURL(url); } catch (err) { console.warn('Failed to revoke URL:', err); }
+    });
+    localAudioMapTextRef.current = {};
+    restoreState.signatures.text = '';
+    restoreState.generations.text = (restoreState.generations.text || 0) + 1;
+    if (urls.length > 0) setLocalAudioMapText({});
+    setAudioStatusText(prev => (prev === 'idle' ? prev : 'idle'));
+    if (hasLegacyMeta) clearGeneratedAudioMetaForMode('text');
+  // Clears stale Legacy Text local-audio state on document switch or empty-line
+  // state while leaving remembered IndexedDB handles, original files, Table, and
+  // Structured Text audio untouched.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, activeTextEditorModel, activeTextDocumentId, textDatabaseStatus, textIdentityState]);
 
   useEffect(() => {
     if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) return;
