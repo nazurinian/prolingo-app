@@ -13,7 +13,7 @@ export const TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION = 2;
 export const TEXT_STRUCTURED_GENERATION_DEFAULTS = Object.freeze({
   engine: TEXT_STRUCTURED_GENERATOR_ENGINES.EDGE,
   edgeTextVoiceId: 'en-GB-SoniaNeural',
-  edgeMeaningVoiceId: 'su-ID-TutiNeural',
+  edgeMeaningVoiceId: 'id-ID-GadisNeural',
   geminiVoiceName: 'Kore',
   edgeRate: 0,
   edgePitch: 0,
