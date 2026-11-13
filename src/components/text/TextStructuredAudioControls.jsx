@@ -300,9 +300,15 @@ export default function TextStructuredAudioControls({
               ? 'CUSTOM pins a local MP3 voice per narrator/speaker, with Browser TTS fallback if missing.'
               : 'AUTO uses the Ready local MP3 priority order, then Browser TTS if no matching file is available.'}
         </p>
-        <div className="grid grid-cols-2 gap-1.5 text-[8px] font-bold text-slate-600 dark:text-slate-300">
-          <div className="rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-2.5 py-1.5">Staging: {stagingCount} • ZIP: {zipCount}</div>
-          <div className="rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-2.5 py-1.5">Local Voices: EN {localVoiceCountEn} • ID {localVoiceCountId}</div>
+        <div className="grid grid-cols-2 gap-2 text-[9px] font-bold text-slate-600 dark:text-slate-300" data-text-local-audio-inventory="true">
+          <div className="min-w-0 space-y-1 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-2.5 py-2" data-text-local-storage-counts="true">
+            <p>Staging: {stagingCount}</p>
+            <p>ZIP: {zipCount}</p>
+          </div>
+          <div className="min-w-0 space-y-1 rounded-lg border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-2.5 py-2" data-text-local-voice-counts="true">
+            <p>Local Voices:</p>
+            <p>EN {localVoiceCountEn} • ID {localVoiceCountId}</p>
+          </div>
         </div>
       </div>
 
