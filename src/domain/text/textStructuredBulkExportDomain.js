@@ -1,6 +1,12 @@
-import { buildTextStructuredFullRepresentation, getTextStructuredFullAudioArtifacts } from './textStructuredSplitFullDomain.js';
+import {
+  TEXT_STRUCTURED_ARTIFACT_READINESS,
+  buildTextStructuredFullRepresentation,
+  getTextStructuredFullAudioArtifacts,
+  resolveTextStructuredFullArtifactReadiness
+} from './textStructuredSplitFullDomain.js';
 import { resolveTextStructuredEffectivePlaybackOrder } from './textStructuredAudioPlaybackOrderDomain.js';
 import { isTextStructuredAudioVariantContentCompatible } from './textStructuredAudioIdentityDomain.js';
+import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
@@ -241,4 +247,100 @@ export const buildTextStructuredBulkExportPlan = ({
       voiceCount: new Set(logical.map(item => lower(item.voiceId)).filter(Boolean)).size
     }
   };
+};
+
+/**
+ * Resolve active-profile Ready Edge Full artifacts for one Paragraph card.
+ * Excludes Conversation cards, stale artifacts after text edits, metadata-only records,
+ * and artifacts generated for a different voice, rate, pitch, or engine.
+ */
+export const resolveTextStructuredCardReadyFullArtifacts = ({
+  documentTree = null,
+  block = null,
+  channels = ['text', 'meaning'],
+  preferences = {},
+  runtimeFullAudio = {}
+} = {}) => {
+  if (!block || !isParagraph(block)) return [];
+  const rate = Number(preferences?.edgeRate ?? 0);
+  const pitch = Number(preferences?.edgePitch ?? 0);
+  const normalizedChannels = [...new Set((Array.isArray(channels) ? channels : [channels]).map(item => lower(item) === 'meaning' ? 'meaning' : 'text'))];
+  const results = [];
+
+  for (const channel of normalizedChannels) {
+    const firstSegment = (block.segments || []).find(segment => clean(channel === 'meaning' ? segment?.meaning : segment?.text))
+      || block.segments?.[0]
+      || null;
+    if (!firstSegment) continue;
+    const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({
+      documentTree,
+      block,
+      segment: firstSegment,
+      channel,
+      preferences
+    });
+    const language = channel === 'meaning'
+      ? (clean(documentTree?.meaningLanguage) || 'id')
+      : (clean(documentTree?.textLanguage) || 'en');
+    const readiness = resolveTextStructuredFullArtifactReadiness({
+      block,
+      channel,
+      language,
+      profile: { engine: 'edge', voiceId: downloadVoice.voiceId, rate, pitch },
+      runtimeFullAudio
+    });
+    if (readiness.status !== TEXT_STRUCTURED_ARTIFACT_READINESS.READY || !readiness.ready || !readiness.artifact || !readiness.runtime) {
+      continue;
+    }
+    results.push({
+      representation: 'full',
+      documentId: documentTree?.id || null,
+      documentUid: documentTree?.uid || null,
+      documentTitle: documentTree?.title || 'Text Workspace',
+      blockId: block.id,
+      cardUid: block.uid || null,
+      channel,
+      language,
+      voiceId: readiness.artifact?.descriptor?.voiceId || downloadVoice.voiceId,
+      fullArtifactFingerprint: lower(readiness.artifact.fullArtifactFingerprint),
+      artifact: readiness.artifact,
+      runtime: readiness.runtime
+    });
+  }
+  return results;
+};
+
+/**
+ * Resolve active-profile Ready Edge Full artifacts across the active Batch selection
+ * scope (selected workspaces/blocks and enabled EN/ID channels).
+ */
+export const resolveTextStructuredBatchReadyFullArtifacts = ({
+  documentTrees = [],
+  selection = null,
+  preferences = {},
+  runtimeFullAudio = {}
+} = {}) => {
+  const selectedDocumentIds = new Set((selection?.documents || []).map(document => upper(document?.id)).filter(Boolean));
+  const blocksByDocument = scopeByDocument(selection);
+  const channels = [];
+  if (preferences?.generateText !== false) channels.push('text');
+  if (preferences?.generateMeaning !== false) channels.push('meaning');
+  if (!channels.length) return [];
+
+  const items = [];
+  for (const documentTree of (Array.isArray(documentTrees) ? documentTrees : [])) {
+    if (!documentTree?.id || !selectedDocumentIds.has(upper(documentTree.id))) continue;
+    const blockScope = blocksByDocument.get(upper(documentTree.id)) || new Set((documentTree.blocks || []).map(block => block.id));
+    for (const block of (documentTree.blocks || [])) {
+      if (!block?.id || !blockScope.has(block.id)) continue;
+      items.push(...resolveTextStructuredCardReadyFullArtifacts({
+        documentTree,
+        block,
+        channels,
+        preferences,
+        runtimeFullAudio
+      }));
+    }
+  }
+  return items;
 };

@@ -9,7 +9,11 @@ import {
   resolveTextStructuredFullArtifactReadiness,
   resolveTextStructuredOrderedSegments
 } from './textStructuredSplitFullDomain.js';
-import { TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES } from './textStructuredPlaybackPreferenceDomain.js';
+import { resolveTextStructuredEffectiveCustomLocalVoice } from './textStructuredLocalAudioProfileDomain.js';
+import {
+  TEXT_STRUCTURED_AUDIO_SOURCE_MODES,
+  TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES
+} from './textStructuredPlaybackPreferenceDomain.js';
 
 export const TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES = Object.freeze({
   SPLIT_LOCAL: 'split-local',
@@ -107,10 +111,14 @@ export const buildTextStructuredSplitRuntimePlan = ({
   fallbackRate = 0,
   fallbackPitch = 0,
   globalPlaybackOrder = null,
+  audioSourceMode = TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+  customLocalVoiceId = null,
   globalTtsOnly = false,
   highlight = true
 } = {}) => {
   const normalizedChannel = normalizeChannel(channel);
+  const customLocalMode = audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
+  const effectiveGlobalTtsOnly = Boolean(globalTtsOnly) || audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
   const playbackOrder = resolveTextStructuredRuntimePlaybackOrder({
     documentTree,
     block,
@@ -121,7 +129,7 @@ export const buildTextStructuredSplitRuntimePlan = ({
     fallbackPitch,
     globalPlaybackOrder
   });
-  const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly });
+  const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly: effectiveGlobalTtsOnly });
   const { scopedSegments } = resolveScopedSegments(block, segmentIds);
   const steps = [];
   let localCount = 0;
@@ -132,19 +140,43 @@ export const buildTextStructuredSplitRuntimePlan = ({
     if (!content) continue;
     let resolved = null;
     if (!ttsOnly.enabled) {
-      resolved = resolveTextStructuredRuntimeAudio({
-        audioVariants,
-        runtimeAudioUrls,
-        segmentId: segment.id,
-        channel: normalizedChannel,
-        requestedVoiceId: null,
-        preferredGeneratedVoiceId: fallbackVoiceId,
-        preferredGeneratedEngine: fallbackEngine,
-        preferredGeneratedProfiles: playbackOrder.profiles,
-        strictProfileOrder: playbackOrder.explicit,
-        allowAnyGenerated: !playbackOrder.explicit,
-        content
-      });
+      if (customLocalMode) {
+        const pinnedVoiceId = clean(resolveTextStructuredEffectiveCustomLocalVoice({
+          documentTree,
+          block,
+          segment,
+          channel: normalizedChannel
+        })) || clean(customLocalVoiceId) || null;
+        if (pinnedVoiceId) {
+          resolved = resolveTextStructuredRuntimeAudio({
+            audioVariants,
+            runtimeAudioUrls,
+            segmentId: segment.id,
+            channel: normalizedChannel,
+            requestedVoiceId: pinnedVoiceId,
+            preferredGeneratedVoiceId: pinnedVoiceId,
+            preferredGeneratedEngine: fallbackEngine,
+            preferredGeneratedProfiles: [],
+            strictProfileOrder: false,
+            allowAnyGenerated: false,
+            content
+          });
+        }
+      } else {
+        resolved = resolveTextStructuredRuntimeAudio({
+          audioVariants,
+          runtimeAudioUrls,
+          segmentId: segment.id,
+          channel: normalizedChannel,
+          requestedVoiceId: null,
+          preferredGeneratedVoiceId: fallbackVoiceId,
+          preferredGeneratedEngine: fallbackEngine,
+          preferredGeneratedProfiles: playbackOrder.profiles,
+          strictProfileOrder: playbackOrder.explicit,
+          allowAnyGenerated: !playbackOrder.explicit,
+          content
+        });
+      }
     }
     if (resolved) {
       localCount += 1;
@@ -206,10 +238,14 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   fallbackPitch = 0,
   language = null,
   globalPlaybackOrder = null,
+  audioSourceMode = TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
+  customLocalVoiceId = null,
   globalTtsOnly = false,
   allowFullArtifact = true
 } = {}) => {
   const normalizedChannel = normalizeChannel(channel);
+  const customLocalMode = audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
+  const effectiveGlobalTtsOnly = Boolean(globalTtsOnly) || audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
   const normalizedMode = representationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
     ? TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
     : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT;
@@ -227,7 +263,9 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       fallbackRate,
       fallbackPitch,
       globalPlaybackOrder,
-      globalTtsOnly,
+      audioSourceMode,
+      customLocalVoiceId,
+      globalTtsOnly: effectiveGlobalTtsOnly,
       highlight: true
     });
     return {
@@ -259,7 +297,37 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     fallbackPitch,
     globalPlaybackOrder
   });
-  const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly });
+  const contentSegments = scopedSegments.filter(segment => Boolean(contentFor(segment, normalizedChannel)));
+  const customPinnedSegmentVoices = customLocalMode
+    ? contentSegments.map(segment => clean(resolveTextStructuredEffectiveCustomLocalVoice({
+        documentTree,
+        block,
+        segment,
+        channel: normalizedChannel
+      })) || clean(customLocalVoiceId) || null)
+    : [];
+  const customUniqueVoices = customLocalMode ? [...new Set(customPinnedSegmentVoices.filter(Boolean))] : [];
+  const resolvedCustomFullVoiceId = customLocalMode
+    && customPinnedSegmentVoices.length > 0
+    && customPinnedSegmentVoices.every(Boolean)
+    && customUniqueVoices.length === 1
+    ? customUniqueVoices[0]
+    : null;
+  const effectivePlaybackOrder = customLocalMode
+    ? {
+        source: 'custom-local',
+        explicit: true,
+        profiles: resolvedCustomFullVoiceId
+          ? resolveFallbackProfile({
+              fallbackVoiceId: resolvedCustomFullVoiceId,
+              fallbackEngine,
+              fallbackRate,
+              fallbackPitch
+            })
+          : []
+      }
+    : playbackOrder;
+  const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly: effectiveGlobalTtsOnly });
 
   if (!fullRepresentation.content) {
     return {
@@ -268,7 +336,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
-      playbackOrder,
+      playbackOrder: effectivePlaybackOrder,
       ttsOnly,
       fullRepresentation,
       steps: [],
@@ -285,7 +353,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
-      playbackOrder,
+      playbackOrder: effectivePlaybackOrder,
       ttsOnly,
       fullRepresentation,
       steps: [{
@@ -310,7 +378,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     block,
     channel: normalizedChannel,
     language,
-    playbackOrder,
+    playbackOrder: effectivePlaybackOrder,
     runtimeFullAudio
   }) : null;
 
@@ -321,7 +389,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
-      playbackOrder,
+      playbackOrder: effectivePlaybackOrder,
       ttsOnly,
       fullRepresentation,
       steps: [{
@@ -356,6 +424,8 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     fallbackRate,
     fallbackPitch,
     globalPlaybackOrder,
+    audioSourceMode,
+    customLocalVoiceId,
     globalTtsOnly: false,
     highlight: false
   });
@@ -369,7 +439,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
       representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       channel: normalizedChannel,
-      playbackOrder,
+      playbackOrder: effectivePlaybackOrder,
       ttsOnly,
       fullRepresentation,
       splitFallback,
@@ -397,7 +467,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     ttsFallbackPolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
     representation: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
     channel: normalizedChannel,
-    playbackOrder,
+    playbackOrder: effectivePlaybackOrder,
     ttsOnly,
     fullRepresentation,
     splitFallback,

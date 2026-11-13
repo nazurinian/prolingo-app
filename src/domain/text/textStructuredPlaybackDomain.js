@@ -156,8 +156,20 @@ export const resolveStructuredTextAdjacentSegment = ({ list, currentId, directio
   return items[nextIndex] || null;
 };
 
-export const resolveStructuredTextPlayerTitle = item => {
+export const resolveStructuredTextPlayerTitle = (item, options = {}) => {
   if (!item?.isTextStructuredSegment) return null;
+  const isFullRepresentation = String(options?.representationMode || '').toLowerCase() === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
+  if (isFullRepresentation) {
+    const cardLabel = Number.isFinite(Number(item.blockIndex)) ? `Card ${Number(item.blockIndex) + 1}` : null;
+    const cardDetail = (item.blockType === 'paragraph' && item.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title' : item.blockTitle)
+      || (item.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
+    const channelLabel = String(options?.speakingPart || '').toLowerCase() === 'meaning' ? 'Meaning' : null;
+    return {
+      title: item.documentTitle || 'Text Workspace',
+      artist: [cardDetail, cardLabel, 'Full', channelLabel].filter(Boolean).join(' • '),
+      album: 'ProLingo Text Library'
+    };
+  }
   const segmentLabel = `Segment ${Number(item.displayId) || 1}`;
   const detail = item.speaker || (item.blockType === 'paragraph' && item.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title' : item.blockTitle) || (item.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
   return {
@@ -165,6 +177,23 @@ export const resolveStructuredTextPlayerTitle = item => {
     artist: [detail, segmentLabel].filter(Boolean).join(' • '),
     album: 'ProLingo Text Library'
   };
+};
+
+/** Filters Structured Text playback source telemetry to the active workspace and session. */
+export const resolveScopedStructuredTextPlaybackSourceStatus = ({
+  status = null,
+  mode = 'table',
+  activeEditorModel = null,
+  activeDocumentId = null,
+  activeSessionId = null
+} = {}) => {
+  if (!status || typeof status !== 'object') return null;
+  if (mode !== 'text' || activeEditorModel !== 'structured-v1') return null;
+  if (!activeDocumentId || !status.documentId || status.documentId !== activeDocumentId) return null;
+  if (activeSessionId !== null && activeSessionId !== undefined && status.sessionId !== null && status.sessionId !== undefined && status.sessionId !== activeSessionId) {
+    return null;
+  }
+  return status;
 };
 
 export const resolveStructuredTextSmartNavigationContext = ({

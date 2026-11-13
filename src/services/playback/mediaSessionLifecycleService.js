@@ -1,34 +1,77 @@
-import { getItemPartText } from '../../utils/audioUtils';
-import { capitalizeDisplayText } from '../../utils/displayTextUtils';
-import { resolveStructuredTextPlayerTitle } from '../../domain/text/textStructuredPlaybackDomain.js';
+import { getItemPartText } from '../../utils/audioUtils.js';
+import { capitalizeDisplayText } from '../../utils/displayTextUtils.js';
+import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, resolveStructuredTextPlayerTitle } from '../../domain/text/textStructuredPlaybackDomain.js';
+import { TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 
 export const executeMediaSessionLifecycleService = ({
-  currentPlayerList, playbackContextRef, playingIndex, speakingPart, currentDeckName, isPlaying, isPaused,
+  currentPlayerList, playbackContextRef, playingIndex, currentIndex = null, speakingPart, currentDeckName, isPlaying, isPaused,
   currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
 }) => {
         if (!('mediaSession' in navigator)) return;
 
         // D2: metadata belongs to the active playback session, not the current
         // filtered/visible UI list. The visible list is only a compatibility fallback.
-        const sessionList = playbackContextRef?.current?.orderedList;
-        const activeItem = (Array.isArray(sessionList) ? sessionList : currentPlayerList)
-            .find(p => p.id === playingIndex);
+        const sessionContext = playbackContextRef?.current || null;
+        const sessionList = sessionContext?.orderedList;
+        const candidateList = Array.isArray(sessionList) ? sessionList : (Array.isArray(currentPlayerList) ? currentPlayerList : []);
+        const isStructuredSession = sessionContext?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT;
+        const structuredFullActive = Boolean(
+            isStructuredSession
+            && (isPlaying || isPaused)
+            && (playingIndex === null || playingIndex === undefined)
+        );
+        let activeItem = playingIndex !== null && playingIndex !== undefined
+            ? candidateList.find(p => p.id === playingIndex)
+            : null;
+        if (!activeItem && structuredFullActive) {
+            const fullCursorId = sessionContext?.cursorSegmentId || currentIndex || null;
+            activeItem = (fullCursorId ? candidateList.find(p => p.id === fullCursorId || p.segmentId === fullCursorId) : null)
+                || (sessionContext?.blockId ? candidateList.find(p => p.blockId === sessionContext.blockId) : null)
+                || null;
+        }
+        // If Structured Text playback has stopped before playingIndex resets, do not republish stale metadata.
+        if (activeItem?.isTextStructuredSegment && !isPlaying && !isPaused && !sessionContext) {
+            activeItem = null;
+        }
         if (!activeItem) {
-            // A real Stop removes the active item. Clear any timeline previously
-            // published for local/generated audio so Android does not keep stale
-            // duration/position data after the playback session has ended.
+            // A real Stop or workspace switch removes the active item. Clear any interval,
+            // stale metadata, and timeline previously published for local/generated audio.
+            if (mediaIntervalRef?.current) {
+                clearInterval(mediaIntervalRef.current);
+                mediaIntervalRef.current = null;
+            }
+            if (!isPlaying && !isPaused) {
+                try {
+                    navigator.mediaSession.playbackState = 'none';
+                } catch { /* ignore */ }
+            }
+            try {
+                navigator.mediaSession.metadata = null;
+            } catch { /* ignore */ }
             try {
                 navigator.mediaSession.setPositionState?.({});
-            } catch (_) {}
+            } catch { /* ignore */ }
             return;
         }
+
+        const isStructuredFullMode = Boolean(
+            structuredFullActive
+            || (activeItem?.isTextStructuredSegment
+                && sessionContext?.playbackRepresentationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
+                && (playingIndex === null || playingIndex === undefined))
+        );
 
         // 2. Tentukan Metadata Awal
         let title = activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.text ? capitalizeDisplayText(activeItem.text) : "Unknown Item");
         let artist = "ProLingo Audio";
         let album = currentDeckName || "ProLingo Deck";
 
-        const structuredTextMetadata = resolveStructuredTextPlayerTitle(activeItem);
+        const structuredTextMetadata = resolveStructuredTextPlayerTitle(activeItem, {
+            representationMode: isStructuredFullMode
+                ? TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
+                : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
+            speakingPart
+        });
         if (structuredTextMetadata) {
             title = structuredTextMetadata.title;
             artist = structuredTextMetadata.artist;
@@ -47,11 +90,13 @@ export const executeMediaSessionLifecycleService = ({
         }
         if (speakingPart === "meaning") {
             if (activeItem.isTextStructuredSegment) {
-                // P4-A7: structured Text keeps the Document title stable while the
-                // active audio channel switches from Text to Meaning.
-                title = activeItem.documentTitle || "Text Document";
-                const detail = activeItem.speaker || activeItem.blockTitle || (activeItem.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
-                artist = [detail, `Segment ${Number(activeItem.displayId) || 1}`, 'Meaning'].filter(Boolean).join(' • ');
+                if (!isStructuredFullMode) {
+                    // P4-A7: structured Text keeps the Document title stable while the
+                    // active audio channel switches from Text to Meaning.
+                    title = activeItem.documentTitle || "Text Document";
+                    const detail = activeItem.speaker || activeItem.blockTitle || (activeItem.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
+                    artist = [detail, `Segment ${Number(activeItem.displayId) || 1}`, 'Meaning'].filter(Boolean).join(' • ');
+                }
             } else {
                 title = `Terjemahan kalimat: ${activeItem.meaning}`;
             }
@@ -120,7 +165,7 @@ export const executeMediaSessionLifecycleService = ({
                     playbackRate,
                     position
                 });
-            } catch (error) {
+            } catch {
                 // Position state is an enhancement. Never let an unsupported or
                 // transient media value interrupt the actual playback session.
             }

@@ -63,7 +63,8 @@ const {
   TEXT_STRUCTURED_PLAYBACK_SCOPES,
   resolveStructuredTextPlaybackList,
   resolveStructuredTextPlaybackOrder,
-  resolveStructuredTextNavigationTarget
+  resolveStructuredTextNavigationTarget,
+  resolveStructuredTextSmartNavigationContext
 } = await import('../src/domain/text/textStructuredPlaybackDomain.js');
 const {
   TEXT_STRUCTURED_ORDER_MODES,
@@ -346,7 +347,7 @@ await runCheck('S1', 'DEFECT', '[DEFECT S1-B] MediaSession updates metadata whil
   const doc = makeDocTree();
   const list = resolveStructuredTextPlaybackList(doc);
   globalThis.navigator.mediaSession.metadata = null;
-  executeMediaSessionLifecycleService({
+  const cleanup = executeMediaSessionLifecycleService({
     currentPlayerList: list,
     playbackContextRef: { current: { context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, orderedList: list, cursorSegmentId: 'SEGMENT_000001', playbackRepresentationMode: 'full' } },
     playingIndex: null,
@@ -363,7 +364,11 @@ await runCheck('S1', 'DEFECT', '[DEFECT S1-B] MediaSession updates metadata whil
     stopRef: { current: () => {} },
     pauseStateRef: { current: false }
   });
-  assert.ok(globalThis.navigator.mediaSession.metadata, 'MediaSession metadata stayed null during active Full mode playback because playingIndex is null');
+  try {
+    assert.ok(globalThis.navigator.mediaSession.metadata, 'MediaSession metadata stayed null during active Full mode playback because playingIndex is null');
+  } finally {
+    cleanup?.();
+  }
 });
 
 // ============================================================================
@@ -583,13 +588,46 @@ await runCheck('S6', 'DEFECT', '[DEFECT S6-A] repeatMode=loop with unavailable T
   assert.ok(invocations < 25, `Unthrottled tight loop detected: ${invocations} consecutive loop passes ran without any inter-pass yield/throttle when channel resolves immediately`);
 });
 
-await runCheck('S6', 'DEFECT', '[DEFECT S6-B] handlePlayerSmartNav inherits temporary Manual Segment/Card settings (e.g., Loop/Split) into Global Document session', () => {
+await runCheck('S6', 'DEFECT', '[DEFECT S6-B] handlePlayerSmartNav delegates to resolveStructuredTextSmartNavigationContext and ignores Manual Segment/Card overrides (Loop/Split)', () => {
+  // History note (H5-D): Pre-remediation inline scope guard inside App.jsx handlePlayerSmartNav was
+  // extracted into resolveStructuredTextSmartNavigationContext (textStructuredPlaybackDomain.js).
   const appSource = readRepoText('src/App.jsx');
   const start = appSource.indexOf('const handlePlayerSmartNav =');
   const end = appSource.indexOf('const runTextLibraryUiCommand =', start);
   const navFn = appSource.slice(start, end);
-  const guardsManualScope = /session\?\.scope\s*===\s*TEXT_STRUCTURED_PLAYBACK_SCOPES\.(DOCUMENT|FROM_HERE)/.test(navFn);
-  assert.equal(guardsManualScope, true, 'handlePlayerSmartNav unconditionally inherits session.repeatMode / playbackRepresentationMode / playbackChannelMode even when active session was a manual Segment/Card play');
+  assert.match(navFn, /resolveStructuredTextSmartNavigationContext\s*\(/, 'handlePlayerSmartNav must delegate Smart Nav resolution to resolveStructuredTextSmartNavigationContext');
+
+  const doc = makeDocTree();
+  const list = resolveStructuredTextPlaybackList(doc);
+  const reversedByCard = [...list].reverse();
+  const nav = resolveStructuredTextSmartNavigationContext({
+    completeList: list,
+    activeDocumentId: doc.id,
+    session: {
+      documentId: doc.id,
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT,
+      cursorSegmentId: 'SEGMENT_000001',
+      repeatMode: TEXT_STRUCTURED_REPEAT_MODES.LOOP,
+      repeatCount: 5,
+      playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
+      playbackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SHUFFLE,
+      orderedList: reversedByCard
+    },
+    preferences: {
+      playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
+      playbackChannelMode: TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_THEN_MEANING,
+      repeatMode: TEXT_STRUCTURED_REPEAT_MODES.ONCE
+    }
+  });
+  assert.equal(nav.representationMode, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL);
+  assert.equal(nav.playbackOrderMode, TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL);
+  assert.equal(nav.playbackChannelMode, TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_THEN_MEANING);
+  assert.equal(nav.repeatMode, TEXT_STRUCTURED_REPEAT_MODES.ONCE);
+  assert.equal(nav.repeatCount, null);
+  assert.equal(nav.orderedListOverride, null);
+  assert.deepEqual(nav.ordered.map(item => item.id), list.map(item => item.id));
 });
 
 // ============================================================================

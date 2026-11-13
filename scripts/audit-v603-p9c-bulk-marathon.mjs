@@ -528,13 +528,19 @@ await runCheck('C8', 'DEFECT', '[DEFECT P9C-A] handleTextDatabaseBackupRestore /
   assert.match(restoreSlice, /structuredTextAudioStagingHydratedRef\.current\s*=\s*false|listTextAudioStagingMetadata/, 'handleTextDatabaseBackupRestore runs GC & ZIP reconcile but leaves structuredTextAudioStagingHydratedRef=true and never clears/re-hydrates runtime maps from Staging IDB');
 });
 
-await runCheck('C9', 'DEFECT', '[DEFECT P9C-B] Two-DB ZIP import writes Text Library metadata before reading/staging ZIP blobs without rollback on mid-stream failure', () => {
+await runCheck('C9', 'DEFECT', '[DEFECT P9C-B] Two-DB ZIP import extracts blobs before Staging/Text IDB writes and rolls back both DBs on mid-stream failure', () => {
+  // History note (H2 / H5-D): Pre-H2 inline App.jsx calls to materializeStructuredTextExternalRfRequirementsBulk
+  // were moved into executeTextStructuredAudioZipImport (textStructuredAudioZipImportService.js), which decodes/validates
+  // entries before Staging writes and metadata commit, then executes compensating rollback across both IDBs.
   const appSource = readRepoText('src/App.jsx');
   const zipFn = appSource.slice(appSource.indexOf('const handleStructuredTextAddAudioZipFiles ='), appSource.indexOf('const reconcileStructuredTextExternalAudioSources ='));
-  const firstWritePos = zipFn.indexOf('materializeStructuredTextExternalRfRequirementsBulk');
-  const firstReadPos = zipFn.indexOf('readTextStructuredAudioZipRuntimeBlob');
-  assert.ok(firstWritePos > 0 && firstReadPos > firstWritePos);
-  assert.match(zipFn, /catch[\s\S]*(DELETE_AUDIO_VARIANT|DELETE_FULL_AUDIO_ARTIFACT|rollback)/i, 'ZIP import materializes AudioVariants & FullArtifacts in Text Library IDB before extracting/staging blobs with no rollback on extraction error');
+  assert.match(zipFn, /executeTextStructuredAudioZipImport\s*\(/);
+  const serviceSource = readRepoText('src/services/audio/textStructuredAudioZipImportService.js');
+  const extractPos = serviceSource.indexOf('await readZipEntryBlob(');
+  const stagePos = serviceSource.indexOf('await putSplitStaging(');
+  const commitPos = serviceSource.indexOf('metadataCommit = await commitMetadata(');
+  assert.ok(extractPos > 0 && stagePos > extractPos && commitPos > stagePos, 'ZIP import must extract blobs before staging writes and Text Library metadata commit');
+  assert.match(serviceSource, /await rollbackMetadata\([\s\S]*await rollbackStaging\(/, 'ZIP import catch handler must roll back both Text Library metadata and Audio Staging');
 });
 
 await runCheck('C9', 'CONTRACT', 'Repeated generation requirement selection does not duplicate physical/reusable counts in bulk selection', () => {

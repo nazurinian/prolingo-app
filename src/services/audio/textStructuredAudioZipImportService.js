@@ -31,6 +31,100 @@ const assertNotAborted = signal => {
   }
 };
 
+const buildZipImportRecoverySummary = ({
+  aborted = false,
+  metadataCommitAttempted = false,
+  stagingWriteAttempted = false,
+  metadataRollback = null,
+  metadataRollbackError = null,
+  stagingRollback = null,
+  stagingRollbackError = null
+} = {}) => {
+  const metaStatus = metadataRollback || (metadataCommitAttempted ? 'pending' : 'not-needed');
+  const stageStatus = stagingRollback || (stagingWriteAttempted ? 'pending' : 'not-needed');
+  const cleanRollback = metaStatus !== 'failed' && stageStatus !== 'failed';
+  return {
+    aborted: Boolean(aborted),
+    metadataCommitAttempted: Boolean(metadataCommitAttempted),
+    stagingWriteAttempted: Boolean(stagingWriteAttempted),
+    metadataRollback: metaStatus,
+    metadataRollbackError: metadataRollbackError || null,
+    stagingRollback: stageStatus,
+    stagingRollbackError: stagingRollbackError || null,
+    cleanRollback,
+    residualRisk: !cleanRollback
+  };
+};
+
+const attachZipImportRecovery = (error, recovery) => {
+  const normalized = error instanceof Error ? error : new Error(String(error || 'Portable ZIP import failed.'));
+  try {
+    normalized.zipImportRecovery = recovery;
+  } catch {
+    const wrapped = new Error(normalized.message);
+    wrapped.name = normalized.name;
+    wrapped.cause = normalized;
+    wrapped.zipImportRecovery = recovery;
+    return wrapped;
+  }
+  return normalized;
+};
+
+/**
+ * Serialize Portable ZIP imports and coordinate workspace/mode cancellation so concurrent
+ * imports never interleave Staging IDB or Text Library IDB mutations/rollbacks.
+ */
+export const createTextStructuredAudioZipImportCoordinator = () => {
+  let tail = Promise.resolve();
+  let activeTask = null;
+  let epoch = 0;
+
+  const cancelActive = (reason = 'Portable ZIP import cancelled due to workspace or mode change.') => {
+    epoch += 1;
+    if (activeTask) {
+      activeTask.cancelled = true;
+      try { activeTask.controller.abort(new Error(reason)); } catch { /* noop */ }
+    }
+    return epoch;
+  };
+
+  const runExclusive = ({ getContextVersion = null, run } = {}) => {
+    const startEpoch = epoch;
+    const startContext = typeof getContextVersion === 'function' ? getContextVersion() : null;
+    const execute = async () => {
+      if (epoch !== startEpoch || (typeof getContextVersion === 'function' && getContextVersion() !== startContext)) {
+        const error = new Error('Portable ZIP import cancelled before start.');
+        error.name = 'AbortError';
+        throw attachZipImportRecovery(error, buildZipImportRecoverySummary({ aborted: true }));
+      }
+      const controller = new AbortController();
+      const task = { controller, cancelled: false };
+      activeTask = task;
+      try {
+        return await run({
+          signal: controller.signal,
+          isStaleContext: () => task.cancelled
+            || controller.signal.aborted
+            || epoch !== startEpoch
+            || (typeof getContextVersion === 'function' && getContextVersion() !== startContext)
+        });
+      } finally {
+        if (activeTask === task) activeTask = null;
+      }
+    };
+    const next = tail.then(execute, execute);
+    tail = next.catch(() => {});
+    return next;
+  };
+
+  return {
+    runExclusive,
+    cancelActive,
+    isActive: () => Boolean(activeTask),
+    getEpoch: () => epoch
+  };
+};
+
 const buildRequirementKey = requirement => (
   requirement?.segmentId && requirement?.channel && requirement?.renderFingerprint
     ? `${upper(requirement.segmentId)}|${lower(requirement.channel)}|${lower(requirement.renderFingerprint)}`
@@ -344,9 +438,16 @@ export const executeTextStructuredAudioZipImport = async ({
       stagedFullByFingerprint,
       stagedSplitRecords,
       stagedFullRecords,
+      createdIds: createdStagingIds,
+      previousSnapshots: [...overwrittenStagingSnapshots.values()],
       metadataCommit
     };
   } catch (error) {
+    const recovery = buildZipImportRecoverySummary({
+      aborted: error?.name === 'AbortError' || Boolean(signal?.aborted),
+      metadataCommitAttempted: Boolean(metadataCommit),
+      stagingWriteAttempted: Boolean(createdStagingIds.length || overwrittenStagingSnapshots.size)
+    });
     if (metadataCommit) {
       try {
         await rollbackMetadata({
@@ -356,7 +457,12 @@ export const executeTextStructuredAudioZipImport = async ({
           previousCounters: metadataCommit.previousCounters,
           expectedCounters: metadataCommit.counters
         });
+        recovery.metadataRollback = 'rolled-back';
       } catch (rollbackMetaErr) {
+        recovery.metadataRollback = 'failed';
+        recovery.metadataRollbackError = rollbackMetaErr?.message || String(rollbackMetaErr);
+        recovery.cleanRollback = false;
+        recovery.residualRisk = true;
         console.error('Failed to roll back Text Library ZIP metadata:', rollbackMetaErr);
       }
     }
@@ -366,10 +472,65 @@ export const executeTextStructuredAudioZipImport = async ({
           createdIds: createdStagingIds,
           previousSnapshots: [...overwrittenStagingSnapshots.values()]
         });
+        recovery.stagingRollback = 'rolled-back';
       } catch (rollbackStageErr) {
+        recovery.stagingRollback = 'failed';
+        recovery.stagingRollbackError = rollbackStageErr?.message || String(rollbackStageErr);
+        recovery.cleanRollback = false;
+        recovery.residualRisk = true;
         console.error('Failed to roll back Audio Staging ZIP writes:', rollbackStageErr);
       }
     }
-    throw error;
+    throw attachZipImportRecovery(error, recovery);
   }
+};
+
+/**
+ * Compensating rollback helper for an already-returned import result when a
+ * document/mode switch or abort lands after commitMetadata returned.
+ */
+export const rollbackCompletedTextStructuredAudioZipImport = async (
+  imported,
+  {
+    rollbackStaging = rollbackTextAudioStagingBatch,
+    rollbackMetadata = executeTextAudioImportRollback
+  } = {}
+) => {
+  const metadataCommit = imported?.metadataCommit || null;
+  const createdIds = Array.isArray(imported?.createdIds) ? imported.createdIds : [];
+  const previousSnapshots = Array.isArray(imported?.previousSnapshots) ? imported.previousSnapshots : [];
+  const recovery = buildZipImportRecoverySummary({
+    aborted: true,
+    metadataCommitAttempted: Boolean(metadataCommit),
+    stagingWriteAttempted: Boolean(createdIds.length || previousSnapshots.length)
+  });
+  if (metadataCommit) {
+    try {
+      await rollbackMetadata({
+        createdVariantIds: metadataCommit.createdVariantIds,
+        previousVariants: metadataCommit.previousVariants,
+        previousBlocks: metadataCommit.previousBlocks,
+        previousCounters: metadataCommit.previousCounters,
+        expectedCounters: metadataCommit.counters
+      });
+      recovery.metadataRollback = 'rolled-back';
+    } catch (err) {
+      recovery.metadataRollback = 'failed';
+      recovery.metadataRollbackError = err?.message || String(err);
+      recovery.cleanRollback = false;
+      recovery.residualRisk = true;
+    }
+  }
+  if (createdIds.length || previousSnapshots.length) {
+    try {
+      await rollbackStaging({ createdIds, previousSnapshots });
+      recovery.stagingRollback = 'rolled-back';
+    } catch (err) {
+      recovery.stagingRollback = 'failed';
+      recovery.stagingRollbackError = err?.message || String(err);
+      recovery.cleanRollback = false;
+      recovery.residualRisk = true;
+    }
+  }
+  return recovery;
 };

@@ -1,5 +1,6 @@
 import { isTextStructuredAudioVariantContentCompatible, normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
-import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
+import { getTextStructuredAudioSyncProfile } from './textStructuredAudioSyncProfileDomain.js';
+import { collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 
 export const TEXT_STRUCTURED_LOCAL_AUDIO_PROFILE_KEY = 'localAudioPlaybackProfileV1';
 
@@ -56,6 +57,41 @@ export const resolveTextStructuredCustomLocalAudioVoice = ({ documentTree, block
     || (speakerKey ? documentProfile.speakers[normalizedChannel]?.[speakerKey] : null)
     || documentProfile.channels[normalizedChannel]
   ) || null;
+};
+
+/** Resolves effective CUSTOM_LOCAL pinned voice for a segment or card, honoring conversation Speaker 1 sync. */
+export const resolveTextStructuredEffectiveCustomLocalVoice = ({
+  documentTree,
+  block = null,
+  segment = null,
+  channel = 'text',
+  conversationSpeakers = null
+} = {}) => {
+  const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+  const syncProfile = getTextStructuredAudioSyncProfile(documentTree);
+  const syncLocalToFirstSpeaker = documentTree?.documentType === 'conversation'
+    && syncProfile?.voice?.[normalizedChannel] === true;
+  if (syncLocalToFirstSpeaker) {
+    const speakers = Array.isArray(conversationSpeakers)
+      ? conversationSpeakers
+      : collectTextStructuredConversationSpeakerIdentities(documentTree);
+    const firstSpeaker = speakers[0] || null;
+    if (firstSpeaker) {
+      const localProfile = getTextStructuredLocalAudioProfile(documentTree);
+      const speakerKey = firstSpeaker.key || normalizeTextStructuredSpeakerKey(firstSpeaker.label);
+      return clean(
+        localProfile?.speakerIds?.[normalizedChannel]?.[firstSpeaker.id]
+        || (speakerKey ? localProfile?.speakers?.[normalizedChannel]?.[speakerKey] : null)
+        || localProfile?.channels?.[normalizedChannel]
+      ) || null;
+    }
+  }
+  return resolveTextStructuredCustomLocalAudioVoice({
+    documentTree,
+    block,
+    segment,
+    channel: normalizedChannel
+  });
 };
 
 export const collectTextStructuredAvailableLocalVoices = ({ documentTree, audioVariants = [], runtimeAudioUrls = {} }) => {

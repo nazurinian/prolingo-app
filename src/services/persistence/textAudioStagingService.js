@@ -64,8 +64,25 @@ export const getTextAudioStagingSnapshot = args => getAudioStagingSnapshotBySpec
 export const getTextFullAudioStagingSnapshot = args => getAudioStagingSnapshotBySpec(buildTextFullStagingSpec(args));
 
 export const rollbackTextAudioStagingBatch = async ({ createdIds = [], previousSnapshots = [] } = {}) => {
-  const restored = await restoreAudioStagingSnapshotRecords(previousSnapshots);
-  const deleted = await deleteAudioStagingRecordsByIds(createdIds);
+  const errors = [];
+  let restored = 0;
+  let deleted = 0;
+  try {
+    restored = await restoreAudioStagingSnapshotRecords(previousSnapshots);
+  } catch (err) {
+    errors.push(err);
+  }
+  try {
+    deleted = await deleteAudioStagingRecordsByIds(createdIds);
+  } catch (err) {
+    errors.push(err);
+  }
+  if (errors.length) {
+    const error = new Error(`Staging rollback incomplete: ${errors.map(item => item?.message || String(item)).join('; ')}`);
+    error.cause = errors[0];
+    error.partial = { restored, deleted, errorCount: errors.length };
+    throw error;
+  }
   return { restored, deleted };
 };
 

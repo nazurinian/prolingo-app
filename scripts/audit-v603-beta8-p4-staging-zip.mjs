@@ -204,16 +204,21 @@ await check('GC releases stale Full physical binary when canonical derived Full 
 });
 
 const appSource = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const zipImportServiceSource = fs.readFileSync(new URL('../src/services/audio/textStructuredAudioZipImportService.js', import.meta.url), 'utf8');
+const textCommandServiceSource = fs.readFileSync(new URL('../src/services/persistence/textLibraryCommandService.js', import.meta.url), 'utf8');
 const dataPanelSource = fs.readFileSync(new URL('../src/components/text/TextAudioDataPanel.jsx', import.meta.url), 'utf8');
 const libraryShellSource = fs.readFileSync(new URL('../src/components/text/TextLibraryShell.jsx', import.meta.url), 'utf8');
 
 await check('App Portable ZIP import commits Split binaries into Text Staging', async () => {
-  assert.match(appSource, /putTextAudioStagingBlob\s*\(/);
-  assert.match(appSource, /zip-imported-staging-ready/);
+  // History note (H2 / H5-D): Staging & metadata commit moved into textStructuredAudioZipImportService.js.
+  assert.match(appSource, /executeTextStructuredAudioZipImport\s*\(/);
+  assert.match(zipImportServiceSource, /putTextAudioStagingBlob/);
+  assert.match(zipImportServiceSource, /zip-imported-staging-ready/);
 });
 await check('App Portable ZIP import commits Full binaries and Full metadata additively', async () => {
-  assert.match(appSource, /putTextFullAudioStagingBlob\s*\(/);
-  assert.match(appSource, /executeTextFullAudioArtifactBulkUpsert\s*\(/);
+  assert.match(zipImportServiceSource, /putTextFullAudioStagingBlob/);
+  assert.match(zipImportServiceSource, /executeTextZipImportMetadataCommit/);
+  assert.match(textCommandServiceSource, /prepareFullAudioArtifactBulkWrites/);
 });
 await check('App startup hydration restores Full Staging runtime handles', async () => {
   assert.match(appSource, /setStructuredTextFullAudioRuntimeUrls/);
