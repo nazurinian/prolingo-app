@@ -74,7 +74,7 @@ const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, option
     <select data-text-global-voice-select={channel} value={selected || ''} disabled={disabled}
       onChange={event => onChange?.(event.target.value || null, channel)}
       className="w-full min-w-0 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-800 px-2.5 py-2 text-[10px] text-slate-700 dark:text-slate-200">
-      <option value="">AUTO · {formatTextStructuredBrowserVoiceLabel(effectiveName)}</option>
+      <option value="">DEFAULT · Browser automatic</option>
       {selected && !options.includes(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
       {options.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
     </select>
@@ -223,7 +223,7 @@ export default function TextStructuredAudioControls({
         label={`${label} • Workspace Narrator (Browser TTS)`}
         value={voiceProfile.channels?.[channel] || ''}
         options={voices}
-        fallbackLabel={`Global Browser TTS • ${formatTextStructuredBrowserVoiceLabel(fallback)}`}
+        fallbackLabel="AUTO · Inherit Global"
         disabled={disabled}
         helper={`Effective: ${formatTextStructuredBrowserVoiceLabel(resolution.effectiveVoiceName)} (${resolution.effectiveSourceLabel})`}
         onChange={value => onDocumentVoiceChange?.(value, channel)}
@@ -336,7 +336,7 @@ export default function TextStructuredAudioControls({
       <details className="min-w-0 space-y-2" data-text-playback-voices-menu="true">
         <summary className="cursor-pointer select-none py-2 text-[11px] font-black uppercase text-sky-700 dark:text-sky-300">2. Browser TTS · Global & Workspace</summary>
         <div className="space-y-3 pt-1">
-          <p className="px-1 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400"><b>Global</b> is the default voice for all Text Workspaces. <b>Workspace</b> can override it for this document. Conversation speakers may each have their own voice. Both menus can stay open independently; these settings do not change downloaded MP3.</p>
+          <p className="px-1 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400"><b>Global</b> sets the Text-wide default. <b>Workspace</b> overrides it only here. Card and Segment voices are configured in Card Audio → Player. Conversation speakers have their own assignments. MP3 downloads are separate.</p>
       <section className="space-y-2 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50/35 dark:bg-sky-950/15 p-2.5" data-text-global-browser-tts-settings="true">
         <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Default for Text Workspaces unless overridden below. Table has its own Browser TTS preferences. These choices do not regenerate or change downloaded MP3 files.</p>
@@ -431,25 +431,25 @@ export default function TextStructuredAudioControls({
 
     {audioSurface === 'download' && <section className="min-w-0 space-y-3" data-text-download-defaults="true">
       <div className="space-y-2" data-text-generate-header="true">
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Server className="w-4 h-4 text-violet-600 dark:text-violet-300 shrink-0"/>
-            <p className="min-w-0 text-[11px] font-black uppercase leading-tight text-violet-700 dark:text-violet-300">Generate Audio · Edge MP3</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {edgeStatusBadge && <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${edgeStatusBadge.cls}`}>{edgeStatusBadge.label}</span>}
-            <button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck} className="min-h-9 px-2.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 text-[9px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-50 transition-colors">TEST EDGE</button>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <Server className="w-4 h-4 text-violet-600 dark:text-violet-300 shrink-0"/>
+          <p className="text-[11px] font-black uppercase leading-tight text-violet-700 dark:text-violet-300">Generate Audio · Edge MP3</p>
         </div>
-        <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Create local MP3 files in Staging. Playback voices stay unchanged.</p>
-        <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Single Card: Card Audio · Multi-voice and Full/Split batches: Bulk Audio.</p>
+        <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Create MP3 in Staging; Browser TTS playback is unchanged. Card Audio handles single cards; Bulk Audio handles multi-voice and Full/Split batches.</p>
       </div>
-
-      {edgeHealth?.message && (
-        <p className="rounded-lg border border-violet-200/70 dark:border-violet-900 bg-white/80 dark:bg-slate-900/40 px-2.5 py-1.5 text-[9px] text-slate-600 dark:text-slate-300">
-          {edgeHealth.message}
-        </p>
-      )}
+      <button type="button" disabled={disabled || edgeHealth?.status === 'testing'} onClick={onEdgeHealthCheck}
+        className={`w-full min-w-0 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-60 ${edgeHealth?.status === 'online' ? 'border-emerald-300 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/20 hover:border-emerald-500' : edgeHealth?.status === 'error' || edgeHealth?.status === 'offline' ? 'border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/20 hover:border-rose-500' : 'border-violet-200 dark:border-violet-900 bg-white dark:bg-slate-900/45 hover:border-violet-400'}`}
+        data-text-edge-health-action="true" aria-label="Test Edge MP3 generation connectivity" title="Click to test Edge generation without changing downloaded Card audio">
+        <span className="flex items-center justify-between gap-2">
+          <span className="min-w-0">
+            <span className="block text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">EDGE GENERATION STATUS</span>
+            <span className="block text-[9px] font-medium text-slate-500 dark:text-slate-400">Click to test connection</span>
+          </span>
+          <span className="shrink-0 rounded px-2 py-1 text-[9px] font-black uppercase bg-slate-100/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200">{edgeHealth?.status === 'online' ? 'READY' : edgeHealth?.status === 'testing' ? 'TESTING…' : edgeHealth?.status === 'error' || edgeHealth?.status === 'offline' ? 'FAILED' : 'NOT TESTED'}</span>
+        </span>
+        {edgeHealth?.message && <span className="mt-2 block break-words border-t border-slate-200/75 dark:border-slate-700 pt-2 text-[9px] font-medium text-slate-600 dark:text-slate-300">{edgeHealth.message}</span>}
+      </button>
+      <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />
 
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
@@ -479,8 +479,8 @@ export default function TextStructuredAudioControls({
       </details>
       <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" data-text-generation-menu-divider="true" />
 
-      <div className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2">
-        <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">2. This Workspace · MP3 Voice Preset</p>
+      <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2" data-text-audio-workspace-edge-preset="true">
+        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">2. This Workspace · MP3 Voice Preset</summary>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">DEFAULT = Global Edge · FOLLOW PLAYER = map the effective Browser TTS voice (including Card/Segment overrides) · CUSTOM = this Workspace's own Edge voice.</p>
         <div className="grid gap-2 md:grid-cols-2">
           {['text', 'meaning'].map(channel => {
@@ -498,8 +498,8 @@ export default function TextStructuredAudioControls({
           })}
         </div>
         {hasConversationCards && speakers.length > 0 && <details className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5" data-text-audio-speaker-download-advanced="true"><summary className="cursor-pointer text-[9px] font-black uppercase text-slate-500 dark:text-slate-400">Advanced · Speaker Edge Generation Overrides</summary>{speakers.map(({ id, label }) => <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 truncate">{label}</span><select value={downloadProfile.speakerIds?.text?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">EN • Workspace preset</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={downloadProfile.speakerIds?.meaning?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">ID • Workspace preset</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>)}</details>}
-      </div>
-    </section>}
+      </details>
+    </section>
 
     {audioSurface === 'library' && <section className="min-w-0 space-y-3" data-text-audio-library-surface="true">
       <div className="flex items-start gap-2">
