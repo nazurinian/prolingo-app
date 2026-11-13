@@ -1,3 +1,4 @@
+import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { getAdvancedExpressionPairs, getStableAudioIdentity, getVocabIdentity, isIndonesianAudioPart } from '../../utils/audioUtils.js';
 import { isTableAudioScopeMatch, resolveTableAudioBookId } from './audioStagingDomain.js';
 import { getAudioDownloadHistoryRecord } from '../../services/persistence/audioDownloadHistoryService.js';
@@ -180,3 +181,41 @@ export const buildTableAudioBatchCoverage = args => {
 };
 
 export const shouldDownloadTableCoverageSlot = slot => !slot || slot.status !== AUDIO_DOWNLOAD_COVERAGE_STATUS.READY;
+
+export const resolveTableBatchRequiredChannels = (batchConfig = {}, generatorEngine = 'edge') => {
+  const expEn = Array.isArray(batchConfig?.expEn) && batchConfig.expEn.length === 5
+    ? batchConfig.expEn
+    : Array(5).fill(Boolean(batchConfig?.doExpressions));
+  const expIdn = Array.isArray(batchConfig?.expIdn) && batchConfig.expIdn.length === 5
+    ? batchConfig.expIdn
+    : Array(5).fill(Boolean(batchConfig?.doExpressions && batchConfig?.doExpressionTranslations));
+  return {
+    needsEnglishVoice: Boolean(batchConfig?.doWord || batchConfig?.doSentence || expEn.some(Boolean)),
+    needsIndonesianVoice: generatorEngine === 'edge' && Boolean(batchConfig?.doWordTranslation || batchConfig?.doMeaning || expIdn.some(Boolean))
+  };
+};
+
+export const resolveTableBatchUnavailableVoices = ({
+  batchConfig = {},
+  generatorEngine = 'edge',
+  edgeVoice = null,
+  edgeIndonesianVoice = null,
+  edgeVoices = initialEdgeVoices,
+  slots = null,
+  missingOnly = false
+} = {}) => {
+  if (generatorEngine !== 'edge') return [];
+  if (Array.isArray(slots)) {
+    const targetSlots = missingOnly ? slots.filter(shouldDownloadTableCoverageSlot) : slots;
+    return [...new Set(
+      targetSlots
+        .map(slot => slot?.requiredVoiceId)
+        .filter(voiceId => voiceId && isEdgeVoiceUnavailable(voiceId, edgeVoices))
+    )];
+  }
+  const { needsEnglishVoice, needsIndonesianVoice } = resolveTableBatchRequiredChannels(batchConfig, generatorEngine);
+  return [...new Set([
+    needsEnglishVoice && isEdgeVoiceUnavailable(edgeVoice, edgeVoices) ? edgeVoice : null,
+    needsIndonesianVoice && isEdgeVoiceUnavailable(edgeIndonesianVoice, edgeVoices) ? edgeIndonesianVoice : null
+  ].filter(Boolean))];
+};

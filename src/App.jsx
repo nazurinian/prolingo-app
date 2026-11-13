@@ -77,7 +77,7 @@ import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecis
 import { resolveGeneratedAudioMapKey, shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
 import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
-import { buildTableAudioBatchCoverage, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
+import { buildTableAudioBatchCoverage, resolveTableBatchUnavailableVoices, shouldDownloadTableCoverageSlot } from './domain/audio/audioDownloadCoverageDomain.js';
 import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, buildTableAudioVoiceOptions, mergeTableAudioVariantInventories, reconcileTableAudioVoicePriority, resolveTableAudioPlaybackVariant, summarizeTableAudioVariantInventory, tableAudioVariantsFromRecords } from './domain/audio/tableAudioVariantInventoryDomain.js';
 import { buildTableAudioStagingVariantInventory, filterTableAudioBatchSessionsForPlaylist, filterTableAudioStagingRecordsForPlaylist, filterTableAudioVariantInventoryForPlaylist, isSameLogicalAudioVoice, isTableAudioScopeMatch, resolveBatchSessionAvailability, resolveTableAudioBookId, summarizeAudioStagingRecords } from './domain/audio/audioStagingDomain.js';
 import { clearTableAudioFolderRuntimeCache, executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle, getTableAudioFolderVariantObjectUrl } from './services/audio/audioFolderLifecycleService';
@@ -3125,22 +3125,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             : allRequirements.filter(job => shouldDownloadTextStructuredCoverageSlot(job?.coverage || { status: job?.coverageStatus || 'missing' })))
         : selectTextStructuredBulkGenerationRequirements(structuredTextBulkGenerationPlan, { mode: selectionMode });
 
-    const planValidation = !suppliedRequirements ? structuredTextBulkGenerationPlan?.voiceValidation : null;
-    const blockedBulkVoiceIds = planValidation?.hasUnavailableVoice
-      ? [...new Set([...(planValidation.unavailableTextVoices || []), ...(planValidation.unavailableMeaningVoices || [])])]
-      : [...new Set(
-          requirements
-            .map(req => {
-              const targetVoiceId = req?.voiceId || req?.downloadVoiceId || resolveTextStructuredGenerationVoiceState({
-                channel: req?.channel === 'meaning' ? 'meaning' : 'text',
-                requestedDownloadVoiceId: req?.voiceId || req?.downloadVoiceId,
-                preferences: structuredTextAudioGenerationPreferences,
-                edgeVoices
-              }).engineVoiceId;
-              return isEdgeVoiceUnavailable(targetVoiceId, edgeVoices) ? targetVoiceId : null;
-            })
-            .filter(Boolean)
-        )];
+    const blockedBulkVoiceIds = [...new Set(
+      requirements
+        .map(req => {
+          const targetVoiceId = req?.voiceId || req?.downloadVoiceId || resolveTextStructuredGenerationVoiceState({
+            channel: req?.channel === 'meaning' ? 'meaning' : 'text',
+            requestedDownloadVoiceId: req?.voiceId || req?.downloadVoiceId,
+            preferences: structuredTextAudioGenerationPreferences,
+            edgeVoices
+          }).engineVoiceId;
+          return isEdgeVoiceUnavailable(targetVoiceId, edgeVoices) ? targetVoiceId : null;
+        })
+        .filter(Boolean)
+    )];
     if (blockedBulkVoiceIds.length > 0) {
       const diagnostic = blockedBulkVoiceIds
         .map(voiceId => `${voiceId} (${getEdgeVoiceDiagnostic(voiceId, edgeVoices) || 'Unavailable'})`)
@@ -5702,12 +5699,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       return;
     }
     if (generatorEngine === 'edge') {
-      const needsEnglishVoice = Boolean(batchConfig?.doWord || batchConfig?.doSentence);
-      const needsIndonesianVoice = Boolean(batchConfig?.doWordTranslation || batchConfig?.doMeaning);
-      const blockedVoices = [
-        needsEnglishVoice && isEdgeVoiceUnavailable(edgeVoice, edgeVoices) ? edgeVoice : null,
-        needsIndonesianVoice && isEdgeVoiceUnavailable(edgeIndonesianVoice, edgeVoices) ? edgeIndonesianVoice : null
-      ].filter(Boolean);
+      const blockedVoices = resolveTableBatchUnavailableVoices({
+        batchConfig,
+        generatorEngine,
+        edgeVoice,
+        edgeIndonesianVoice,
+        edgeVoices,
+        slots: Array.isArray(tableAudioBatchCoverage?.slots) ? tableAudioBatchCoverage.slots : null,
+        missingOnly: options.missingOnly !== false
+      });
       if (blockedVoices.length) {
         const diagnostic = blockedVoices
           .map(voiceId => `${voiceId} (${getEdgeVoiceDiagnostic(voiceId, edgeVoices) || 'Unavailable'})`)
@@ -6652,6 +6652,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // explicit multi-voice Split/Full plan below.
     coverage: structuredTextBatchSelection?.coverage || structuredTextDocumentCoverage,
     generationCoverage: structuredTextBulkGenerationPlan?.coverage || {},
+    operationVoiceValidation: structuredTextBulkGenerationPlan?.operationVoiceValidation || null,
     exportCoverage: structuredTextBulkExportPlan?.coverage || {},
     exportPlan: structuredTextBulkExportPlan,
     bulkTextVoicesResolved: structuredTextBulkGenerationPlan?.selectedVoices?.text || [],

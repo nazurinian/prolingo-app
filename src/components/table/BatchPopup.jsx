@@ -2,9 +2,10 @@ import React from 'react';
 import { X, CheckSquare, Square, XCircle, Loader2, Lock, FileArchive, Music, Trash2, Database, History, HardDrive } from 'lucide-react';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 import { clampBatchRangeNumber, resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
+import { resolveTableBatchUnavailableVoices } from '../../domain/audio/audioDownloadCoverageDomain.js';
 import { getTableBatchTelemetrySnapshot, subscribeTableBatchTelemetry } from '../../services/audio/audioBatchTelemetryService.js';
 import { EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect';
-import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
+import { initialEdgeVoices } from '../../constants/voiceConstants';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 
 const getExpressionSelection = (batchConfig, lang) => {
@@ -133,9 +134,32 @@ export const BatchPopup = ({
   const isGemini = !isStructuredTextBatch && generatorEngine === 'gemini';
   const tableDownloadVoiceEn = isGemini ? aiVoiceName : edgeVoice;
   const tableDownloadVoiceId = isGemini ? null : edgeIndonesianVoice;
-  const tableUnavailableVoices = !isStructuredTextBatch && mode === 'table' && !isGemini
-    ? [tableDownloadVoiceEn, tableDownloadVoiceId].filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+  const tableSlots = Array.isArray(tableCoverage?.slots) ? tableCoverage.slots : null;
+  const tableMissingUnavailableVoices = !isStructuredTextBatch && mode === 'table' && !isGemini
+    ? resolveTableBatchUnavailableVoices({
+        batchConfig,
+        generatorEngine,
+        edgeVoice: tableDownloadVoiceEn,
+        edgeIndonesianVoice: tableDownloadVoiceId,
+        edgeVoices,
+        slots: tableSlots,
+        missingOnly: true
+      })
     : [];
+  const tableRedownloadUnavailableVoices = !isStructuredTextBatch && mode === 'table' && !isGemini
+    ? resolveTableBatchUnavailableVoices({
+        batchConfig,
+        generatorEngine,
+        edgeVoice: tableDownloadVoiceEn,
+        edgeIndonesianVoice: tableDownloadVoiceId,
+        edgeVoices,
+        slots: tableSlots,
+        missingOnly: false
+      })
+    : [];
+  const tableUnavailableVoices = [...new Set([...tableMissingUnavailableVoices, ...tableRedownloadUnavailableVoices])];
+  const hasTableMissingUnavailableVoice = tableMissingUnavailableVoices.length > 0;
+  const hasTableRedownloadUnavailableVoice = tableRedownloadUnavailableVoices.length > 0;
   const hasTableUnavailableVoice = tableUnavailableVoices.length > 0;
   const coverage = isStructuredTextBatch ? structuredTextBatch?.coverage : tableCoverage?.counts;
   const activeStagingById = React.useMemo(() => new Map((stagingRecords || []).filter(record => record?.hasBlob).map(record => [record.id, record])), [stagingRecords]);
@@ -306,19 +330,19 @@ export const BatchPopup = ({
 
         {!isStructuredTextBatch && hasTableUnavailableVoice && (
           <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-2 text-[9px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-table-batch-unavailable-warning="true">
-            Unavailable Edge voice selected ({tableUnavailableVoices.map(id => formatEdgeVoiceLabel(id, { edgeVoices })).join(', ')}). Switch to an available voice before downloading (no silent substitution).
+            Unavailable Edge voice selected ({tableUnavailableVoices.map(id => formatEdgeVoiceLabel(id, { edgeVoices })).join(', ')}). {hasTableMissingUnavailableVoice ? 'Switch to an available voice before downloading (no silent substitution).' : 'Download Missing does not require this voice; switch before re-downloading Ready slots.'}
           </div>
         )}
 
         {!isStructuredTextBatch && <button
           type="button"
-          disabled={!isBatchDownloading && (hasTableUnavailableVoice || !(coverage?.needDownload || 0))}
+          disabled={!isBatchDownloading && (hasTableMissingUnavailableVoice || !(coverage?.needDownload || 0))}
           onClick={isBatchDownloading ? runBatchDownload : () => runBatchDownload?.({ missingOnly: true })}
           className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 text-white transition-colors
             ${isBatchStopping ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : ''}
             ${isBatchDownloading && !isBatchStopping ? 'bg-red-500 hover:bg-red-600' : ''}
-            ${!isBatchDownloading && !isBatchStopping && !hasTableUnavailableVoice && (coverage?.needDownload || 0) ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
-            ${!isBatchDownloading && (hasTableUnavailableVoice || !(coverage?.needDownload || 0)) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60' : ''}
+            ${!isBatchDownloading && !isBatchStopping && !hasTableMissingUnavailableVoice && (coverage?.needDownload || 0) ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+            ${!isBatchDownloading && (hasTableMissingUnavailableVoice || !(coverage?.needDownload || 0)) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60' : ''}
           `}
         >
           {isBatchDownloading ? (
@@ -330,7 +354,7 @@ export const BatchPopup = ({
             <><DownloadCloudIcon className="w-3 h-3"/>DOWNLOAD MISSING ({coverage?.needDownload ?? '—'})</>
           )}
         </button>}
-        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={hasTableUnavailableVoice || !(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
+        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={hasTableRedownloadUnavailableVoice || !(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
 
         {!isStructuredTextBatch && mode === 'table' && <button type="button" onClick={() => setLibraryOpen(prev => !prev)} className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2.5 flex items-center justify-between gap-3 text-left hover:border-indigo-300 dark:hover:border-indigo-700">
           <span className="min-w-0"><span className="block text-[10px] font-black text-slate-700 dark:text-slate-200"><History className="mr-1 inline h-3.5 w-3.5"/>Batch Library</span><span className="mt-0.5 block text-[8px] text-slate-400">History, re-export, merge selection, release staged binary.</span></span>

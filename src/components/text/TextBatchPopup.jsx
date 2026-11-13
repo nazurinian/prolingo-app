@@ -358,6 +358,20 @@ export const TextBatchPopup = ({
       ? bulkMeaningVoiceSummary.join(' + ')
       : '0 selected (choose at least 1 ID voice)';
 
+  const draftBlocked = voiceValidation.noChannelsEnabled || voiceValidation.hasInvalidEnabledChannel;
+  const opVoiceValidation = structuredTextBatch?.operationVoiceValidation || structuredTextBatch?.bulkPlan?.operationVoiceValidation || null;
+  const canGenerateMissing = !draftBlocked && !(opVoiceValidation ? opVoiceValidation.missing?.hasUnavailableVoice : voiceValidation.hasUnavailableVoice);
+  const canGenerateMissingAndStale = !draftBlocked && !(opVoiceValidation ? opVoiceValidation.missingAndStale?.hasUnavailableVoice : voiceValidation.hasUnavailableVoice);
+  const canRegenerateSelected = !draftBlocked && !(opVoiceValidation ? opVoiceValidation.all?.hasUnavailableVoice : voiceValidation.hasUnavailableVoice);
+  const hasAnyBlockedOpVoice = opVoiceValidation
+    ? Boolean(
+        ((generationCoverage?.needGenerateMissing || 0) > 0 && opVoiceValidation.missing?.hasUnavailableVoice)
+        || ((generationCoverage?.stale || 0) > 0 && opVoiceValidation.missingAndStale?.hasUnavailableVoice)
+        || ((generationCoverage?.total || 0) > 0 && opVoiceValidation.all?.hasUnavailableVoice)
+      )
+    : voiceValidation.hasUnavailableVoice;
+  const showBlockedGenerateBanner = draftBlocked || hasAnyBlockedOpVoice;
+
   return (
     <div ref={batchPanelRef} className={panelClass} data-text-batch-workspace="true">
       {/* Header */}
@@ -791,7 +805,7 @@ export const TextBatchPopup = ({
             <b>Logical requirements</b> count every selected Split sentence + Full card slot across chosen voices. <b>Unique physical requirements</b> count deduplicated renders (shared RF / Full identity synthesized once). <b>Reusable physical</b> means the audio binary is already staged and only needs linking. Eligible Paragraph Cards: {generationCoverage?.eligibleBlockCount || 0}{generationCoverage?.skippedConversationBlockCount ? ` • Conversation skipped: ${generationCoverage.skippedConversationBlockCount} (use Card Audio)` : ''}.
           </p>
 
-          {!voiceValidation.canGenerate && (
+          {showBlockedGenerateBanner && (
             <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-2 text-[8px] font-bold text-amber-800 dark:text-amber-200" data-text-bulk-generate-blocked-reason="true">
               {voiceValidation.noChannelsEnabled
                 ? 'Enable at least one channel (EN or ID) to generate audio.'
@@ -808,16 +822,16 @@ export const TextBatchPopup = ({
               </button>
             ) : (
               <>
-                <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.needGenerateMissing || 0)} onClick={structuredTextBatch?.downloadMissing} data-text-bulk-generate-missing="true" className="w-full min-h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 py-2 px-3 text-xs font-black text-white shadow-sm disabled:opacity-35 transition-colors">
+                <button type="button" disabled={!canGenerateMissing || !(generationCoverage?.needGenerateMissing || 0)} onClick={structuredTextBatch?.downloadMissing} data-text-bulk-generate-missing="true" className="w-full min-h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 py-2 px-3 text-xs font-black text-white shadow-sm disabled:opacity-35 transition-colors">
                   <Download className="mr-1.5 inline h-3.5 w-3.5"/>
                   GENERATE MISSING ({generationCoverage?.needGenerateMissing || 0})
                 </button>
                 {(generationCoverage?.stale || 0) > 0 && (
-                  <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.needGenerateWithStale || 0)} onClick={structuredTextBatch?.downloadMissingAndStale} data-text-bulk-generate-missing-stale="true" className="w-full min-h-9 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 py-1.5 text-[10px] font-black text-amber-800 dark:text-amber-300 disabled:opacity-35">
+                  <button type="button" disabled={!canGenerateMissingAndStale || !(generationCoverage?.needGenerateWithStale || 0)} onClick={structuredTextBatch?.downloadMissingAndStale} data-text-bulk-generate-missing-stale="true" className="w-full min-h-9 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 py-1.5 text-[10px] font-black text-amber-800 dark:text-amber-300 disabled:opacity-35">
                     GENERATE MISSING + STALE ({generationCoverage?.needGenerateWithStale || 0})
                   </button>
                 )}
-                <button type="button" disabled={!voiceValidation.canGenerate || !(generationCoverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} data-text-bulk-regenerate-selected="true" className="w-full min-h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-35">
+                <button type="button" disabled={!canRegenerateSelected || !(generationCoverage?.total || 0)} onClick={structuredTextBatch?.redownloadAll} data-text-bulk-regenerate-selected="true" className="w-full min-h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-35">
                   REGENERATE SELECTED ({generationCoverage?.total || 0})
                 </button>
               </>

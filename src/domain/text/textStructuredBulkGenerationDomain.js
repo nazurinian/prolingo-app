@@ -103,6 +103,38 @@ export const validateTextStructuredBulkVoiceDraft = ({
   };
 };
 
+export const validateTextStructuredBulkRequirementsVoices = ({
+  requirements = [],
+  edgeVoices = initialEdgeVoices
+} = {}) => {
+  const unavailableTextVoices = [];
+  const unavailableMeaningVoices = [];
+  const textSet = new Set();
+  const meaningSet = new Set();
+  (Array.isArray(requirements) ? requirements : []).forEach(req => {
+    const voiceId = clean(req?.voiceId || req?.downloadVoiceId);
+    if (!voiceId || !isEdgeVoiceUnavailable(voiceId, edgeVoices)) return;
+    if (lower(req?.channel) === 'meaning') {
+      if (!meaningSet.has(lower(voiceId))) {
+        meaningSet.add(lower(voiceId));
+        unavailableMeaningVoices.push(voiceId);
+      }
+      return;
+    }
+    if (!textSet.has(lower(voiceId))) {
+      textSet.add(lower(voiceId));
+      unavailableTextVoices.push(voiceId);
+    }
+  });
+  const unavailableVoiceIds = [...new Set([...unavailableTextVoices, ...unavailableMeaningVoices])];
+  return {
+    unavailableTextVoices,
+    unavailableMeaningVoices,
+    unavailableVoiceIds,
+    hasUnavailableVoice: unavailableVoiceIds.length > 0
+  };
+};
+
 const activeStagingRecords = candidate => {
   if (candidate instanceof Map) return [...candidate.values()].filter(record => record?.hasBlob !== false);
   return (Array.isArray(candidate) ? candidate : []).filter(record => record?.hasBlob !== false);
@@ -322,11 +354,25 @@ export const buildTextStructuredBulkGenerationPlan = ({
     }, 0)
   };
 
+  const missingRequirements = requirements.filter(item =>
+    item.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING
+    || item.status === TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.REUSABLE
+  );
+  const missingAndStaleRequirements = requirements.filter(item =>
+    item.status !== TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.READY
+  );
+  const operationVoiceValidation = {
+    missing: validateTextStructuredBulkRequirementsVoices({ requirements: missingRequirements, edgeVoices }),
+    missingAndStale: validateTextStructuredBulkRequirementsVoices({ requirements: missingAndStaleRequirements, edgeVoices }),
+    all: validateTextStructuredBulkRequirementsVoices({ requirements, edgeVoices })
+  };
+
   return {
     requirements,
     coverage,
     selectedVoices: { text: textVoices, meaning: meaningVoices },
     voiceValidation,
+    operationVoiceValidation,
     representations: { split: includeSplit, full: includeFull }
   };
 };

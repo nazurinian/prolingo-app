@@ -307,8 +307,8 @@ export const TextStructuredCardAudioPanel = ({
 
   const cardChannelCoverage = useMemo(() => {
     const result = {
-      text: { total: 0, ready: 0, missing: 0, stale: 0, voices: new Set() },
-      meaning: { total: 0, ready: 0, missing: 0, stale: 0, voices: new Set() }
+      text: { total: 0, ready: 0, missing: 0, stale: 0, voices: new Set(), missingVoices: new Set() },
+      meaning: { total: 0, ready: 0, missing: 0, stale: 0, voices: new Set(), missingVoices: new Set() }
     };
     segments.forEach(segment => {
       ['text', 'meaning'].forEach(channel => {
@@ -319,7 +319,12 @@ export const TextStructuredCardAudioPanel = ({
         if (slot.status === 'ready') result[channel].ready += 1;
         else if (slot.status === 'stale' || slot.status === 'other-voice') result[channel].stale += 1;
         else result[channel].missing += 1;
-        if (slot.requiredVoiceId) result[channel].voices.add(slot.requiredVoiceId);
+        if (slot.requiredVoiceId) {
+          result[channel].voices.add(slot.requiredVoiceId);
+          if (slot.status !== 'ready') {
+            result[channel].missingVoices.add(slot.requiredVoiceId);
+          }
+        }
       });
     });
     return result;
@@ -529,9 +534,28 @@ export const TextStructuredCardAudioPanel = ({
   ), 0);
 
   const paragraphHasVoiceOverride = Boolean(cardProfile.channels?.text || cardProfile.channels?.meaning);
-  const unavailableEdgeVoicesByChannel = Object.fromEntries(
+  const unavailableMissingVoicesByChannel = Object.fromEntries(
     ['text', 'meaning'].map(channel => {
       const info = cardChannelCoverage[channel];
+      const needChannel = info.total > info.ready;
+      if (!info.total || !needChannel) return [channel, []];
+      const fallbackTargetVoiceId = resolveTextStructuredEffectiveDownloadVoice({
+        documentTree,
+        block,
+        segment: firstSegment,
+        channel,
+        preferences: generationPreferences
+      })?.voiceId;
+      const targetVoiceIds = [...info.missingVoices].length
+        ? [...info.missingVoices]
+        : (fallbackTargetVoiceId ? [fallbackTargetVoiceId] : []);
+      return [channel, targetVoiceIds.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))];
+    })
+  );
+  const unavailableRegenVoicesByChannel = Object.fromEntries(
+    ['text', 'meaning'].map(channel => {
+      const info = cardChannelCoverage[channel];
+      if (!info.total) return [channel, []];
       const fallbackTargetVoiceId = resolveTextStructuredEffectiveDownloadVoice({
         documentTree,
         block,
@@ -545,13 +569,20 @@ export const TextStructuredCardAudioPanel = ({
       return [channel, targetVoiceIds.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))];
     })
   );
-  const unavailableCardEdgeVoices = [
+  const unavailableMissingCardEdgeVoices = [
     ...new Set([
-      ...(unavailableEdgeVoicesByChannel.text || []),
-      ...(unavailableEdgeVoicesByChannel.meaning || [])
+      ...(unavailableMissingVoicesByChannel.text || []),
+      ...(unavailableMissingVoicesByChannel.meaning || [])
     ])
   ];
-  const hasUnavailableCardEdgeVoice = unavailableCardEdgeVoices.length > 0;
+  const unavailableRegenCardEdgeVoices = [
+    ...new Set([
+      ...(unavailableRegenVoicesByChannel.text || []),
+      ...(unavailableRegenVoicesByChannel.meaning || [])
+    ])
+  ];
+  const hasUnavailableMissingCardEdgeVoice = unavailableMissingCardEdgeVoices.length > 0;
+  const hasUnavailableRegenCardEdgeVoice = unavailableRegenCardEdgeVoices.length > 0;
   const cardPlaybackStatus = playbackSourceStatus && (!playbackSourceStatus.blockId || playbackSourceStatus.blockId === block?.id)
     ? playbackSourceStatus
     : null;
@@ -916,11 +947,13 @@ export const TextStructuredCardAudioPanel = ({
                   const info = cardChannelCoverage[channel];
                   const ready = info.total > 0 && info.ready === info.total;
                   const needChannel = info.total > info.ready;
-                  const unavailableTargetIds = unavailableEdgeVoicesByChannel[channel] || [];
-                  const hasUnavailableTarget = unavailableTargetIds.length > 0;
+                  const unavailableMissingIds = unavailableMissingVoicesByChannel[channel] || [];
+                  const unavailableRegenIds = unavailableRegenVoicesByChannel[channel] || [];
+                  const hasUnavailableMissingTarget = unavailableMissingIds.length > 0;
+                  const hasUnavailableAnyTarget = unavailableRegenIds.length > 0;
                   const voiceLabels = [...info.voices].map(compactVoiceLabel);
                   const isMeaning = channel === 'meaning';
-                  return <div key={channel} className={`rounded-xl border p-2.5 flex flex-col justify-between gap-1.5 ${hasUnavailableTarget ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/25' : ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/15'}`} data-text-card-split-readiness={channel}>
+                  return <div key={channel} className={`rounded-xl border p-2.5 flex flex-col justify-between gap-1.5 ${hasUnavailableMissingTarget || hasUnavailableAnyTarget ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/25' : ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/15'}`} data-text-card-split-readiness={channel}>
                     <div>
                       <div className="flex items-center justify-between gap-1.5">
                         <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isMeaning ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
@@ -939,16 +972,16 @@ export const TextStructuredCardAudioPanel = ({
                           {info.missing > 0 ? `${info.missing} missing` : ''}{info.missing > 0 && info.stale > 0 ? ' • ' : ''}{info.stale > 0 ? `${info.stale} stale/other` : ''}
                         </p>
                       )}
-                      {hasUnavailableTarget && (
+                      {hasUnavailableAnyTarget && (
                         <p className="mt-1 text-[8px] font-bold text-amber-800 dark:text-amber-200" data-text-card-edge-unavailable={channel}>
-                          Unavailable in Edge: {unavailableTargetIds.map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}. Switch voice to generate.
+                          Unavailable in Edge: {(hasUnavailableMissingTarget ? unavailableMissingIds : unavailableRegenIds).map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}. {hasUnavailableMissingTarget ? 'Switch voice to generate.' : 'Ready slots remain usable; switch voice before regenerating.'}
                         </p>
                       )}
                     </div>
                     {info.total > 0 && (
                       <button
                         type="button"
-                        disabled={disabled || generationRunning || !needChannel || hasUnavailableTarget}
+                        disabled={disabled || generationRunning || !needChannel || hasUnavailableMissingTarget}
                         onClick={() => onGenerateCardAudio?.(block.id, [channel], { missingOnly: true })}
                         className={`min-h-8 w-full rounded-lg border px-2 py-1 text-[9px] font-black transition-colors disabled:opacity-40 ${
                           ready
@@ -956,7 +989,7 @@ export const TextStructuredCardAudioPanel = ({
                             : 'border-violet-300 dark:border-violet-700 bg-violet-600 text-white hover:bg-violet-700'
                         }`}
                       >
-                        {hasUnavailableTarget ? 'Voice Unavailable' : ready ? `${isMeaning ? 'ID' : 'EN'} Split Complete` : `Generate Missing ${isMeaning ? 'ID' : 'EN'}`}
+                        {hasUnavailableMissingTarget ? 'Voice Unavailable' : ready ? `${isMeaning ? 'ID' : 'EN'} Split Complete` : `Generate Missing ${isMeaning ? 'ID' : 'EN'}`}
                       </button>
                     )}
                   </div>;
@@ -1145,7 +1178,7 @@ export const TextStructuredCardAudioPanel = ({
                           channel,
                           preferences: generationPreferences
                         })?.voiceId;
-                        const segmentVoiceUnavailable = isEdgeVoiceUnavailable(targetVoiceId, edgeGenerationVoices);
+                        const segmentVoiceUnavailable = hasContent && isEdgeVoiceUnavailable(targetVoiceId, edgeGenerationVoices);
                         return <div key={`manual-${channel}`} className={`flex min-w-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 ${segmentVoiceUnavailable ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/20' : ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40'}`}>
                           <span className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${isMeaning ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200'}`}>{isMeaning ? 'ID' : 'EN'}</span>
                           <span className="min-w-0 flex-1 truncate text-[8px] font-medium text-slate-500 dark:text-slate-400" title={targetVoiceId || ''}>
@@ -1256,11 +1289,11 @@ export const TextStructuredCardAudioPanel = ({
             </div>
             {generationRunning
               ? <button type="button" onClick={() => onCancelGeneration?.()} className="min-h-10 shrink-0 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3.5 text-[9px] font-black text-red-600 hover:bg-red-100 transition-colors"><Square className="mr-1 inline h-3 w-3 fill-current"/>STOP</button>
-              : <button type="button" disabled={disabled || hasUnavailableCardEdgeVoice || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} data-text-card-generate-missing="true" className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
+              : <button type="button" disabled={disabled || hasUnavailableMissingCardEdgeVoice || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} data-text-card-generate-missing="true" className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
           </div>
-          {hasUnavailableCardEdgeVoice && (
+          {(hasUnavailableMissingCardEdgeVoice || hasUnavailableRegenCardEdgeVoice) && (
             <p className="mt-1.5 text-[8px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-text-card-footer-unavailable-warning="true">
-              Unavailable Edge voice selected ({unavailableCardEdgeVoices.map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}). Switch voice before generating.
+              Unavailable Edge voice selected ({(hasUnavailableMissingCardEdgeVoice ? unavailableMissingCardEdgeVoices : unavailableRegenCardEdgeVoices).map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}). {hasUnavailableMissingCardEdgeVoice ? 'Switch voice before generating missing slots.' : 'Missing slots in other channels can still generate; switch voice before regenerating this channel.'}
             </p>
           )}
 
@@ -1272,7 +1305,7 @@ export const TextStructuredCardAudioPanel = ({
           {workflowExpanded && <div className="mt-1.5 rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/35 dark:bg-violet-950/10 p-2.5 space-y-2" data-text-card-audio-advanced-generation="true">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Force-regenerate every Split slot in this Card with the current Edge profile.</p>
-              <button type="button" disabled={disabled || generationRunning || hasUnavailableCardEdgeVoice || !cardCoverage?.total} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="shrink-0 min-h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 text-[8px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-50 disabled:opacity-35">REGENERATE CARD SPLIT</button>
+              <button type="button" disabled={disabled || generationRunning || hasUnavailableRegenCardEdgeVoice || !cardCoverage?.total} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="shrink-0 min-h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 text-[8px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-50 disabled:opacity-35">REGENERATE CARD SPLIT</button>
             </div>
           </div>}
         </div>
