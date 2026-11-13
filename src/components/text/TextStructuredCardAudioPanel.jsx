@@ -24,6 +24,8 @@ import {
   TEXT_STRUCTURED_ARTIFACT_READINESS
 } from '../../domain/text/textStructuredSplitFullDomain.js';
 import { useLiveOverlayViewportRef } from '../../hooks/useStableOverlayViewport.js';
+import { BrowserTtsVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
+import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 
@@ -130,8 +132,9 @@ const isPlayerDraftDirty = (draft, baseline, segments) => {
   return false;
 };
 
-const VoiceSelect = ({ value, inheritedLabel, voices, disabled, onChange, testId }) => {
-  const names = uniqueVoiceNames(voices);
+const VoiceSelect = ({ value, inheritedLabel, voices, context = 'general', disabled, onChange, testId }) => {
+  const voiceOptions = dedupeBrowserTtsVoices(voices);
+  const names = uniqueVoiceNames(voiceOptions);
   const missing = value && !names.includes(value);
   return <select
     value={value || ''}
@@ -142,7 +145,7 @@ const VoiceSelect = ({ value, inheritedLabel, voices, disabled, onChange, testId
   >
     <option value="">Inherit • {inheritedLabel || 'default'}</option>
     {missing && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
-    {names.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
+    <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
   </select>;
 };
 
@@ -159,7 +162,7 @@ const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', di
     data-text-download-voice-select={testId}
   >
     <option value="">Inherit Edge • {compactVoiceLabel(inheritedVoiceId)}</option>
-    {value && !known && <option value={value}>{compactVoiceLabel(value)}</option>}
+    {value && !known && <option value={value}>Unavailable in Edge · {value}</option>}
     {pool.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
   </select>;
 };
@@ -222,7 +225,8 @@ export const TextStructuredCardAudioPanel = ({
   onGenerateCardAudio,
   onCancelGeneration,
   onCardPlaybackOrderChange,
-  onExportSegmentAudio
+  onExportSegmentAudio,
+  onExportFullCardAudio
 }) => {
   const [activeSurface, setActiveSurface] = useState(() => (initialSurface === 'download' ? 'download' : 'player'));
   const [showSegments, setShowSegments] = useState(false);
@@ -330,8 +334,17 @@ export const TextStructuredCardAudioPanel = ({
         channel,
         preferences: generationPreferences
       });
-      const language = channel === 'meaning' ? (documentTree?.meaningLanguage || 'id-ID') : (documentTree?.textLanguage || 'en-GB');
+      const language = channel === 'meaning' ? (documentTree?.meaningLanguage || 'id') : (documentTree?.textLanguage || 'en');
       const targetVoiceId = clean(target?.voiceId) || (channel === 'meaning' ? clean(generationPreferences?.edgeMeaningVoiceId) : clean(generationPreferences?.edgeTextVoiceId));
+      if (isConversation) {
+        return {
+          channel,
+          status: TEXT_STRUCTURED_ARTIFACT_READINESS.MISSING,
+          ready: false,
+          targetVoiceId: targetVoiceId || null,
+          storedArtifactCount: 0
+        };
+      }
       const profile = targetVoiceId ? {
         engine: 'edge',
         voiceId: targetVoiceId,
@@ -358,7 +371,7 @@ export const TextStructuredCardAudioPanel = ({
       text: evaluateChannel('text'),
       meaning: evaluateChannel('meaning')
     };
-  }, [block, documentTree, firstSegment, generationPreferences, runtimeFullAudio]);
+  }, [block, documentTree, firstSegment, generationPreferences, isConversation, runtimeFullAudio]);
 
   const cardVoiceResolutions = useMemo(() => ({
     text: resolveTextStructuredBrowserVoiceResolution({
@@ -391,6 +404,13 @@ export const TextStructuredCardAudioPanel = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  const findBrowserVoiceEntry = (voiceName, channel = 'text') => {
+    const cleanName = clean(voiceName);
+    if (!cleanName) return null;
+    const pool = channel === 'meaning' ? indonesianVoices : englishVoices;
+    return (Array.isArray(pool) ? pool : []).find(item => clean(item?.name || item?.voiceURI) === cleanName) || cleanName;
+  };
+
   const inheritedFor = (segment, channel, ignoreCard = false) => {
     const safeBlock = ignoreCard ? { ...draftBlock, metadata: {} } : draftBlock;
     const resolved = resolveTextStructuredEffectiveVoiceProfile({
@@ -401,7 +421,7 @@ export const TextStructuredCardAudioPanel = ({
       defaultVoiceName: channel === 'meaning' ? defaultMeaningVoiceName : defaultTextVoiceName,
       ignoreSegmentOverride: true
     });
-    return `${formatTextStructuredBrowserVoiceLabel(resolved.voiceName)} · ${getTextStructuredVoiceSourceDisplayLabel(resolved.source)}`;
+    return `${formatTextStructuredBrowserVoiceLabel(findBrowserVoiceEntry(resolved.voiceName, channel))} · ${getTextStructuredVoiceSourceDisplayLabel(resolved.source)}`;
   };
 
   const handleDraftCardVoiceChange = (channel, voiceName, speaker = null) => {
@@ -716,6 +736,7 @@ export const TextStructuredCardAudioPanel = ({
                         value={value}
                         inheritedLabel={inheritedFor(firstSegment, channel, true)}
                         voices={isMeaning ? indonesianVoices : englishVoices}
+                        context={isMeaning ? 'meaning' : 'main'}
                         disabled={disabled}
                         onChange={voiceName => handleDraftCardVoiceChange(channel, voiceName, null)}
                         testId={`${block.id}:${channel}`}
@@ -760,7 +781,7 @@ export const TextStructuredCardAudioPanel = ({
                         const value = cardProfile.speakerIds?.[channel]?.[id] || cardProfile.speakers?.[channel]?.[key] || '';
                         return <label key={channel} className="block min-w-0">
                           <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-slate-500">{isMeaning ? 'ID (Meaning) TTS' : 'EN (Text) TTS'}</span>
-                          <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoices : englishVoices} disabled={disabled} onChange={voiceName => handleDraftCardVoiceChange(channel, voiceName, { id, label })} testId={`${block.id}:${id}:${channel}`}/>
+                          <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoices : englishVoices} context={isMeaning ? 'meaning' : 'main'} disabled={disabled} onChange={voiceName => handleDraftCardVoiceChange(channel, voiceName, { id, label })} testId={`${block.id}:${id}:${channel}`}/>
                         </label>;
                       })}
                     </div>}
@@ -805,8 +826,9 @@ export const TextStructuredCardAudioPanel = ({
                                 <div className="min-w-0 flex-1">
                                   <VoiceSelect
                                     value={value}
-                                    inheritedLabel={`${formatTextStructuredBrowserVoiceLabel(inherited.voiceName)} · ${getTextStructuredVoiceSourceDisplayLabel(inherited.source)}`}
+                                    inheritedLabel={`${formatTextStructuredBrowserVoiceLabel(findBrowserVoiceEntry(inherited.voiceName, channel))} · ${getTextStructuredVoiceSourceDisplayLabel(inherited.source)}`}
                                     voices={isMeaning ? indonesianVoices : englishVoices}
+                                    context={isMeaning ? 'meaning' : 'main'}
                                     disabled={disabled}
                                     onChange={voiceName => handleDraftSegmentVoiceChange(segment.id, channel, voiceName)}
                                     testId={`${segment.id}:${channel}`}
@@ -932,21 +954,38 @@ export const TextStructuredCardAudioPanel = ({
                       >
                         <div className="min-w-0">
                           <span className="text-[9px] font-black text-slate-700 dark:text-slate-200">
-                            {isMeaning ? 'ID Full MP3' : 'EN Full MP3'}
+                            {isMeaning ? 'ID Full' : 'EN Full'}
                           </span>
                           <p className="truncate text-[8px] text-slate-500 dark:text-slate-400">
                             Target: {compactVoiceLabel(fullInfo.targetVoiceId)}
                           </p>
                         </div>
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${
-                          fullInfo.ready
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
-                            : fullInfo.status === TEXT_STRUCTURED_ARTIFACT_READINESS.STALE
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                        }`}>
-                          {fullInfo.ready ? 'FULL READY' : fullInfo.status === TEXT_STRUCTURED_ARTIFACT_READINESS.STALE ? 'FULL STALE' : 'FULL MISSING'}
-                        </span>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                            fullInfo.ready
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200'
+                              : fullInfo.status === TEXT_STRUCTURED_ARTIFACT_READINESS.STALE
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          }`}>
+                            {fullInfo.ready ? 'FULL READY' : fullInfo.status === TEXT_STRUCTURED_ARTIFACT_READINESS.STALE ? 'FULL STALE' : 'FULL MISSING'}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={disabled || isConversation || !fullInfo.ready || generationRunning}
+                            onClick={() => onExportFullCardAudio?.(block.id, channel)}
+                            data-text-card-full-export={channel}
+                            className="min-h-8 px-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/40 text-[8px] font-black text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 disabled:opacity-35 inline-flex items-center gap-1"
+                            title={isConversation
+                              ? 'Full Card MP3 export is only available for Paragraph cards'
+                              : fullInfo.ready
+                                ? `Export Ready ${isMeaning ? 'ID' : 'EN'} Full Card MP3`
+                                : `Generate Ready ${isMeaning ? 'ID' : 'EN'} Full Card MP3 via Bulk Audio first`}
+                          >
+                            <FileDown className="w-3 h-3"/>
+                            <span>{isMeaning ? 'ID Full MP3' : 'EN Full MP3'}</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

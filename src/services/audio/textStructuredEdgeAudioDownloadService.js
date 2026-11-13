@@ -51,8 +51,19 @@ export const executeTextStructuredEdgeAudioRequest = async ({
       });
 
       if (!response.ok) {
-        const detail = await response.text().catch(() => '');
-        const error = new Error(`Edge ${response.status}: ${detail || response.statusText}`);
+        const rawDetail = await response.text().catch(() => '');
+        let parsedDetail = null;
+        if (rawDetail && rawDetail.trim().startsWith('{')) {
+          try {
+            parsedDetail = JSON.parse(rawDetail);
+          } catch {
+            parsedDetail = null;
+          }
+        }
+        const messageDetail = clean(parsedDetail?.details || parsedDetail?.error) || clean(rawDetail) || response.statusText;
+        const error = new Error(`Edge ${response.status}: ${messageDetail}`);
+        error.status = response.status;
+        if (parsedDetail?.code) error.code = parsedDetail.code;
         error.retryable = response.status >= 500 || response.status === 408 || response.status === 429;
         throw error;
       }

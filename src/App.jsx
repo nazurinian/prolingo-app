@@ -121,7 +121,7 @@ import { buildTextStructuredAudioRequirementsForSnapshot } from './domain/text/t
 import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection, resolveTextStructuredBatchTargetWorkspaceIds } from './domain/text/textStructuredBatchDomain.js';
 import { buildTextStructuredBulkGenerationPlan, selectTextStructuredBulkGenerationRequirements, summarizeTextStructuredBulkPhysicalWork, TEXT_STRUCTURED_BULK_REPRESENTATIONS, TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS } from './domain/text/textStructuredBulkGenerationDomain.js';
 import { buildTextStructuredBulkExportPlan, TEXT_STRUCTURED_BULK_EXPORT_FORMATS } from './domain/text/textStructuredBulkExportDomain.js';
-import { publishTextStructuredBatchTelemetry, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
+import { publishTextStructuredBatchTelemetry, publishTextStructuredBatchTelemetryThrottled, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
 import { buildTextStructuredVoiceOverrideMetadata, resolveTextStructuredBrowserVoiceResolution } from './domain/text/textStructuredVoiceAssignmentDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata, getTextStructuredPlaybackRateProfile, resolveTextStructuredEffectivePlaybackRate } from './domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { buildTextStructuredLocalAudioProfileMetadata, collectTextStructuredAvailableLocalVoices, resolveTextStructuredEffectiveCustomLocalVoice } from './domain/text/textStructuredLocalAudioProfileDomain.js';
@@ -3190,7 +3190,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           currentRepresentation: requirement.representation || 'split',
           reconciled: false
         };
-        if ((requirementIndex + 1) % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0 || requirementIndex + 1 === requirements.length || structuredTextAudioBatchStopRef.current) {
+        const isCheckpoint = (requirementIndex + 1) % TEXT_BATCH_STATUS_RENDER_INTERVAL === 0
+          || requirementIndex + 1 === requirements.length
+          || Boolean(structuredTextAudioBatchStopRef.current);
+        publishTextStructuredBatchTelemetryThrottled(telemetryPatch, {
+          minIntervalMs: 80,
+          force: requirementIndex === 0 || isCheckpoint
+        });
+        if (isCheckpoint) {
           flushStructuredTextStagingSummary();
           setStructuredTextAudioGenerationState(prev => ({
             ...prev,
@@ -3198,7 +3205,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             reusedPhysical: reusedPhysicalKeys.size, skippedReady, skippedStale, failed: failedJobs.length, remaining: telemetryPatch.remaining,
             readyEstimate, missingEstimate: telemetryPatch.missingEstimate, staleEstimate: telemetryPatch.staleEstimate, failedJobs: [...failedJobs]
           }));
-          publishTextStructuredBatchTelemetry(telemetryPatch);
         }
         if (!structuredTextAudioBatchStopRef.current) await new Promise(resolve => setTimeout(resolve, 250));
       }

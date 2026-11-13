@@ -1,6 +1,7 @@
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextStructuredSpeakerVoiceMap } from './textStructuredSpeakerVoiceProfileDomain.js';
 import { deriveTextStructuredSpeakerId, getTextStructuredSegmentSpeakerId, getTextStructuredSpeakerVoiceProfileV2 } from './textStructuredSpeakerIdentityDomain.js';
+import { formatBrowserTtsVoiceLabel } from '../audio/browserTtsVoicePresentationDomain.js';
 
 export const TEXT_STRUCTURED_VOICE_OVERRIDE_METADATA_KEY = 'audioVoiceOverrideV1';
 
@@ -270,23 +271,10 @@ export const getTextStructuredVoiceSourceDisplayLabel = source => ({
 }[source] || 'Browser TTS');
 
 // Display-only labels. Keep raw browser voice names in preference values and IDs.
-export const formatTextStructuredBrowserVoiceLabel = (voiceLike, { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}) => {
-  const isObject = Boolean(voiceLike && typeof voiceLike === 'object');
-  const rawName = isObject ? clean(voiceLike.name || voiceLike.voiceURI || voiceLike.label) : clean(voiceLike);
-  if (!rawName) return fallbackLabel;
-  const compactName = /^Microsoft /i.test(rawName)
-    ? rawName.replace(/^Microsoft /i, '').replace(/ Online.*$/i, '').replace(/ Desktop.*$/i, '').replace(/ - .+$/i, '').trim()
-    : rawName;
-  const language = clean(isObject ? voiceLike.lang : '');
-  const natural = /[(]Natural[)]/i.test(rawName);
-  const standard = /[(]Standard[)]| Desktop/i.test(rawName);
-  const uk = /en[-_]GB/i.test(language) || /English [(]United Kingdom[)]/i.test(rawName);
-  const us = /en[-_]US/i.test(language) || /English [(]United States[)]/i.test(rawName);
-  const id = /id[-_]ID/i.test(language) || /Indonesian [(]Indonesia[)]/i.test(rawName);
-  const variant = natural ? 'Natural' : standard ? 'Standard' : null;
-  const locale = uk ? 'UK' : us ? 'US' : id ? 'ID' : null;
-  return [compactName || rawName, variant, locale, includeEngineHint ? 'Browser TTS' : null].filter(Boolean).join(' · ');
-};
+export const formatTextStructuredBrowserVoiceLabel = (
+  voiceLike,
+  { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}
+) => formatBrowserTtsVoiceLabel(voiceLike, { fallbackLabel, includeEngineHint });
 
 export const resolveTextStructuredBrowserVoiceResolution = ({
   documentTree = null,

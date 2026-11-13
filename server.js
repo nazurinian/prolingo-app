@@ -2,7 +2,7 @@ import './server/loadLocalEnv.js';
 import os from 'os';
 import express from 'express';
 import cors from 'cors';
-import { createEdgeTtsStream } from './server/edgeTtsService.js';
+import { classifyEdgeTtsError, createEdgeTtsStream } from './server/edgeTtsService.js';
 import {
   createGeminiOwnerClearCookie,
   createGeminiOwnerCookie,
@@ -69,6 +69,26 @@ app.post('/api/tts', async (req, res) => {
   };
   res.once('close', cleanupClientDisconnect);
 
+  const settleErrorResponse = async (error, { hadAudioBytes = false } = {}) => {
+    if (clientClosed || res.writableEnded) return;
+    const classified = await classifyEdgeTtsError({ error, voice: voiceName, hadAudioBytes });
+    if (clientClosed || res.writableEnded) return;
+    console.error(`[EDGE-TTS REQ #${requestId}] ❌ Stream error (${classified.statusCode}):`, classified.details);
+    if (!res.headersSent) {
+      try { audioStream?.unpipe?.(res); } catch { /* no-op */ }
+      try { res.removeHeader?.('Content-Type'); } catch { /* no-op */ }
+      try { res.removeHeader?.('Transfer-Encoding'); } catch { /* no-op */ }
+      res.status(classified.statusCode).json({
+        error: classified.error,
+        code: classified.code,
+        voice: classified.voice,
+        details: classified.details
+      });
+    } else if (!res.writableEnded) {
+      res.end();
+    }
+  };
+
   try {
     audioStream = await createEdgeTtsStream({ text, voice, rate, pitch });
     if (clientClosed) {
@@ -87,23 +107,24 @@ app.post('/api/tts', async (req, res) => {
 
     audioStream.on('end', () => {
       if (clientClosed) return;
+      if (totalBytes === 0 && !res.headersSent) {
+        void settleErrorResponse(new Error('Edge TTS returned empty audio'), { hadAudioBytes: false });
+        return;
+      }
       const durationMs = Date.now() - startTime;
       const kb = Math.round(totalBytes / 1024);
       ttsDebugLog(`[EDGE-TTS REQ #${requestId}] ✅ Finished: "${snippet}" • ${kb} KB in ${durationMs}ms`);
+      if (!res.writableEnded) res.end();
     });
 
     audioStream.on('error', error => {
-      if (clientClosed) return;
-      console.error(`[EDGE-TTS REQ #${requestId}] ❌ Stream error:`, error.message);
-      if (!res.headersSent) res.status(500).json({ error: 'Failed to generate audio', details: error.message });
-      else res.end();
+      void settleErrorResponse(error, { hadAudioBytes: totalBytes > 0 });
     });
 
-    audioStream.pipe(res);
+    audioStream.pipe(res, { end: false });
   } catch (error) {
     if (clientClosed) return;
-    console.error(`[EDGE-TTS REQ #${requestId}] ❌ Generation error:`, error.message);
-    res.status(500).json({ error: 'Failed to generate audio', details: error.message });
+    await settleErrorResponse(error, { hadAudioBytes: false });
   }
 });
 

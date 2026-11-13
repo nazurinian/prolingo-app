@@ -29,6 +29,7 @@ const EMPTY = Object.freeze({
 });
 
 let snapshot = EMPTY;
+let lastEmittedAt = 0;
 const listeners = new Set();
 
 export const getTextStructuredBatchTelemetrySnapshot = () => snapshot;
@@ -37,15 +38,35 @@ export const subscribeTextStructuredBatchTelemetry = listener => {
   listeners.add(listener);
   return () => listeners.delete(listener);
 };
-const emit = () => listeners.forEach(listener => {
-  try { listener(); } catch { /* telemetry must never break Text Batch */ }
-});
+const emit = () => {
+  lastEmittedAt = Date.now();
+  listeners.forEach(listener => {
+    try { listener(); } catch { /* telemetry must never break Text Batch */ }
+  });
+};
 export const publishTextStructuredBatchTelemetry = patch => {
   snapshot = { ...snapshot, ...(patch || {}), mode: 'text', updatedAt: Date.now() };
   emit();
   return snapshot;
 };
+export const publishTextStructuredBatchTelemetryThrottled = (
+  patch,
+  { minIntervalMs = 80, force = false } = {}
+) => {
+  const prevFailed = Number(snapshot?.failed || 0);
+  const nextFailed = patch && patch.failed != null ? Number(patch.failed) : prevFailed;
+  const nextStatus = patch?.status ?? snapshot?.status;
+  const isTerminalOrErrorChange = nextFailed > prevFailed
+    || (nextStatus && nextStatus !== snapshot?.status && ['cancelled', 'completed', 'completed-with-errors'].includes(nextStatus));
+  const now = Date.now();
+  snapshot = { ...snapshot, ...(patch || {}), mode: 'text', updatedAt: now };
+  if (force || isTerminalOrErrorChange || lastEmittedAt === 0 || (now - lastEmittedAt) >= minIntervalMs) {
+    emit();
+  }
+  return snapshot;
+};
 export const resetTextStructuredBatchTelemetry = patch => {
+  lastEmittedAt = 0;
   snapshot = { ...EMPTY, ...(patch || {}), mode: 'text', updatedAt: Date.now() };
   emit();
   return snapshot;

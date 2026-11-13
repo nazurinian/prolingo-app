@@ -1,4 +1,8 @@
 // --- AUDIO, WAV ENCODING & IDENTITY UTILITIES ---
+import {
+  formatBrowserTtsVoiceLabel,
+  groupBrowserTtsVoicesByRegion
+} from '../domain/audio/browserTtsVoicePresentationDomain.js';
 
 export const writeString = (view, offset, string) => {
   for (let i = 0; i < string.length; i++) {
@@ -60,56 +64,11 @@ export const downloadTextFile = (content, filename, type = 'text/csv;charset=utf
   window.setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-export const formatVoiceLabel = (voice) => {
-  let name = voice.name || voice.label || "";
-  name = name.replace(/^Microsoft /i, '').replace(/^Google /i, '').replace(/^Android /i, '');
-  name = name.replace(/Online \(Natural\) - /i, '');
-  name = name.replace(/ - English \(.+\)/i, '').replace(/ English \(.+\)/i, '');
-  name = name.replace(/ - Indonesian \(.+\)/i, '').replace(/ Indonesian \(.+\)/i, '');
-  return name; 
-};
+export const formatVoiceLabel = (voice) =>
+  formatBrowserTtsVoiceLabel(voice, { fallbackLabel: '' });
 
-export const groupVoicesByRegion = (voiceList, context = 'general') => {
-  const groups = {
-    "UK (United Kingdom)": [],
-    "US (United States)": [],
-    "AU (Australia)": [],
-    "SG (Singapore)": [],
-    "Other English": [],
-    "Indonesia & Regional (ID/JV/SU)": [] 
-  };
-
-  voiceList.forEach(v => {
-    const lang = (v.lang || "").replace('_', '-'); 
-    const isEnglish = lang.startsWith("en");
-    const isIndoRegion = lang.includes("ID") || lang === 'id' || lang === 'jv' || lang === 'su' || lang.includes("indones");
-
-    if (context === 'main') {
-      if (!isEnglish) return; 
-    } else if (context === 'meaning') {
-      if (isIndoRegion) {
-        groups["Indonesia & Regional (ID/JV/SU)"].push(v);
-        return;
-      }
-      return; 
-    } else {
-      if (isIndoRegion) {
-        groups["Indonesia & Regional (ID/JV/SU)"].push(v);
-        return; 
-      }
-    }
-    
-    if (isEnglish) {
-      if (lang.includes("GB") || lang.includes("UK")) groups["UK (United Kingdom)"].push(v);
-      else if (lang.includes("US")) groups["US (United States)"].push(v);
-      else if (lang.includes("AU")) groups["AU (Australia)"].push(v);
-      else if (lang.includes("SG")) groups["SG (Singapore)"].push(v);
-      else groups["Other English"].push(v);
-    }
-  });
-
-  return groups;
-};
+export const groupVoicesByRegion = (voiceList, context = 'general') =>
+  groupBrowserTtsVoicesByRegion(voiceList, context);
 
 export const getVocabIdentity = (item) =>
   String(item?.vocabId || item?.id || '').trim().toUpperCase();

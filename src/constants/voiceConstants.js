@@ -1,4 +1,20 @@
-// --- EDGE TTS VOICES (COMPREHENSIVE v5.5 LIST) ---
+// --- EDGE TTS VOICES (COMPREHENSIVE VERIFIED CATALOG) ---
+
+export const UNSUPPORTED_EDGE_VOICE_IDS = Object.freeze([
+  'en-GB-AlfiesNeural',
+  'en-AU-AnnetteNeural',
+  'en-AU-CarlyNeural',
+  'en-AU-DarrenNeural',
+  'en-AU-DuncanNeural',
+  'en-AU-ElsieNeural',
+  'en-AU-FreyaNeural',
+  'en-AU-JoanneNeural',
+  'en-AU-KenNeural',
+  'en-AU-KimNeural',
+  'en-AU-NeilNeural',
+  'en-AU-TimNeural',
+  'en-AU-TinaNeural'
+]);
 
 export const initialEdgeVoices = [
   // --- UK (GB) ---
@@ -7,7 +23,6 @@ export const initialEdgeVoices = [
   { id: "en-GB-LibbyNeural", label: "Libby (UK)", lang: "en-GB" },
   { id: "en-GB-MaisieNeural", label: "Maisie (UK - Child)", lang: "en-GB" },
   { id: "en-GB-ThomasNeural", label: "Thomas (UK)", lang: "en-GB" },
-  { id: "en-GB-AlfiesNeural", label: "Alfie (UK)", lang: "en-GB" },
 
   // --- US ---
   { id: "en-US-AriaNeural", label: "Aria (US)", lang: "en-US" },
@@ -23,18 +38,6 @@ export const initialEdgeVoices = [
   // --- AU (Australia) ---
   { id: "en-AU-NatashaNeural", label: "Natasha (AU)", lang: "en-AU" },
   { id: "en-AU-WilliamNeural", label: "William (AU)", lang: "en-AU" },
-  { id: "en-AU-AnnetteNeural", label: "Annette (AU)", lang: "en-AU" },
-  { id: "en-AU-CarlyNeural", label: "Carly (AU)", lang: "en-AU" },
-  { id: "en-AU-DarrenNeural", label: "Darren (AU)", lang: "en-AU" },
-  { id: "en-AU-DuncanNeural", label: "Duncan (AU)", lang: "en-AU" },
-  { id: "en-AU-ElsieNeural", label: "Elsie (AU)", lang: "en-AU" },
-  { id: "en-AU-FreyaNeural", label: "Freya (AU)", lang: "en-AU" },
-  { id: "en-AU-JoanneNeural", label: "Joanne (AU)", lang: "en-AU" },
-  { id: "en-AU-KenNeural", label: "Ken (AU)", lang: "en-AU" },
-  { id: "en-AU-KimNeural", label: "Kim (AU)", lang: "en-AU" },
-  { id: "en-AU-NeilNeural", label: "Neil (AU)", lang: "en-AU" },
-  { id: "en-AU-TimNeural", label: "Tim (AU)", lang: "en-AU" },
-  { id: "en-AU-TinaNeural", label: "Tina (AU)", lang: "en-AU" },
 
   // --- SG (Singapore) ---
   { id: "en-SG-LunaNeural", label: "Luna (SG)", lang: "en-SG" },

@@ -14,6 +14,8 @@ import { getTextStructuredAudioSyncProfile } from '../../domain/text/textStructu
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
 import { PlaybackProfileOrderEditor } from './TextStructuredPlaybackControls.jsx';
+import { BrowserTtsVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
+import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const compactVoiceLabel = value => {
@@ -25,8 +27,8 @@ const compactVoiceLabel = value => {
   if (neural?.[1]) return neural[1];
   return name.length > 28 ? `${name.slice(0, 27)}…` : name;
 };
-const uniqueNames = voices => [...new Set((Array.isArray(voices) ? voices : []).map(v => clean(v?.name)).filter(Boolean))];
 const normalizedRate = (value, fallback = 1) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+const collectVoiceNames = voices => dedupeBrowserTtsVoices(voices).map(voice => clean(voice?.name)).filter(Boolean);
 
 const RateControl = ({ label, value, disabled, helper = null, onChange }) => {
   const currentRate = normalizedRate(value);
@@ -53,41 +55,48 @@ const RateControl = ({ label, value, disabled, helper = null, onChange }) => {
   </label>;
 };
 
-const VoiceSelect = ({ label, value, options, fallbackLabel, disabled, helper = null, onChange }) => <label className="block rounded-xl border border-indigo-100 dark:border-indigo-900/80 bg-white dark:bg-slate-900/50 p-2.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
-  <span className="flex items-center justify-between gap-1">
-    <span>{label}</span>
-    <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${value ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
-      {value ? 'Workspace Narrator' : 'Inherits Global Browser TTS'}
+const VoiceSelect = ({ label, value, voices, context = 'general', fallbackLabel, disabled, helper = null, onChange }) => {
+  const voiceOptions = dedupeBrowserTtsVoices(voices);
+  const voiceNames = collectVoiceNames(voiceOptions);
+  return <label className="block rounded-xl border border-indigo-100 dark:border-indigo-900/80 bg-white dark:bg-slate-900/50 p-2.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
+    <span className="flex items-center justify-between gap-1">
+      <span>{label}</span>
+      <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${value ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
+        {value ? 'Workspace Narrator' : 'Inherits Global Browser TTS'}
+      </span>
     </span>
-  </span>
-  <select value={value || ''} disabled={disabled} onChange={event => onChange?.(event.target.value || null)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
-    <option value="">{fallbackLabel}</option>
-    {value && !options.includes(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
-    {options.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
-  </select>
-  {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
-</label>;
+    <select value={value || ''} disabled={disabled} onChange={event => onChange?.(event.target.value || null)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
+      <option value="">{fallbackLabel}</option>
+      {value && !voiceNames.includes(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
+      <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
+    </select>
+    {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
+  </label>;
+};
 
-const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, options, disabled, onChange }) => {
+const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, voices, disabled, onChange }) => {
   // The dropdown's DEFAULT label remains stable; the resolved voice is shown
   // separately so users can see what the active browser actually exposes.
+  const voiceOptions = dedupeBrowserTtsVoices(voices);
+  const voiceNames = collectVoiceNames(voiceOptions);
   const requestedName = selected || effectiveName || null;
-  const availableName = options.includes(requestedName) ? requestedName : (options[0] || null);
-  const missingRequested = Boolean(selected && !options.includes(selected));
+  const availableVoice = voiceOptions.find(voice => clean(voice?.name) === clean(requestedName)) || voiceOptions[0] || null;
+  const missingRequested = Boolean(selected && !voiceNames.includes(selected));
+  const context = channel === 'meaning' ? 'meaning' : 'main';
   return <label className="block rounded-xl border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900/45 p-2.5 text-[9px] font-bold text-slate-700 dark:text-slate-200">
     <span className="block mb-1.5">{title}</span>
     <select data-text-global-voice-select={channel} value={selected || ''} disabled={disabled}
       onChange={event => onChange?.(event.target.value || null, channel)}
       className="w-full min-w-0 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-800 px-2.5 py-2 text-[10px] text-slate-700 dark:text-slate-200">
       <option value="">DEFAULT · Browser automatic</option>
-      {selected && !options.includes(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
-      {options.map(name => <option key={name} value={name}>{formatTextStructuredBrowserVoiceLabel(name)}</option>)}
+      {selected && !voiceNames.includes(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
+      <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
     </select>
     <span className="mt-1.5 block text-[9px] font-semibold text-sky-600 dark:text-sky-300" data-text-global-voice-effective={channel}>
-      Effective: {availableName ? formatTextStructuredBrowserVoiceLabel(availableName) : 'Browser system default (if supported)'}
+      Effective: {availableVoice ? formatTextStructuredBrowserVoiceLabel(availableVoice) : 'Browser system default (if supported)'}
     </span>
     {missingRequested && <span className="mt-1 block text-[8px] font-semibold text-amber-700 dark:text-amber-300">Saved voice unavailable here; using a browser fallback.</span>}
-    {!options.length && <span className="mt-1 block text-[8px] text-slate-500 dark:text-slate-400">No named voices exposed. Browser/device speech support determines fallback.</span>}
+    {!voiceOptions.length && <span className="mt-1 block text-[8px] text-slate-500 dark:text-slate-400">No named voices exposed. Browser/device speech support determines fallback.</span>}
   </label>;
 };
 
@@ -190,8 +199,8 @@ export default function TextStructuredAudioControls({
     let displayIndex = 0;
     return (documentTree?.blocks || []).flatMap(block => (block?.segments || []).map(segment => ({ segment, displayIndex: ++displayIndex })));
   }, [documentTree?.blocks]);
-  const englishNames = useMemo(() => uniqueNames(englishVoices), [englishVoices]);
-  const indonesianNames = useMemo(() => uniqueNames(indonesianVoices), [indonesianVoices]);
+  const englishVoiceOptions = useMemo(() => dedupeBrowserTtsVoices(englishVoices), [englishVoices]);
+  const indonesianVoiceOptions = useMemo(() => dedupeBrowserTtsVoices(indonesianVoices), [indonesianVoices]);
   const edgeEnglish = useMemo(() => (edgeGenerationVoices || []).filter(voice => String(voice?.lang || '').startsWith('en-')), [edgeGenerationVoices]);
   const edgeMeaning = useMemo(() => (edgeGenerationVoices || []).filter(voice => !String(voice?.lang || '').startsWith('en-')), [edgeGenerationVoices]);
   const [audioSurface, setAudioSurface] = useState('playback');
@@ -216,7 +225,7 @@ export default function TextStructuredAudioControls({
   const localVoiceCountEn = (availableLocalVoices?.channels?.text || []).length;
   const localVoiceCountId = (availableLocalVoices?.channels?.meaning || []).length;
 
-  const renderDocumentChannel = (channel, label, voices, fallback, globalRate, localOptions) => {
+  const renderDocumentChannel = (channel, label, voiceOptions, fallback, globalRate, localOptions) => {
     const rate = rateProfile.channels?.[channel] || globalRate || 1;
     const resolution = resolveTextStructuredBrowserVoiceResolution({
       documentTree,
@@ -228,14 +237,17 @@ export default function TextStructuredAudioControls({
       ignoreSegmentOverride: true,
       representationMode: 'full'
     });
+    const effectiveVoiceObj = voiceOptions.find(voice => clean(voice?.name) === clean(resolution.effectiveVoiceName))
+      || resolution.effectiveVoiceName;
     return <div className="grid gap-2" data-text-workspace-narrator-channel={channel}>
       <VoiceSelect
         label={`${label} • Workspace Narrator (Browser TTS)`}
         value={voiceProfile.channels?.[channel] || ''}
-        options={voices}
+        voices={voiceOptions}
+        context={channel === 'meaning' ? 'meaning' : 'main'}
         fallbackLabel="AUTO · Inherit Global"
         disabled={disabled}
-        helper={`Effective: ${formatTextStructuredBrowserVoiceLabel(resolution.effectiveVoiceName)} (${resolution.effectiveSourceLabel})`}
+        helper={`Effective: ${formatTextStructuredBrowserVoiceLabel(effectiveVoiceObj)} (${resolution.effectiveSourceLabel})`}
         onChange={value => onDocumentVoiceChange?.(value, channel)}
       />
       {resolution.fallbackUsed && resolution.fallbackReason && (
@@ -357,8 +369,8 @@ export default function TextStructuredAudioControls({
         <p className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-200">Text Global Browser TTS</p>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Default for Text Workspaces unless overridden below. Table has its own Browser TTS preferences. These choices do not regenerate or change downloaded MP3 files.</p>
         <div className="grid gap-2">
-          <TextGlobalVoiceSelect channel="text" title="EN · Global Default" selected={preferences.browserTextVoiceName} effectiveName={defaultTextVoiceName} options={englishNames} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
-          <TextGlobalVoiceSelect channel="meaning" title="ID · Global Default" selected={preferences.browserMeaningVoiceName} effectiveName={defaultMeaningVoiceName} options={indonesianNames} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
+          <TextGlobalVoiceSelect channel="text" title="EN · Global Default" selected={preferences.browserTextVoiceName} effectiveName={defaultTextVoiceName} voices={englishVoiceOptions} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
+          <TextGlobalVoiceSelect channel="meaning" title="ID · Global Default" selected={preferences.browserMeaningVoiceName} effectiveName={defaultMeaningVoiceName} voices={indonesianVoiceOptions} disabled={disabled} onChange={onGlobalBrowserTtsVoiceChange}/>
         </div>
       </section>
       {hasParagraphCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
@@ -369,10 +381,10 @@ export default function TextStructuredAudioControls({
             <Volume2 className="w-3.5 h-3.5 text-indigo-500"/>
             <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">This Workspace Narrator (Browser TTS)</span>
           </div>
-          <span className="text-[8px] font-semibold text-slate-400">EN {englishNames.length} • ID {indonesianNames.length}</span>
+          <span className="text-[8px] font-semibold text-slate-400">EN {englishVoiceOptions.length} • ID {indonesianVoiceOptions.length}</span>
         </div>
-        {renderDocumentChannel('text', 'EN (Text)', englishNames, defaultTextVoiceName, globalTextRate, availableLocalVoices?.channels?.text || [])}
-        {renderDocumentChannel('meaning', 'ID (Meaning)', indonesianNames, defaultMeaningVoiceName, globalMeaningRate, availableLocalVoices?.channels?.meaning || [])}
+        {renderDocumentChannel('text', 'EN (Text)', englishVoiceOptions, defaultTextVoiceName, globalTextRate, availableLocalVoices?.channels?.text || [])}
+        {renderDocumentChannel('meaning', 'ID (Meaning)', indonesianVoiceOptions, defaultMeaningVoiceName, globalMeaningRate, availableLocalVoices?.channels?.meaning || [])}
       </div>}
       {hasConversationCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
 
@@ -423,8 +435,8 @@ export default function TextStructuredAudioControls({
           return <div key={id} className={`rounded-xl border bg-white/95 dark:bg-slate-900/50 p-2.5 ${index === 0 ? 'border-indigo-200 dark:border-indigo-900' : 'border-sky-100 dark:border-sky-900'}`} data-text-audio-speaker={id}>
             <div className="mb-2 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-500"/><span className="text-[10px] font-black text-slate-700 dark:text-slate-200">{index + 1}. {label}</span>{index === 0 && speakers.length > 1 && <span className="ml-auto rounded bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.5 text-[8px] font-black text-indigo-600 dark:text-indigo-300">SYNC MASTER</span>}</div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} options={englishNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
-              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} options={indonesianNames} fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
             </div>
             {syncNotes.length > 0 && <div className="mt-2 space-y-0.5 px-0.5" data-text-audio-sync-notes={id}>{syncNotes.map(note => <p key={note} className="text-[8px] font-semibold leading-relaxed text-sky-600 dark:text-sky-300">{note}</p>)}</div>}
             <button type="button" onClick={() => setLocalReadyExpanded(current => ({ ...current, [id]: !current[id] }))} className="mt-2 flex min-h-9 w-full items-center justify-between rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 text-left text-[9px] font-black text-emerald-700 dark:text-emerald-300" aria-expanded={localReadyOpen}>
@@ -476,10 +488,10 @@ export default function TextStructuredAudioControls({
           data-text-global-edge-restore-default="true">Use defaults · Sonia EN / Gadis ID</button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
-            <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
+            <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{generationPreferences?.edgeTextVoiceId && !edgeEnglish.some(voice => voice.id === generationPreferences.edgeTextVoiceId) && <option value={generationPreferences.edgeTextVoiceId}>Unavailable in Edge · {generationPreferences.edgeTextVoiceId}</option>}{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
           </label>
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge ID Voice
-            <select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
+            <select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{generationPreferences?.edgeMeaningVoiceId && !edgeMeaning.some(voice => voice.id === generationPreferences.edgeMeaningVoiceId) && <option value={generationPreferences.edgeMeaningVoiceId}>Unavailable in Edge · {generationPreferences.edgeMeaningVoiceId}</option>}{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
           </label>
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
@@ -512,12 +524,16 @@ export default function TextStructuredAudioControls({
               <p className="mb-1 text-[9px] font-black text-slate-600 dark:text-slate-300">{isMeaning ? 'ID (Meaning)' : 'EN (Text)'}</p>
               <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onDocumentDownloadModeChange?.(next, channel)}/>
               {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT && <p className="mt-1.5 text-[8px] font-semibold text-violet-700 dark:text-violet-300">Global Edge · {compactVoiceLabel(isMeaning ? generationPreferences?.edgeMeaningVoiceId : generationPreferences?.edgeTextVoiceId)}</p>}
-              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <select value={voice} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, channel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[10px]"><option value="">Choose Edge voice…</option>{pool.map(item => <option key={item.id} value={item.id}>{item.label || compactVoiceLabel(item.id)}</option>)}</select>}
+              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <select value={voice} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, channel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[10px]"><option value="">Choose Edge voice…</option>{voice && !pool.some(item => item.id === voice) && <option value={voice}>Unavailable in Edge · {voice}</option>}{pool.map(item => <option key={item.id} value={item.id}>{item.label || compactVoiceLabel(item.id)}</option>)}</select>}
               {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[8px] font-semibold text-sky-600 dark:text-sky-300">Maps the effective Browser TTS voice at generation time (not always the Workspace narrator).</p>}
             </div>;
           })}
         </div>
-        {hasConversationCards && speakers.length > 0 && <details className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5" data-text-audio-speaker-download-advanced="true"><summary className="cursor-pointer text-[9px] font-black uppercase text-slate-500 dark:text-slate-400">Advanced · Speaker Edge Generation Overrides</summary>{speakers.map(({ id, label }) => <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 truncate">{label}</span><select value={downloadProfile.speakerIds?.text?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">EN • Workspace preset</option>{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={downloadProfile.speakerIds?.meaning?.[id] || ''} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">ID • Workspace preset</option>{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>)}</details>}
+        {hasConversationCards && speakers.length > 0 && <details className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5" data-text-audio-speaker-download-advanced="true"><summary className="cursor-pointer text-[9px] font-black uppercase text-slate-500 dark:text-slate-400">Advanced · Speaker Edge Generation Overrides</summary>{speakers.map(({ id, label }) => {
+          const speakerTextVoiceId = downloadProfile.speakerIds?.text?.[id] || '';
+          const speakerMeaningVoiceId = downloadProfile.speakerIds?.meaning?.[id] || '';
+          return <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 truncate">{label}</span><select value={speakerTextVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">EN • Workspace preset</option>{speakerTextVoiceId && !edgeEnglish.some(voice => voice.id === speakerTextVoiceId) && <option value={speakerTextVoiceId}>Unavailable in Edge · {speakerTextVoiceId}</option>}{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={speakerMeaningVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">ID • Workspace preset</option>{speakerMeaningVoiceId && !edgeMeaning.some(voice => voice.id === speakerMeaningVoiceId) && <option value={speakerMeaningVoiceId}>Unavailable in Edge · {speakerMeaningVoiceId}</option>}{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>;
+        })}</details>}
       </details>
     </section>}
 

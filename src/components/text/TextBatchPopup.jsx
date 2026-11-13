@@ -46,6 +46,42 @@ const ScopeButton = ({ active, disabled, onClick, children }) => <button
   className={`min-h-9 rounded-lg border px-2.5 py-1.5 text-[9px] font-black transition ${active ? 'border-cyan-600 bg-cyan-600 text-white shadow-sm' : 'border-cyan-200 dark:border-cyan-900 bg-white dark:bg-slate-900 text-cyan-800 dark:text-cyan-300 hover:bg-cyan-50/60'} disabled:opacity-35`}
 >{children}</button>;
 
+const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
+
+const TextBatchLiveTelemetry = memoComponent(({ fallbackTotal = 0 }) => {
+  const liveTelemetry = React.useSyncExternalStore(
+    subscribeTextStructuredBatchTelemetry,
+    getTextStructuredBatchTelemetrySnapshot,
+    getTextStructuredBatchTelemetrySnapshot
+  );
+  if (!liveTelemetry?.sessionId) return null;
+  const progressTotal = Number(liveTelemetry?.total || fallbackTotal || 0);
+  const progressDone = Number(liveTelemetry?.processed || 0);
+  const progressPercent = progressTotal > 0 ? Math.min(100, Math.round((progressDone / progressTotal) * 100)) : 0;
+
+  return (
+    <div className="rounded-xl border border-cyan-200 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-3 text-[9px] space-y-2" data-live-batch-telemetry="text">
+      <div className="flex items-center justify-between gap-2 font-black text-cyan-800 dark:text-cyan-300">
+        <span>Live Bulk Audio • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span>
+        <span>{progressDone}/{progressTotal} ({progressPercent}%)</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-cyan-100 dark:bg-cyan-950">
+        <div className="h-full rounded-full bg-cyan-600 transition-all duration-200" style={{ width: `${progressPercent}%` }} />
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[8px] text-slate-600 dark:text-slate-300">
+        <span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Missing est.: {liveTelemetry.missingEstimate || 0}</span>
+        <span>Stale est.: {liveTelemetry.staleEstimate || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span>
+        <span>Logical scope: {liveTelemetry.logicalRequirements || 0}</span><span>Unique physical: {liveTelemetry.uniquePhysicalRequirements || 0}</span>
+        <span>Selected logical: {liveTelemetry.selectedLogicalRequirements || 0}</span><span>Selected physical: {liveTelemetry.selectedUniquePhysicalRequirements || 0}</span>
+        <span>Generated physical: {liveTelemetry.generatedPhysical ?? liveTelemetry.generated ?? 0}</span><span>Reused physical: {liveTelemetry.reusedPhysical || 0}</span>
+        <span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Skipped Stale: {liveTelemetry.skippedStale || 0}</span>
+        <span>Remaining selected: {liveTelemetry.remaining || 0}</span>
+      </div>
+      <p className="text-[8px] text-cyan-700/80 dark:text-cyan-300/80">Counter UI only • no per-audio IndexedDB inventory scan{liveTelemetry.reconciled ? ' • final durable commit reconciled' : ''}.</p>
+    </div>
+  );
+});
+
 export const TextBatchPopup = ({
   batchPanelRef,
   setIsBatchOpen,
@@ -90,11 +126,6 @@ export const TextBatchPopup = ({
     }
   }, [structuredTextBatch?.preferences?.bulkMeaningVoiceIds]);
 
-  const liveTelemetry = React.useSyncExternalStore(
-    subscribeTextStructuredBatchTelemetry,
-    getTextStructuredBatchTelemetrySnapshot,
-    getTextStructuredBatchTelemetrySnapshot
-  );
   const rawGenerationCoverage = structuredTextBatch?.generationCoverage || structuredTextBatch?.coverage || {};
   const exportCoverage = structuredTextBatch?.exportCoverage || {};
   const exportFormat = structuredTextBatch?.preferences?.bulkExportFormat || 'portable-zip';
@@ -155,6 +186,16 @@ export const TextBatchPopup = ({
 
   const englishBulkVoices = (structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-'));
   const meaningBulkVoices = (structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || '')));
+  const missingBulkTextVoiceIds = bulkTextVoiceIds.filter(voiceId => !englishBulkVoices.some(voice => voice.id === voiceId));
+  const missingBulkMeaningVoiceIds = bulkMeaningVoiceIds.filter(voiceId => !meaningBulkVoices.some(voice => voice.id === voiceId));
+  const missingGlobalTextEdgeVoiceId = structuredTextBatch?.preferences?.edgeTextVoiceId
+    && !englishBulkVoices.some(voice => voice.id === structuredTextBatch.preferences.edgeTextVoiceId)
+    ? structuredTextBatch.preferences.edgeTextVoiceId
+    : '';
+  const missingGlobalMeaningEdgeVoiceId = structuredTextBatch?.preferences?.edgeMeaningVoiceId
+    && !meaningBulkVoices.some(voice => voice.id === structuredTextBatch.preferences.edgeMeaningVoiceId)
+    ? structuredTextBatch.preferences.edgeMeaningVoiceId
+    : '';
   const cardOptions = structuredTextBatch?.cardOptions || [];
   const workspaceOptions = structuredTextBatch?.workspaceOptions || structuredTextBatch?.documentOptions || [];
   const selectedWorkspaceIds = textScope?.selectedDocumentIds || [];
@@ -265,10 +306,6 @@ export const TextBatchPopup = ({
   const panelClass = inline
     ? 'w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden flex flex-col animate-in fade-in duration-150'
     : 'absolute top-full left-0 mt-2 w-[22rem] sm:w-[25rem] max-h-[82vh] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl z-[100] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200';
-
-  const progressTotal = Number(liveTelemetry?.total || generationCoverage?.total || 0);
-  const progressDone = Number(liveTelemetry?.processed || 0);
-  const progressPercent = progressTotal > 0 ? Math.min(100, Math.round((progressDone / progressTotal) * 100)) : 0;
 
   const enPlanStatusText = !includeTextChannel
     ? 'Channel disabled (not generated)'
@@ -443,6 +480,18 @@ export const TextBatchPopup = ({
 
             {includeTextChannel ? (
               <div className="max-h-40 space-y-1 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
+                {missingBulkTextVoiceIds.map(voiceId => (
+                  <ToggleRow
+                    key={`missing-text-${voiceId}`}
+                    checked={true}
+                    disabled={running}
+                    selectionMode={textVoiceMode}
+                    testId={`text:${voiceId}`}
+                    onClick={() => toggleBulkVoice('bulkTextVoiceIds', voiceId, textVoiceMode)}
+                  >
+                    Unavailable in Edge · {voiceId}
+                  </ToggleRow>
+                ))}
                 {englishBulkVoices.map(voice => (
                   <ToggleRow
                     key={voice.id}
@@ -509,6 +558,19 @@ export const TextBatchPopup = ({
 
             {includeMeaningChannel ? (
               <div className="max-h-32 space-y-1 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
+                {missingBulkMeaningVoiceIds.map(voiceId => (
+                  <ToggleRow
+                    key={`missing-meaning-${voiceId}`}
+                    checked={true}
+                    disabled={running}
+                    tone="amber"
+                    selectionMode={meaningVoiceMode}
+                    testId={`meaning:${voiceId}`}
+                    onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voiceId, meaningVoiceMode)}
+                  >
+                    Unavailable in Edge · {voiceId}
+                  </ToggleRow>
+                ))}
                 {meaningBulkVoices.map(voice => (
                   <ToggleRow
                     key={voice.id}
@@ -548,11 +610,13 @@ export const TextBatchPopup = ({
             <div className="mt-2 grid gap-2">
               <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
+                  {missingGlobalTextEdgeVoiceId && <option value={missingGlobalTextEdgeVoiceId}>Unavailable in Edge · {missingGlobalTextEdgeVoiceId}</option>}
                   {englishBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
                 </select>
               </label>
               <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge ID / Meaning Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
+                  {missingGlobalMeaningEdgeVoiceId && <option value={missingGlobalMeaningEdgeVoiceId}>Unavailable in Edge · {missingGlobalMeaningEdgeVoiceId}</option>}
                   {meaningBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
                 </select>
               </label>
@@ -651,25 +715,7 @@ export const TextBatchPopup = ({
         </div>
 
         {/* Live Telemetry & Progress Bar */}
-        {liveTelemetry?.sessionId && <div className="rounded-xl border border-cyan-200 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/15 p-3 text-[9px] space-y-2" data-live-batch-telemetry="text">
-          <div className="flex items-center justify-between gap-2 font-black text-cyan-800 dark:text-cyan-300">
-            <span>Live Bulk Audio • {String(liveTelemetry.status || 'idle').replaceAll('-', ' ')}</span>
-            <span>{liveTelemetry.processed || 0}/{liveTelemetry.total || 0} ({progressPercent}%)</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-cyan-100 dark:bg-cyan-950">
-            <div className="h-full rounded-full bg-cyan-600 transition-all duration-200" style={{ width: `${progressPercent}%` }} />
-          </div>
-          <div className="grid grid-cols-2 gap-1 text-[8px] text-slate-600 dark:text-slate-300">
-            <span>Ready est.: {liveTelemetry.readyEstimate || 0}</span><span>Missing est.: {liveTelemetry.missingEstimate || 0}</span>
-            <span>Stale est.: {liveTelemetry.staleEstimate || 0}</span><span>Failed: {liveTelemetry.failed || 0}</span>
-            <span>Logical scope: {liveTelemetry.logicalRequirements || 0}</span><span>Unique physical: {liveTelemetry.uniquePhysicalRequirements || 0}</span>
-            <span>Selected logical: {liveTelemetry.selectedLogicalRequirements || 0}</span><span>Selected physical: {liveTelemetry.selectedUniquePhysicalRequirements || 0}</span>
-            <span>Generated physical: {liveTelemetry.generatedPhysical ?? liveTelemetry.generated ?? 0}</span><span>Reused physical: {liveTelemetry.reusedPhysical || 0}</span>
-            <span>Skipped Ready: {liveTelemetry.skippedReady || 0}</span><span>Skipped Stale: {liveTelemetry.skippedStale || 0}</span>
-            <span>Remaining selected: {liveTelemetry.remaining || 0}</span>
-          </div>
-          <p className="text-[8px] text-cyan-700/80 dark:text-cyan-300/80">Counter UI only • no per-audio IndexedDB inventory scan{liveTelemetry.reconciled ? ' • final durable commit reconciled' : ''}.</p>
-        </div>}
+        <TextBatchLiveTelemetry fallbackTotal={generationCoverage?.total || 0} />
 
         {/* Failed Jobs */}
         {failedJobs.length > 0 && <details className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50/60 dark:bg-red-950/15 p-3 text-[9px]" data-text-bulk-failures="true" open>
