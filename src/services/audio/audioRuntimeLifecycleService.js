@@ -24,8 +24,15 @@ export const executeSilentAudioAnchorEffect = ({ silentWavUrlRef, silentAudioRef
 };
 
 export const executeBrowserTtsVoiceLifecycleEffect = ({
-  synth, selectedVoiceRef, selectedIndonesianVoiceRef, setVoices, setSelectedVoice,
-  setIndonesianVoices, setSelectedIndonesianVoice
+  synth,
+  selectedVoiceRef,
+  selectedIndonesianVoiceRef,
+  selectedVoiceExplicitRef = null,
+  selectedIndonesianVoiceExplicitRef = null,
+  setVoices,
+  setSelectedVoice,
+  setIndonesianVoices,
+  setSelectedIndonesianVoice
 }) => {
     // Some browsers expose no speechSynthesis API at all. Leave the voice
     // lists empty and let the playback service exit safely in that case.
@@ -34,16 +41,36 @@ export const executeBrowserTtsVoiceLifecycleEffect = ({
       setIndonesianVoices([]);
       return () => {};
     }
+    let autoSelectedEngName = '';
+    let autoSelectedIdName = '';
     const loadVoices = () => {
       const allVoices = synth.getVoices();
       const voiceState = resolveBrowserTtsVoiceState(allVoices);
       if (!voiceState) return;
 
       setVoices(voiceState.engVoices);
-      if (!selectedVoiceRef.current && voiceState.defaultEng) setSelectedVoice(voiceState.defaultEng);
+      const currentEngName = String(selectedVoiceRef.current?.name || '').trim();
+      const canAutoUpdateEng = !currentEngName || (
+        !selectedVoiceExplicitRef?.current
+        && Boolean(autoSelectedEngName)
+        && currentEngName === autoSelectedEngName
+      );
+      if (canAutoUpdateEng && voiceState.defaultEng && voiceState.defaultEng.name !== currentEngName) {
+        autoSelectedEngName = String(voiceState.defaultEng.name || '').trim();
+        setSelectedVoice(voiceState.defaultEng);
+      }
 
       setIndonesianVoices(voiceState.idVoices);
-      if (!selectedIndonesianVoiceRef.current && voiceState.defaultId) setSelectedIndonesianVoice(voiceState.defaultId);
+      const currentIdName = String(selectedIndonesianVoiceRef.current?.name || '').trim();
+      const canAutoUpdateId = !currentIdName || (
+        !selectedIndonesianVoiceExplicitRef?.current
+        && Boolean(autoSelectedIdName)
+        && currentIdName === autoSelectedIdName
+      );
+      if (canAutoUpdateId && voiceState.defaultId && voiceState.defaultId.name !== currentIdName) {
+        autoSelectedIdName = String(voiceState.defaultId.name || '').trim();
+        setSelectedIndonesianVoice(voiceState.defaultId);
+      }
     };
     
     loadVoices();

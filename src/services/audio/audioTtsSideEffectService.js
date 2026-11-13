@@ -34,10 +34,11 @@ addLog
   edgeTestAbortControllerRef.current = controller;
   setEdgeHealth({ status: 'testing', message: 'Testing /api/tts...' });
   let timeoutId = null;
+  const edgeHealthRequest = resolveEdgeHealthCheckRequest(edgeVoice);
+  const testedVoiceId = edgeHealthRequest?.body?.voice || edgeVoice;
 
   try {
       timeoutId = setTimeout(() => controller.abort(), 12000);
-      const edgeHealthRequest = resolveEdgeHealthCheckRequest(edgeVoice);
       const response = await fetch(edgeHealthRequest.url, {
           method: edgeHealthRequest.method,
           headers: edgeHealthRequest.headers,
@@ -47,7 +48,18 @@ addLog
 
       if (!response.ok) {
           const detail = await response.text();
-          throw new Error(`HTTP ${response.status}: ${detail || response.statusText}`);
+          let parsed = null;
+          try {
+              parsed = detail ? JSON.parse(detail) : null;
+          } catch {
+              parsed = null;
+          }
+          const detailMessage = parsed?.error || detail || response.statusText;
+          const error = new Error(`HTTP ${response.status}: ${detailMessage}`);
+          error.status = response.status;
+          error.code = parsed?.code || (response.status === 422 ? 'EDGE_VOICE_UNSUPPORTED' : null);
+          error.retryable = typeof parsed?.retryable === 'boolean' ? parsed.retryable : (response.status >= 500 || response.status === 408 || response.status === 429);
+          throw error;
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -61,10 +73,19 @@ addLog
 
       setEdgeHealth({ status: 'online', message: resolveEdgeHealthStatusMessage(blob.size) });
       addLog("Edge", resolveEdgeHealthLogMessage(blob.size));
+      return { status: 'online', voiceId: testedVoiceId, size: blob.size };
   } catch (error) {
       const msg = resolveEdgeHealthFailureMessage(error);
       setEdgeHealth({ status: 'error', message: msg });
       addLog("Error", `Edge health: ${msg}`);
+      return {
+          status: 'error',
+          voiceId: testedVoiceId,
+          httpStatus: error?.status ?? null,
+          code: error?.code || null,
+          retryable: typeof error?.retryable === 'boolean' ? error.retryable : null,
+          message: msg
+      };
   } finally {
       if (timeoutId) clearTimeout(timeoutId);
       edgeTestAbortControllerRef.current = null;
@@ -159,8 +180,19 @@ suppressFailureAlert = false
 
                    if (!response.ok) {
                        const errText = await response.text();
-                       const error = new Error(`Edge ${response.status}: ${errText || response.statusText}`);
-                       error.retryable = response.status >= 500 || response.status === 408 || response.status === 429;
+                       let parsed = null;
+                       try {
+                           parsed = errText ? JSON.parse(errText) : null;
+                       } catch {
+                           parsed = null;
+                       }
+                       const detailMessage = parsed?.error || errText || response.statusText;
+                       const error = new Error(`Edge ${response.status}: ${detailMessage}`);
+                       error.status = response.status;
+                       error.code = parsed?.code || (response.status === 422 ? 'EDGE_VOICE_UNSUPPORTED' : null);
+                       error.retryable = typeof parsed?.retryable === 'boolean'
+                           ? parsed.retryable
+                           : (response.status >= 500 || response.status === 408 || response.status === 429);
                        throw error;
                    }
 
@@ -283,7 +315,16 @@ suppressFailureAlert = false
           if (failureState.edgeHealth) setEdgeHealth(failureState.edgeHealth);
           addLog("Error", failureState.logMessage);
           if (!suppressFailureAlert) alert(failureState.alertMessage);
-          return { status: 'error', stableId, part, error: e.message || String(e) };
+          return {
+              status: 'error',
+              stableId,
+              part,
+              error: e.message || String(e),
+              httpStatus: e?.status ?? null,
+              code: e?.code || null,
+              retryable: typeof e?.retryable === 'boolean' ? e.retryable : null,
+              voice: generatorEngine === 'edge' ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice) : aiVoiceName
+          };
       }
   } finally {
       if (generationAbortControllerRef.current === controller) generationAbortControllerRef.current = null;

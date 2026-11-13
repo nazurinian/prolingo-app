@@ -1,3 +1,4 @@
+import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredFullArtifactIdentity, buildTextStructuredFullRepresentation, getTextStructuredFullAudioArtifacts } from './textStructuredSplitFullDomain.js';
 
@@ -49,31 +50,55 @@ export const validateTextStructuredBulkVoiceDraft = ({
   includeText = true,
   includeMeaning = true,
   textVoiceIds = [],
-  meaningVoiceIds = []
+  meaningVoiceIds = [],
+  edgeVoices = initialEdgeVoices
 } = {}) => {
   const textChannelEnabled = Boolean(includeText);
   const meaningChannelEnabled = Boolean(includeMeaning);
   const textVoices = uniqueVoiceIds(textVoiceIds, null, true);
   const meaningVoices = uniqueVoiceIds(meaningVoiceIds, null, true);
+  const unavailableTextVoices = textChannelEnabled
+    ? textVoices.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+    : [];
+  const unavailableMeaningVoices = meaningChannelEnabled
+    ? meaningVoices.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+    : [];
   const textEmptyWarning = textChannelEnabled && textVoices.length === 0
     ? 'EN (Text) channel is enabled with 0 voices selected. Select at least one EN voice or disable EN (Text) to generate.'
     : null;
   const meaningEmptyWarning = meaningChannelEnabled && meaningVoices.length === 0
     ? 'ID (Meaning) channel is enabled with 0 voices selected. Select at least one ID voice or disable ID (Meaning) to generate.'
     : null;
+  const unavailableTextWarning = unavailableTextVoices.length
+    ? `Unavailable EN voice${unavailableTextVoices.length > 1 ? 's' : ''} selected (${unavailableTextVoices.join(', ')}). Remove or switch before generating (no silent substitution).`
+    : null;
+  const unavailableMeaningWarning = unavailableMeaningVoices.length
+    ? `Unavailable ID voice${unavailableMeaningVoices.length > 1 ? 's' : ''} selected (${unavailableMeaningVoices.join(', ')}). Remove or switch before generating (no silent substitution).`
+    : null;
   const noChannelsEnabled = !textChannelEnabled && !meaningChannelEnabled;
   const hasInvalidEnabledChannel = Boolean(textEmptyWarning || meaningEmptyWarning);
-  const warnings = [textEmptyWarning, meaningEmptyWarning].filter(Boolean);
+  const hasUnavailableVoice = unavailableTextVoices.length > 0 || unavailableMeaningVoices.length > 0;
+  const warnings = [
+    textEmptyWarning,
+    meaningEmptyWarning,
+    unavailableTextWarning,
+    unavailableMeaningWarning
+  ].filter(Boolean);
   return {
     textChannelEnabled,
     meaningChannelEnabled,
     textVoices,
     meaningVoices,
+    unavailableTextVoices,
+    unavailableMeaningVoices,
     textEmptyWarning,
     meaningEmptyWarning,
+    unavailableTextWarning,
+    unavailableMeaningWarning,
     noChannelsEnabled,
     hasInvalidEnabledChannel,
-    canGenerate: !noChannelsEnabled && !hasInvalidEnabledChannel,
+    hasUnavailableVoice,
+    canGenerate: !noChannelsEnabled && !hasInvalidEnabledChannel && !hasUnavailableVoice,
     warnings
   };
 };
@@ -152,11 +177,15 @@ export const buildTextStructuredBulkGenerationPlan = ({
   const includeFull = preferences?.bulkGenerateFull === true;
   const includeText = preferences?.generateText !== false;
   const includeMeaning = preferences?.generateMeaning !== false;
+  const edgeVoices = Array.isArray(preferences?.edgeVoices) && preferences.edgeVoices.length
+    ? preferences.edgeVoices
+    : initialEdgeVoices;
   const voiceValidation = validateTextStructuredBulkVoiceDraft({
     includeText,
     includeMeaning,
     textVoiceIds: textVoices,
-    meaningVoiceIds: meaningVoices
+    meaningVoiceIds: meaningVoices,
+    edgeVoices
   });
   const stagingPhysical = new Set(activeStagingRecords(stagingRecords).map(stagingPhysicalIdentity).filter(Boolean));
   const requirements = [];

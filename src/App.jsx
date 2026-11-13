@@ -48,7 +48,7 @@ import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx
 import { renderPlaylistViewport } from './components/table/PlaylistViewport';
 import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE_KEYS, V510_SOURCE_LABELS, V58_CANONICAL_HEADERS } from './constants/datasetConstants';
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
-import { initialEdgeVoices } from './constants/voiceConstants';
+import { applyEdgeVoiceCompatibilityResult, getEdgeVoiceDiagnostic, isEdgeVoiceUnavailable } from './constants/voiceConstants';
 import { downloadTextFile, encodeWAV, formatVoiceLabel, getAdvancedContentCount, getAdvancedExpressionPairs, getAudioFilenameIdentity, getItemPartText, getRecordAudioNo, getStableAudioIdentity, getVocabIdentity, groupVoicesByRegion, hasAdvancedContent, isIndonesianAudioPart, sanitizeFilename, triggerBrowserDownload, writeString } from './utils/audioUtils';
 import { canonicalizeTableContent, createEmptyManualForm, csvEscape, detectDelimiter, getMaxAssignedNoFromRecords, getMaxManualIdFromRecords, getNextManualVocabId, getRecordSignature, getTableChangeSummary, normalizeHeaderKey, normalizeVocabId, parseDelimitedText, parseTableRecords, serializeTableRecords, validateTableRecords } from './utils/csvUtils';
 import { createEmptySourcePack, detectV510SourceKey, getDuplicateSourceIds, getSourceChangeSummary, getSourceDiagnostics, mergeSourcePackBaselines, normalizeDeckEntry, normalizeSourcePack, parseLayerSourceRecords, readV510FileText, serializeLayerSourceRecords, serializeMainSourceRecords, serializeSourceFromMerged } from './utils/multiSourceUtils';
@@ -291,6 +291,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const [pendingTextLibrarySearchAction, setPendingTextLibrarySearchAction] = useState(null);
   const [textLibrarySearchFocusTarget, setTextLibrarySearchFocusTarget] = useState(null);
   const textLibrarySearchFocusNonceRef = useRef(0);
+  const selectedVoiceExplicitRef = useRef(false);
+  const selectedIndonesianVoiceExplicitRef = useRef(false);
   // P4-A10: session-only URLs for structured Text audio. IndexedDB stores metadata only.
   const [structuredTextAudioRuntimeUrls, setStructuredTextAudioRuntimeUrls] = useState({});
   // beta.8/P3: Full Audio Artifacts are block-level derived binaries, not Segment AudioVariants.
@@ -619,7 +621,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   // --- VOICE PERSISTENCE (Browser TTS) ---
   useEffect(() => executeBrowserTtsVoiceLifecycleEffect({
-    synth, selectedVoiceRef, selectedIndonesianVoiceRef, setVoices, setSelectedVoice,
+    synth, selectedVoiceRef, selectedIndonesianVoiceRef, selectedVoiceExplicitRef,
+    selectedIndonesianVoiceExplicitRef, setVoices, setSelectedVoice,
     setIndonesianVoices, setSelectedIndonesianVoice
   })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -903,8 +906,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     ...structuredTextAudioGenerationPreferences,
     playbackTextVoiceName: defaultStructuredTextVoiceId,
     playbackMeaningVoiceName: defaultStructuredMeaningVoiceId,
-    edgeVoices: initialEdgeVoices
-  }), [structuredTextAudioGenerationPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId]);
+    edgeVoices
+  }), [structuredTextAudioGenerationPreferences, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, edgeVoices]);
   const resolveStructuredTextChannelVoiceState = useCallback((item, channel, options = {}) => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const isMeaning = normalizedChannel === 'meaning';
@@ -1138,12 +1141,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const structuredTextBulkGenerationPlan = useMemo(() => buildTextStructuredBulkGenerationPlan({
     documentTrees: structuredTextBatchTargetTrees,
     selection: structuredTextBatchSelection,
-    preferences: structuredTextAudioGenerationPreferences,
+    preferences: { ...structuredTextAudioGenerationPreferences, edgeVoices },
     audioVariants: textLibrarySnapshot?.audioVariants || [],
     runtimeAudioUrls: structuredTextAudioRuntimeUrls,
     runtimeFullAudio: structuredTextFullAudioRuntimeUrls,
     stagingRecords: [...structuredTextAudioStagingRecordsRef.current.values()]
-  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextFullAudioRuntimeUrls, structuredTextAudioStagingSummary]);
+  }), [structuredTextBatchTargetTrees, structuredTextBatchSelection, structuredTextAudioGenerationPreferences, edgeVoices, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextFullAudioRuntimeUrls, structuredTextAudioStagingSummary]);
 
   // beta.8/P6: export is planned independently from generation order and playback
   // priority, but consumes the same resolved Paragraph scope and canonical Staging.
@@ -1202,8 +1205,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   ), [tableAudioStagingVariantInventory, tableAudioGeneratedVariantInventory, activeTableAudioFolderVariantInventory, activeTableAudioZipVariantInventory]);
   const tableAudioVoiceOptions = useMemo(() => buildTableAudioVoiceOptions({
     inventory: tableAudioVariantInventory,
-    edgeVoices: initialEdgeVoices
-  }), [tableAudioVariantInventory]);
+    edgeVoices
+  }), [tableAudioVariantInventory, edgeVoices]);
   const activeTableAudioBatchSessions = useMemo(
     () => filterTableAudioBatchSessionsForPlaylist(tableAudioBatchSessions, playlist),
     [tableAudioBatchSessions, playlist]
@@ -1277,6 +1280,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'text', voice }) }));
       return;
     }
+    selectedVoiceExplicitRef.current = true;
     setSelectedVoice(voice);
   };
   const handleActiveBrowserTtsIndonesianVoiceChange = (voice) => {
@@ -1284,6 +1288,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'meaning', voice }) }));
       return;
     }
+    selectedIndonesianVoiceExplicitRef.current = true;
     setSelectedIndonesianVoice(voice);
   };
   const handleActiveBrowserTtsRateChange = (value, channel = 'text') => {
@@ -2525,10 +2530,26 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         channel,
         requestedDownloadVoiceId: resolvedDownloadVoice.voiceId,
         preferences: structuredTextAudioGenerationPreferences,
-        edgeVoices: initialEdgeVoices
+        edgeVoices
       }),
       assignmentSource: resolvedDownloadVoice.source
     };
+    if (generationVoiceStateBase.engine === 'edge' && generationVoiceStateBase.unavailable) {
+      const diagnostic = generationVoiceStateBase.diagnostic
+        || getEdgeVoiceDiagnostic(generationVoiceStateBase.engineVoiceId, edgeVoices)
+        || `Voice "${generationVoiceStateBase.engineVoiceId}" is unavailable in Edge TTS.`;
+      if (!options.batch) addLog('Error', `Text Generate ${segmentId}/${channel}: ${diagnostic}`);
+      return {
+        status: 'error',
+        unavailable: true,
+        blocked: true,
+        documentId: item.documentId,
+        segmentId,
+        channel,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        error: diagnostic
+      };
+    }
     const render = buildTextStructuredAudioRenderFingerprint({
       channel,
       content,
@@ -2797,6 +2818,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           ? ({ nextAttempt, maxAttempts, error }) => addLog('Text Generate', `Retry ${nextAttempt}/${maxAttempts}: ${segmentId}/${channel} • ${error.message}`)
           : null
       });
+      if (generationVoiceState.engine === 'edge' && generationVoiceState.engineVoiceId) {
+        setEdgeVoices(prev => (
+          isEdgeVoiceUnavailable(generationVoiceState.engineVoiceId, prev)
+            ? applyEdgeVoiceCompatibilityResult(prev, generationVoiceState.engineVoiceId, { available: true })
+            : prev
+        ));
+      }
       const registered = await registerStructuredTextGeneratedBlob({
         item,
         channel,
@@ -2812,12 +2840,30 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         if (!options.batch) addLog('Text Generate', `${segmentId}/${channel} cancelled.`);
         return { status: 'cancelled', documentId: item.documentId, segmentId, channel };
       }
+      if (
+        generationVoiceState.engine === 'edge'
+        && generationVoiceState.engineVoiceId
+        && (error?.status === 422 || error?.code === 'EDGE_VOICE_UNSUPPORTED')
+      ) {
+        setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, generationVoiceState.engineVoiceId, {
+          available: false,
+          diagnostic: error?.message || null
+        }));
+      }
       if (!options.batch) addLog('Error', `Text Generate ${segmentId}/${channel}: ${error?.message || error}`);
-      return { status: 'error', documentId: item.documentId, segmentId, channel, error: error?.message || String(error) };
+      return {
+        status: 'error',
+        documentId: item.documentId,
+        segmentId,
+        channel,
+        httpStatus: error?.status ?? null,
+        code: error?.code || null,
+        error: error?.message || String(error)
+      };
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, registerStructuredTextGeneratedBlob, queueStructuredTextRuntimeEntry, fanOutStructuredTextSharedRfLogicalSlots, setTextLibrarySnapshot, addLog]);
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, structuredTextDownloadResolutionPreferences, edgeVoices, setEdgeVoices, registerStructuredTextGeneratedBlob, queueStructuredTextRuntimeEntry, fanOutStructuredTextSharedRfLogicalSlots, setTextLibrarySnapshot, addLog]);
 
   const generateStructuredTextFullAudioJob = useCallback(async (job, options = {}) => {
     const documentId = job?.documentId || null;
@@ -2836,10 +2882,27 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         channel,
         requestedDownloadVoiceId: job?.voiceId || job?.downloadVoiceId,
         preferences: structuredTextAudioGenerationPreferences,
-        edgeVoices: initialEdgeVoices
+        edgeVoices
       }),
       assignmentSource: job?.downloadVoiceSource || 'bulk-selection'
     };
+    if (generationVoiceStateBase.engine === 'edge' && generationVoiceStateBase.unavailable) {
+      const diagnostic = generationVoiceStateBase.diagnostic
+        || getEdgeVoiceDiagnostic(generationVoiceStateBase.engineVoiceId, edgeVoices)
+        || `Voice "${generationVoiceStateBase.engineVoiceId}" is unavailable in Edge TTS.`;
+      if (!options.batch) addLog('Error', `Text Full Generate ${blockId}/${channel}: ${diagnostic}`);
+      return {
+        status: 'error',
+        representation: 'full',
+        unavailable: true,
+        blocked: true,
+        documentId: jobDocumentTree?.id || documentId,
+        blockId,
+        channel,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        error: diagnostic
+      };
+    }
     const artifact = buildTextStructuredFullArtifactRecord({
       block,
       channel,
@@ -2957,6 +3020,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           ? ({ nextAttempt, maxAttempts, error }) => addLog('Text Generate', `Retry ${nextAttempt}/${maxAttempts}: FULL ${blockId}/${channel} • ${error.message}`)
           : null
       });
+      if (generationVoiceStateBase.engine === 'edge' && generationVoiceStateBase.engineVoiceId) {
+        setEdgeVoices(prev => (
+          isEdgeVoiceUnavailable(generationVoiceStateBase.engineVoiceId, prev)
+            ? applyEdgeVoiceCompatibilityResult(prev, generationVoiceStateBase.engineVoiceId, { available: true })
+            : prev
+        ));
+      }
       const filename = buildCanonicalTextFullArtifactFilename({
         fullArtifactFingerprint: fingerprint,
         engine: generationVoiceStateBase.engine,
@@ -2992,11 +3062,31 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       };
     } catch (error) {
       if (error?.name === 'AbortError') return { status: 'cancelled', representation: 'full', documentId, blockId, channel };
-      return { status: 'error', representation: 'full', documentId, blockId, channel, voiceId: generationVoiceStateBase.engineVoiceId, error: error?.message || String(error) };
+      if (
+        generationVoiceStateBase.engine === 'edge'
+        && generationVoiceStateBase.engineVoiceId
+        && (error?.status === 422 || error?.code === 'EDGE_VOICE_UNSUPPORTED')
+      ) {
+        setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, generationVoiceStateBase.engineVoiceId, {
+          available: false,
+          diagnostic: error?.message || null
+        }));
+      }
+      return {
+        status: 'error',
+        representation: 'full',
+        documentId,
+        blockId,
+        channel,
+        voiceId: generationVoiceStateBase.engineVoiceId,
+        httpStatus: error?.status ?? null,
+        code: error?.code || null,
+        error: error?.message || String(error)
+      };
     } finally {
       if (structuredTextAudioGenerationAbortRef.current === controller) structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, setTextLibrarySnapshot, rememberStructuredTextStagingRecord, addLog]);
+  }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, setTextLibrarySnapshot, rememberStructuredTextStagingRecord, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
     if (structuredTextAudioGenerationState.running) return null;
@@ -3034,6 +3124,45 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             ? allRequirements
             : allRequirements.filter(job => shouldDownloadTextStructuredCoverageSlot(job?.coverage || { status: job?.coverageStatus || 'missing' })))
         : selectTextStructuredBulkGenerationRequirements(structuredTextBulkGenerationPlan, { mode: selectionMode });
+
+    const planValidation = !suppliedRequirements ? structuredTextBulkGenerationPlan?.voiceValidation : null;
+    const blockedBulkVoiceIds = planValidation?.hasUnavailableVoice
+      ? [...new Set([...(planValidation.unavailableTextVoices || []), ...(planValidation.unavailableMeaningVoices || [])])]
+      : [...new Set(
+          requirements
+            .map(req => {
+              const targetVoiceId = req?.voiceId || req?.downloadVoiceId || resolveTextStructuredGenerationVoiceState({
+                channel: req?.channel === 'meaning' ? 'meaning' : 'text',
+                requestedDownloadVoiceId: req?.voiceId || req?.downloadVoiceId,
+                preferences: structuredTextAudioGenerationPreferences,
+                edgeVoices
+              }).engineVoiceId;
+              return isEdgeVoiceUnavailable(targetVoiceId, edgeVoices) ? targetVoiceId : null;
+            })
+            .filter(Boolean)
+        )];
+    if (blockedBulkVoiceIds.length > 0) {
+      const diagnostic = blockedBulkVoiceIds
+        .map(voiceId => `${voiceId} (${getEdgeVoiceDiagnostic(voiceId, edgeVoices) || 'Unavailable'})`)
+        .join('; ');
+      const message = `Bulk Audio blocked: unavailable Edge voice selected — ${diagnostic}. Remove or switch voice before generating.`;
+      const blockedSessionId = `TEXT_BULK_P5_${Date.now()}`;
+      addLog('Error', message);
+      setStructuredTextAudioGenerationState({
+        running: false, completed: 0, total: allRequirements.length, current: null, failedJobs: [], lastStatus: 'unavailable-voice',
+        processed: 0, generated: 0, generatedPhysical: 0, reusedPhysical: 0, skippedReady: 0, skippedStale: 0, failed: 0, remaining: 0,
+        readyEstimate: 0, missingEstimate: 0, staleEstimate: 0, sessionId: blockedSessionId,
+        logicalRequirements: allRequirements.length, uniquePhysicalRequirements: 0,
+        selectedLogicalRequirements: 0, selectedUniquePhysicalRequirements: 0, selectionMode
+      });
+      resetTextStructuredBatchTelemetry({
+        sessionId: blockedSessionId, status: 'unavailable-voice', total: allRequirements.length, processed: 0, generated: 0, generatedPhysical: 0, reusedPhysical: 0,
+        skippedReady: 0, skippedStale: 0, failed: 0, remaining: 0, readyEstimate: 0, missingEstimate: 0, staleEstimate: 0,
+        logicalRequirements: allRequirements.length, uniquePhysicalRequirements: 0, selectedLogicalRequirements: 0,
+        selectedUniquePhysicalRequirements: 0, selectionMode, reconciled: true
+      });
+      return { status: 'unavailable-voice', completed: 0, total: allRequirements.length, failedJobs: [], blockedVoices: blockedBulkVoiceIds, error: diagnostic };
+    }
 
     const readRequirementStatus = item => suppliedRequirements && !suppliedP5Requirements
       ? (item?.coverage?.status || item?.coverageStatus || TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS.MISSING)
@@ -3258,7 +3387,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       structuredTextAudioBatchStopRef.current = false;
       structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextAudioGenerationState.running, structuredTextBatchSelection, structuredTextBulkGenerationPlan, structuredTextAudioGenerationPreferences.bulkAutoExport, forceStopAll, generateStructuredTextAudioJob, generateStructuredTextFullAudioJob, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
+  }, [structuredTextAudioGenerationState.running, structuredTextBatchSelection, structuredTextBulkGenerationPlan, structuredTextAudioGenerationPreferences, edgeVoices, forceStopAll, generateStructuredTextAudioJob, generateStructuredTextFullAudioJob, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
 
   const handleStructuredTextCancelGeneration = useCallback(() => {
     structuredTextAudioBatchStopRef.current = true;
@@ -5022,22 +5151,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       channel: 'text',
       requestedDownloadVoiceId: structuredTextAudioGenerationPreferences.edgeTextVoiceId,
       preferences: structuredTextAudioGenerationPreferences,
-      edgeVoices: initialEdgeVoices
+      edgeVoices
     });
     setStructuredTextEdgeHealth({ status: 'testing', message: `Testing ${generationVoiceState.engineVoiceId}...` });
     try {
       const result = await executeTextStructuredEdgeHealthCheck({ voiceId: generationVoiceState.engineVoiceId });
-      const message = `${result.voiceId} • ${Math.max(1, Math.round(result.size / 1024))} KB`;
+      const testedVoiceId = result?.voiceId || generationVoiceState.engineVoiceId;
+      if (testedVoiceId && isEdgeVoiceUnavailable(testedVoiceId, edgeVoices)) {
+        setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, testedVoiceId, { available: true }));
+      }
+      const message = `${testedVoiceId} • ${Math.max(1, Math.round(result.size / 1024))} KB`;
       setStructuredTextEdgeHealth({ status: 'online', message });
       addLog('Text Edge', `Online • ${message}`);
       return result;
     } catch (error) {
       const message = error?.message || String(error);
+      if (generationVoiceState.engineVoiceId && (error?.status === 422 || error?.code === 'EDGE_VOICE_UNSUPPORTED')) {
+        setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, generationVoiceState.engineVoiceId, {
+          available: false,
+          diagnostic: message
+        }));
+      }
       setStructuredTextEdgeHealth({ status: 'error', message });
       addLog('Error', `Text Edge health: ${message}`);
-      return { status: 'error', error: message };
+      return { status: 'error', error: message, httpStatus: error?.status ?? null, code: error?.code || null };
     }
-  }, [structuredTextAudioGenerationState.running, structuredTextEdgeHealth.status, defaultStructuredTextVoiceId, structuredTextAudioGenerationPreferences, addLog]);
+  }, [structuredTextAudioGenerationState.running, structuredTextEdgeHealth.status, defaultStructuredTextVoiceId, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, addLog]);
 
   const handleStructuredTextRemoveAudioVariant = useCallback(async (variantId) => {
     const id = String(variantId || '').toUpperCase();
@@ -5363,13 +5502,30 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const testEdgeBackend = async () => {
-    return executeEdgeBackendHealthService({
+    const result = await executeEdgeBackendHealthService({
       edgeHealth,
       edgeTestAbortControllerRef,
       setEdgeHealth,
       edgeVoice,
       addLog
     });
+    if (result?.status === 'online' && result?.voiceId) {
+      setEdgeVoices(prev => (
+        isEdgeVoiceUnavailable(result.voiceId, prev)
+          ? applyEdgeVoiceCompatibilityResult(prev, result.voiceId, { available: true })
+          : prev
+      ));
+    } else if (
+      result?.status === 'error'
+      && result?.voiceId
+      && (result?.httpStatus === 422 || result?.code === 'EDGE_VOICE_UNSUPPORTED')
+    ) {
+      setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, result.voiceId, {
+        available: false,
+        diagnostic: result?.message || null
+      }));
+    }
+    return result;
   };
 
   const generateAIAudio = async (item, part = 'full', options = {}) => {
@@ -5387,6 +5543,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const requestedDownloadVoice = generatorEngine === 'edge'
       ? (isIndonesianAudioPart(part) ? edgeIndonesianVoice : edgeVoice)
       : aiVoiceName;
+    if (generatorEngine === 'edge' && requestedDownloadVoice && isEdgeVoiceUnavailable(requestedDownloadVoice, edgeVoices)) {
+      const diagnostic = getEdgeVoiceDiagnostic(requestedDownloadVoice, edgeVoices) || `Voice "${requestedDownloadVoice}" is unavailable in Edge TTS.`;
+      addLog('Error', `Edge blocked (${part}): ${diagnostic}`);
+      if (!options.suppressFailureAlert) {
+        alert(`Edge voice "${requestedDownloadVoice}" sedang tidak tersedia (${diagnostic}). Pilih voice Edge lain atau uji ulang di Health Check.`);
+      }
+      return { status: 'error', unavailable: true, blocked: true, part, voice: requestedDownloadVoice, error: diagnostic };
+    }
     const selectedExistingVariant = mode === 'table'
       ? resolveTableAudioPlaybackVariant({
           variants: (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
@@ -5488,6 +5652,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       deferBrowserDownload: Boolean(options.deferBrowserDownload),
       suppressFailureAlert: Boolean(options.suppressFailureAlert)
     });
+    if (generatorEngine === 'edge') {
+      const targetVoiceId = result?.voice || requestedDownloadVoice;
+      if (result?.status === 'success' && targetVoiceId) {
+        setEdgeVoices(prev => (
+          isEdgeVoiceUnavailable(targetVoiceId, prev)
+            ? applyEdgeVoiceCompatibilityResult(prev, targetVoiceId, { available: true })
+            : prev
+        ));
+      } else if (
+        result?.status === 'error'
+        && targetVoiceId
+        && (result?.httpStatus === 422 || result?.code === 'EDGE_VOICE_UNSUPPORTED')
+      ) {
+        setEdgeVoices(prev => applyEdgeVoiceCompatibilityResult(prev, targetVoiceId, {
+          available: false,
+          diagnostic: result?.error || null
+        }));
+      }
+    }
     if (result?.status === 'success' && result?.deliveryStatus === 'browser-direct-triggered') {
       recordAudioDownloadHistoryDurably({
         mode,
@@ -5517,6 +5700,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (generatorEngine === 'gemini' && !geminiOwnerState.unlocked && !geminiOwnerState.byokRegistered) {
       alert('Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.');
       return;
+    }
+    if (generatorEngine === 'edge') {
+      const needsEnglishVoice = Boolean(batchConfig?.doWord || batchConfig?.doSentence);
+      const needsIndonesianVoice = Boolean(batchConfig?.doWordTranslation || batchConfig?.doMeaning);
+      const blockedVoices = [
+        needsEnglishVoice && isEdgeVoiceUnavailable(edgeVoice, edgeVoices) ? edgeVoice : null,
+        needsIndonesianVoice && isEdgeVoiceUnavailable(edgeIndonesianVoice, edgeVoices) ? edgeIndonesianVoice : null
+      ].filter(Boolean);
+      if (blockedVoices.length) {
+        const diagnostic = blockedVoices
+          .map(voiceId => `${voiceId} (${getEdgeVoiceDiagnostic(voiceId, edgeVoices) || 'Unavailable'})`)
+          .join('; ');
+        addLog('Error', `Table Batch blocked: ${diagnostic}`);
+        alert(`Edge voice tidak tersedia untuk Batch (${blockedVoices.join(', ')}). Pilih voice Edge lain yang aktif sebelum menjalankan Batch.`);
+        return { status: 'unavailable-voice', blockedVoices, error: diagnostic };
+      }
     }
     return executeAudioBatchDownloadService({
       isBatchDownloading,
@@ -6026,7 +6225,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setAudioStatusText,
       silent: !!options.automatic,
       onMatchedAudio: handleMatchedAudioInventory,
-      edgeVoices: initialEdgeVoices
+      edgeVoices
     });
     if (mode === 'table') {
       setTableAudioFolderVariantInventory(tableAudioVariantsFromRecords(result?.variants || []));
@@ -6050,7 +6249,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         getRecordAudioNo,
         getVocabIdentity,
         getStableAudioIdentity,
-        edgeVoices: initialEdgeVoices
+        edgeVoices
       });
       setTableAudioZipVariantInventory(prev => mergeTableAudioVariantInventories(prev, scan.inventory));
       setTableAudioZipSources(prev => {
@@ -6448,7 +6647,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const structuredTextBatchControls = structuredTextModeActive ? {
     preferences: structuredTextAudioGenerationPreferences,
-    voices: initialEdgeVoices,
+    voices: edgeVoices,
     // Existing Split export coverage stays separate until P6. P5 generation uses the
     // explicit multi-voice Split/Full plan below.
     coverage: structuredTextBatchSelection?.coverage || structuredTextDocumentCoverage,
@@ -6503,6 +6702,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, allStagingSummary: tableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
     onExportCurrentMp3: exportCurrentSelectionMp3, onExportCurrentZip: exportCurrentSelectionZip, onExportBatchSessions: exportBatchSessions,
     onClearBatchStaging: clearBatchSessionStaging, onClearAllStaging: clearTableAudioStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
+    edgeVoices,
     inline: Boolean(options.inline),
     showClose: options.showClose !== false
   });
@@ -6610,7 +6810,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onDocumentLocalAudioVoiceChange: handleStructuredTextDocumentLocalAudioVoiceChange,
     onSpeakerLocalAudioVoiceChange: handleStructuredTextSpeakerLocalAudioVoiceChange,
     generationPreferences: structuredTextDownloadResolutionPreferences,
-    edgeGenerationVoices: initialEdgeVoices,
+    edgeGenerationVoices: edgeVoices,
     onGenerationPreferencesChange: handleStructuredTextAudioGenerationPreferenceChange,
     onDocumentDownloadVoiceChange: handleStructuredTextDocumentDownloadVoiceChange,
     onDocumentDownloadModeChange: handleStructuredTextDocumentDownloadModeChange,
@@ -6735,7 +6935,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onPreviewTts={handleStructuredTextPreviewTts}
         generationPreferences={structuredTextDownloadResolutionPreferences}
         onGenerationPreferencesChange={handleStructuredTextAudioGenerationPreferenceChange}
-        edgeGenerationVoices={initialEdgeVoices}
+        edgeGenerationVoices={edgeVoices}
         edgeHealth={structuredTextEdgeHealth}
         onEdgeHealthCheck={handleStructuredTextEdgeHealthCheck}
         generationState={structuredTextAudioGenerationState}

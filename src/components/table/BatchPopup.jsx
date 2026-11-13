@@ -3,6 +3,9 @@ import { X, CheckSquare, Square, XCircle, Loader2, Lock, FileArchive, Music, Tra
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 import { clampBatchRangeNumber, resolveBatchRangeConfig } from '../../domain/audio/batchRangeDomain.js';
 import { getTableBatchTelemetrySnapshot, subscribeTableBatchTelemetry } from '../../services/audio/audioBatchTelemetryService.js';
+import { EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect';
+import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
+import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 
 const getExpressionSelection = (batchConfig, lang) => {
   const key = lang === 'idn' ? 'expIdn' : 'expEn';
@@ -85,6 +88,7 @@ export const BatchPopup = ({
   batchConfig,
   setBatchConfig,
   generatorEngine,
+  edgeVoices = initialEdgeVoices,
   edgeVoice = null,
   edgeIndonesianVoice = null,
   aiVoiceName = null,
@@ -129,6 +133,10 @@ export const BatchPopup = ({
   const isGemini = !isStructuredTextBatch && generatorEngine === 'gemini';
   const tableDownloadVoiceEn = isGemini ? aiVoiceName : edgeVoice;
   const tableDownloadVoiceId = isGemini ? null : edgeIndonesianVoice;
+  const tableUnavailableVoices = !isStructuredTextBatch && mode === 'table' && !isGemini
+    ? [tableDownloadVoiceEn, tableDownloadVoiceId].filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+    : [];
+  const hasTableUnavailableVoice = tableUnavailableVoices.length > 0;
   const coverage = isStructuredTextBatch ? structuredTextBatch?.coverage : tableCoverage?.counts;
   const activeStagingById = React.useMemo(() => new Map((stagingRecords || []).filter(record => record?.hasBlob).map(record => [record.id, record])), [stagingRecords]);
   const selectedSessionReadyCount = selectedSessionIds.reduce((sum, id) => sum + Number(batchAvailabilityById?.[id]?.ready || 0), 0);
@@ -165,12 +173,14 @@ export const BatchPopup = ({
             <div className="grid gap-2">
               <label className="text-[9px] font-bold text-slate-500">Global Edge EN download
                 <select disabled={structuredTextBatch?.running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
-                  {(structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                  {structuredTextBatch?.preferences?.edgeTextVoiceId && !(structuredTextBatch?.voices || []).some(v => v.id === structuredTextBatch.preferences.edgeTextVoiceId) && <option value={structuredTextBatch.preferences.edgeTextVoiceId} disabled>Unavailable · {structuredTextBatch.preferences.edgeTextVoiceId}</option>}
+                  <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="main" />
                 </select>
               </label>
               <label className="text-[9px] font-bold text-slate-500">Global Edge ID / Meaning download
                 <select disabled={structuredTextBatch?.running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs dark:text-white">
-                  {(structuredTextBatch?.voices || []).filter(v => !String(v?.lang || '').startsWith('en-')).map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                  {structuredTextBatch?.preferences?.edgeMeaningVoiceId && !(structuredTextBatch?.voices || []).some(v => v.id === structuredTextBatch.preferences.edgeMeaningVoiceId) && <option value={structuredTextBatch.preferences.edgeMeaningVoiceId} disabled>Unavailable · {structuredTextBatch.preferences.edgeMeaningVoiceId}</option>}
+                  <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="meaning" />
                 </select>
               </label>
             </div>
@@ -294,15 +304,21 @@ export const BatchPopup = ({
           <p className="text-[8px] leading-relaxed text-slate-400">Mounted ZIP/Folder + new Staging may be recompressed into a complete current-range ZIP without TTS. Full export unlocks only when every selected slot is truly Ready now.</p>
         </div>}
 
+        {!isStructuredTextBatch && hasTableUnavailableVoice && (
+          <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-2 text-[9px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-table-batch-unavailable-warning="true">
+            Unavailable Edge voice selected ({tableUnavailableVoices.map(id => formatEdgeVoiceLabel(id, { edgeVoices })).join(', ')}). Switch to an available voice before downloading (no silent substitution).
+          </div>
+        )}
+
         {!isStructuredTextBatch && <button
           type="button"
-          disabled={!isBatchDownloading && !(coverage?.needDownload || 0)}
+          disabled={!isBatchDownloading && (hasTableUnavailableVoice || !(coverage?.needDownload || 0))}
           onClick={isBatchDownloading ? runBatchDownload : () => runBatchDownload?.({ missingOnly: true })}
           className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 text-white transition-colors
             ${isBatchStopping ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : ''}
             ${isBatchDownloading && !isBatchStopping ? 'bg-red-500 hover:bg-red-600' : ''}
-            ${!isBatchDownloading && !isBatchStopping && (coverage?.needDownload || 0) ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
-            ${!isBatchDownloading && !(coverage?.needDownload || 0) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60' : ''}
+            ${!isBatchDownloading && !isBatchStopping && !hasTableUnavailableVoice && (coverage?.needDownload || 0) ? 'bg-indigo-600 hover:bg-indigo-700' : ''}
+            ${!isBatchDownloading && (hasTableUnavailableVoice || !(coverage?.needDownload || 0)) ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60' : ''}
           `}
         >
           {isBatchDownloading ? (
@@ -314,7 +330,7 @@ export const BatchPopup = ({
             <><DownloadCloudIcon className="w-3 h-3"/>DOWNLOAD MISSING ({coverage?.needDownload ?? '—'})</>
           )}
         </button>}
-        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={!(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
+        {!isStructuredTextBatch && mode === 'table' && !isBatchDownloading && <button type="button" disabled={hasTableUnavailableVoice || !(coverage?.total || 0)} onClick={() => setRedownloadConfirmOpen(true)} className="w-full rounded border border-slate-200 dark:border-slate-700 py-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-35">REDOWNLOAD SELECTED ({coverage?.total || 0})</button>}
 
         {!isStructuredTextBatch && mode === 'table' && <button type="button" onClick={() => setLibraryOpen(prev => !prev)} className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2.5 flex items-center justify-between gap-3 text-left hover:border-indigo-300 dark:hover:border-indigo-700">
           <span className="min-w-0"><span className="block text-[10px] font-black text-slate-700 dark:text-slate-200"><History className="mr-1 inline h-3.5 w-3.5"/>Batch Library</span><span className="mt-0.5 block text-[8px] text-slate-400">History, re-export, merge selection, release staged binary.</span></span>

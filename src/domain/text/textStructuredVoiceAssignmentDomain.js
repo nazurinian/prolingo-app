@@ -2,6 +2,7 @@ import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentity
 import { getTextStructuredSpeakerVoiceMap } from './textStructuredSpeakerVoiceProfileDomain.js';
 import { deriveTextStructuredSpeakerId, getTextStructuredSegmentSpeakerId, getTextStructuredSpeakerVoiceProfileV2 } from './textStructuredSpeakerIdentityDomain.js';
 import { formatBrowserTtsVoiceLabel } from '../audio/browserTtsVoicePresentationDomain.js';
+import { resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
 
 export const TEXT_STRUCTURED_VOICE_OVERRIDE_METADATA_KEY = 'audioVoiceOverrideV1';
 
@@ -336,8 +337,26 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
     : [];
   const browserVoiceSet = new Set(browserVoiceNames);
 
+  const pickDefaultChannelBrowserVoiceName = (excludedName = null) => {
+    const candidateObjects = hasBrowserVoiceList
+      ? availableBrowserVoices
+        .map(entry => (typeof entry === 'string'
+          ? { name: clean(entry), lang: normalizedChannel === 'meaning' ? 'id-ID' : 'en' }
+          : entry))
+        .filter(entry => {
+          const name = clean(entry?.name);
+          return Boolean(name && name !== excludedName);
+        })
+      : [];
+    if (normalizedChannel === 'meaning' && candidateObjects.length) {
+      const preferred = resolveDefaultIndonesianBrowserVoice(candidateObjects);
+      if (preferred?.name) return clean(preferred.name);
+    }
+    return browserVoiceNames.find(name => name !== excludedName) || null;
+  };
+
   if (!requestedVoiceName) {
-    const fallbackBrowserVoice = browserVoiceNames[0] || null;
+    const fallbackBrowserVoice = pickDefaultChannelBrowserVoiceName();
     const effectiveSource = fallbackBrowserVoice ? 'browser-fallback' : 'system-default';
     const effectiveSourceLabel = getTextStructuredVoiceSourceDisplayLabel(effectiveSource);
     const available = Boolean(fallbackBrowserVoice || !hasBrowserVoiceList);
@@ -404,8 +423,9 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
     ? { source: 'global', voiceName: clean(defaultVoiceName) }
     : null;
 
-  const matchedFallback = hierarchyFallbacks[0] || secondaryGlobalFallback || (browserVoiceNames[0]
-    ? { source: 'browser-fallback', voiceName: browserVoiceNames[0] }
+  const defaultFallbackName = pickDefaultChannelBrowserVoiceName(requestedVoiceName);
+  const matchedFallback = hierarchyFallbacks[0] || secondaryGlobalFallback || (defaultFallbackName
+    ? { source: 'browser-fallback', voiceName: defaultFallbackName }
     : { source: 'system-default', voiceName: null });
 
   const effectiveVoiceName = clean(matchedFallback.voiceName) || null;

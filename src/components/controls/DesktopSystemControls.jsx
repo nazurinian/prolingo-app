@@ -1,6 +1,8 @@
 import React from 'react';
 import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
+import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
 import {
@@ -84,6 +86,16 @@ export default function DesktopSystemControls({
                             className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                             context="meaning" // KHUSUS INDO/REGIONAL
                         />
+                        {(isEdgeVoiceUnavailable(edgeVoice, edgeVoices) || isEdgeVoiceUnavailable(edgeIndonesianVoice, edgeVoices)) && (
+                          <div className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-table-edge-unavailable-warning="desktop">
+                            Unavailable Edge voice selected (
+                            {[edgeVoice, edgeIndonesianVoice]
+                              .filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+                              .map(voiceId => formatEdgeVoiceLabel(voiceId, { edgeVoices }))
+                              .join(', ')}
+                            ). Switch to an available voice before generating.
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-2 mt-2">
                              <div>

@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import ControlSectionTabs from '../controls/ControlSectionTabs';
 import GroupedVoiceSelect from '../common/GroupedVoiceSelect';
+import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
+import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 import PlaybackSequenceBuilder from '../controls/PlaybackSequenceBuilder';
 
 export const Sidebar = ({
@@ -261,6 +263,16 @@ export const Sidebar = ({
                         className={`w-full text-xs p-2 border rounded bg-white dark:bg-slate-800 border-teal-100 dark:border-slate-600 text-teal-700 dark:text-teal-300 font-medium ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
                         context="meaning"
                       />
+                      {(isEdgeVoiceUnavailable(edgeVoice, edgeVoices) || isEdgeVoiceUnavailable(edgeIndonesianVoice, edgeVoices)) && (
+                        <div className="rounded border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[9px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-table-edge-unavailable-warning="sidebar">
+                          Unavailable Edge voice selected (
+                          {[edgeVoice, edgeIndonesianVoice]
+                            .filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeVoices))
+                            .map(voiceId => formatEdgeVoiceLabel(voiceId, { edgeVoices }))
+                            .join(', ')}
+                          ). Switch to an available voice before generating.
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         <div>

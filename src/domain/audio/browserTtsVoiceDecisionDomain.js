@@ -40,6 +40,55 @@ const englishVoicePriority = voice => {
   return 6;
 };
 
+const isStandardIndonesianVoice = voice => {
+  const lang = lower(voice?.lang).replace(/_/g, '-');
+  const name = lower(voice?.name);
+  if (lang.startsWith('jv') || lang.startsWith('su') || name.includes('javanese') || name.includes('sundanese')) {
+    return false;
+  }
+  return (
+    lang === 'id'
+    || lang === 'in'
+    || lang.startsWith('id-')
+    || lang.startsWith('in-')
+    || lang.includes('indones')
+    || name.includes('indones')
+  );
+};
+
+// Automatic Indonesian Browser TTS default:
+// 1. Preserve Microsoft Edge "Gadis" when available.
+// 2. Otherwise prefer "Google Bahasa Indonesia" / Google Indonesian voices
+//    over Windows SAPI "Microsoft Andika" (Chrome async voice loading).
+// 3. Fall back cleanly to any remaining Indonesian voice (including Andika).
+export const resolveDefaultIndonesianBrowserVoice = (voices) => {
+  const idVoices = Array.isArray(voices) ? voices.filter(Boolean) : [];
+  if (!idVoices.length) return null;
+
+  const isNatural = voice => /\bnatural\b|\bonline\b/i.test(clean(voice?.name));
+  const gadisMatches = idVoices.filter(v => /(^|[^a-z])gadis([^a-z]|$)/i.test(clean(v?.name)));
+  if (gadisMatches.length) {
+    return gadisMatches.find(isNatural) || gadisMatches[0];
+  }
+
+  const standardIdVoices = idVoices.filter(isStandardIndonesianVoice);
+  const searchPool = standardIdVoices.length ? standardIdVoices : idVoices;
+
+  const exactGoogleBahasa = searchPool.find(v => /\bgoogle\s+bahasa\s+indonesia\b/i.test(clean(v?.name)));
+  if (exactGoogleBahasa) return exactGoogleBahasa;
+
+  const anyGoogleId = searchPool.find(v => /\bgoogle\b/i.test(clean(v?.name)));
+  if (anyGoogleId) return anyGoogleId;
+
+  const bahasaIndonesia = searchPool.find(v => /\bbahasa\s+indonesia\b/i.test(clean(v?.name)));
+  if (bahasaIndonesia) return bahasaIndonesia;
+
+  const nonAndikaId = searchPool.find(v => !/\bandika\b/i.test(clean(v?.name)));
+  if (nonAndikaId) return nonAndikaId;
+
+  return searchPool[0] || idVoices[0] || null;
+};
+
 export const resolveBrowserTtsVoiceState = (allVoices) => {
   const source = Array.isArray(allVoices) ? allVoices : [];
   if (source.length === 0) return null;
@@ -60,9 +109,7 @@ export const resolveBrowserTtsVoiceState = (allVoices) => {
     const lang = lower(v?.lang);
     return lang.includes('id') || lang.includes('indones');
   });
-  const defaultId = idVoices.find(v => /(^|[^a-z])gadis([^a-z]|$)/i.test(clean(v?.name)))
-    || idVoices.find(v => lower(v?.name).includes('google') || lower(v?.name).includes('indonesia'))
-    || idVoices[0] || null;
+  const defaultId = resolveDefaultIndonesianBrowserVoice(idVoices);
 
   return { engVoices, defaultEng, idVoices, defaultId };
 };

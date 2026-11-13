@@ -9,6 +9,9 @@ import {
 } from '../../domain/text/textStructuredBulkGenerationDomain.js';
 import { TEXT_STRUCTURED_EDITOR_MODEL } from '../../constants/textDatabaseConstants.js';
 import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
+import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { formatEdgeVoiceLabel, groupEdgeVoicesByRegion } from '../../domain/audio/voicePresentationDomain.js';
+import { EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
 
 const compactVoiceLabel = value => {
   const raw = String(value || '').trim();
@@ -82,6 +85,27 @@ const TextBatchLiveTelemetry = memoComponent(({ fallbackTotal = 0 }) => {
   );
 });
 
+const TextBatchStopButtonContent = memoComponent(({ fallbackTotal = 0, fallbackStatusText = '' }) => {
+  const liveTelemetry = React.useSyncExternalStore(
+    subscribeTextStructuredBatchTelemetry,
+    getTextStructuredBatchTelemetrySnapshot,
+    getTextStructuredBatchTelemetrySnapshot
+  );
+  if (!liveTelemetry?.sessionId) {
+    return <>{fallbackStatusText || 'STOP BULK JOB'}</>;
+  }
+  const progressTotal = Number(liveTelemetry?.total || fallbackTotal || 0);
+  const progressDone = Number(liveTelemetry?.processed || 0);
+  const status = String(liveTelemetry?.status || '').toLowerCase();
+  if (status === 'cancelling') {
+    return <>Stopping… {progressDone}/{progressTotal}</>;
+  }
+  if (status === 'completed' || status === 'completed-with-errors') {
+    return <>Completing {progressDone}/{progressTotal}</>;
+  }
+  return <>STOP {progressDone}/{progressTotal}</>;
+});
+
 export const TextBatchPopup = ({
   batchPanelRef,
   setIsBatchOpen,
@@ -144,7 +168,8 @@ export const TextBatchPopup = ({
     includeText: includeTextChannel,
     includeMeaning: includeMeaningChannel,
     textVoiceIds: bulkTextVoiceIds,
-    meaningVoiceIds: bulkMeaningVoiceIds
+    meaningVoiceIds: bulkMeaningVoiceIds,
+    edgeVoices: structuredTextBatch?.voices
   });
 
   // Never silently substitute previous/default voices when UI draft is empty (0 selected).
@@ -186,6 +211,10 @@ export const TextBatchPopup = ({
 
   const englishBulkVoices = (structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-'));
   const meaningBulkVoices = (structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || '')));
+  const englishBulkGroups = Object.entries(groupEdgeVoicesByRegion(englishBulkVoices, 'main'))
+    .filter(([, items]) => items.length > 0);
+  const meaningBulkGroups = Object.entries(groupEdgeVoicesByRegion(meaningBulkVoices, 'meaning'))
+    .filter(([, items]) => items.length > 0);
   const missingBulkTextVoiceIds = bulkTextVoiceIds.filter(voiceId => !englishBulkVoices.some(voice => voice.id === voiceId));
   const missingBulkMeaningVoiceIds = bulkMeaningVoiceIds.filter(voiceId => !meaningBulkVoices.some(voice => voice.id === voiceId));
   const missingGlobalTextEdgeVoiceId = structuredTextBatch?.preferences?.edgeTextVoiceId
@@ -195,6 +224,16 @@ export const TextBatchPopup = ({
   const missingGlobalMeaningEdgeVoiceId = structuredTextBatch?.preferences?.edgeMeaningVoiceId
     && !meaningBulkVoices.some(voice => voice.id === structuredTextBatch.preferences.edgeMeaningVoiceId)
     ? structuredTextBatch.preferences.edgeMeaningVoiceId
+    : '';
+  const selectedExportTextVoiceId = structuredTextBatch?.preferences?.bulkExportTextVoiceId || bulkTextVoiceIds[0] || '';
+  const missingExportTextVoiceId = selectedExportTextVoiceId
+    && !englishBulkVoices.some(voice => voice.id === selectedExportTextVoiceId)
+    ? selectedExportTextVoiceId
+    : '';
+  const selectedExportMeaningVoiceId = structuredTextBatch?.preferences?.bulkExportMeaningVoiceId || bulkMeaningVoiceIds[0] || '';
+  const missingExportMeaningVoiceId = selectedExportMeaningVoiceId
+    && !meaningBulkVoices.some(voice => voice.id === selectedExportMeaningVoiceId)
+    ? selectedExportMeaningVoiceId
     : '';
   const cardOptions = structuredTextBatch?.cardOptions || [];
   const workspaceOptions = structuredTextBatch?.workspaceOptions || structuredTextBatch?.documentOptions || [];
@@ -442,7 +481,7 @@ export const TextBatchPopup = ({
           </div>
 
           {/* EN Edge Voices: Single Voice vs Multiple Voices */}
-          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeTextChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : voiceValidation.textEmptyWarning ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-indigo-100 dark:border-indigo-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-en-voice-section="true">
+          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeTextChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : (voiceValidation.textEmptyWarning || voiceValidation.unavailableTextWarning) ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-indigo-100 dark:border-indigo-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-en-voice-section="true">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-indigo-700 dark:text-indigo-300">
@@ -479,30 +518,66 @@ export const TextBatchPopup = ({
             </div>
 
             {includeTextChannel ? (
-              <div className="max-h-40 space-y-1 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
+              <div className="max-h-40 space-y-1.5 overflow-y-auto pr-1" data-text-bulk-en-voices="true">
                 {missingBulkTextVoiceIds.map(voiceId => (
-                  <ToggleRow
-                    key={`missing-text-${voiceId}`}
-                    checked={true}
-                    disabled={running}
-                    selectionMode={textVoiceMode}
-                    testId={`text:${voiceId}`}
-                    onClick={() => toggleBulkVoice('bulkTextVoiceIds', voiceId, textVoiceMode)}
-                  >
-                    Unavailable in Edge · {voiceId}
-                  </ToggleRow>
+                  <div key={`missing-text-${voiceId}`} className="flex items-center gap-1">
+                    <ToggleRow
+                      checked={true}
+                      disabled={running}
+                      selectionMode={textVoiceMode}
+                      testId={`text:${voiceId}`}
+                      onClick={() => toggleBulkVoice('bulkTextVoiceIds', voiceId, textVoiceMode)}
+                    >
+                      Unavailable · {voiceId}
+                    </ToggleRow>
+                    {!running && (
+                      <button
+                        type="button"
+                        onClick={() => toggleBulkVoice('bulkTextVoiceIds', voiceId, TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE)}
+                        data-text-bulk-remove-unavailable={`text:${voiceId}`}
+                        className="shrink-0 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-1 text-[8px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 ))}
-                {englishBulkVoices.map(voice => (
-                  <ToggleRow
-                    key={voice.id}
-                    checked={bulkTextVoiceIds.includes(voice.id)}
-                    disabled={running}
-                    selectionMode={textVoiceMode}
-                    testId={`text:${voice.id}`}
-                    onClick={() => toggleBulkVoice('bulkTextVoiceIds', voice.id, textVoiceMode)}
-                  >
-                    {voice.label || voice.id}
-                  </ToggleRow>
+                {englishBulkGroups.map(([groupLabel, groupVoices]) => (
+                  <div key={groupLabel} className="space-y-0.5 pt-1 first:pt-0" data-text-bulk-region-group={groupLabel}>
+                    <div className="px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      {groupLabel}
+                    </div>
+                    {groupVoices.map(voice => {
+                      const isChecked = bulkTextVoiceIds.includes(voice.id);
+                      const voiceUnavailable = isEdgeVoiceUnavailable(voice, structuredTextBatch?.voices);
+                      return (
+                        <div key={voice.id} className="flex items-center gap-1">
+                          <ToggleRow
+                            checked={isChecked}
+                            disabled={running || (voiceUnavailable && !isChecked)}
+                            selectionMode={textVoiceMode}
+                            testId={`text:${voice.id}`}
+                            onClick={() => {
+                              if (voiceUnavailable && !isChecked) return;
+                              toggleBulkVoice('bulkTextVoiceIds', voice.id, textVoiceMode);
+                            }}
+                          >
+                            {formatEdgeVoiceLabel(voice, { edgeVoices: structuredTextBatch?.voices })}
+                          </ToggleRow>
+                          {isChecked && voiceUnavailable && !running && (
+                            <button
+                              type="button"
+                              onClick={() => toggleBulkVoice('bulkTextVoiceIds', voice.id, TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE)}
+                              data-text-bulk-remove-unavailable={`text:${voice.id}`}
+                              className="shrink-0 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-1 text-[8px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -511,16 +586,16 @@ export const TextBatchPopup = ({
               </p>
             )}
 
-            {voiceValidation.textEmptyWarning && (
+            {(voiceValidation.textEmptyWarning || voiceValidation.unavailableTextWarning) && (
               <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-100/80 dark:bg-amber-950/50 px-2.5 py-1.5 text-[8px] font-bold text-amber-900 dark:text-amber-200 flex items-start gap-1.5" role="alert" data-text-bulk-voice-warning="text">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
-                <span>{voiceValidation.textEmptyWarning}</span>
+                <span>{[voiceValidation.textEmptyWarning, voiceValidation.unavailableTextWarning].filter(Boolean).join(' ')}</span>
               </div>
             )}
           </div>
 
           {/* ID Edge Voices: Single Voice vs Multiple Voices */}
-          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeMeaningChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : voiceValidation.meaningEmptyWarning ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-amber-100 dark:border-amber-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-id-voice-section="true">
+          <div className={`rounded-lg border p-2.5 space-y-2 ${!includeMeaningChannel ? 'border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/25 opacity-65' : (voiceValidation.meaningEmptyWarning || voiceValidation.unavailableMeaningWarning) ? 'border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20' : 'border-amber-100 dark:border-amber-900 bg-white/85 dark:bg-slate-900/40'}`} data-text-bulk-id-voice-section="true">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
               <div className="min-w-0">
                 <p className="text-[9px] font-black text-amber-700 dark:text-amber-300">
@@ -557,32 +632,68 @@ export const TextBatchPopup = ({
             </div>
 
             {includeMeaningChannel ? (
-              <div className="max-h-32 space-y-1 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
+              <div className="max-h-32 space-y-1.5 overflow-y-auto pr-1" data-text-bulk-id-voices="true">
                 {missingBulkMeaningVoiceIds.map(voiceId => (
-                  <ToggleRow
-                    key={`missing-meaning-${voiceId}`}
-                    checked={true}
-                    disabled={running}
-                    tone="amber"
-                    selectionMode={meaningVoiceMode}
-                    testId={`meaning:${voiceId}`}
-                    onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voiceId, meaningVoiceMode)}
-                  >
-                    Unavailable in Edge · {voiceId}
-                  </ToggleRow>
+                  <div key={`missing-meaning-${voiceId}`} className="flex items-center gap-1">
+                    <ToggleRow
+                      checked={true}
+                      disabled={running}
+                      tone="amber"
+                      selectionMode={meaningVoiceMode}
+                      testId={`meaning:${voiceId}`}
+                      onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voiceId, meaningVoiceMode)}
+                    >
+                      Unavailable · {voiceId}
+                    </ToggleRow>
+                    {!running && (
+                      <button
+                        type="button"
+                        onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voiceId, TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE)}
+                        data-text-bulk-remove-unavailable={`meaning:${voiceId}`}
+                        className="shrink-0 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-1 text-[8px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 ))}
-                {meaningBulkVoices.map(voice => (
-                  <ToggleRow
-                    key={voice.id}
-                    checked={bulkMeaningVoiceIds.includes(voice.id)}
-                    disabled={running}
-                    tone="amber"
-                    selectionMode={meaningVoiceMode}
-                    testId={`meaning:${voice.id}`}
-                    onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voice.id, meaningVoiceMode)}
-                  >
-                    {voice.label || voice.id}
-                  </ToggleRow>
+                {meaningBulkGroups.map(([groupLabel, groupVoices]) => (
+                  <div key={groupLabel} className="space-y-0.5 pt-1 first:pt-0" data-text-bulk-region-group={groupLabel}>
+                    <div className="px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      {groupLabel}
+                    </div>
+                    {groupVoices.map(voice => {
+                      const isChecked = bulkMeaningVoiceIds.includes(voice.id);
+                      const voiceUnavailable = isEdgeVoiceUnavailable(voice, structuredTextBatch?.voices);
+                      return (
+                        <div key={voice.id} className="flex items-center gap-1">
+                          <ToggleRow
+                            checked={isChecked}
+                            disabled={running || (voiceUnavailable && !isChecked)}
+                            tone="amber"
+                            selectionMode={meaningVoiceMode}
+                            testId={`meaning:${voice.id}`}
+                            onClick={() => {
+                              if (voiceUnavailable && !isChecked) return;
+                              toggleBulkVoice('bulkMeaningVoiceIds', voice.id, meaningVoiceMode);
+                            }}
+                          >
+                            {formatEdgeVoiceLabel(voice, { edgeVoices: structuredTextBatch?.voices })}
+                          </ToggleRow>
+                          {isChecked && voiceUnavailable && !running && (
+                            <button
+                              type="button"
+                              onClick={() => toggleBulkVoice('bulkMeaningVoiceIds', voice.id, TEXT_STRUCTURED_BULK_VOICE_SELECTION_MODES.MULTIPLE)}
+                              data-text-bulk-remove-unavailable={`meaning:${voice.id}`}
+                              className="shrink-0 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-1 text-[8px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -591,10 +702,10 @@ export const TextBatchPopup = ({
               </p>
             )}
 
-            {voiceValidation.meaningEmptyWarning && (
+            {(voiceValidation.meaningEmptyWarning || voiceValidation.unavailableMeaningWarning) && (
               <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-100/80 dark:bg-amber-950/50 px-2.5 py-1.5 text-[8px] font-bold text-amber-900 dark:text-amber-200 flex items-start gap-1.5" role="alert" data-text-bulk-voice-warning="meaning">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
-                <span>{voiceValidation.meaningEmptyWarning}</span>
+                <span>{[voiceValidation.meaningEmptyWarning, voiceValidation.unavailableMeaningWarning].filter(Boolean).join(' ')}</span>
               </div>
             )}
           </div>
@@ -610,14 +721,14 @@ export const TextBatchPopup = ({
             <div className="mt-2 grid gap-2">
               <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeTextVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeTextVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
-                  {missingGlobalTextEdgeVoiceId && <option value={missingGlobalTextEdgeVoiceId}>Unavailable in Edge · {missingGlobalTextEdgeVoiceId}</option>}
-                  {englishBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                  {missingGlobalTextEdgeVoiceId && <option value={missingGlobalTextEdgeVoiceId} disabled>Unavailable · {missingGlobalTextEdgeVoiceId}</option>}
+                  <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="main" />
                 </select>
               </label>
               <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">Global Edge ID / Meaning Default Voice
                 <select disabled={running} value={structuredTextBatch?.preferences?.edgeMeaningVoiceId || ''} onChange={e => structuredTextBatch?.onPreferencesChange?.({ edgeMeaningVoiceId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-[10px] dark:text-white">
-                  {missingGlobalMeaningEdgeVoiceId && <option value={missingGlobalMeaningEdgeVoiceId}>Unavailable in Edge · {missingGlobalMeaningEdgeVoiceId}</option>}
-                  {meaningBulkVoices.map(v => <option key={v.id} value={v.id}>{v.label || v.id}</option>)}
+                  {missingGlobalMeaningEdgeVoiceId && <option value={missingGlobalMeaningEdgeVoiceId} disabled>Unavailable · {missingGlobalMeaningEdgeVoiceId}</option>}
+                  <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="meaning" />
                 </select>
               </label>
             </div>
@@ -691,9 +802,9 @@ export const TextBatchPopup = ({
           {/* Primary Generation / Stop Controls */}
           <div className="space-y-1.5 pt-1">
             {running ? (
-              <button type="button" onClick={structuredTextBatch?.cancel} className="w-full min-h-10 rounded-xl bg-red-600 hover:bg-red-700 py-2 px-3 text-xs font-black text-white shadow-sm transition-colors">
+              <button type="button" onClick={structuredTextBatch?.cancel} data-text-batch-stop-button="true" className="w-full min-h-10 rounded-xl bg-red-600 hover:bg-red-700 py-2 px-3 text-xs font-black text-white shadow-sm transition-colors">
                 <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin"/>
-                {structuredTextBatch?.statusText || 'STOP BULK JOB'}
+                <TextBatchStopButtonContent fallbackTotal={generationCoverage?.total || 0} fallbackStatusText={structuredTextBatch?.statusText} />
               </button>
             ) : (
               <>
@@ -758,13 +869,15 @@ export const TextBatchPopup = ({
 
           {exportVoicePolicy === 'selected' && <div className="grid grid-cols-2 gap-2" data-text-bulk-export-selected-voices="true">
             <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">EN selected voice
-              <select disabled={running} value={structuredTextBatch?.preferences?.bulkExportTextVoiceId || bulkTextVoiceIds[0] || ''} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-teal-200 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
-                {englishBulkVoices.map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+              <select disabled={running} value={selectedExportTextVoiceId} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-teal-200 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                {missingExportTextVoiceId && <option value={missingExportTextVoiceId} disabled>Unavailable · {missingExportTextVoiceId}</option>}
+                <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="main" disableUnavailable={false} />
               </select>
             </label>
             <label className="text-[8px] font-bold text-slate-600 dark:text-slate-300">ID selected voice
-              <select disabled={running} value={structuredTextBatch?.preferences?.bulkExportMeaningVoiceId || bulkMeaningVoiceIds[0] || ''} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-teal-200 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
-                {meaningBulkVoices.map(voice => <option key={voice.id} value={voice.id}>{voice.label || voice.id}</option>)}
+              <select disabled={running} value={selectedExportMeaningVoiceId} onChange={event => structuredTextBatch?.onPreferencesChange?.({ bulkExportMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-teal-200 dark:border-teal-900 bg-white dark:bg-slate-900 p-2 text-[9px] dark:text-white">
+                {missingExportMeaningVoiceId && <option value={missingExportMeaningVoiceId} disabled>Unavailable · {missingExportMeaningVoiceId}</option>}
+                <EdgeVoiceOptgroups voices={structuredTextBatch?.voices} context="meaning" disableUnavailable={false} />
               </select>
             </label>
           </div>}

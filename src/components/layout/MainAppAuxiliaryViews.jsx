@@ -15,7 +15,7 @@ export const renderBatchPopupView = ({
   generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
   isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
   batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportCurrentZip = null, onExportBatchSessions = null,
-  onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
+  onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10, edgeVoices = null
 }) => {
   const target = resolveBatchPopupTarget({
     mode,
@@ -67,6 +67,7 @@ export const renderBatchPopupView = ({
     onClearAllStaging={onClearAllStaging}
     onDeleteBatchHistory={onDeleteBatchHistory}
     directMp3Limit={directMp3Limit}
+    edgeVoices={edgeVoices}
   />;
 };
 

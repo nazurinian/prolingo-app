@@ -5,6 +5,39 @@ import {
   getBrowserTtsVoiceValue,
   groupBrowserTtsVoicesByRegion
 } from '../../domain/audio/browserTtsVoicePresentationDomain';
+import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
+import {
+  formatEdgeVoiceLabel,
+  groupEdgeVoicesByRegion,
+  isEdgeVoiceEntry
+} from '../../domain/audio/voicePresentationDomain';
+
+export const EdgeVoiceOptgroups = ({
+  voices = initialEdgeVoices,
+  context = 'general',
+  disableUnavailable = true
+}) => {
+  const voiceList = Array.isArray(voices) ? voices : [];
+  const grouped = groupEdgeVoicesByRegion(voiceList, context);
+  return Object.entries(grouped).map(([groupName, groupVoices]) => (
+    groupVoices.length > 0 && (
+      <optgroup key={groupName} label={groupName}>
+        {groupVoices.map(voice => {
+          const unavailable = isEdgeVoiceUnavailable(voice, voiceList);
+          return (
+            <option
+              key={voice.id}
+              value={voice.id}
+              disabled={disableUnavailable && unavailable}
+            >
+              {formatEdgeVoiceLabel(voice, { edgeVoices: voiceList })}
+            </option>
+          );
+        })}
+      </optgroup>
+    )
+  ));
+};
 
 export const BrowserTtsVoiceOptgroups = ({
   voices = [],
@@ -28,7 +61,15 @@ export const BrowserTtsVoiceOptgroups = ({
   ));
 };
 
-export const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className, context = 'general', disabled }) => {
+export const GroupedVoiceSelect = ({
+  voices,
+  selectedValue,
+  onChange,
+  className,
+  context = 'general',
+  disabled,
+  disableUnavailable = true
+}) => {
   const voiceList = Array.isArray(voices) ? voices : [];
   const grouped = groupVoicesByRegion(voiceList, context);
   const groupEntries = Object.entries(grouped);
@@ -40,7 +81,7 @@ export const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className,
       if (value) availableValues.add(value);
     });
   });
-  const isEdgeVoiceList = voiceList.some(item => Boolean(item && typeof item === 'object' && item.id));
+  const isEdgeVoiceList = voiceList.some(item => isEdgeVoiceEntry(item) || Boolean(item && typeof item === 'object' && item.id));
   const missingSavedValue = hasOptions && selectedValue && !availableValues.has(selectedValue)
     ? selectedValue
     : '';
@@ -61,7 +102,7 @@ export const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className,
       disabled={disabled}
     >
       {missingSavedValue && (
-        <option value={missingSavedValue}>
+        <option value={missingSavedValue} disabled={isEdgeVoiceList && disableUnavailable}>
           {isEdgeVoiceList
             ? `Unavailable · ${missingSavedValue}`
             : `Unavailable in browser · ${formatVoiceLabel({ name: missingSavedValue }) || missingSavedValue}`}
@@ -70,11 +111,22 @@ export const GroupedVoiceSelect = ({ voices, selectedValue, onChange, className,
       {groupEntries.map(([groupName, items]) => (
         items.length > 0 && (
           <optgroup key={groupName} label={groupName}>
-            {items.map(v => (
-              <option key={v.id || v.name} value={v.id || v.name}>
-                {v.label || formatVoiceLabel(v)}
-              </option>
-            ))}
+            {items.map(v => {
+              const optionValue = v.id || v.name;
+              const edgeUnavailable = isEdgeVoiceList && isEdgeVoiceUnavailable(v, voiceList);
+              const optionLabel = isEdgeVoiceList
+                ? formatEdgeVoiceLabel(v, { edgeVoices: voiceList })
+                : (v.label || formatVoiceLabel(v));
+              return (
+                <option
+                  key={optionValue}
+                  value={optionValue}
+                  disabled={disableUnavailable && edgeUnavailable}
+                >
+                  {optionLabel}
+                </option>
+              );
+            })}
           </optgroup>
         )
       ))}

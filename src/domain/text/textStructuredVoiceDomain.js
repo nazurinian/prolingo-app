@@ -1,3 +1,5 @@
+import { resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
+
 const cleanName = value => String(value ?? '').trim();
 
 export const resolveTextStructuredBrowserVoice = (voices, preferredName = null) => {
@@ -20,16 +22,19 @@ export const resolveTextStructuredBrowserVoiceState = ({
   englishVoices,
   indonesianVoices,
   preferences
-}) => ({
-  textVoice: resolveTextStructuredBrowserVoice(
-    englishVoices,
-    preferences?.browserTextVoiceName || findNamedBrowserVoice(englishVoices, 'Sonia')?.name
-  ),
-  meaningVoice: resolveTextStructuredBrowserVoice(
-    indonesianVoices,
-    preferences?.browserMeaningVoiceName || findNamedBrowserVoice(indonesianVoices, 'Gadis')?.name
-  )
-});
+}) => {
+  const defaultMeaningVoice = resolveDefaultIndonesianBrowserVoice(indonesianVoices);
+  return {
+    textVoice: resolveTextStructuredBrowserVoice(
+      englishVoices,
+      preferences?.browserTextVoiceName || findNamedBrowserVoice(englishVoices, 'Sonia')?.name
+    ),
+    meaningVoice: resolveTextStructuredBrowserVoice(
+      indonesianVoices,
+      preferences?.browserMeaningVoiceName || defaultMeaningVoice?.name
+    )
+  };
+};
 
 export const resolveTextStructuredVoicePreferencePatch = ({ channel, voice }) => {
   const name = cleanName(voice?.name) || null;

@@ -1,4 +1,4 @@
-import { initialEdgeVoices } from '../../constants/voiceConstants.js';
+import { getEdgeVoiceDiagnostic, initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioFilename } from './textStructuredAudioIdentityDomain.js';
 import { buildCanonicalTextRenderAudioFilename, parseCanonicalTextRenderAudioFilename } from './textFilenameDomain.js';
 import { resolveStructuredTextPlaybackList } from './textStructuredPlaybackDomain.js';
@@ -91,14 +91,15 @@ export const resolveTextStructuredEdgeVoiceForProfile = ({
   const requested = clean(requestedProfileVoiceId);
   const fallback = clean(defaultEdgeVoiceId) || TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId;
   const voices = Array.isArray(edgeVoices) ? edgeVoices : [];
+  const activeVoices = voices.filter(voice => !isEdgeVoiceUnavailable(voice, voices));
   if (!requested) return { voiceId: fallback, matchedProfile: false, requestedProfileVoiceId: null };
 
-  const exact = voices.find(voice => clean(voice?.id).toLowerCase() === requested.toLowerCase());
+  const exact = activeVoices.find(voice => clean(voice?.id).toLowerCase() === requested.toLowerCase());
   if (exact) return { voiceId: exact.id, matchedProfile: true, requestedProfileVoiceId: requested };
 
   const token = extractPersonToken(requested);
   const tokenMatch = token
-    ? voices.find(voice => lower(voice?.id).includes(`-${token}neural`) || lower(voice?.label).startsWith(`${token} `) || lower(voice?.label) === token)
+    ? activeVoices.find(voice => lower(voice?.id).includes(`-${token}neural`) || lower(voice?.label).startsWith(`${token} `) || lower(voice?.label) === token)
     : null;
   if (tokenMatch) return { voiceId: tokenMatch.id, matchedProfile: true, requestedProfileVoiceId: requested };
 
@@ -115,32 +116,43 @@ export const resolveTextStructuredGenerationVoiceState = ({
   const prefs = normalizeTextStructuredAudioGenerationPreferences(preferences);
   const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
   const defaultEdgeVoiceId = normalizedChannel === 'meaning' ? prefs.edgeMeaningVoiceId : prefs.edgeTextVoiceId;
+  const voiceList = Array.isArray(edgeVoices) ? edgeVoices : [];
 
   // C3.4: Download voice is independent from Browser TTS playback voice. The
   // requestedPlaybackVoiceId branch is kept only as an A12 compatibility bridge
   // for historical callers/tests; current runtime passes requestedDownloadVoiceId.
-  if (clean(requestedDownloadVoiceId)) {
-    const exact = (Array.isArray(edgeVoices) ? edgeVoices : []).find(voice => lower(voice?.id) === lower(requestedDownloadVoiceId));
+  // Never silently substitute another Edge voice when a saved or selected voice
+  // is unavailable; preserve the ID and surface the unavailability diagnostic.
+  const requestedId = clean(requestedDownloadVoiceId);
+  if (requestedId) {
+    const exact = voiceList.find(voice => lower(voice?.id) === lower(requestedId));
+    const resolvedVoiceId = exact?.id || requestedId;
+    const unavailable = isEdgeVoiceUnavailable(resolvedVoiceId, voiceList);
     return {
       engine: 'edge',
-      engineVoiceId: exact?.id || defaultEdgeVoiceId,
-      downloadProfileVoiceId: exact?.id || defaultEdgeVoiceId,
+      engineVoiceId: resolvedVoiceId,
+      downloadProfileVoiceId: resolvedVoiceId,
       playbackProfileVoiceId: null,
-      matchedProfile: Boolean(exact)
+      matchedProfile: Boolean(exact && !unavailable),
+      unavailable,
+      diagnostic: unavailable ? getEdgeVoiceDiagnostic(resolvedVoiceId, voiceList) : null
     };
   }
 
   const resolved = resolveTextStructuredEdgeVoiceForProfile({
     requestedProfileVoiceId: requestedPlaybackVoiceId,
     defaultEdgeVoiceId,
-    edgeVoices
+    edgeVoices: voiceList
   });
+  const unavailable = isEdgeVoiceUnavailable(resolved.voiceId, voiceList);
   return {
     engine: 'edge',
     engineVoiceId: resolved.voiceId,
     downloadProfileVoiceId: resolved.voiceId,
     playbackProfileVoiceId: clean(requestedPlaybackVoiceId) || null,
-    matchedProfile: resolved.matchedProfile
+    matchedProfile: resolved.matchedProfile && !unavailable,
+    unavailable,
+    diagnostic: unavailable ? getEdgeVoiceDiagnostic(resolved.voiceId, voiceList) : null
   };
 };
 

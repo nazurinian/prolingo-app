@@ -2,6 +2,9 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import { UNSUPPORTED_EDGE_VOICE_IDS } from '../src/constants/voiceConstants.js';
 
 const KNOWN_UNSUPPORTED_VOICE_SET = new Set(UNSUPPORTED_EDGE_VOICE_IDS);
+const KNOWN_UNSUPPORTED_VOICE_LOWER_SET = new Set(
+  UNSUPPORTED_EDGE_VOICE_IDS.map(id => String(id || '').trim().toLowerCase()).filter(Boolean)
+);
 const VALIDATION_ERROR_MESSAGES = new Set([
   'Text is required',
   'Text is too long',
@@ -51,7 +54,7 @@ export const classifyEdgeTtsError = async ({
   error,
   voice = '',
   hadAudioBytes = false,
-  fetchUpstreamVoices = getCachedEdgeVoiceShortNames
+  fetchUpstreamVoices: _fetchUpstreamVoices = getCachedEdgeVoiceShortNames
 } = {}) => {
   const rawMessage = String(error?.message || error || 'Edge TTS synthesis failed').trim();
   const cleanVoice = String(voice || '').trim();
@@ -68,14 +71,17 @@ export const classifyEdgeTtsError = async ({
   }
 
   if (!hadAudioBytes && cleanVoice) {
-    const looksLikeClosedOrEmpty = /stream closed|no turn\.end|empty audio|likely truncated|unsupported|not found/i.test(rawMessage);
-    let isUnsupported = KNOWN_UNSUPPORTED_VOICE_SET.has(cleanVoice);
-    if (!isUnsupported && looksLikeClosedOrEmpty && typeof fetchUpstreamVoices === 'function') {
-      const upstreamShortNames = await fetchUpstreamVoices();
-      if (upstreamShortNames instanceof Set && upstreamShortNames.size > 0 && !upstreamShortNames.has(cleanVoice)) {
-        isUnsupported = true;
-      }
-    }
+    // Only treat the voice as definitively unsupported when it is on our
+    // verified unsupported blocklist or upstream explicitly reports an
+    // invalid/unsupported/not-found voice. Do NOT infer 422 solely because
+    // a voice is absent from msedge-tts `getVoices()` (for example,
+    // `en-AU-WilliamNeural` synthesizes audio reliably despite omission).
+    const explicitVoiceUnsupported = /(?:unsupported|unknown|invalid|retired|unavailable)\s+voice|voice\s+[^\r\n]{0,80}(?:not\s+found|unsupported|unavailable|invalid|retired)|no\s+voice\s+found/i.test(rawMessage);
+    const isUnsupported = (
+      KNOWN_UNSUPPORTED_VOICE_SET.has(cleanVoice)
+      || KNOWN_UNSUPPORTED_VOICE_LOWER_SET.has(cleanVoice.toLowerCase())
+      || explicitVoiceUnsupported
+    );
     if (isUnsupported) {
       return {
         statusCode: 422,

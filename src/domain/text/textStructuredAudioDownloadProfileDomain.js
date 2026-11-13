@@ -1,4 +1,4 @@
-import { initialEdgeVoices } from '../../constants/voiceConstants.js';
+import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 import { getTextStructuredAudioSyncProfile } from './textStructuredAudioSyncProfileDomain.js';
@@ -145,11 +145,14 @@ const mapPlaybackVoiceToEdge = ({ playbackVoiceName, defaultEdgeVoiceId, edgeVoi
   const requested = clean(playbackVoiceName);
   const fallback = clean(defaultEdgeVoiceId);
   const voices = Array.isArray(edgeVoices) ? edgeVoices : [];
+  const activeVoices = voices.filter(voice => !isEdgeVoiceUnavailable(voice, voices));
   if (!requested) return { voiceId: fallback, matched: false, playbackVoiceName: null };
-  const exact = voices.find(voice => lower(voice?.id) === requested.toLowerCase());
+  const exact = activeVoices.find(voice => lower(voice?.id) === requested.toLowerCase());
   if (exact) return { voiceId: exact.id, matched: true, playbackVoiceName: requested };
   const token = extractPersonToken(requested);
-  const match = token ? voices.find(voice => lower(voice?.id).includes(`-${token}neural`) || lower(voice?.label).startsWith(`${token} `) || lower(voice?.label) === token) : null;
+  const match = token
+    ? activeVoices.find(voice => lower(voice?.id).includes(`-${token}neural`) || lower(voice?.label).startsWith(`${token} `) || lower(voice?.label) === token)
+    : null;
   return { voiceId: match?.id || fallback, matched: Boolean(match), playbackVoiceName: requested };
 };
 

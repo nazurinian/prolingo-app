@@ -24,8 +24,10 @@ import {
   TEXT_STRUCTURED_ARTIFACT_READINESS
 } from '../../domain/text/textStructuredSplitFullDomain.js';
 import { useLiveOverlayViewportRef } from '../../hooks/useStableOverlayViewport.js';
-import { BrowserTtsVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
+import { BrowserTtsVoiceOptgroups, EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
 import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
+import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 
@@ -150,10 +152,9 @@ const VoiceSelect = ({ value, inheritedLabel, voices, context = 'general', disab
 };
 
 const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', disabled, onChange, testId }) => {
-  const pool = (Array.isArray(voices) ? voices : []).filter(voice => channel === 'meaning'
-    ? !String(voice?.lang || '').startsWith('en-')
-    : String(voice?.lang || '').startsWith('en-'));
-  const known = pool.some(voice => voice?.id === value);
+  const voiceList = Array.isArray(voices) ? voices : [];
+  const context = channel === 'meaning' ? 'meaning' : 'main';
+  const known = voiceList.some(voice => voice?.id === value);
   return <select
     value={value || ''}
     disabled={disabled}
@@ -162,8 +163,8 @@ const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', di
     data-text-download-voice-select={testId}
   >
     <option value="">Inherit Edge • {compactVoiceLabel(inheritedVoiceId)}</option>
-    {value && !known && <option value={value}>Unavailable in Edge · {value}</option>}
-    {pool.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}
+    {value && !known && <option value={value} disabled>Unavailable · {value}</option>}
+    <EdgeVoiceOptgroups voices={voiceList} context={context} />
   </select>;
 };
 
@@ -528,6 +529,29 @@ export const TextStructuredCardAudioPanel = ({
   ), 0);
 
   const paragraphHasVoiceOverride = Boolean(cardProfile.channels?.text || cardProfile.channels?.meaning);
+  const unavailableEdgeVoicesByChannel = Object.fromEntries(
+    ['text', 'meaning'].map(channel => {
+      const info = cardChannelCoverage[channel];
+      const fallbackTargetVoiceId = resolveTextStructuredEffectiveDownloadVoice({
+        documentTree,
+        block,
+        segment: firstSegment,
+        channel,
+        preferences: generationPreferences
+      })?.voiceId;
+      const targetVoiceIds = [...info.voices].length
+        ? [...info.voices]
+        : (fallbackTargetVoiceId ? [fallbackTargetVoiceId] : []);
+      return [channel, targetVoiceIds.filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))];
+    })
+  );
+  const unavailableCardEdgeVoices = [
+    ...new Set([
+      ...(unavailableEdgeVoicesByChannel.text || []),
+      ...(unavailableEdgeVoicesByChannel.meaning || [])
+    ])
+  ];
+  const hasUnavailableCardEdgeVoice = unavailableCardEdgeVoices.length > 0;
   const cardPlaybackStatus = playbackSourceStatus && (!playbackSourceStatus.blockId || playbackSourceStatus.blockId === block?.id)
     ? playbackSourceStatus
     : null;
@@ -892,9 +916,11 @@ export const TextStructuredCardAudioPanel = ({
                   const info = cardChannelCoverage[channel];
                   const ready = info.total > 0 && info.ready === info.total;
                   const needChannel = info.total > info.ready;
+                  const unavailableTargetIds = unavailableEdgeVoicesByChannel[channel] || [];
+                  const hasUnavailableTarget = unavailableTargetIds.length > 0;
                   const voiceLabels = [...info.voices].map(compactVoiceLabel);
                   const isMeaning = channel === 'meaning';
-                  return <div key={channel} className={`rounded-xl border p-2.5 flex flex-col justify-between gap-1.5 ${ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/15'}`} data-text-card-split-readiness={channel}>
+                  return <div key={channel} className={`rounded-xl border p-2.5 flex flex-col justify-between gap-1.5 ${hasUnavailableTarget ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/25' : ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/15'}`} data-text-card-split-readiness={channel}>
                     <div>
                       <div className="flex items-center justify-between gap-1.5">
                         <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider ${isMeaning ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
@@ -913,11 +939,16 @@ export const TextStructuredCardAudioPanel = ({
                           {info.missing > 0 ? `${info.missing} missing` : ''}{info.missing > 0 && info.stale > 0 ? ' • ' : ''}{info.stale > 0 ? `${info.stale} stale/other` : ''}
                         </p>
                       )}
+                      {hasUnavailableTarget && (
+                        <p className="mt-1 text-[8px] font-bold text-amber-800 dark:text-amber-200" data-text-card-edge-unavailable={channel}>
+                          Unavailable in Edge: {unavailableTargetIds.map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}. Switch voice to generate.
+                        </p>
+                      )}
                     </div>
                     {info.total > 0 && (
                       <button
                         type="button"
-                        disabled={disabled || generationRunning || !needChannel}
+                        disabled={disabled || generationRunning || !needChannel || hasUnavailableTarget}
                         onClick={() => onGenerateCardAudio?.(block.id, [channel], { missingOnly: true })}
                         className={`min-h-8 w-full rounded-lg border px-2 py-1 text-[9px] font-black transition-colors disabled:opacity-40 ${
                           ready
@@ -925,7 +956,7 @@ export const TextStructuredCardAudioPanel = ({
                             : 'border-violet-300 dark:border-violet-700 bg-violet-600 text-white hover:bg-violet-700'
                         }`}
                       >
-                        {ready ? `${isMeaning ? 'ID' : 'EN'} Split Complete` : `Generate Missing ${isMeaning ? 'ID' : 'EN'}`}
+                        {hasUnavailableTarget ? 'Voice Unavailable' : ready ? `${isMeaning ? 'ID' : 'EN'} Split Complete` : `Generate Missing ${isMeaning ? 'ID' : 'EN'}`}
                       </button>
                     )}
                   </div>;
@@ -1107,19 +1138,31 @@ export const TextStructuredCardAudioPanel = ({
                         const slot = audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, channel)] || { status: 'missing' };
                         const hasContent = isMeaning ? Boolean(clean(segment.meaning)) : Boolean(clean(segment.text));
                         const ready = slot.status === 'ready';
-                        return <div key={`manual-${channel}`} className={`flex min-w-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 ${ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40'}`}>
+                        const targetVoiceId = clean(slot.requiredVoiceId) || resolveTextStructuredEffectiveDownloadVoice({
+                          documentTree,
+                          block,
+                          segment,
+                          channel,
+                          preferences: generationPreferences
+                        })?.voiceId;
+                        const segmentVoiceUnavailable = isEdgeVoiceUnavailable(targetVoiceId, edgeGenerationVoices);
+                        return <div key={`manual-${channel}`} className={`flex min-w-0 items-center gap-1.5 rounded-xl border px-2.5 py-1.5 ${segmentVoiceUnavailable ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/20' : ready ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40'}`}>
                           <span className={`shrink-0 rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${isMeaning ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200'}`}>{isMeaning ? 'ID' : 'EN'}</span>
-                          <span className="min-w-0 flex-1 truncate text-[8px] font-medium text-slate-500 dark:text-slate-400" title={slot.requiredVoiceId || ''}>
-                            {ready ? `Ready • ${compactVoiceLabel(slot.requiredVoiceId)}` : `${slot.status || 'missing'} • ${compactVoiceLabel(slot.requiredVoiceId)}`}
+                          <span className="min-w-0 flex-1 truncate text-[8px] font-medium text-slate-500 dark:text-slate-400" title={targetVoiceId || ''}>
+                            {segmentVoiceUnavailable
+                              ? `Unavailable • ${compactVoiceLabel(targetVoiceId)}`
+                              : ready
+                                ? `Ready • ${compactVoiceLabel(targetVoiceId)}`
+                                : `${slot.status || 'missing'} • ${compactVoiceLabel(targetVoiceId)}`}
                           </span>
                           <button
                             type="button"
-                            disabled={disabled || generationRunning || !hasContent}
+                            disabled={disabled || generationRunning || !hasContent || segmentVoiceUnavailable}
                             onClick={() => onGenerateCardAudio?.(block.id, [channel], { missingOnly: false, segmentIds: [segment.id] })}
                             className="min-h-8 px-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/80 dark:bg-violet-950/40 text-[8px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-100 disabled:opacity-35"
-                            title={ready ? 'Regenerate local audio into Staging' : 'Generate local audio into Staging'}
+                            title={segmentVoiceUnavailable ? 'Selected Edge voice is unavailable; switch voice before generating' : ready ? 'Regenerate local audio into Staging' : 'Generate local audio into Staging'}
                           >
-                            {ready ? 'Regen' : 'Generate'}
+                            {segmentVoiceUnavailable ? 'Unavailable' : ready ? 'Regen' : 'Generate'}
                           </button>
                           <button
                             type="button"
@@ -1213,8 +1256,13 @@ export const TextStructuredCardAudioPanel = ({
             </div>
             {generationRunning
               ? <button type="button" onClick={() => onCancelGeneration?.()} className="min-h-10 shrink-0 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-3.5 text-[9px] font-black text-red-600 hover:bg-red-100 transition-colors"><Square className="mr-1 inline h-3 w-3 fill-current"/>STOP</button>
-              : <button type="button" disabled={disabled || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
+              : <button type="button" disabled={disabled || hasUnavailableCardEdgeVoice || !cardCoverage?.needDownload} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: true })} data-text-card-generate-missing="true" className="min-h-10 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-700 px-3.5 text-[9px] font-black text-white shadow-sm disabled:opacity-35 transition-colors"><Download className="mr-1.5 inline h-3.5 w-3.5"/>GENERATE MISSING</button>}
           </div>
+          {hasUnavailableCardEdgeVoice && (
+            <p className="mt-1.5 text-[8px] font-bold text-amber-800 dark:text-amber-200" role="alert" data-text-card-footer-unavailable-warning="true">
+              Unavailable Edge voice selected ({unavailableCardEdgeVoices.map(id => formatEdgeVoiceLabel(id, { edgeVoices: edgeGenerationVoices })).join(', ')}). Switch voice before generating.
+            </p>
+          )}
 
           <button type="button" onClick={() => setWorkflowExpanded(value => !value)} className="mt-1.5 inline-flex items-center gap-1 min-h-7 text-[8px] font-black uppercase tracking-wider text-slate-400 hover:text-violet-600 transition-colors" aria-expanded={workflowExpanded}>
             {workflowExpanded ? <ChevronDown className="w-3 h-3"/> : <ChevronRight className="w-3 h-3"/>}
@@ -1224,7 +1272,7 @@ export const TextStructuredCardAudioPanel = ({
           {workflowExpanded && <div className="mt-1.5 rounded-xl border border-violet-100 dark:border-violet-900 bg-violet-50/35 dark:bg-violet-950/10 p-2.5 space-y-2" data-text-card-audio-advanced-generation="true">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Force-regenerate every Split slot in this Card with the current Edge profile.</p>
-              <button type="button" disabled={disabled || generationRunning || !cardCoverage?.total} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="shrink-0 min-h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 text-[8px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-50 disabled:opacity-35">REGENERATE CARD SPLIT</button>
+              <button type="button" disabled={disabled || generationRunning || hasUnavailableCardEdgeVoice || !cardCoverage?.total} onClick={() => onGenerateCardAudio?.(block.id, ['text', 'meaning'], { missingOnly: false })} className="shrink-0 min-h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 text-[8px] font-black text-violet-700 dark:text-violet-300 hover:bg-violet-50 disabled:opacity-35">REGENERATE CARD SPLIT</button>
             </div>
           </div>}
         </div>

@@ -14,8 +14,10 @@ import { getTextStructuredAudioSyncProfile } from '../../domain/text/textStructu
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
 import { PlaybackProfileOrderEditor } from './TextStructuredPlaybackControls.jsx';
-import { BrowserTtsVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
+import { BrowserTtsVoiceOptgroups, EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
 import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
+import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const compactVoiceLabel = value => {
@@ -488,11 +490,31 @@ export default function TextStructuredAudioControls({
           data-text-global-edge-restore-default="true">Use defaults · Sonia EN / Gadis ID</button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
-            <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{generationPreferences?.edgeTextVoiceId && !edgeEnglish.some(voice => voice.id === generationPreferences.edgeTextVoiceId) && <option value={generationPreferences.edgeTextVoiceId}>Unavailable in Edge · {generationPreferences.edgeTextVoiceId}</option>}{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
+            <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">
+              {generationPreferences?.edgeTextVoiceId && !(edgeGenerationVoices || []).some(voice => voice.id === generationPreferences.edgeTextVoiceId) && <option value={generationPreferences.edgeTextVoiceId} disabled>Unavailable · {generationPreferences.edgeTextVoiceId}</option>}
+              <EdgeVoiceOptgroups voices={edgeGenerationVoices} context="main" />
+            </select>
           </label>
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge ID Voice
-            <select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">{generationPreferences?.edgeMeaningVoiceId && !edgeMeaning.some(voice => voice.id === generationPreferences.edgeMeaningVoiceId) && <option value={generationPreferences.edgeMeaningVoiceId}>Unavailable in Edge · {generationPreferences.edgeMeaningVoiceId}</option>}{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select>
+            <select disabled={disabled} value={generationPreferences?.edgeMeaningVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeMeaningVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">
+              {generationPreferences?.edgeMeaningVoiceId && !(edgeGenerationVoices || []).some(voice => voice.id === generationPreferences.edgeMeaningVoiceId) && <option value={generationPreferences.edgeMeaningVoiceId} disabled>Unavailable · {generationPreferences.edgeMeaningVoiceId}</option>}
+              <EdgeVoiceOptgroups voices={edgeGenerationVoices} context="meaning" />
+            </select>
           </label>
+          {(isEdgeVoiceUnavailable(generationPreferences?.edgeTextVoiceId, edgeGenerationVoices)
+            || isEdgeVoiceUnavailable(generationPreferences?.edgeMeaningVoiceId, edgeGenerationVoices)) && (
+            <div className="md:col-span-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1.5 text-[8px] font-bold text-amber-800 dark:text-amber-200 flex items-start gap-1.5" role="alert" data-text-global-edge-unavailable-warning="true">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <span>
+                Global Edge default includes an unavailable voice (
+                {[generationPreferences?.edgeTextVoiceId, generationPreferences?.edgeMeaningVoiceId]
+                  .filter(voiceId => isEdgeVoiceUnavailable(voiceId, edgeGenerationVoices))
+                  .map(voiceId => formatEdgeVoiceLabel(voiceId, { edgeVoices: edgeGenerationVoices }))
+                  .join(', ')}
+                ). Switch to an available Edge voice before generating (no silent substitution).
+              </span>
+            </div>
+          )}
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
               <span>Download Rate</span>
@@ -518,13 +540,14 @@ export default function TextStructuredAudioControls({
           {['text', 'meaning'].map(channel => {
             const isMeaning = channel === 'meaning';
             const mode = getTextStructuredAudioDownloadChannelMode(documentTree, channel);
-            const pool = isMeaning ? edgeMeaning : edgeEnglish;
             const voice = downloadProfile.channels?.[channel] || '';
+            const customUnavailable = mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && Boolean(voice) && isEdgeVoiceUnavailable(voice, edgeGenerationVoices);
             return <div key={channel} className="rounded-lg border border-violet-100 dark:border-violet-900/80 bg-slate-50/60 dark:bg-slate-900/50 p-2">
               <p className="mb-1 text-[9px] font-black text-slate-600 dark:text-slate-300">{isMeaning ? 'ID (Meaning)' : 'EN (Text)'}</p>
               <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onDocumentDownloadModeChange?.(next, channel)}/>
               {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT && <p className="mt-1.5 text-[8px] font-semibold text-violet-700 dark:text-violet-300">Global Edge · {compactVoiceLabel(isMeaning ? generationPreferences?.edgeMeaningVoiceId : generationPreferences?.edgeTextVoiceId)}</p>}
-              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <select value={voice} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, channel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[10px]"><option value="">Choose Edge voice…</option>{voice && !pool.some(item => item.id === voice) && <option value={voice}>Unavailable in Edge · {voice}</option>}{pool.map(item => <option key={item.id} value={item.id}>{item.label || compactVoiceLabel(item.id)}</option>)}</select>}
+              {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <select value={voice} disabled={disabled} onChange={event => onDocumentDownloadVoiceChange?.(event.target.value || null, channel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[10px]"><option value="">Choose Edge voice…</option>{voice && !(edgeGenerationVoices || []).some(item => item.id === voice) && <option value={voice} disabled>Unavailable · {voice}</option>}<EdgeVoiceOptgroups voices={edgeGenerationVoices} context={isMeaning ? 'meaning' : 'main'} /></select>}
+              {customUnavailable && <p className="mt-1 text-[8px] font-bold text-amber-700 dark:text-amber-300">Unavailable in Edge · switch voice before generating.</p>}
               {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[8px] font-semibold text-sky-600 dark:text-sky-300">Maps the effective Browser TTS voice at generation time (not always the Workspace narrator).</p>}
             </div>;
           })}
@@ -532,7 +555,7 @@ export default function TextStructuredAudioControls({
         {hasConversationCards && speakers.length > 0 && <details className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5" data-text-audio-speaker-download-advanced="true"><summary className="cursor-pointer text-[9px] font-black uppercase text-slate-500 dark:text-slate-400">Advanced · Speaker Edge Generation Overrides</summary>{speakers.map(({ id, label }) => {
           const speakerTextVoiceId = downloadProfile.speakerIds?.text?.[id] || '';
           const speakerMeaningVoiceId = downloadProfile.speakerIds?.meaning?.[id] || '';
-          return <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 truncate">{label}</span><select value={speakerTextVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">EN • Workspace preset</option>{speakerTextVoiceId && !edgeEnglish.some(voice => voice.id === speakerTextVoiceId) && <option value={speakerTextVoiceId}>Unavailable in Edge · {speakerTextVoiceId}</option>}{edgeEnglish.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select><select value={speakerMeaningVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">ID • Workspace preset</option>{speakerMeaningVoiceId && !edgeMeaning.some(voice => voice.id === speakerMeaningVoiceId) && <option value={speakerMeaningVoiceId}>Unavailable in Edge · {speakerMeaningVoiceId}</option>}{edgeMeaning.map(voice => <option key={voice.id} value={voice.id}>{voice.label || compactVoiceLabel(voice.id)}</option>)}</select></div>;
+          return <div key={id} className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_1fr_1fr] items-center"><span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 truncate">{label}</span><select value={speakerTextVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'text')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">EN • Workspace preset</option>{speakerTextVoiceId && !(edgeGenerationVoices || []).some(voice => voice.id === speakerTextVoiceId) && <option value={speakerTextVoiceId} disabled>Unavailable · {speakerTextVoiceId}</option>}<EdgeVoiceOptgroups voices={edgeGenerationVoices} context="main" /></select><select value={speakerMeaningVoiceId} disabled={disabled} onChange={event => onSpeakerDownloadVoiceChange?.({ id, label }, event.target.value || null, 'meaning')} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-[9px]"><option value="">ID • Workspace preset</option>{speakerMeaningVoiceId && !(edgeGenerationVoices || []).some(voice => voice.id === speakerMeaningVoiceId) && <option value={speakerMeaningVoiceId} disabled>Unavailable · {speakerMeaningVoiceId}</option>}<EdgeVoiceOptgroups voices={edgeGenerationVoices} context="meaning" /></select></div>;
         })}</details>}
       </details>
     </section>}

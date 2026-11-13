@@ -3,6 +3,11 @@ import {
   formatBrowserTtsVoiceLabel,
   groupBrowserTtsVoicesByRegion
 } from '../domain/audio/browserTtsVoicePresentationDomain.js';
+import {
+  formatEdgeVoiceLabel,
+  groupEdgeVoicesByRegion,
+  isEdgeVoiceEntry
+} from '../domain/audio/voicePresentationDomain.js';
 
 export const writeString = (view, offset, string) => {
   for (let i = 0; i < string.length; i++) {
@@ -65,10 +70,17 @@ export const downloadTextFile = (content, filename, type = 'text/csv;charset=utf
 };
 
 export const formatVoiceLabel = (voice) =>
-  formatBrowserTtsVoiceLabel(voice, { fallbackLabel: '' });
+  isEdgeVoiceEntry(voice)
+    ? formatEdgeVoiceLabel(voice)
+    : formatBrowserTtsVoiceLabel(voice, { fallbackLabel: '' });
 
-export const groupVoicesByRegion = (voiceList, context = 'general') =>
-  groupBrowserTtsVoicesByRegion(voiceList, context);
+export const groupVoicesByRegion = (voiceList, context = 'general') => {
+  const list = Array.isArray(voiceList) ? voiceList : [];
+  if (list.some(isEdgeVoiceEntry)) {
+    return groupEdgeVoicesByRegion(list, context);
+  }
+  return groupBrowserTtsVoicesByRegion(list, context);
+};
 
 export const getVocabIdentity = (item) =>
   String(item?.vocabId || item?.id || '').trim().toUpperCase();

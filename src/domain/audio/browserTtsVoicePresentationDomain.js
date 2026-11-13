@@ -1,3 +1,9 @@
+import {
+  compareVoicesWithinGroup,
+  getEnglishRegionCountryName,
+  NAMED_ENGLISH_REGION_CODES
+} from './voicePresentationDomain.js';
+
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
 
@@ -186,6 +192,11 @@ export const formatBrowserTtsVoiceLabel = (voiceLike, { fallbackLabel = 'Browser
   const langLike = isObject ? clean(voiceLike.lang) : '';
   const compactName = extractCompactVoiceName(rawName);
   const regionInfo = inferRegionCode(voiceLike, rawName, langLike);
+  const regionDisplay = regionInfo.code
+    ? (regionInfo.isEnglish && !NAMED_ENGLISH_REGION_CODES.has(regionInfo.code)
+      ? (getEnglishRegionCountryName(regionInfo.code) || regionInfo.code)
+      : regionInfo.code)
+    : null;
   const natural = isNaturalVoice(voiceLike, rawName);
   const standard = isStandardVoice(voiceLike, rawName, natural);
   const child = isChildVoice(voiceLike, rawName, compactName, regionInfo.code);
@@ -194,10 +205,17 @@ export const formatBrowserTtsVoiceLabel = (voiceLike, { fallbackLabel = 'Browser
   return [
     compactName || rawName,
     variant,
-    regionInfo.code || null,
+    regionDisplay,
     child ? 'Child' : null,
     includeEngineHint ? 'Browser TTS' : null
   ].filter(Boolean).join(' · ');
+};
+
+const getBrowserVoiceSortLanguage = regionCode => {
+  if (regionCode === 'ID') return 'id';
+  if (regionCode === 'JV') return 'jv';
+  if (regionCode === 'SU') return 'su';
+  return '';
 };
 
 export const groupBrowserTtsVoicesByRegion = (voiceList, context = 'general') => {
@@ -253,6 +271,38 @@ export const groupBrowserTtsVoicesByRegion = (voiceList, context = 'general') =>
       if (matched) groups[matched[1]].push(voice);
       else groups[BROWSER_TTS_GROUP_LABELS.OTHER_EN].push(voice);
     }
+  });
+
+  const getVoiceMeta = item => {
+    const isObject = Boolean(item && typeof item === 'object');
+    const rawName = isObject ? clean(item.name || item.voiceURI || item.label || item.id) : clean(item);
+    const langLike = isObject ? clean(item.lang) : '';
+    const regionInfo = inferRegionCode(item, rawName, langLike);
+    return {
+      compactName: extractCompactVoiceName(rawName) || rawName,
+      regionCode: regionInfo.code,
+      language: getBrowserVoiceSortLanguage(regionInfo.code),
+      label: formatBrowserTtsVoiceLabel(item, { fallbackLabel: rawName })
+    };
+  };
+
+  Object.entries(groups).forEach(([groupLabel, items]) => {
+    const isOtherEnglish = groupLabel === BROWSER_TTS_GROUP_LABELS.OTHER_EN;
+    const isGeneralIndo = groupLabel === BROWSER_TTS_GROUP_LABELS.ID_GENERAL;
+    items.sort((a, b) => {
+      const metaA = getVoiceMeta(a);
+      const metaB = getVoiceMeta(b);
+      return compareVoicesWithinGroup({
+        a,
+        b,
+        isOtherEnglish,
+        isGeneralIndo,
+        getName: item => (item === a ? metaA.compactName : metaB.compactName),
+        getRegionCode: item => (item === a ? metaA.regionCode : metaB.regionCode),
+        getLanguage: item => (item === a ? metaA.language : metaB.language),
+        getLabel: item => (item === a ? metaA.label : metaB.label)
+      });
+    });
   });
 
   return groups;

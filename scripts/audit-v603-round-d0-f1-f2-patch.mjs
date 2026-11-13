@@ -320,9 +320,9 @@ await test('F1-A + F1-B UI: TextStructuredAudioControls groups Browser TTS voice
     edgeGenerationVoices: initialEdgeVoices
   }));
 
-  // Retired saved Edge voice is preserved cleanly without silent substitution
+  // Retired saved Edge voice stays visible as disabled Unavailable without silent substitution
   const edgeSelectOptions = collectNodes(downloadTabTree, n => n.type === 'option' && n.props?.value === 'en-AU-ElsieNeural');
-  assert.ok(edgeSelectOptions.some(o => collectText(o).includes('Unavailable in Edge · en-AU-ElsieNeural')));
+  assert.ok(edgeSelectOptions.some(o => o.props?.disabled === true && collectText(o).includes('Elsie (AU) · Unavailable')));
 });
 
 await test('F1-A: TextStructuredCardAudioPanel Player surface groups Browser TTS voices and formats labels consistently', () => {
@@ -376,21 +376,25 @@ await test('F1-A: resolveBrowserTtsVoiceState keeps Sonia/Gadis + Chrome UK Fema
   assert.equal(soniaRes.defaultEng?.name, 'Microsoft Sonia Online (Natural) - English (United Kingdom)');
 });
 
-await test('F1-B: initialEdgeVoices drops the 13 failing voices and retains working AU/UK/ID/JV/SU voices', () => {
+await test('F1-B: initialEdgeVoices keeps 44 active + 13 visible unavailable voices without duplicating deprecated en-GB-AlfiesNeural', () => {
+  const { filterAvailableEdgeVoices, isEdgeVoiceUnavailable } = loadModule(path.join(root, 'src/constants/voiceConstants.js'));
   const ids = new Set(initialEdgeVoices.map(v => v.id));
-  assert.equal(initialEdgeVoices.length, 44);
-  for (const bad of UNSUPPORTED_EDGE_VOICE_IDS) {
-    assert.equal(ids.has(bad), false, `Unsupported voice removed: ${bad}`);
-  }
-  assert.equal(ids.has('en-AU-ElsieNeural'), false);
+  assert.equal(initialEdgeVoices.length, 57);
+  const activeVoices = filterAvailableEdgeVoices(initialEdgeVoices);
+  assert.equal(activeVoices.length, 44);
+  assert.equal(ids.has('en-GB-AlfieNeural'), true);
+  assert.equal(isEdgeVoiceUnavailable('en-GB-AlfieNeural', initialEdgeVoices), true);
+  assert.equal(ids.has('en-AU-ElsieNeural'), true);
+  assert.equal(isEdgeVoiceUnavailable('en-AU-ElsieNeural', initialEdgeVoices), true);
   assert.equal(ids.has('en-GB-AlfiesNeural'), false);
-  assert.equal(ids.has('en-AU-NatashaNeural'), true);
-  assert.equal(ids.has('en-AU-WilliamNeural'), true);
-  assert.equal(ids.has('en-GB-SoniaNeural'), true);
-  assert.equal(ids.has('id-ID-GadisNeural'), true);
+  assert.equal(isEdgeVoiceUnavailable('en-GB-AlfiesNeural', initialEdgeVoices), true);
+  assert.equal(isEdgeVoiceUnavailable('en-AU-NatashaNeural', initialEdgeVoices), false);
+  assert.equal(isEdgeVoiceUnavailable('en-AU-WilliamNeural', initialEdgeVoices), false);
+  assert.equal(isEdgeVoiceUnavailable('en-GB-SoniaNeural', initialEdgeVoices), false);
+  assert.equal(isEdgeVoiceUnavailable('id-ID-GadisNeural', initialEdgeVoices), false);
 });
 
-await test('F1-B: classifyEdgeTtsError returns HTTP 422 non-retryable for unsupported/absent voices and preserves 500 retryable for transient failures', async () => {
+await test('F1-B: classifyEdgeTtsError returns HTTP 422 non-retryable for unsupported voices and preserves 500 retryable for transient/getVoices-absent voices', async () => {
   const elsieErr = await classifyEdgeTtsError({
     error: new Error('Stream closed before the synthesis completed (no turn.end received). The audio is likely truncated.'),
     voice: 'en-AU-ElsieNeural',
@@ -402,14 +406,23 @@ await test('F1-B: classifyEdgeTtsError returns HTTP 422 non-retryable for unsupp
   assert.equal(elsieErr.retryable, false);
   assert.match(elsieErr.details, /en-AU-ElsieNeural/);
 
-  const dynamicAbsent = await classifyEdgeTtsError({
-    error: new Error('Stream closed before the synthesis completed (no turn.end received).'),
+  const explicitUpstreamErr = await classifyEdgeTtsError({
+    error: new Error('Invalid voice parameter for synthesis'),
     voice: 'en-XX-RetiredNeural',
     hadAudioBytes: false,
     fetchUpstreamVoices: async () => new Set(['en-GB-LibbyNeural'])
   });
-  assert.equal(dynamicAbsent.statusCode, 422);
-  assert.equal(dynamicAbsent.code, 'EDGE_VOICE_UNSUPPORTED');
+  assert.equal(explicitUpstreamErr.statusCode, 422);
+  assert.equal(explicitUpstreamErr.code, 'EDGE_VOICE_UNSUPPORTED');
+
+  const transientOmittedFromList = await classifyEdgeTtsError({
+    error: new Error('Stream closed before the synthesis completed (no turn.end received).'),
+    voice: 'en-AU-WilliamNeural',
+    hadAudioBytes: false,
+    fetchUpstreamVoices: async () => new Set(['en-GB-LibbyNeural'])
+  });
+  assert.equal(transientOmittedFromList.statusCode, 500);
+  assert.equal(transientOmittedFromList.retryable, true);
 
   const transientSupported = await classifyEdgeTtsError({
     error: new Error('Stream closed before the synthesis completed'),
@@ -518,7 +531,7 @@ await test('F1-B + F2 UI: TextBatchPopup preserves unavailable Edge saved prefer
     || (n.type === 'option' && n.props?.value === 'en-AU-ElsieNeural')
   ));
   assert.ok(unavailableOptions.length >= 2, 'Saved retired Edge voice remains selectable/removable without silent swap');
-  assert.ok(collectText(tree).includes('Unavailable in Edge · en-AU-ElsieNeural'));
+  assert.ok(collectText(tree).includes('Elsie (AU) · Unavailable'));
 
   const telemetryNode = collectNodes(tree, n => n.props?.['data-live-batch-telemetry'] === 'text')[0];
   assert.ok(telemetryNode, 'Isolated TextBatchLiveTelemetry renders cleanly');
