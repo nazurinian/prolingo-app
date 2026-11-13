@@ -117,7 +117,7 @@ export const renderMainAppShellView = (props) => {
           mode={mode}
           mobileTab={mobileTab}
         >
-          <div className="flex flex-col h-full overflow-y-auto w-72 overscroll-contain custom-scrollbar"> 
+          <div className="flex flex-col h-full min-w-0 w-72 overflow-y-auto overscroll-contain custom-scrollbar" style={{ scrollbarGutter: 'stable' }}> 
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
               <SidebarTopControls
