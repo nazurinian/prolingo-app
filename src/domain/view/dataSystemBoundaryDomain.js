@@ -77,3 +77,96 @@ export const getBatchScopeKey = ({
   if (mode === 'text') return `text:${activeTextEditorModel || 'unknown'}:${activeTextDocumentId || ''}`;
   return String(mode || 'unknown');
 };
+
+/**
+ * Resolves the next open state for a guarded Batch popup toggle/setter, supporting
+ * both direct boolean values and functional updaters while failing closed outside
+ * Table and Structured Text (`structured-v1`).
+ */
+export const resolveGuardedBatchOpenValue = ({
+  nextValue,
+  prevOpen = false,
+  mode,
+  activeTextEditorModel = null
+} = {}) => {
+  if (!isBatchPopupAllowed({ mode, activeTextEditorModel })) return false;
+  return Boolean(typeof nextValue === 'function' ? nextValue(Boolean(prevOpen)) : nextValue);
+};
+
+/**
+ * Returns true when live scope still matches the expected Legacy/Table Audio Folder
+ * scope captured when an async operation began.
+ */
+export const isMatchingAudioFolderScope = (liveScope, expectedMode, expectedEditorModel = null) => {
+  if (!liveScope || liveScope.mode !== expectedMode) return false;
+  if (expectedMode === 'text' && liveScope.activeTextEditorModel !== expectedEditorModel) return false;
+  return isLegacyAudioFolderSupported(liveScope);
+};
+
+/**
+ * Table Gemini/Edge generator controls and credentials belong exclusively to Table mode.
+ * Structured Text stays Edge-only inside Text -> Audio -> Generate Audio.
+ */
+export const isTableGeneratorSystemSupported = ({ mode } = {}) => mode === 'table';
+
+/**
+ * Table storage/cache/mastery/study-tracking/backup controls belong exclusively to Table mode.
+ */
+export const isTableStorageSystemSupported = ({ mode } = {}) => mode === 'table';
+
+/**
+ * Builds an accurate, mode-aware explanation of Text System audio and storage ownership
+ * without exposing Table generator controls, Table metrics, or unbuilt storage managers.
+ */
+export const getTextSystemBoundarySummary = ({
+  mode,
+  activeTextEditorModel = null
+} = {}) => {
+  if (mode !== 'text') return null;
+  if (activeTextEditorModel === 'structured-v1') {
+    return {
+      variant: 'structured',
+      audioTitle: 'Text Audio Architecture',
+      audioBadge: 'Edge-Only',
+      audioSummary:
+        'Structured Text uses Edge-only cloud generation alongside Browser TTS.',
+      audioDetail:
+        'Configure Edge defaults and connection checks in Text → Audio → Generate Audio, per-card/speaker overrides in Card Audio or Bulk Audio, and offline packs in Audio Library (Staging & Portable ZIP).',
+      storageTitle: 'Text Data & Storage',
+      storageSummary:
+        'Structured workbooks, blocks, segments, and staged audio are stored separately under Text Library IndexedDB.',
+      storageDetail:
+        'Manage Collections, documents, workspace creation, and document actions in Text → Data.'
+    };
+  }
+  if (activeTextEditorModel === 'legacy-line-v1') {
+    return {
+      variant: 'legacy',
+      audioTitle: 'Legacy Text Audio',
+      audioBadge: 'Legacy Folder + TTS',
+      audioSummary:
+        'Legacy Text documents (legacy-line-v1) use Browser TTS and optional local Legacy Audio Folder files loaded below.',
+      audioDetail:
+        'Structured Text Edge generation applies only to Structured workbooks in Text → Audio → Generate Audio.',
+      storageTitle: 'Text Data & Storage',
+      storageSummary:
+        'Legacy Text documents are stored separately under Text Library IndexedDB.',
+      storageDetail:
+        'Manage Collections and documents in Text → Data.'
+    };
+  }
+  return {
+    variant: 'pending',
+    audioTitle: 'Text Audio Architecture',
+    audioBadge: 'Loading',
+    audioSummary:
+      'Loading active Text document model.',
+    audioDetail:
+      'Structured Text configures Edge-only generation in Text → Audio → Generate Audio, while Legacy Text documents use Legacy Audio Folder.',
+    storageTitle: 'Text Data & Storage',
+    storageSummary:
+      'Text documents and workspaces are stored separately under Text Library IndexedDB.',
+    storageDetail:
+      'Manage Collections, documents, and workspace actions in Text → Data.'
+  };
+};

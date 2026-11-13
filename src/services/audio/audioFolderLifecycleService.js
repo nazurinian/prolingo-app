@@ -388,29 +388,36 @@ export const executeRememberedAudioFolderOpenService = async ({
     forcePicker = false,
     onFiles,
     fallbackOpen,
-    addLog
+    addLog,
+    shouldContinue = null
 }) => {
     if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) {
         return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
     }
     if (!isRememberedAudioFolderSupported()) {
-        fallbackOpen?.();
+        if (!shouldContinue || shouldContinue()) fallbackOpen?.();
         return { status: 'legacy-fallback' };
     }
 
+    const isStillValid = () => (shouldContinue ? Boolean(shouldContinue()) : true);
+
     try {
         let directoryHandle = forcePicker ? null : await readRememberedAudioFolderHandle(mode);
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle?.name || '' };
 
         if (directoryHandle) {
             let permission = await queryAudioFolderReadPermission(directoryHandle);
+            if (!isStillValid()) return { status: 'stale', name: directoryHandle.name };
             if (permission !== 'granted') {
                 permission = await requestAudioFolderReadPermission(directoryHandle);
+                if (!isStillValid()) return { status: 'stale', name: directoryHandle.name };
             }
 
             if (permission === 'granted') {
                 const files = await collectAudioFolderFiles(directoryHandle);
+                if (!isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
                 const scanResult = await onFiles(files, directoryHandle.name, { remembered: true });
-                if (scanResult?.stale) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
+                if (scanResult?.stale || !isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
                 const matchedSuffix = Number.isFinite(scanResult?.matchedCount) ? ` (${scanResult.matchedCount} matched)` : '';
                 addLog?.('System', `Audio folder reconnected: ${directoryHandle.name}${matchedSuffix}`);
                 return { status: 'reconnected', name: directoryHandle.name, fileCount: files.length, matchedCount: scanResult?.matchedCount };
@@ -422,10 +429,12 @@ export const executeRememberedAudioFolderOpenService = async ({
             mode: 'read',
             startIn: 'music'
         });
-        await saveRememberedAudioFolderHandle(mode, directoryHandle);
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle?.name || '' };
         const files = await collectAudioFolderFiles(directoryHandle);
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
         const scanResult = await onFiles(files, directoryHandle.name, { remembered: false });
-        if (scanResult?.stale) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
+        if (scanResult?.stale || !isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
+        await saveRememberedAudioFolderHandle(mode, directoryHandle);
         const matchedSuffix = Number.isFinite(scanResult?.matchedCount) ? ` (${scanResult.matchedCount} matched)` : '';
         addLog?.('System', `Audio folder remembered: ${directoryHandle.name}${matchedSuffix}`);
         return { status: 'selected', name: directoryHandle.name, fileCount: files.length, matchedCount: scanResult?.matchedCount };
@@ -433,7 +442,7 @@ export const executeRememberedAudioFolderOpenService = async ({
         if (error?.name === 'AbortError') return { status: 'cancelled' };
         console.warn('Remembered audio folder failed; using legacy picker.', error);
         addLog?.('Warn', `Remember Audio Folder unavailable: ${error?.message || 'unknown error'}`);
-        fallbackOpen?.();
+        if (isStillValid()) fallbackOpen?.();
         return { status: 'legacy-fallback', error };
     }
 };
@@ -442,26 +451,32 @@ export const executeRememberedAudioFolderRestoreService = async ({
     mode,
     activeTextEditorModel = null,
     onFiles,
-    addLog
+    addLog,
+    shouldContinue = null
 }) => {
     if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) {
         return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
     }
     if (!isRememberedAudioFolderSupported()) return { status: 'unsupported' };
 
+    const isStillValid = () => (shouldContinue ? Boolean(shouldContinue()) : true);
+
     try {
         const directoryHandle = await readRememberedAudioFolderHandle(mode);
         if (!directoryHandle) return { status: 'none' };
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle.name };
 
         const permission = await queryAudioFolderReadPermission(directoryHandle);
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle.name };
         if (permission !== 'granted') {
             addLog?.('System', `Audio folder remembered (${directoryHandle.name}); reconnect required.`);
             return { status: 'reconnect-required', name: directoryHandle.name };
         }
 
         const files = await collectAudioFolderFiles(directoryHandle);
+        if (!isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
         const scanResult = await onFiles(files, directoryHandle.name, { remembered: true, automatic: true });
-        if (scanResult?.stale) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
+        if (scanResult?.stale || !isStillValid()) return { status: 'stale', name: directoryHandle.name, fileCount: files.length };
         const matchedSuffix = Number.isFinite(scanResult?.matchedCount) ? ` (${scanResult.matchedCount} matched)` : '';
         addLog?.('System', `Audio folder restored automatically: ${directoryHandle.name}${matchedSuffix}`);
         return { status: 'restored', name: directoryHandle.name, fileCount: files.length, matchedCount: scanResult?.matchedCount };

@@ -10,8 +10,10 @@ import {
   isBatchPopupAllowed,
   isLegacyAudioFolderSupported,
   isLegacyTextMode,
+  isMatchingAudioFolderScope,
   isStructuredTextMode,
-  resolveBatchPopupTarget
+  resolveBatchPopupTarget,
+  resolveGuardedBatchOpenValue
 } from '../src/domain/view/dataSystemBoundaryDomain.js';
 import {
   executeAudioFolderSelectService,
@@ -228,6 +230,23 @@ await check('D1/D4 domain predicates fail closed across Table, Legacy Text, Stru
     getBatchScopeKey({ mode: 'text', activeTextEditorModel: null, activeTextDocumentId: '' })
   ]);
   assert.equal(scopes.size, 5);
+
+  // Stage 0 (#6): resolveGuardedBatchOpenValue handles booleans & functional updaters + fail-closed scopes
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: true, prevOpen: false, mode: 'table' }), true);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: false, prevOpen: true, mode: 'table' }), false);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: prev => !prev, prevOpen: false, mode: 'table' }), true);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: prev => !prev, prevOpen: true, mode: 'table' }), false);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: prev => !prev, prevOpen: false, mode: 'text', activeTextEditorModel: 'structured-v1' }), true);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: true, prevOpen: false, mode: 'text', activeTextEditorModel: 'legacy-line-v1' }), false);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: prev => !prev, prevOpen: false, mode: 'text', activeTextEditorModel: 'legacy-line-v1' }), false);
+  assert.equal(resolveGuardedBatchOpenValue({ nextValue: prev => !prev, prevOpen: true, mode: 'text', activeTextEditorModel: null }), false);
+
+  // Stage 0 (#3/#4): live scope matching validates exact scope and legacy folder eligibility
+  assert.equal(isMatchingAudioFolderScope({ mode: 'table', activeTextEditorModel: null }, 'table', null), true);
+  assert.equal(isMatchingAudioFolderScope({ mode: 'text', activeTextEditorModel: 'legacy-line-v1' }, 'text', 'legacy-line-v1'), true);
+  assert.equal(isMatchingAudioFolderScope({ mode: 'text', activeTextEditorModel: 'structured-v1' }, 'text', 'legacy-line-v1'), false);
+  assert.equal(isMatchingAudioFolderScope({ mode: 'text', activeTextEditorModel: 'structured-v1' }, 'text', 'structured-v1'), false);
+  assert.equal(isMatchingAudioFolderScope({ mode: 'table', activeTextEditorModel: null }, 'text', 'legacy-line-v1'), false);
 });
 
 // D1 — Service-level callable handler guards
@@ -286,6 +305,63 @@ await check('D1 service handlers block Structured Text and pre-hydration Text wi
   });
   assert.equal(openLegacy.status, 'legacy-fallback');
   assert.equal(legacyFallbackCalled, true);
+
+  // Stage 0 (#4): Folder picker completed after switching to Structured Text or stale scan must NOT save handle to IndexedDB
+  const prevWindow = globalThis.window;
+  const prevIndexedDb = globalThis.indexedDB;
+  let idbWriteAttempts = 0;
+  try {
+    let stillInLegacyMode = true;
+    const fakeDirHandle = {
+      name: 'PickedLegacyFolder',
+      async *values() {}
+    };
+    globalThis.indexedDB = {
+      open: () => {
+        idbWriteAttempts += 1;
+        return {};
+      }
+    };
+    globalThis.window = {
+      showDirectoryPicker: async () => {
+        stillInLegacyMode = false; // User switched mode while OS folder picker was open
+        return fakeDirHandle;
+      }
+    };
+    let onFilesCalledAfterSwitch = false;
+    let fallbackAfterSwitch = false;
+    const staleAfterPicker = await executeRememberedAudioFolderOpenService({
+      mode: 'text',
+      activeTextEditorModel: 'legacy-line-v1',
+      forcePicker: true,
+      shouldContinue: () => stillInLegacyMode,
+      onFiles: () => {
+        onFilesCalledAfterSwitch = true;
+        return { matchedCount: 1 };
+      },
+      fallbackOpen: () => { fallbackAfterSwitch = true; }
+    });
+    assert.equal(staleAfterPicker.status, 'stale');
+    assert.equal(onFilesCalledAfterSwitch, false);
+    assert.equal(fallbackAfterSwitch, false);
+    assert.equal(idbWriteAttempts, 0);
+
+    // Even if shouldContinue is true until onFiles, stale scan result must prevent handle save
+    globalThis.window.showDirectoryPicker = async () => fakeDirHandle;
+    const staleScanResult = await executeRememberedAudioFolderOpenService({
+      mode: 'table',
+      forcePicker: true,
+      shouldContinue: () => true,
+      onFiles: () => ({ stale: true })
+    });
+    assert.equal(staleScanResult.status, 'stale');
+    assert.equal(idbWriteAttempts, 0);
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+    if (prevIndexedDb === undefined) delete globalThis.indexedDB;
+    else globalThis.indexedDB = prevIndexedDb;
+  }
 });
 
 // D1 — Desktop & Mobile System UI
@@ -501,16 +577,19 @@ await check('App.jsx, MainAppShellView.jsx, and MobileTools.jsx wire D1/D4 guard
 
   // D1 App handlers & effect
   assert.match(appSource, /isLegacyAudioFolderSupported\(\{ mode, activeTextEditorModel \}\)/);
-  assert.match(appSource, /latestAudioFolderScopeRef\.current = \{ mode, activeTextEditorModel, activeTextDocumentId \}/);
-  assert.match(appSource, /executeRememberedAudioFolderRestoreService\(\{[\s\S]*activeTextEditorModel: expectedEditorModel/);
+  assert.match(appSource, /useLayoutEffect\(\(\) => \{\s*latestAudioFolderScopeRef\.current = \{/);
+  assert.match(appSource, /isMatchingAudioFolderScope\(/);
+  assert.match(appSource, /executeRememberedAudioFolderRestoreService\(\{[\s\S]*activeTextEditorModel: expectedEditorModel[\s\S]*shouldContinue/);
   assert.match(appSource, /executeAudioFolderSelectService\(\{[\s\S]*activeTextEditorModel: liveScope\.activeTextEditorModel/);
   assert.match(appSource, /\[mode, activeTextEditorModel, audioDatasetIdentitySignature\]/);
 
   // D4 App batch guards & transition close
   assert.match(appSource, /const batchScopeKey = getBatchScopeKey\(\{ mode, activeTextEditorModel, activeTextDocumentId \}\)/);
-  assert.match(appSource, /if \(previousBatchScopeKeyRef\.current !== batchScopeKey\)[\s\S]*setIsBatchOpen\(false\)/);
+  assert.match(appSource, /const \[openBatchScopeKey, setOpenBatchScopeKey\] = useState\(null\)/);
+  assert.match(appSource, /if \(previousBatchScopeKeyRef\.current !== batchScopeKey\)[\s\S]*setIsBatchOpen\(false\)[\s\S]*setOpenBatchScopeKey\(null\)/);
   assert.match(appSource, /const setBatchOpenGuarded = useCallback/);
-  assert.match(appSource, /const effectiveIsBatchOpen = Boolean\(isBatchOpen && canOpenBatchPopup && previousBatchScopeKeyRef\.current === batchScopeKey\)/);
+  assert.match(appSource, /resolveGuardedBatchOpenValue\(/);
+  assert.match(appSource, /const effectiveIsBatchOpen = Boolean\(isBatchOpen && canOpenBatchPopup && openBatchScopeKey === batchScopeKey\)/);
   assert.match(appSource, /const runBatchDownload = async \(options = \{\}\) => \{\s*if \(mode !== 'table'\)/);
   assert.match(appSource, /renderBatchPopupView\(\{\s*batchPanelRef, mode, activeTextEditorModel, setIsBatchOpen: setBatchOpenGuarded/);
   assert.match(appSource, /isBatchDownloading, setIsBatchOpen: setBatchOpenGuarded, isBatchOpen: effectiveIsBatchOpen, renderBatchPopup/);

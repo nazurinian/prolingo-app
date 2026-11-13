@@ -3,7 +3,14 @@ import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileAr
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
-import { hasActiveLegacyAudioFolder, isLegacyAudioFolderSupported } from '../../domain/view/dataSystemBoundaryDomain';
+import {
+  getTextSystemBoundarySummary,
+  hasActiveLegacyAudioFolder,
+  isLegacyAudioFolderSupported,
+  isTableGeneratorSystemSupported,
+  isTableStorageSystemSupported
+} from '../../domain/view/dataSystemBoundaryDomain';
+import { TextSystemAudioCard, TextSystemStorageCard } from './TextSystemBoundaryInfo';
 
 export default function DesktopSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -28,10 +35,14 @@ export default function DesktopSystemControls({
     tableAudioFolderActive: Boolean(folderInputRef?.tableAudioFolderSummary?.active),
     legacyTextAudioCount: Number.isFinite(legacyTextAudioCount) ? legacyTextAudioCount : currentMapCount
   });
+  const tableGeneratorSupported = isTableGeneratorSystemSupported({ mode });
+  const tableStorageSupported = isTableStorageSystemSupported({ mode });
+  const textSystemSummary = getTextSystemBoundarySummary({ mode, activeTextEditorModel });
   return (
     <>
-              {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
+              {tableGeneratorSupported ? (
               <div className="space-y-3 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
+              {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
                 <div className="flex items-center justify-between">
                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1">
                          {generatorEngine === 'gemini' ? <CloudLightning className="w-3 h-3 text-purple-500"/> : <Server className="w-3 h-3 text-teal-500"/>}
@@ -111,15 +122,22 @@ export default function DesktopSystemControls({
                   {(folderInputRef?.tableAudioBatchHistoryCount || 0) > 0 && <span className={`ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[8px] ${isBatchOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200'}`}>{folderInputRef.tableAudioBatchHistoryCount}</span>}
                 </button>}
               </div>
+              ) : (
+                <TextSystemAudioCard summary={textSystemSummary} compact />
+              )}
 
               <div className="space-y-2 bg-slate-50 dark:bg-slate-700 p-3 rounded-lg border border-slate-100 dark:border-slate-600">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">System Utilities</p>
-                <input type="password" autoComplete="off" placeholder={geminiOwnerUnlocked ? "Owner Key Active (server)" : geminiByokRegistered ? "Your API key is registered" : "Your Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-2 w-full dark:bg-slate-800 dark:text-white ${geminiOwnerUnlocked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={geminiOwnerUnlocked || geminiByokRegistered ? "" : userApiKey} disabled={geminiOwnerUnlocked || geminiByokRegistered || !geminiByokAvailable} onChange={onUserApiKeyChange} />
-                {!geminiOwnerUnlocked && !geminiByokRegistered && geminiByokAvailable && <button type="button" disabled={isSystemBusy || !userApiKey.trim()} onClick={onGeminiByokRegister} className="w-full px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-50">Save My API Key</button>}
-                {!geminiOwnerUnlocked && geminiByokRegistered && <button type="button" disabled={isSystemBusy} onClick={onGeminiByokClear} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Remove My API Key</button>}
-                {!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full px-2 py-1.5 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50">Owner Unlock</button>}
-                {geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Owner Lock</button>}
-                {!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600 dark:text-amber-400">BYOK vault belum dikonfigurasi di server.</p>}
+                {tableGeneratorSupported && (
+                  <>
+                    <input type="password" autoComplete="off" placeholder={geminiOwnerUnlocked ? "Owner Key Active (server)" : geminiByokRegistered ? "Your API key is registered" : "Your Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-2 py-2 w-full dark:bg-slate-800 dark:text-white ${geminiOwnerUnlocked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={geminiOwnerUnlocked || geminiByokRegistered ? "" : userApiKey} disabled={geminiOwnerUnlocked || geminiByokRegistered || !geminiByokAvailable} onChange={onUserApiKeyChange} />
+                    {!geminiOwnerUnlocked && !geminiByokRegistered && geminiByokAvailable && <button type="button" disabled={isSystemBusy || !userApiKey.trim()} onClick={onGeminiByokRegister} className="w-full px-2 py-1.5 rounded border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-50">Save My API Key</button>}
+                    {!geminiOwnerUnlocked && geminiByokRegistered && <button type="button" disabled={isSystemBusy} onClick={onGeminiByokClear} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Remove My API Key</button>}
+                    {!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full px-2 py-1.5 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50">Owner Unlock</button>}
+                    {geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Owner Lock</button>}
+                    {!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600 dark:text-amber-400">BYOK vault belum dikonfigurasi di server.</p>}
+                  </>
+                )}
                 {legacyAudioFolderSupported ? (
                   hasActiveAudioFolder ? (
                     <div className="grid grid-cols-2 gap-2">
@@ -169,19 +187,23 @@ export default function DesktopSystemControls({
                 {showLogs && <div ref={logContainerRef} className="max-h-36 overflow-y-auto rounded bg-slate-900 p-2 font-mono text-[8px] text-slate-300 space-y-1">{systemLogs.length ? systemLogs.slice(-12).map((log, i) => <div key={`${log.time}-${i}`}><span className="text-slate-500">[{log.time}]</span> <span className={log.type === 'Error' ? 'text-red-400' : log.type === 'Warn' ? 'text-yellow-400' : 'text-blue-400'}>{log.type}</span>: {log.message}</div>) : <div className="text-slate-500 italic">No logs available.</div>}</div>}
               </div>
 
-              <StorageManagerPanel
-                refreshToken={storageRefreshToken}
-                onDatasetCacheCleared={onDatasetCacheCleared}
-                onMasteryReset={onMasteryReset}
-                onStudyTrackingReset={onStudyTrackingReset}
-                masteryByVocabId={masteryByVocabId}
-                activityByVocabId={activityByVocabId}
-                currentVocabIds={currentVocabIds}
-                onProgressRestored={onProgressRestored}
-              />
+              {tableStorageSupported ? (
+                <StorageManagerPanel
+                  refreshToken={storageRefreshToken}
+                  onDatasetCacheCleared={onDatasetCacheCleared}
+                  onMasteryReset={onMasteryReset}
+                  onStudyTrackingReset={onStudyTrackingReset}
+                  masteryByVocabId={masteryByVocabId}
+                  activityByVocabId={activityByVocabId}
+                  currentVocabIds={currentVocabIds}
+                  onProgressRestored={onProgressRestored}
+                />
+              ) : (
+                <TextSystemStorageCard summary={textSystemSummary} compact />
+              )}
 
       <SafetyConfirmDialog
-        open={detachFolderConfirmOpen}
+        open={tableStorageSupported && detachFolderConfirmOpen}
         title="Detach Table audio folder?"
         message="Melepas Audio Folder Table dari ProLingo dan menghapus daftar audio/Downloaded* Table yang tersimpan. File audio asli di folder tidak dihapus. ZIP yang masih diload tetap aktif."
         confirmLabel="Detach Folder"
@@ -189,7 +211,7 @@ export default function DesktopSystemControls({
         onConfirm={() => { setDetachFolderConfirmOpen(false); folderInputRef.detachAudioFolder?.(); }}
       />
       <SafetyConfirmDialog
-        open={clearZipConfirmOpen}
+        open={tableStorageSupported && clearZipConfirmOpen}
         title="Clear loaded ZIP archives?"
         message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus, Audio Folder tetap aktif, dan status Downloaded* Table lama di-reset agar coverage dihitung ulang dari source yang masih aktif.`}
         confirmLabel="Clear ZIP"
@@ -197,7 +219,7 @@ export default function DesktopSystemControls({
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
       />
       <SafetyConfirmDialog
-        open={clearGeneratedRamConfirmOpen}
+        open={tableStorageSupported && clearGeneratedRamConfirmOpen}
         title="Clear runtime audio cache?"
         message="Melepas hanya runtime ObjectURL/cache audio sementara (legacy generated + playback cache Staging/ZIP). Blob yang tersimpan di Audio Staging IndexedDB tidak dihapus. Folder/ZIP, CSV, IndexedDB, login, cookie, dan export history tetap aman."
         confirmLabel="Clear Audio RAM"
@@ -205,7 +227,7 @@ export default function DesktopSystemControls({
         onConfirm={() => { setClearGeneratedRamConfirmOpen(false); folderInputRef.clearGeneratedAudioRam?.(); }}
       />
       <SafetyConfirmDialog
-        open={resetCoverageConfirmOpen}
+        open={tableStorageSupported && resetCoverageConfirmOpen}
         title="Reset Table audio coverage memory?"
         message="Menghapus hanya riwayat Exported/Downloaded* Table dan metadata coverage legacy. Audio Staging IndexedDB tidak dihapus, Folder/ZIP tetap aktif, dan CSV/login/cookie/data situs lain tidak disentuh."
         confirmLabel="Reset Coverage"

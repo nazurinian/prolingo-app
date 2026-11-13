@@ -3,7 +3,14 @@ import { Settings, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } fro
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
-import { hasActiveLegacyAudioFolder, isLegacyAudioFolderSupported } from '../../domain/view/dataSystemBoundaryDomain';
+import {
+  getTextSystemBoundarySummary,
+  hasActiveLegacyAudioFolder,
+  isLegacyAudioFolderSupported,
+  isTableGeneratorSystemSupported,
+  isTableStorageSystemSupported
+} from '../../domain/view/dataSystemBoundaryDomain';
+import { TextSystemAudioCard, TextSystemStorageCard } from './TextSystemBoundaryInfo';
 
 export default function MobileSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -26,18 +33,27 @@ export default function MobileSystemControls({
     tableAudioFolderActive: Boolean(folderInputRef?.tableAudioFolderSummary?.active),
     legacyTextAudioCount: Number.isFinite(legacyTextAudioCount) ? legacyTextAudioCount : currentMapCount
   });
+  const tableGeneratorSupported = isTableGeneratorSystemSupported({ mode });
+  const tableStorageSupported = isTableStorageSystemSupported({ mode });
+  const textSystemSummary = getTextSystemBoundarySummary({ mode, activeTextEditorModel });
   return (
     <>
               <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
-                  <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Settings className="w-4 h-4"/> System & TTS</h3>
-                  <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg mb-3"><button disabled={isSystemBusy} onClick={() => setGeneratorEngine('gemini')} className={`px-2 py-1.5 rounded text-xs font-bold ${generatorEngine === 'gemini' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500'}`}>Gemini</button><button disabled={isSystemBusy} onClick={() => setGeneratorEngine('edge')} className={`px-2 py-1.5 rounded text-xs font-bold ${generatorEngine === 'edge' ? 'bg-white dark:bg-slate-600 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500'}`}>Edge</button></div>
-                  {generatorEngine === 'gemini' ? <div className="space-y-2"><select disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>{aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select><input type="password" autoComplete="off" placeholder={geminiOwnerUnlocked ? "Owner Key Active (server)" : geminiByokRegistered ? "Your API key is registered" : "Your Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-3 py-2 w-full dark:bg-slate-700 dark:text-white ${geminiOwnerUnlocked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={geminiOwnerUnlocked || geminiByokRegistered ? "" : userApiKey} disabled={geminiOwnerUnlocked || geminiByokRegistered || !geminiByokAvailable} onChange={onUserApiKeyChange} /><p className={`text-[9px] text-right font-bold ${geminiOwnerUnlocked ? 'text-green-600' : geminiByokRegistered ? 'text-purple-600' : 'text-amber-600'}`}>{geminiOwnerUnlocked ? 'OWNER • server key protected' : geminiByokRegistered ? 'BYOK • protected on this device' : 'LOCKED • API key required'}</p>{!geminiOwnerUnlocked && !geminiByokRegistered && geminiByokAvailable && <button type="button" disabled={isSystemBusy || !userApiKey.trim()} onClick={onGeminiByokRegister} className="w-full py-2 rounded border border-indigo-200 dark:border-indigo-800 text-xs font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-50">Save My API Key</button>}{!geminiOwnerUnlocked && geminiByokRegistered && <button type="button" disabled={isSystemBusy} onClick={onGeminiByokClear} className="w-full py-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Remove My API Key</button>}{!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full py-2 rounded border border-purple-200 dark:border-purple-800 text-xs font-bold text-purple-700 dark:text-purple-300">Owner Unlock</button>}{geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full py-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">Owner Lock</button>}{!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600">BYOK vault belum dikonfigurasi di server.</p>}</div> : <div className="space-y-2"><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeVoice} onChange={e => setEdgeVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="main"/><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeIndonesianVoice} onChange={e => setEdgeIndonesianVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="meaning"/><div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-slate-500">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)<input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full accent-teal-600"/></label><label className="text-[9px] text-slate-500">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)<input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className="w-full accent-teal-600"/></label></div><button onClick={testEdgeBackend} className="w-full py-2 rounded border border-teal-200 dark:border-teal-800 text-xs font-bold text-teal-700 dark:text-teal-300">Backend: {edgeHealth.status.toUpperCase()} • Test</button></div>}
-                  {mode === 'table' && <button
-                      type="button"
-                      disabled={isSystemBusy && !isBatchDownloading}
-                      onClick={() => { const next = !isBatchOpen; setIsBatchOpen(next); if (next) setShowLogs(false); }}
-                      className={`mt-3 w-full min-h-10 rounded-lg border text-[10px] font-black flex items-center justify-center gap-1.5 disabled:opacity-50 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50/70 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'}`}
-                  ><Layers className="w-3.5 h-3.5"/> {isBatchDownloading ? 'Batch • Running' : 'Batch'}{(batchSessions?.length || 0) > 0 && <span className={`ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[8px] ${isBatchOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200'}`}>{batchSessions.length}</span>}</button>}
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2"><Settings className="w-4 h-4"/> {tableGeneratorSupported ? 'System & TTS' : 'Text System'}</h3>
+                  {tableGeneratorSupported ? (
+                    <>
+                      <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg mb-3"><button disabled={isSystemBusy} onClick={() => setGeneratorEngine('gemini')} className={`px-2 py-1.5 rounded text-xs font-bold ${generatorEngine === 'gemini' ? 'bg-white dark:bg-slate-600 text-purple-600 dark:text-purple-400 shadow-sm' : 'text-slate-500'}`}>Gemini</button><button disabled={isSystemBusy} onClick={() => setGeneratorEngine('edge')} className={`px-2 py-1.5 rounded text-xs font-bold ${generatorEngine === 'edge' ? 'bg-white dark:bg-slate-600 text-teal-600 dark:text-teal-400 shadow-sm' : 'text-slate-500'}`}>Edge</button></div>
+                      {generatorEngine === 'gemini' ? <div className="space-y-2"><select disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" onChange={e => setAiVoiceName(e.target.value)} value={aiVoiceName}>{aiVoices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}</select><input type="password" autoComplete="off" placeholder={geminiOwnerUnlocked ? "Owner Key Active (server)" : geminiByokRegistered ? "Your API key is registered" : "Your Gemini API Key"} className={`text-xs border border-slate-300 dark:border-slate-600 rounded px-3 py-2 w-full dark:bg-slate-700 dark:text-white ${geminiOwnerUnlocked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : ''}`} value={geminiOwnerUnlocked || geminiByokRegistered ? "" : userApiKey} disabled={geminiOwnerUnlocked || geminiByokRegistered || !geminiByokAvailable} onChange={onUserApiKeyChange} /><p className={`text-[9px] text-right font-bold ${geminiOwnerUnlocked ? 'text-green-600' : geminiByokRegistered ? 'text-purple-600' : 'text-amber-600'}`}>{geminiOwnerUnlocked ? 'OWNER • server key protected' : geminiByokRegistered ? 'BYOK • protected on this device' : 'LOCKED • API key required'}</p>{!geminiOwnerUnlocked && !geminiByokRegistered && geminiByokAvailable && <button type="button" disabled={isSystemBusy || !userApiKey.trim()} onClick={onGeminiByokRegister} className="w-full py-2 rounded border border-indigo-200 dark:border-indigo-800 text-xs font-bold text-indigo-700 dark:text-indigo-300 disabled:opacity-50">Save My API Key</button>}{!geminiOwnerUnlocked && geminiByokRegistered && <button type="button" disabled={isSystemBusy} onClick={onGeminiByokClear} className="w-full py-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Remove My API Key</button>}{!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full py-2 rounded border border-purple-200 dark:border-purple-800 text-xs font-bold text-purple-700 dark:text-purple-300">Owner Unlock</button>}{geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full py-2 rounded border border-slate-200 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300">Owner Lock</button>}{!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600">BYOK vault belum dikonfigurasi di server.</p>}</div> : <div className="space-y-2"><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeVoice} onChange={e => setEdgeVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="main"/><GroupedVoiceSelect voices={edgeVoices} selectedValue={edgeIndonesianVoice} onChange={e => setEdgeIndonesianVoice(e.target.value)} disabled={isSystemBusy} className="w-full text-xs p-2 border rounded bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" context="meaning"/><div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-slate-500">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)<input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className="w-full accent-teal-600"/></label><label className="text-[9px] text-slate-500">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)<input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className="w-full accent-teal-600"/></label></div><button onClick={testEdgeBackend} className="w-full py-2 rounded border border-teal-200 dark:border-teal-800 text-xs font-bold text-teal-700 dark:text-teal-300">Backend: {edgeHealth.status.toUpperCase()} • Test</button></div>}
+                      {mode === 'table' && <button
+                          type="button"
+                          disabled={isSystemBusy && !isBatchDownloading}
+                          onClick={() => { const next = !isBatchOpen; setIsBatchOpen(next); if (next) setShowLogs(false); }}
+                          className={`mt-3 w-full min-h-10 rounded-lg border text-[10px] font-black flex items-center justify-center gap-1.5 disabled:opacity-50 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50/70 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'}`}
+                      ><Layers className="w-3.5 h-3.5"/> {isBatchDownloading ? 'Batch • Running' : 'Batch'}{(batchSessions?.length || 0) > 0 && <span className={`ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 text-[8px] ${isBatchOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200'}`}>{batchSessions.length}</span>}</button>}
+                    </>
+                  ) : (
+                    <TextSystemAudioCard summary={textSystemSummary} />
+                  )}
                   {legacyAudioFolderSupported ? (
                     hasActiveAudioFolder ? (
                       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -65,16 +81,20 @@ export default function MobileSystemControls({
                   {mode === 'table' && <div className="mt-2 grid grid-cols-2 gap-2"><button disabled={isSystemBusy} onClick={() => setResetCoverageConfirmOpen(true)} title="Reset Audio Coverage Memory" aria-label="Reset Audio Coverage Memory" className="flex items-center justify-center gap-1 rounded border border-sky-200 dark:border-sky-800 px-1.5 py-2 text-[9px] font-bold text-sky-700 dark:text-sky-300 disabled:opacity-35"><RotateCcw className="h-3 w-3"/> Coverage</button><button disabled={isSystemBusy} onClick={() => setClearGeneratedRamConfirmOpen(true)} title="Clear RAM" aria-label="Clear RAM" className="flex items-center justify-center gap-1 rounded border border-violet-200 dark:border-violet-900 px-1.5 py-2 text-[9px] font-bold text-violet-700 dark:text-violet-300 disabled:opacity-35"><X className="h-3 w-3"/> RAM</button></div>}
               </div>
 
-              <StorageManagerPanel
-                  refreshToken={storageRefreshToken}
-                  onDatasetCacheCleared={onDatasetCacheCleared}
-                  onMasteryReset={onMasteryReset}
-                  onStudyTrackingReset={onStudyTrackingReset}
-                  masteryByVocabId={masteryByVocabId}
-                  activityByVocabId={activityByVocabId}
-                  currentVocabIds={currentVocabIds}
-                  onProgressRestored={onProgressRestored}
-              />
+              {tableStorageSupported ? (
+                <StorageManagerPanel
+                    refreshToken={storageRefreshToken}
+                    onDatasetCacheCleared={onDatasetCacheCleared}
+                    onMasteryReset={onMasteryReset}
+                    onStudyTrackingReset={onStudyTrackingReset}
+                    masteryByVocabId={masteryByVocabId}
+                    activityByVocabId={activityByVocabId}
+                    currentVocabIds={currentVocabIds}
+                    onProgressRestored={onProgressRestored}
+                />
+              ) : (
+                <TextSystemStorageCard summary={textSystemSummary} />
+              )}
 
               <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                   <button
@@ -94,7 +114,7 @@ export default function MobileSystemControls({
                   )}
               </div>
       <SafetyConfirmDialog
-        open={detachFolderConfirmOpen}
+        open={tableStorageSupported && detachFolderConfirmOpen}
         title="Detach Table audio folder?"
         message="Melepas Audio Folder Table dari ProLingo dan menghapus daftar audio/Downloaded* Table yang tersimpan. File audio asli di folder tidak dihapus. ZIP yang masih diload tetap aktif."
         confirmLabel="Detach Folder"
@@ -102,7 +122,7 @@ export default function MobileSystemControls({
         onConfirm={() => { setDetachFolderConfirmOpen(false); folderInputRef.detachAudioFolder?.(); }}
       />
       <SafetyConfirmDialog
-        open={clearZipConfirmOpen}
+        open={tableStorageSupported && clearZipConfirmOpen}
         title="Clear loaded ZIP archives?"
         message={`Melepas ${folderInputRef?.tableAudioZipSummary?.archiveCount || 0} ZIP dari sesi ProLingo. File ZIP asli tidak dihapus, Audio Folder tetap aktif, dan status Downloaded* Table lama di-reset agar coverage dihitung ulang dari source yang masih aktif.`}
         confirmLabel="Clear ZIP"
@@ -110,7 +130,7 @@ export default function MobileSystemControls({
         onConfirm={() => { setClearZipConfirmOpen(false); folderInputRef.clearAudioZip?.(); }}
       />
       <SafetyConfirmDialog
-        open={clearGeneratedRamConfirmOpen}
+        open={tableStorageSupported && clearGeneratedRamConfirmOpen}
         title="Clear runtime audio cache?"
         message="Melepas hanya runtime ObjectURL/cache audio sementara (legacy generated + playback cache Staging/ZIP). Blob yang tersimpan di Audio Staging IndexedDB tidak dihapus. Folder/ZIP, CSV, IndexedDB, login, cookie, dan export history tetap aman."
         confirmLabel="Clear Audio RAM"
@@ -118,7 +138,7 @@ export default function MobileSystemControls({
         onConfirm={() => { setClearGeneratedRamConfirmOpen(false); folderInputRef.clearGeneratedAudioRam?.(); }}
       />
       <SafetyConfirmDialog
-        open={resetCoverageConfirmOpen}
+        open={tableStorageSupported && resetCoverageConfirmOpen}
         title="Reset Table audio coverage memory?"
         message="Menghapus hanya riwayat Exported/Downloaded* Table dan metadata coverage legacy. Audio Staging IndexedDB tidak dihapus, Folder/ZIP tetap aktif, dan CSV/login/cookie/data situs lain tidak disentuh."
         confirmLabel="Reset Coverage"

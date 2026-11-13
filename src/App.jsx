@@ -88,7 +88,7 @@ import { executeGlobalPlaybackSessionService } from './services/playback/globalP
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
-import { getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode } from './domain/view/dataSystemBoundaryDomain';
+import { getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode, isMatchingAudioFolderScope, resolveGuardedBatchOpenValue } from './domain/view/dataSystemBoundaryDomain';
 import { executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
 import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeForegroundPlaybackVisibilityEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
@@ -856,25 +856,46 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const legacyTextModeActive = isLegacyTextMode(mode, activeTextEditorModel);
   const legacyTextAudioCount = legacyTextModeActive ? Object.keys(localAudioMapText || {}).length : 0;
   const batchScopeKey = getBatchScopeKey({ mode, activeTextEditorModel, activeTextDocumentId });
+  const [openBatchScopeKey, setOpenBatchScopeKey] = useState(null);
   const previousBatchScopeKeyRef = useRef(batchScopeKey);
-  const latestAudioFolderScopeRef = useRef({ mode, activeTextEditorModel, activeTextDocumentId });
-  latestAudioFolderScopeRef.current = { mode, activeTextEditorModel, activeTextDocumentId };
+  const canOpenBatchPopup = isBatchPopupAllowed({ mode, activeTextEditorModel });
+  const effectiveIsBatchOpen = Boolean(isBatchOpen && canOpenBatchPopup && openBatchScopeKey === batchScopeKey);
+  const latestAudioFolderScopeRef = useRef({
+    mode,
+    activeTextEditorModel,
+    activeTextDocumentId,
+    batchScopeKey,
+    effectiveIsBatchOpen
+  });
+  useLayoutEffect(() => {
+    latestAudioFolderScopeRef.current = {
+      mode,
+      activeTextEditorModel,
+      activeTextDocumentId,
+      batchScopeKey,
+      effectiveIsBatchOpen
+    };
+  });
   useEffect(() => { if (!structuredTextModeActive) setTextPlayerWorkspaceOpen(false); }, [structuredTextModeActive]);
   useEffect(() => {
     if (previousBatchScopeKeyRef.current !== batchScopeKey) {
       previousBatchScopeKeyRef.current = batchScopeKey;
       setIsBatchOpen(false);
+      setOpenBatchScopeKey(null);
     }
   }, [batchScopeKey, setIsBatchOpen]);
   const setBatchOpenGuarded = useCallback((nextValue) => {
-    setIsBatchOpen(prev => {
-      const resolved = typeof nextValue === 'function' ? nextValue(prev) : Boolean(nextValue);
-      if (!resolved) return false;
-      return isBatchPopupAllowed(latestAudioFolderScopeRef.current);
+    const currentScope = latestAudioFolderScopeRef.current;
+    const resolved = resolveGuardedBatchOpenValue({
+      nextValue,
+      prevOpen: currentScope.effectiveIsBatchOpen,
+      mode: currentScope.mode,
+      activeTextEditorModel: currentScope.activeTextEditorModel
     });
+    currentScope.effectiveIsBatchOpen = resolved;
+    setOpenBatchScopeKey(resolved ? currentScope.batchScopeKey : null);
+    setIsBatchOpen(resolved);
   }, [setIsBatchOpen]);
-  const canOpenBatchPopup = isBatchPopupAllowed({ mode, activeTextEditorModel });
-  const effectiveIsBatchOpen = Boolean(isBatchOpen && canOpenBatchPopup && previousBatchScopeKeyRef.current === batchScopeKey);
   useEffect(() => { setStructuredTextPlaybackSourceStatus(null); }, [activeTextDocumentTree?.id]);
   // P4-A11: speaker profiles are document metadata, not audio identity. The requested
   // voice can differ per conversation speaker while SEGMENT_ID/TXTAUDIO identity stays stable.
@@ -6396,24 +6417,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.generations[mode] = (restoreState.generations[mode] || 0) + 1;
     const expectedMode = mode;
     const expectedEditorModel = liveScope.activeTextEditorModel;
+    const shouldContinue = () => isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel);
     return executeRememberedAudioFolderOpenService({
       mode,
       activeTextEditorModel: expectedEditorModel,
       forcePicker,
+      shouldContinue,
       onFiles: (files, folderName, options = {}) => {
-        const currentScope = latestAudioFolderScopeRef.current;
-        if (
-          currentScope.mode !== expectedMode
-          || currentScope.activeTextEditorModel !== expectedEditorModel
-          || !isLegacyAudioFolderSupported(currentScope)
-        ) {
-          return { stale: true };
-        }
+        if (!shouldContinue()) return { stale: true };
         return loadAudioFolderFiles(files, folderName, options);
       },
       fallbackOpen: () => {
-        const currentScope = latestAudioFolderScopeRef.current;
-        if (!isLegacyAudioFolderSupported(currentScope)) return;
+        if (!shouldContinue()) return;
         folderInputRef.current?.click();
       },
       addLog
@@ -6436,27 +6451,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.generations[mode] = generation;
     const expectedMode = mode;
     const expectedEditorModel = liveScope.activeTextEditorModel;
+    const shouldContinue = () => (
+      getAudioAutoRestoreState().generations[expectedMode] === generation
+      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel)
+    );
 
     return executeRememberedAudioFolderOpenService({
       mode,
       activeTextEditorModel: expectedEditorModel,
       forcePicker: false,
+      shouldContinue,
       onFiles: (files, folderName, options = {}) => {
-        const latestState = getAudioAutoRestoreState();
-        const currentScope = latestAudioFolderScopeRef.current;
-        if (
-          latestState.generations[expectedMode] !== generation
-          || currentScope.mode !== expectedMode
-          || currentScope.activeTextEditorModel !== expectedEditorModel
-          || !isLegacyAudioFolderSupported(currentScope)
-        ) {
-          return { stale: true };
-        }
+        if (!shouldContinue()) return { stale: true };
         return loadAudioFolderFiles(files, folderName, { ...options, automatic: true });
       },
       fallbackOpen: () => {
-        const currentScope = latestAudioFolderScopeRef.current;
-        if (!isLegacyAudioFolderSupported(currentScope)) return;
+        if (!shouldContinue()) return;
         folderInputRef.current?.click();
       },
       addLog
@@ -6491,19 +6501,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.generations[mode] = generation;
     const expectedMode = mode;
     const expectedEditorModel = activeTextEditorModel;
+    const shouldContinue = () => (
+      getAudioAutoRestoreState().generations[expectedMode] === generation
+      && isMatchingAudioFolderScope(latestAudioFolderScopeRef.current, expectedMode, expectedEditorModel)
+    );
 
     executeRememberedAudioFolderRestoreService({
       mode,
       activeTextEditorModel: expectedEditorModel,
+      shouldContinue,
       onFiles: (files, folderName, options = {}) => {
-        const latestState = getAudioAutoRestoreState();
-        const currentScope = latestAudioFolderScopeRef.current;
-        if (
-          latestState.generations[expectedMode] !== generation
-          || currentScope.mode !== expectedMode
-          || currentScope.activeTextEditorModel !== expectedEditorModel
-          || !isLegacyAudioFolderSupported(currentScope)
-        ) {
+        if (!shouldContinue()) {
           return { stale: true };
         }
         return loadAudioFolderFiles(files, folderName, options);
