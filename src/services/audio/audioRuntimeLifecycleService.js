@@ -27,6 +27,13 @@ export const executeBrowserTtsVoiceLifecycleEffect = ({
   synth, selectedVoiceRef, selectedIndonesianVoiceRef, setVoices, setSelectedVoice,
   setIndonesianVoices, setSelectedIndonesianVoice
 }) => {
+    // Some browsers expose no speechSynthesis API at all. Leave the voice
+    // lists empty and let the playback service exit safely in that case.
+    if (!synth || typeof synth.getVoices !== 'function') {
+      setVoices([]);
+      setIndonesianVoices([]);
+      return () => {};
+    }
     const loadVoices = () => {
       const allVoices = synth.getVoices();
       const voiceState = resolveBrowserTtsVoiceState(allVoices);
