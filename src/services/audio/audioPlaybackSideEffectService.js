@@ -13,13 +13,17 @@ export const executeBrowserTtsPlaybackService = ({
   pitch
 }) => {
     return new Promise((resolve) => {
-      const targetVoice = overrideVoice || selectedVoiceRef.current;
-      if (stopSignalRef.current || !targetVoice || !String(textToRead || '').trim()) {
+      // When getVoices() exposes no named voice, let the device/browser use
+      // its native speechSynthesis default rather than silently skipping TTS.
+      const targetVoice = overrideVoice || selectedVoiceRef?.current || null;
+      if (stopSignalRef.current || !String(textToRead || '').trim()
+          || typeof SpeechSynthesisUtterance !== 'function'
+          || !synth || typeof synth.speak !== 'function') {
           resolve();
           return;
       }
 
-      synth.cancel();
+      try { synth.cancel(); } catch { resolve(); return; }
       let settled = false;
 
       const finish = () => {
@@ -51,15 +55,20 @@ export const executeBrowserTtsPlaybackService = ({
 
           const utterance = new SpeechSynthesisUtterance(textToRead);
           currentUtteranceRef.current = utterance;
-          utterance.voice = targetVoice;
+          if (targetVoice) utterance.voice = targetVoice;
           utterance.rate = Number(rateRef?.current ?? rate) || 1;
           utterance.pitch = Number(pitch) || 1;
           utterance.onend = handleUtteranceDone;
           utterance.onerror = handleUtteranceDone;
 
           if (synth.paused) synth.resume();
-          synth.speak(utterance);
-          return true;
+          try {
+            synth.speak(utterance);
+            return true;
+          } catch {
+            finish();
+            return false;
+          }
       };
 
       playbackResolveRef.current = finish;
