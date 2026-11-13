@@ -112,6 +112,7 @@ const { executeForceStopPlaybackService } = loadMod('src/services/playback/playb
 const { executeMediaSessionLifecycleService } = loadMod('src/services/playback/mediaSessionLifecycleService.js');
 const { executeModeSwitch } = loadMod('src/services/navigation/viewNavigationService.js');
 const BottomPlayerBar = loadMod('src/components/layout/BottomPlayerBar.jsx').default;
+const TextStructuredAudioControls = loadMod('src/components/text/TextStructuredAudioControls.jsx').default;
 
 // Isolated in-memory browser shims (never touches browser profile or IndexedDB).
 if (!globalThis.navigator) {
@@ -792,34 +793,80 @@ await runCheck('S10', 'CONTRACT', 'Desktop (MainAppShellView) and Mobile (Mobile
   assert.match(readRepoText('src/components/layout/BottomPlayerBar.jsx'), /onClick=\{onOpenTextPlayer\}/);
 });
 
-await runCheck('S10', 'DEFECT', '[DEFECT S10-A] BottomPlayerBar receives textTtsOnly / onTextTtsOnlyChange from MainAppShellView but neither renders nor invokes them', () => {
-  let ttsToggleCalls = 0;
-  const tree = BottomPlayerBar({
-    isMobile: true,
-    isPlaying: false,
-    isPaused: false,
-    speakingPart: null,
-    activePlaybackList: [],
-    displayPlayingIndex: null,
-    handleSmartNav: () => {},
-    handleGlobalPlay: () => {},
-    forceStopAll: () => {},
-    playbackMode: 'once',
-    cyclePlaybackMode: () => {},
-    setPlaybackMode: () => {},
-    mode: 'text',
-    structuredTextModeActive: true,
-    textPlaybackRepresentationMode: 'split',
-    textTtsOnly: true,
-    textPlaybackOrder: 'sequential',
-    textPlaybackChannelMode: 'text-only',
-    onTextPlaybackRepresentationModeChange: () => {},
-    onTextTtsOnlyChange: () => { ttsToggleCalls += 1; },
-    onOpenTextPlayer: () => {}
+await runCheck('S10', 'CONTRACT', '[DEFECT S10-A FIXED] Dead textTtsOnly/onTextTtsOnlyChange removed from BottomPlayerBar while TextStructuredAudioControls exposes Local First / TTS Only and Auto / Custom on Desktop & Mobile', () => {
+  const appSource = readRepoText('src/App.jsx');
+  const desktopShellSource = readRepoText('src/components/layout/MainAppShellView.jsx');
+  const bottomBarSource = readRepoText('src/components/layout/BottomPlayerBar.jsx');
+  assert.equal(/\btextTtsOnly\b|\bonTextTtsOnlyChange\b/.test(appSource), false, 'App.jsx must not plumb unused textTtsOnly/onTextTtsOnlyChange props');
+  assert.equal(/\btextTtsOnly\b|\bonTextTtsOnlyChange\b/.test(desktopShellSource), false, 'MainAppShellView.jsx must not accept or forward unused textTtsOnly/onTextTtsOnlyChange props');
+  assert.equal(/\btextTtsOnly\b|\bonTextTtsOnlyChange\b/.test(bottomBarSource), false, 'BottomPlayerBar.jsx must not contain unused textTtsOnly/onTextTtsOnlyChange props');
+
+  for (const isMobile of [false, true]) {
+    let splitToggleCalls = 0;
+    let settingsCalls = 0;
+    const barTree = BottomPlayerBar({
+      isMobile,
+      isPlaying: false,
+      isPaused: false,
+      speakingPart: null,
+      activePlaybackList: [],
+      displayPlayingIndex: null,
+      handleSmartNav: () => {},
+      handleGlobalPlay: () => {},
+      forceStopAll: () => {},
+      playbackMode: 'once',
+      cyclePlaybackMode: () => {},
+      setPlaybackMode: () => {},
+      mode: 'text',
+      structuredTextModeActive: true,
+      textPlaybackRepresentationMode: 'split',
+      textPlaybackOrder: { ttsOnly: false },
+      textPlaybackChannelMode: 'text-only',
+      onTextPlaybackRepresentationModeChange: () => { splitToggleCalls += 1; },
+      onOpenTextPlayer: () => { settingsCalls += 1; }
+    });
+    const barButtons = collectNodes(barTree).filter(n => n.type === 'button');
+    const duplicateSourceToggle = barButtons.find(btn => btn.props?.['data-text-audio-source-toggle'] === 'true');
+    assert.equal(duplicateSourceToggle, undefined, 'BottomPlayerBar must not render a duplicate TTS-Only button');
+    barButtons.forEach(btn => btn.props?.onClick?.());
+    assert.equal(splitToggleCalls >= 1, true, 'BottomPlayerBar SPLIT/FULL toggle remains functional');
+    assert.equal(settingsCalls >= 1, true, 'BottomPlayerBar SETTINGS drawer trigger remains functional');
+  }
+
+  let audioSourceModeCalls = [];
+  const controlsTree = TextStructuredAudioControls({
+    documentTree: { id: 'DOC_S10', title: 'S10 Doc', editorModel: 'structured-v1', blocks: [] },
+    preferences: { audioSourceMode: 'local-first' },
+    speakerVoiceMap: {},
+    englishVoices: [],
+    indonesianVoices: [],
+    defaultTextVoiceName: null,
+    defaultMeaningVoiceName: null,
+    playbackOrder: { ttsOnly: false, channels: { text: ['staged'], meaning: ['staged'] } },
+    onAudioSourceModeChange: nextMode => audioSourceModeCalls.push(nextMode),
+    onGlobalPlaybackOrderChange: () => {},
+    onGlobalTtsOnlyChange: () => {},
+    generationPreferences: { edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural', edgeRate: 0, edgePitch: 0 },
+    edgeGenerationVoices: [],
+    audioLibrary: { counts: { staged: 0, stagedFull: 0, downloaded: 0, total: 0 } }
   });
-  const buttons = collectNodes(tree).filter(n => n.type === 'button');
-  buttons.forEach(btn => btn.props?.onClick?.());
-  assert.equal(ttsToggleCalls > 0, true, 'Clicking every rendered button on BottomPlayerBar never invoked onTextTtsOnlyChange');
+  const controlNodes = collectNodes(controlsTree);
+  const extractText = node => {
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(extractText).join(' ');
+    if (node && typeof node === 'object') return extractText(node.props?.children);
+    return '';
+  };
+  const buttons = controlNodes.filter(n => n.type === 'button');
+  const audioSourceButton = buttons.find(n => n.props?.['data-text-audio-source-toggle'] === 'true');
+  const autoButton = buttons.find(n => extractText(n).includes('AUTO'));
+  const customButton = buttons.find(n => extractText(n).includes('CUSTOM'));
+  assert.ok(audioSourceButton, 'TextStructuredAudioControls renders the intended Audio Source (LOCAL FIRST / TTS ONLY) button');
+  assert.ok(autoButton && customButton, 'TextStructuredAudioControls renders AUTO & CUSTOM buttons');
+  audioSourceButton.props.onClick();
+  autoButton.props.onClick();
+  customButton.props.onClick();
+  assert.deepEqual(audioSourceModeCalls, ['tts-only', 'local-first', 'custom-local'], 'Clicking Audio Source, AUTO, and CUSTOM buttons triggers expected audioSourceMode changes');
 });
 
 const passed = results.filter(r => r.status === 'PASS').length;

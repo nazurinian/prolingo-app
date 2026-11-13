@@ -57,6 +57,7 @@ import {
 import {
   createTextStructuredAudioZipImportCoordinator,
   executeTextStructuredAudioZipImport,
+  mergeTextLibraryZipMetadataCommitIntoSnapshot,
   rollbackCompletedTextStructuredAudioZipImport
 } from '../src/services/audio/textStructuredAudioZipImportService.js';
 
@@ -1153,6 +1154,188 @@ await runCheck('H5-C', 'Scenario-6', 'Partial rollback failure leaves coordinato
     assert.equal(await (await getAudioStagingBlob(retryRes.stagedSplitByRf.get(env.rf1.renderFingerprint).id)).text(), 'NEW_ALPHA_BYTES');
     assert.equal(await (await getAudioStagingBlob(retryRes.stagedSplitByRf.get(env.rf2.renderFingerprint).id)).text(), 'NEW_BETA_TWO');
     assert.equal(await (await getAudioStagingBlob(retryRes.stagedFullByFingerprint.get(env.fullArt.fullArtifactFingerprint).id)).text(), 'NEW_FULL_CARD');
+  } finally {
+    clearAudioStagingRuntimeCacheForMode('text');
+    globalThis.indexedDB = prevIndexedDb;
+  }
+});
+
+await runCheck('H6-D', 'Scenario-7', 'Two queued Portable ZIP imports + failing 3rd import before React useState commit converge without duplicate IDs, stale overwrite, or rollback bleed', async () => {
+  const prevIndexedDb = globalThis.indexedDB;
+  globalThis.indexedDB = createMemoryIndexedDb();
+  clearAudioStagingRuntimeCacheForMode('text');
+  try {
+    const coordinator = createTextStructuredAudioZipImportCoordinator();
+    const env = await buildImportTestEnv();
+    const scenarioPreferences = { ...env.preferences, generateMeaning: true };
+    const rf2Meaning = buildTextStructuredAudioRenderFingerprint({
+      channel: 'meaning',
+      content: env.seg2.meaning,
+      language: 'id-ID',
+      engine: 'edge',
+      voiceId: 'id-ID-GadisNeural',
+      rate: 0,
+      pitch: 0
+    });
+    const f2Meaning = buildCanonicalTextRenderAudioFilename({
+      renderFingerprint: rf2Meaning.renderFingerprint,
+      engine: 'edge',
+      voiceId: 'id-ID-GadisNeural'
+    });
+
+    const blobA1 = new Blob(['QUEUED_A_ALPHA'], { type: 'audio/mpeg' });
+    const blobA2 = new Blob(['QUEUED_A_SPLIT'], { type: 'audio/mpeg' });
+    const manifestA = buildProLingoTextAudioManifest({
+      entries: [
+        {
+          representation: 'split',
+          rf: env.rf1.renderFingerprint,
+          filename: env.f1,
+          mimeType: 'audio/mpeg',
+          size: blobA1.size,
+          render: env.rf1.descriptor,
+          references: [{ segmentId: env.seg1.id, channel: 'text' }]
+        },
+        {
+          representation: 'split',
+          rf: env.rf2.renderFingerprint,
+          filename: env.f2,
+          mimeType: 'audio/mpeg',
+          size: blobA2.size,
+          render: env.rf2.descriptor,
+          references: [{ segmentId: env.seg2.id, channel: 'text' }]
+        }
+      ]
+    });
+    const zipA = Object.assign(await buildStoredZipBlob([
+      { filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: new Blob([JSON.stringify(manifestA)], { type: 'application/json' }) },
+      { filename: env.f1, blob: blobA1 },
+      { filename: env.f2, blob: blobA2 }
+    ]), { name: 'queued-a.zip', lastModified: 1 });
+
+    const blobBMeaning = new Blob(['QUEUED_B_MEANING'], { type: 'audio/mpeg' });
+    const blobBFull = new Blob(['QUEUED_B_FULL'], { type: 'audio/mpeg' });
+    const manifestB = buildProLingoTextAudioManifest({
+      entries: [
+        {
+          representation: 'split',
+          rf: rf2Meaning.renderFingerprint,
+          filename: f2Meaning,
+          mimeType: 'audio/mpeg',
+          size: blobBMeaning.size,
+          render: rf2Meaning.descriptor,
+          references: [{ segmentId: env.seg2.id, channel: 'meaning' }]
+        },
+        {
+          representation: 'full',
+          fullArtifactFingerprint: env.fullArt.fullArtifactFingerprint,
+          filename: env.fFull,
+          mimeType: 'audio/mpeg',
+          size: blobBFull.size,
+          render: env.fullArt.descriptor,
+          references: [{ blockId: env.block1.id, channel: 'text' }]
+        }
+      ]
+    });
+    const zipB = Object.assign(await buildStoredZipBlob([
+      { filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: new Blob([JSON.stringify(manifestB)], { type: 'application/json' }) },
+      { filename: f2Meaning, blob: blobBMeaning },
+      { filename: env.fFull, blob: blobBFull }
+    ]), { name: 'queued-b.zip', lastModified: 2 });
+
+    const manifestFailC = buildProLingoTextAudioManifest({
+      entries: [{
+        representation: 'split',
+        rf: env.rf2.renderFingerprint,
+        filename: env.f2,
+        mimeType: 'audio/mpeg',
+        size: 18,
+        render: env.rf2.descriptor,
+        references: [{ segmentId: env.seg2.id, channel: 'text' }]
+      }]
+    });
+    const zipFailC = Object.assign(await buildStoredZipBlob([
+      { filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: new Blob([JSON.stringify(manifestFailC)], { type: 'application/json' }) },
+      { filename: env.f2, blob: new Blob(['FAILED_C_OVERWRITE'], { type: 'audio/mpeg' }) }
+    ]), { name: 'queued-c-fail.zip', lastModified: 3 });
+
+    const initialUiSnapshot = await readTextLibrarySnapshot();
+    const uiSnapshotRef = { current: initialUiSnapshot };
+    const deferredUpdaters = [];
+    const setUiSnapshotDeferred = updater => {
+      deferredUpdaters.push(updater);
+    };
+
+    const runQueuedReactLikeImport = (zipFile, { abortAfterCommit = false } = {}) => coordinator.runExclusive({
+      run: async ({ signal }) => {
+        const liveSnapshot = await readTextLibrarySnapshot().catch(() => null);
+        const sourceSnapshot = liveSnapshot || uiSnapshotRef.current;
+        const abortController = abortAfterCommit ? new AbortController() : null;
+        if (abortController && signal) {
+          if (signal.aborted) abortController.abort(signal.reason);
+          else signal.addEventListener('abort', () => abortController.abort(signal.reason), { once: true });
+        }
+        const imported = await executeTextStructuredAudioZipImport({
+          files: [zipFile],
+          snapshot: sourceSnapshot,
+          preferences: scenarioPreferences,
+          signal: abortController ? abortController.signal : signal,
+          commitMetadata: abortController
+            ? async args => {
+                const committed = await executeTextZipImportMetadataCommit(args);
+                abortController.abort(new Error('Simulated UI-lagged queued import abort after IDB commit'));
+                return committed;
+              }
+            : executeTextZipImportMetadataCommit
+        });
+        if (imported.metadataCommit?.audioVariants?.length || imported.metadataCommit?.blocks?.length) {
+          uiSnapshotRef.current = mergeTextLibraryZipMetadataCommitIntoSnapshot(
+            uiSnapshotRef.current || sourceSnapshot,
+            imported.metadataCommit
+          );
+          setUiSnapshotDeferred(prev => mergeTextLibraryZipMetadataCommitIntoSnapshot(prev, imported.metadataCommit));
+        }
+        return imported;
+      }
+    });
+
+    const pA = runQueuedReactLikeImport(zipA);
+    const pB = runQueuedReactLikeImport(zipB);
+    const pFailC = runQueuedReactLikeImport(zipFailC, { abortAfterCommit: true });
+
+    const [resA, resB] = await Promise.all([pA, pB]);
+    await assert.rejects(pFailC, err => err?.name === 'AbortError' && err?.zipImportRecovery?.cleanRollback === true);
+
+    assert.equal(deferredUpdaters.length, 2, 'Both successful queued imports deferred React state updates while Render stayed uncommitted');
+    assert.deepEqual(resA.metadataCommit.createdVariantIds, ['TXTAUDIO_000002']);
+    assert.deepEqual(resB.metadataCommit.createdVariantIds, ['TXTAUDIO_000003']);
+
+    const committedSnapshot = await readTextLibrarySnapshot();
+    assert.equal(committedSnapshot.audioVariants.length, 3, 'All three Split AudioVariants exist without duplicates');
+    assert.deepEqual(committedSnapshot.audioVariants.map(v => v.id).sort(), ['TXTAUDIO_000001', 'TXTAUDIO_000002', 'TXTAUDIO_000003']);
+    assert.equal(new Set(committedSnapshot.audioVariants.map(v => `${v.segmentId}|${v.channel}|${v.engine}|${v.voiceId}`)).size, 3);
+    assert.equal(committedSnapshot.counters.audioVariant, 3);
+    assert.equal(committedSnapshot.blocks[0].metadata.fullAudioArtifactsV1.artifacts.length, 1);
+
+    const stagingRows = (await listAudioStagingMetadata({ mode: 'text', includeReleased: false })).filter(r => r.hasBlob);
+    const stagingIds = new Set(stagingRows.map(r => r.id));
+    assert.equal(stagingRows.length, 4);
+    assert.ok(stagingIds.has(resA.stagedSplitByRf.get(env.rf1.renderFingerprint).id));
+    assert.ok(stagingIds.has(resA.stagedSplitByRf.get(env.rf2.renderFingerprint).id));
+    assert.ok(stagingIds.has(resB.stagedSplitByRf.get(rf2Meaning.renderFingerprint).id));
+    assert.ok(stagingIds.has(resB.stagedFullByFingerprint.get(env.fullArt.fullArtifactFingerprint).id));
+    assert.equal(await (await getAudioStagingBlob(resA.stagedSplitByRf.get(env.rf1.renderFingerprint).id)).text(), 'QUEUED_A_ALPHA');
+    assert.equal(await (await getAudioStagingBlob(resA.stagedSplitByRf.get(env.rf2.renderFingerprint).id)).text(), 'QUEUED_A_SPLIT');
+    assert.equal(await (await getAudioStagingBlob(resB.stagedSplitByRf.get(rf2Meaning.renderFingerprint).id)).text(), 'QUEUED_B_MEANING');
+    assert.equal(await (await getAudioStagingBlob(resB.stagedFullByFingerprint.get(env.fullArt.fullArtifactFingerprint).id)).text(), 'QUEUED_B_FULL');
+
+    const flushedUiSnapshot = deferredUpdaters.reduce((acc, updater) => updater(acc), initialUiSnapshot);
+    assert.deepEqual(flushedUiSnapshot.audioVariants.map(v => v.id).sort(), committedSnapshot.audioVariants.map(v => v.id).sort());
+    assert.equal(flushedUiSnapshot.counters.audioVariant, committedSnapshot.counters.audioVariant);
+    assert.equal(
+      flushedUiSnapshot.blocks[0].metadata.fullAudioArtifactsV1.artifacts.length,
+      committedSnapshot.blocks[0].metadata.fullAudioArtifactsV1.artifacts.length
+    );
   } finally {
     clearAudioStagingRuntimeCacheForMode('text');
     globalThis.indexedDB = prevIndexedDb;

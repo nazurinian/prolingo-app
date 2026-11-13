@@ -70,6 +70,32 @@ const attachZipImportRecovery = (error, recovery) => {
   return normalized;
 };
 
+/** Merge committed Split AudioVariants and Full Block Artifacts into a caller snapshot without waiting for UI render commit. */
+export const mergeTextLibraryZipMetadataCommitIntoSnapshot = (snapshot, metadataCommit) => {
+  if (!snapshot) return snapshot;
+  const hasVariants = Array.isArray(metadataCommit?.audioVariants) && metadataCommit.audioVariants.length > 0;
+  const hasBlocks = Array.isArray(metadataCommit?.blocks) && metadataCommit.blocks.length > 0;
+  if (!hasVariants && !hasBlocks) return snapshot;
+
+  let nextVariants = snapshot.audioVariants || [];
+  let nextCounters = snapshot.counters;
+  let nextBlocks = snapshot.blocks || [];
+  if (hasVariants) {
+    const variantUpdates = new Map(metadataCommit.audioVariants.map(record => [record.id, record]));
+    const seen = new Set(nextVariants.map(record => record.id));
+    nextVariants = nextVariants.map(record => variantUpdates.get(record.id) || record);
+    metadataCommit.audioVariants.forEach(record => {
+      if (!seen.has(record.id)) nextVariants.push(record);
+    });
+    if (metadataCommit.counters) nextCounters = metadataCommit.counters;
+  }
+  if (hasBlocks) {
+    const blockUpdates = new Map(metadataCommit.blocks.map(block => [block.id, block]));
+    nextBlocks = nextBlocks.map(block => blockUpdates.get(block.id) || block);
+  }
+  return { ...snapshot, counters: nextCounters, audioVariants: nextVariants, blocks: nextBlocks };
+};
+
 /**
  * Serialize Portable ZIP imports and coordinate workspace/mode cancellation so concurrent
  * imports never interleave Staging IDB or Text Library IDB mutations/rollbacks.

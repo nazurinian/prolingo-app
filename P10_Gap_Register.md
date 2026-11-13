@@ -1,18 +1,18 @@
 # P10 App-Wide Gap Register (ProLingo v6)
 
-- **Repository / Baseline:** `nazurinian/prolingo-app` | `fix/text-data-system-boundaries` @ `d200fb38` (H1–H3 committed; uncommitted working tree includes bounded P10 H4–H5 remediation)
+- **Repository / Baseline:** `nazurinian/prolingo-app` | `fix/text-data-system-boundaries` @ `212d398d` (H1–H5 committed; uncommitted working tree includes bounded **P10-H6** consolidation & regression hygiene)
 - **Audit Scope:** Consolidated internal runtime + code-level gaps across **P9-B Playback**, **P9-C Bulk/Staging/ZIP**, **Legacy Audit Triage**, and **Stage 4 App-Wide Discovery** (`Table`, `Legacy Text`, `Paragraph`, `Conversation`, `Mixed`).
-- **Remediation Status (H1–H5):** All **8 / 8 P1** findings (`P10-G001`–`P10-G008`) plus **7 / 10 P2** findings (`P10-G009`–`P10-G012` in Wave H4; `P10-G014`, `P10-G016` in Wave H5; bonus `P10-G015` in Wave H2) are **Fixed & Verified in Node/Vite/ESLint**. Note that real Chromium multi-download permission/activation heuristics (`P10-G016`), real OS `MediaSession` UI (`P10-G009`), and live browser playback/IndexedDB checks remain **`UNVERIFIED`** until manual browser acceptance. Remaining **Open / Deferred** items: **3 P2** (`P10-G013` / `S10-A`, `P10-G017`, `P10-G018`) and **3 P3** (`P10-G019`–`P10-G021`). See [`P10_H1_H3_Remediation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H1_H3_Remediation_Report.md) and [`P10_H4_H5_Remediation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H4_H5_Remediation_Report.md).
+- **Remediation Status (H1–H6):** All **8 / 8 P1** findings (`P10-G001`–`P10-G008`, including H6-D queued ZIP UI-lag hardening) plus **8 / 10 P2** findings (`P10-G009`–`P10-G016`, with `G013` fixed in H6-B) and **1 / 3 P3** findings (`P10-G019`, fixed in H6-C) are **Confirmed Fixed** in code and Node/Vite verification. **`P10-G017`** is verified **Intentional Product Behavior** (read-only), **`P10-G018`** is split (**Fixed** missing-preference Download Profile fallback in `textStructuredAudioDownloadProfileDomain.js:165`; **Intentional Product Behavior** for Single Edge vs Bulk vs Table defaults), and **`P10-G020`–`P10-G021`** remain **Deferred by Design** (alongside Round D Reset-to-Defaults). Note that real Chromium multi-download activation (`P10-G016`), real OS `MediaSession` hardware controls (`P10-G009`), and live browser IndexedDB/Web Speech execution remain **Unverified in Browser** until manual P9-B/C acceptance. See [`P10_H1_H3_Remediation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H1_H3_Remediation_Report.md), [`P10_H4_H5_Remediation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H4_H5_Remediation_Report.md), and [`P10_H6_Final_Consolidation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H6_Final_Consolidation_Report.md).
 
 ---
 
 ## Summary by Severity & Confidence
 
-| Severity | Count | Status after H1–H5 | Gap IDs |
+| Severity | Count | Status after H1–H6 | Gap IDs |
 |---|---:|---|---|
-| **P1 (High / Functional or Data Integrity)** | 8 | **8 / 8 Fixed & Verified (H1–H3; H5-C rollback follow-up)** | `P10-G001` – `P10-G008` |
-| **P2 (Medium / Voice, UI Parity, Export, Leak)** | 10 | **7 Fixed & Verified in Node (`G009`–`G012`, `G014`, `G015`, `G016`), 3 Open/Deferred (`G013`, `G017`, `G018`)** | `P10-G009` – `P10-G018` |
-| **P3 (Low / Cleanup, UX Consistency)** | 3 | **3 Deferred** | `P10-G019` – `P10-G021` |
+| **P1 (High / Functional or Data Integrity)** | 8 | **8 / 8 Confirmed Fixed** (H1–H3; H5-C & H6-D ZIP hardening) | `P10-G001` – `P10-G008` |
+| **P2 (Medium / Voice, UI Parity, Export, Leak)** | 10 | **8 Confirmed Fixed (`G009`–`G016`), 1 Intentional Product Behavior (`G017`), 1 Fixed Fallback + Intentional Split (`G018`)** | `P10-G009` – `P10-G018` |
+| **P3 (Low / Cleanup, UX Consistency)** | 3 | **1 Confirmed Fixed (`G019`), 2 Deferred by Design (`G020`, `G021`)** | `P10-G019` – `P10-G021` |
 
 | Confidence Tag | Meaning | Count |
 |---|---|---:|
@@ -101,9 +101,9 @@
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-C `P9C-B`)
 - **Affected Modes:** Structured Text Portable ZIP Import
 - **Primary Evidence:** ZIP import previously wrote `audioVariants` / `fullAudioArtifacts` metadata into Text Library IDB before extracting and storing binary blobs into Audio Staging IDB, with no rollback if blob decompression failed mid-archive.
-- **Implemented Fix:** Created transactional orchestrator `executeTextStructuredAudioZipImport` in [textStructuredAudioZipImportService.js:166](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L166) (**Phase 1:** decompress & validate all Split/Full blobs before any DB write -> **Phase 2:** snapshot pre-existing Staging records & stage blobs -> **Phase 3:** atomic single-TX `executeTextZipImportMetadataCommit` in [textLibraryCommandService.js:399](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textLibraryCommandService.js#L399) -> compensating rollback via `rollbackTextAudioStagingBatch` + `executeTextAudioImportRollback`). In **Wave H5-C**, hardened two-DB compensating rollback with `zipImportRecovery` (`cleanRollback`, `residualRisk`, separate metadata & staging rollback status), dual-phase independent Staging rollback in [textAudioStagingService.js:66](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textAudioStagingService.js#L66), `createTextStructuredAudioZipImportCoordinator` serialization/cancellation & `rollbackCompletedTextStructuredAudioZipImport` ([textStructuredAudioZipImportService.js:77,492](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L77)), plus honest partial-rollback logging and mode/doc-switch/unmount cancellation in `handleStructuredTextAddAudioZipFiles` ([App.jsx:331,874,1973,3869](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1973)). Note: Text Library IDB and Audio Staging IDB remain separate IndexedDB databases (compensating rollback, not single-TX cross-DB atomicity).
-- **Verification & Classification:** **`FIXED`** — verified across `audit-v603-p10-h1-h3-remediation.mjs` (`[H2][P10-G007]` **PASS**), `audit-v603-p10-h5-export-zip-remediation.mjs` (`H5-C` `Scenario-1`..`Scenario-6` **PASS** covering metadata rollback failure, staging rollback failure, overlapping imports, mid-import workspace switch, post-commit abort, and idempotent retry), plus the H5-D updated contracts in `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-B]` **PASS**) and `audit-v603-beta8-p4-staging-zip.mjs` (`21/21` **PASS**).
-- **Manual Browser Check Required:** Optional (import a valid Portable ZIP and a corrupt ZIP in browser to smoke-check UI feedback).
+- **Implemented Fix:** Created transactional orchestrator `executeTextStructuredAudioZipImport` in [textStructuredAudioZipImportService.js:192](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L192) (**Phase 1:** decompress & validate all Split/Full blobs before any DB write -> **Phase 2:** snapshot pre-existing Staging records & stage blobs -> **Phase 3:** atomic single-TX `executeTextZipImportMetadataCommit` in [textLibraryCommandService.js:399](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textLibraryCommandService.js#L399) -> compensating rollback via `rollbackTextAudioStagingBatch` + `executeTextAudioImportRollback`). In **Wave H5-C**, hardened two-DB compensating rollback with `zipImportRecovery` (`cleanRollback`, `residualRisk`, separate metadata & staging rollback status), dual-phase independent Staging rollback in [textAudioStagingService.js:66](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textAudioStagingService.js#L66), `createTextStructuredAudioZipImportCoordinator` serialization/cancellation & `rollbackCompletedTextStructuredAudioZipImport` ([textStructuredAudioZipImportService.js:103,518](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L103)), plus honest partial-rollback logging and mode/doc-switch/unmount cancellation in `handleStructuredTextAddAudioZipFiles` (`App.jsx`). In **Wave H6-D**, hardened queued ZIP imports before React commits `setTextLibrarySnapshot` by reading live `readTextLibrarySnapshot()` inside `coordinator.runExclusive` ([App.jsx:1989](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1989)) and synchronously merging `metadataCommit` into `textLibrarySnapshotRef.current` via pure `mergeTextLibraryZipMetadataCommitIntoSnapshot` ([textStructuredAudioZipImportService.js:74](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L74), [App.jsx:2048-2060](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L2048-L2060)). Note: Text Library IDB and Audio Staging IDB remain separate IndexedDB databases (compensating rollback, not single-TX cross-DB atomicity).
+- **Verification & Classification:** **`Confirmed Fixed` (Node; live browser smoke test `Unverified in Browser`)** — verified across `audit-v603-p10-h1-h3-remediation.mjs` (`[H2][P10-G007]` **PASS**), `audit-v603-p10-h5-export-zip-remediation.mjs` (`H5-C` `Scenario-1`..`Scenario-6` + `H6-D` `Scenario-7` **PASS** — `11/11` total), `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-B]` **PASS**), and `audit-v603-beta8-p4-staging-zip.mjs` (`21/21` **PASS**).
+- **Manual Browser Check Required:** Yes (import valid, corrupt, and back-to-back queued Portable ZIPs in browser).
 
 ---
 
@@ -168,25 +168,25 @@
 ---
 
 ### `P10-G013` — `BottomPlayerBar` Receives `textTtsOnly` / `onTextTtsOnlyChange` Without Rendering Toggle
-- **Status:** **Open / Deferred (Out of H1–H5 Scope)**
+- **Status:** **Fixed & Verified (Wave H6-B)**
 - **Category:** UI Prop Plumbing / Control Parity
 - **Severity / Confidence:** `P2` | `Confirmed Runtime` (P9-B `S10-A`) & `Confirmed Code`
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S10-A]`), [MainAppShellView.jsx](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/components/layout/MainAppShellView.jsx), and [BottomPlayerBar.jsx](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/components/layout/BottomPlayerBar.jsx): `BottomPlayerBar` accepts `textTtsOnly` / `onTextTtsOnlyChange` props but neither renders nor invokes them.
-- **Bounded Fix Direction:** Decide explicitly: either wire a compact TTS-Only toggle/badge into `BottomPlayerBar` (matching Player header expectation) OR remove dead props if Sidebar `TextStructuredAudioControls` (`L294`) is the intended single control.
-- **Required Test:** Align P9-B `S10-A` with approved UI contract.
-- **Manual Browser Check Required:** Yes.
+- **Primary Evidence:** Previously [MainAppShellView.jsx](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/components/layout/MainAppShellView.jsx) forwarded unused `textTtsOnly` / `onTextTtsOnlyChange` props to [BottomPlayerBar.jsx](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/components/layout/BottomPlayerBar.jsx) (`S10-A` probe).
+- **Implemented Fix:** Removed dead `textTtsOnly` and `onTextTtsOnlyChange` prop wiring from `MainAppShellView.jsx` and `App.jsx`, leaving `TextStructuredAudioControls` as the canonical single `LOCAL FIRST` / `TTS ONLY` (`data-text-audio-source-toggle="true"`), `AUTO`, `CUSTOM` owner on both Desktop (`MainAppShellView.jsx`) and Mobile (`MobileTools.jsx`) via `handleStructuredTextGlobalTtsOnlyChange` ([App.jsx:6613,6718](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L6613)).
+- **Verification & Classification:** **`Confirmed Fixed`** — `audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S10-A FIXED]`, `24/24` **PASS**) confirms dead props are removed, no duplicate toggle was added to `BottomPlayerBar.jsx`, and `TextStructuredAudioControls` works on Desktop & Mobile.
+- **Manual Browser Check Required:** Optional visual check on Desktop & Mobile Player Source toggles.
 
 ---
 
 ### `P10-G014` — Single-Card & Legacy-Batch Exporters Ignore Ready Edge `Full` Artifacts
-- **Status:** **Fixed & Verified (Wave H5-A)**
+- **Status:** **Fixed & Verified (Wave H5-A; H6-A Contract Alignment)**
 - **Category:** Audio Export Completeness
 - **Severity / Confidence:** `P2` | `Confirmed Runtime` (P9-C `P9C-C`) & `Confirmed Code`
 - **Affected Modes:** Structured Text (`Paragraph`, `Mixed` `Full` audio)
 - **Primary Evidence:** Prior [App.jsx](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L4839-L4881) card & legacy-batch exporters (`handleStructuredTextExportCardZip`, `handleStructuredTextExportFullCardAudio`, `handleStructuredTextBatchExportReadyMp3`, `handleStructuredTextBatchExportConsolidatedZip`) + P9-C `[DEFECT P9C-C]` only inspected Split variants even when Ready Edge `Full` artifacts existed in Staging.
-- **Implemented Fix:** Added `resolveTextStructuredCardReadyFullArtifacts` and `resolveTextStructuredBatchReadyFullArtifacts` in [textStructuredBulkExportDomain.js:257,317](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredBulkExportDomain.js#L257) and extracted `executeStructuredTextCardZipExport`, `executeStructuredTextFullCardAudioExport`, `executeStructuredTextBatchReadyMp3Export`, and `executeStructuredTextBatchConsolidatedZipExport` into [textStructuredCardExportService.js:156-656](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredCardExportService.js#L156), wired from [App.jsx:4839-4881](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L4839-L4881). Packages deduplicated matching Ready Edge Full MP3s (`representation: 'full'`, `fullArtifactFingerprint`, `rf: null` in manifest v2 + `AUDIO_INDEX.csv`), excludes stale/mismatched/metadata-only Full records, avoids regeneration, and prefers Ready Edge Full MP3 over derived WAV fallback.
-- **Verification & Classification:** **`FIXED`** — `audit-v603-p10-h5-export-zip-remediation.mjs` (`H5-A` `P10-G014-CardZip`, `P10-G014-FullCard`, `P10-G014-Batch`) and `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-C]`) **PASS**. Note historical inline regex `audit-v603-dl-b1-download-batch.mjs:61` still probes old inline `physicalByRf` inside `App.jsx` after service extraction.
+- **Implemented Fix:** Added `resolveTextStructuredCardReadyFullArtifacts` and `resolveTextStructuredBatchReadyFullArtifacts` in [textStructuredBulkExportDomain.js:257,317](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredBulkExportDomain.js#L257) and extracted `executeStructuredTextCardZipExport`, `executeStructuredTextFullCardAudioExport`, `executeStructuredTextBatchReadyMp3Export`, and `executeStructuredTextBatchConsolidatedZipExport` into [textStructuredCardExportService.js:156-656](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredCardExportService.js#L156), wired from `App.jsx` (`handleStructuredTextExportCardZip`..`handleStructuredTextBatchExportConsolidatedZip`). Packages deduplicated matching Ready Edge Full MP3s (`representation: 'full'`, `fullArtifactFingerprint`, `rf: null` in manifest v2 + `AUDIO_INDEX.csv`), excludes stale/mismatched/metadata-only Full records, avoids regeneration, and prefers Ready Edge Full MP3 over derived WAV fallback.
+- **Verification & Classification:** **`Confirmed Fixed`** — `audit-v603-p10-h5-export-zip-remediation.mjs` (`H5-A` `P10-G014-CardZip`, `P10-G014-FullCard`, `P10-G014-Batch`), `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-C]`), and H6-A behavior-verified `audit-v603-dl-b1-download-batch.mjs` (`35 checks`) all **PASS**.
 - **Manual Browser Check Required:** Yes (export a Card ZIP & Full Card MP3 after generating `Full` audio in browser and inspect downloaded archive/audio).
 
 ---
@@ -216,43 +216,44 @@
 ---
 
 ### `P10-G017` — Staging GC Full/Split Policy Asymmetry & Edge-Only Coverage Readiness Gate
+- **Status:** **Intentional Product Behavior (Read-Only Verified in Wave H6-C)**
 - **Category:** Staging Lifecycle & Coverage Semantics
 - **Severity / Confidence:** `P2` | `Confirmed Code`
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:**
-  - `textAudioStagingGcService.js` (observed in Stage 2): upon segment text edits, `Full` Staging blobs whose fingerprint no longer matches current block `fullArtifactFingerprint` become unreferenced and are purged immediately by GC, whereas `Split` blobs remain preserved behind `STALE` / `OTHER_VOICE` variant entries until explicit cleanup.
-  - [textStructuredAudioCoverageDomain.js:23-26](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioCoverageDomain.js#L23-L26): `variantsForSlot` requires `source === 'generated'` and `engine === 'edge'`, excluding imported Folder/ZIP or non-Edge audio variants from slot coverage diagnostics.
-- **Bounded Fix Direction:** Document the intended Split-vs-Full GC retention contract explicitly for Round D (avoid silent surprise deletion of user-generated Full audio on minor typos OR align Split GC cleanly), and confirm whether external/non-Edge variants should surface separately in coverage UI.
-- **Required Test:** Unit test clarifying `textAudioStagingGcService.js` retention matrix across `STALE` Split vs `Full`.
+- **Primary Evidence & Verification:**
+  - Read-only inspection of [textAudioStagingGcService.js:11-34](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textAudioStagingGcService.js#L11-L34) confirmed `referenced` collects both active Split `rf-sha256-*` fingerprints and content-matching Full `full-sha256-*` fingerprints (`current.contentFingerprint === artifact?.descriptor?.contentFingerprint`); legacy records are preserved, while unreferenced orphans are eligible for GC release. Verified passing by `audit-v603-a4-staging-gc.mjs` (`7 checks`), `audit-v603-beta8-p4-staging-zip.mjs` (`PASS 13–14`), and `audit-v603-p9c-bulk-marathon.mjs` (`C4`, `C7`, `C10`).
+  - [textStructuredAudioCoverageDomain.js:23-26](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioCoverageDomain.js#L23-L26) deliberately gates `variantsForSlot` to `source === 'generated'` and `engine === 'edge'` for Edge download coverage.
+- **Classification:** **`Intentional Product Behavior`** (no production code changes).
 - **Manual Browser Check Required:** No.
 
 ---
 
 ### `P10-G018` — Partial `hf6` Indonesian Default Voice Split (`Gadis` vs `Tuti`)
+- **Status:** **Fixed Missing-Preference Download Profile Fallback (Wave H6-C) | Intentional Product Behavior (Per-Scope Defaults)**
 - **Category:** Default Preference Consistency
 - **Severity / Confidence:** `P2` | `Confirmed Code` (triggered by Stage 3 Triage of `fdcf3aa`)
-- **Affected Modes:** Structured Text Bulk/Download Profiles vs Global Edge (`Table` intentionally separate)
+- **Affected Modes:** Structured Text Download Profile vs Bulk Generation vs Global Edge (`Table` intentionally separate)
 - **Primary Evidence:**
-  - Commit `fdcf3aa` changed `edgeMeaningVoiceId` to `'id-ID-GadisNeural'` at [textStructuredAudioGenerationDomain.js:16](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioGenerationDomain.js#L16).
-  - Remaining Text sites still default to `'su-ID-TutiNeural'`: `bulkMeaningVoiceIds` (`L24`), `bulkExportMeaningVoiceId` (`L32`), [textStructuredAudioDownloadProfileDomain.js:165](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioDownloadProfileDomain.js#L165), plus [useMainAppPrimaryState.js:152](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/hooks/useMainAppPrimaryState.js#L152) (`edgeIndonesianVoice` for Table/Legacy).
-- **Bounded Fix Direction:** Explicitly ratify per-scope defaults prior to Round D Reset-to-Defaults implementation (especially whether Text Bulk & Download Profile ID defaults align to `Gadis` or remain intentionally distinct from `edgeMeaningVoiceId`, while keeping `Table` isolated).
-- **Required Test:** Align `audit-v603-beta8-p7-hf2-global-player-defaults.mjs` + Round D reset default contract test.
+  - `TEXT_STRUCTURED_GENERATION_DEFAULTS` sets `edgeTextVoiceId: 'en-GB-SoniaNeural'` and `edgeMeaningVoiceId: 'id-ID-GadisNeural'` ([textStructuredAudioGenerationDomain.js:15-16](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioGenerationDomain.js#L15-L16)) while intentionally keeping `bulkTextVoiceIds: ['en-GB-LibbyNeural']` and `bulkMeaningVoiceIds: ['su-ID-TutiNeural']` (`L23-24`), and Table/Legacy `edgeIndonesianVoice` remains `'su-ID-TutiNeural'` ([useMainAppPrimaryState.js:152](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/hooks/useMainAppPrimaryState.js#L152)).
+  - However, `resolveTextStructuredEffectiveDownloadVoice` ([textStructuredAudioDownloadProfileDomain.js:165](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredAudioDownloadProfileDomain.js#L165)) still fell back to `'su-ID-TutiNeural'` when `preferences?.edgeMeaningVoiceId` was absent.
+- **Implemented Fix & Verification:** Updated the missing-preference Meaning fallback at `textStructuredAudioDownloadProfileDomain.js:165` to `'id-ID-GadisNeural'` while preserving `Libby`/`Tuti` Bulk defaults and Table defaults. Verified by `[H6-C][CONTRACT] [P10-G018]` in `audit-v603-p9c-bulk-marathon.mjs` (`17/17 PASS`). Note historical `audit-v603-beta8-p7-hf2-global-player-defaults.mjs:152` remains a pre-existing baseline mismatch predating HF5 (`fdcf3aa`).
 - **Manual Browser Check Required:** No.
 
 ---
 
 ### `P10-G019` — App Unmount Cleanup Omits Table/Legacy Runtime ObjectURL Maps
+- **Status:** **Fixed & Verified (Wave H6-C)**
 - **Category:** Memory Hygiene on Remount/HMR
 - **Severity / Confidence:** `P3` | `Confirmed Code`
 - **Affected Modes:** `Table`, `Legacy Text`
-- **Primary Evidence:** [App.jsx:372-382](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L372-L382) cleanup effect revokes `structuredTextAudioRuntimeUrlsRef`, `structuredTextFullAudioRuntimeUrlsRef`, and Structured Text/Staging caches on unmount, without revoking `localAudioMapTable`, `localAudioMapText`, `tableAudioFolderVariantInventory`, or `tableAudioZipRuntimeCache`.
-- **Bounded Fix Direction:** Add non-intrusive unmount revocation via refs if `App` is ever remounted under tests/StrictMode.
-- **Required Test:** Code/lifecycle review.
-- **Manual Browser Check Required:** No.
+- **Primary Evidence:** Previously [App.jsx:398-408](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L398-L408) only cleaned Structured Text ObjectURLs on unmount (alongside `silentWavUrlRef` cleanup in `audioRuntimeLifecycleService.js:21`) without revoking `localAudioMapTable`, `localAudioMapText`, `clearTableAudioFolderRuntimeCache()`, `clearTableAudioZipRuntimeCache()`, or `clearAudioStagingRuntimeCacheForMode('table')`.
+- **Implemented Fix & Verification:** Added `localAudioMapTableRef` alongside `localAudioMapTextRef` and an App root unmount cleanup effect ([App.jsx:6180-6198](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L6180-L6198)) revoking all `localAudioMapTableRef.current` / `localAudioMapTextRef.current` blob URLs and calling `clearTableAudioFolderRuntimeCache()`, `clearTableAudioZipRuntimeCache()`, and `clearAudioStagingRuntimeCacheForMode('table')`. Verified via `npm run build`, `audit-v603-round-a-d1-d4.mjs` (`7/7`), `audit-v603-round-b-d2-d3.mjs` (`6/6`), `audit-v603-round-c-taxonomy.mjs` (`10/10`), and `audit-v603-round-c1-legacy-empty-audio.mjs` (`4/4`).
+- **Manual Browser Check Required:** Optional.
 
 ---
 
 ### `P10-G020` — Orphaned Legacy UI Components (`Sidebar.jsx`, `ControlSectionTabs.jsx`)
+- **Status:** **Deferred by Design (Outside H1–H6 Scope)**
 - **Category:** Dead Code / Maintenance Surface
 - **Severity / Confidence:** `P3` | `Confirmed Code`
 - **Affected Modes:** N/A (dead files in `src/`)
@@ -264,6 +265,7 @@
 ---
 
 ### `P10-G021` — Confirmation & System Storage Parity Gaps (`window.confirm` + Text Staging Controls)
+- **Status:** **Deferred by Design (Outside H1–H6 Scope)**
 - **Category:** UI/UX Consistency
 - **Severity / Confidence:** `P3` | `Confirmed Code`
 - **Affected Modes:** Structured Text & Legacy Text Library Management
@@ -271,3 +273,13 @@
 - **Bounded Fix Direction:** Replace `window.confirm` with inline two-step arming or `SafetyConfirmDialog` consistency when UI polish resumes; evaluate exposing a safe Text runtime cache reset / orphan GC trigger under Audio Library / System.
 - **Required Test:** UI component test + manual verification.
 - **Manual Browser Check Required:** Yes.
+
+---
+
+## Final Release-Readiness Classification Matrix (Post-H6)
+
+- **Confirmed Fixed (17 gap items):** `P10-G001`–`P10-G016` (with `G013` fixed in H6-B, `G007` queued UI-lag hardened in H6-D), `P10-G018` (missing-preference Download Profile fallback fixed in H6-C), and `P10-G019` (fixed in H6-C).
+- **Intentional Product Behavior:** `P10-G017` (Staging GC Split/Full retention & Edge-only readiness gate) and the intentional per-scope voice split in `P10-G018` (`Sonia`/`Gadis` Single Edge vs `Libby`/`Tuti` Bulk vs `su-ID-TutiNeural` Table).
+- **Deferred by Design:** `P10-G020`, `P10-G021`, and **Round D** (`Reset to Defaults`).
+- **Unverified in Browser:** Live Chromium playback, Web Speech API (`getVoices()`), OS `MediaSession` UI (`P10-G009`), multi-part ZIP browser download bar (`P10-G016`), real IndexedDB & File System Access folder flows (`P10-G006`, `P10-G007`), and interactive UI smoke checks (`P10-G001`–`P10-G005`, `P10-G008`, `P10-G010`–`P10-G014`).
+- **Remaining Release Blockers:** **0 known code-level P1/P2 blockers** in Node/Vite automated verification; release sign-off remains gated on manual P9-B/C Chromium acceptance testing.

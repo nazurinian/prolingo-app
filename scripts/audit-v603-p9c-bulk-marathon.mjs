@@ -82,6 +82,8 @@ const {
 const {
   buildTextStructuredAudioContentFingerprint
 } = await import('../src/domain/text/textStructuredAudioIdentityDomain.js');
+const { resolveTextStructuredEffectiveDownloadVoice } = await import('../src/domain/text/textStructuredAudioDownloadProfileDomain.js');
+const { TEXT_STRUCTURED_GENERATION_DEFAULTS } = await import('../src/domain/text/textStructuredAudioGenerationDomain.js');
 const { applyTextLibraryCommand, TEXT_LIBRARY_COMMAND_TYPES } = await import('../src/domain/text/textLibraryCommandDomain.js');
 
 const { planTextAudioStagingGarbage } = loadMod('src/services/persistence/textAudioStagingGcService.js');
@@ -652,6 +654,16 @@ await runCheck('C12', 'CONTRACT', 'buildTextStructuredBulkGenerationPlan allows 
   });
   assert.equal(blockedPlan.coverage.logicalRequirements, 0);
   assert.equal(blockedPlan.selectedVoices.text.length, 0);
+});
+
+await runCheck('H6-C', 'CONTRACT', '[P10-G018] Missing-preference Meaning fallback matches Gadis default while preserving Libby/Tuti bulk & Table defaults', () => {
+  assert.equal(resolveTextStructuredEffectiveDownloadVoice({ channel: 'text', preferences: null }).voiceId, TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId);
+  assert.equal(resolveTextStructuredEffectiveDownloadVoice({ channel: 'meaning', preferences: null }).voiceId, TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId);
+  assert.equal(TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId, 'id-ID-GadisNeural');
+  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
+  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
+  const primaryStateSource = readRepoText('src/hooks/useMainAppPrimaryState.js');
+  assert.match(primaryStateSource, /"su-ID-TutiNeural"/);
 });
 
 const passCount = results.filter(r => r.ok).length;

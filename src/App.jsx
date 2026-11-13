@@ -135,7 +135,7 @@ import { executeProLingoTextPackExport, executeProLingoTextPackFileAttachOrSync,
 import { executeProLingoTextExternalJsonFileDecision, executeProLingoTextExternalJsonFileInitialImport, inspectProLingoTextExternalJsonFile } from './services/persistence/textExternalJsonService.js';
 import { executeProLingoTextDatabaseBackupExport, executeProLingoTextDatabaseReplaceRestore, readProLingoTextDatabaseBackupFile } from './services/persistence/textDatabaseBackupService.js';
 import { executeTextAudioVariantBulkUpsert, executeTextFullAudioArtifactBulkUpsert } from './services/persistence/textLibraryCommandService.js';
-import { syncLegacyTextProjectionToDatabase } from './services/persistence/textLibraryIndexedDbService.js';
+import { readTextLibrarySnapshot, syncLegacyTextProjectionToDatabase } from './services/persistence/textLibraryIndexedDbService.js';
 import { APP_CHECKPOINT_ID, APP_VERSION } from './constants/appMetadata.js';
 import { executeStructuredTextPlaybackSessionService } from './services/playback/textStructuredPlaybackSessionService.js';
 import { executeStructuredTextRuntimeAudioPlaybackService } from './services/playback/textStructuredAudioRuntimeService.js';
@@ -163,6 +163,7 @@ import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRunti
 import {
   createTextStructuredAudioZipImportCoordinator,
   executeTextStructuredAudioZipImport,
+  mergeTextLibraryZipMetadataCommitIntoSnapshot,
   rollbackCompletedTextStructuredAudioZipImport
 } from './services/audio/textStructuredAudioZipImportService.js';
 import { clearTextAudioStagingRuntimeCache, getTextAudioStagingBlob, getTextAudioStagingObjectUrl, listTextAudioStagingMetadata, putTextAudioStagingBlob, putTextFullAudioStagingBlob, reconcileTextAudioStagingRuntimeBindings, releaseTextAudioStaging, releaseTextAudioStagingRecords, TEXT_AUDIO_STAGING_ZIP_MAX_BYTES } from './services/persistence/textAudioStagingService.js';
@@ -1985,7 +1986,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         return `${scope?.mode || 'table'}:${scope?.activeTextEditorModel || 'legacy'}:${scope?.activeTextDocumentId || ''}`;
       },
       run: async ({ signal, isStaleContext }) => {
-        const sourceSnapshot = snapshotOverride || textLibrarySnapshotRef.current || textLibrarySnapshot;
+        const liveSnapshot = snapshotOverride ? null : await readTextLibrarySnapshot().catch(() => null);
+        const sourceSnapshot = snapshotOverride || liveSnapshot || textLibrarySnapshotRef.current || textLibrarySnapshot;
         let imported;
         try {
           imported = await executeTextStructuredAudioZipImport({
@@ -2044,24 +2046,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         } = imported;
 
         if (metadataCommit?.audioVariants?.length || metadataCommit?.blocks?.length) {
+          if (!snapshotOverride && (textLibrarySnapshotRef.current || sourceSnapshot)) {
+            textLibrarySnapshotRef.current = mergeTextLibraryZipMetadataCommitIntoSnapshot(
+              textLibrarySnapshotRef.current || sourceSnapshot,
+              metadataCommit
+            );
+          }
           setTextLibrarySnapshot(previous => {
-            if (!previous) return previous;
-            let nextVariants = previous.audioVariants || [];
-            let nextCounters = previous.counters;
-            let nextBlocks = previous.blocks || [];
-            if (metadataCommit.audioVariants?.length) {
-              const variantUpdates = new Map(metadataCommit.audioVariants.map(record => [record.id, record]));
-              const seen = new Set(nextVariants.map(record => record.id));
-              nextVariants = nextVariants.map(record => variantUpdates.get(record.id) || record);
-              metadataCommit.audioVariants.forEach(record => { if (!seen.has(record.id)) nextVariants.push(record); });
-              if (metadataCommit.counters) nextCounters = metadataCommit.counters;
-            }
-            if (metadataCommit.blocks?.length) {
-              const blockUpdates = new Map(metadataCommit.blocks.map(block => [block.id, block]));
-              nextBlocks = nextBlocks.map(block => blockUpdates.get(block.id) || block);
-            }
-            const updatedSnapshot = { ...previous, counters: nextCounters, audioVariants: nextVariants, blocks: nextBlocks };
-            textLibrarySnapshotRef.current = updatedSnapshot;
+            const updatedSnapshot = mergeTextLibraryZipMetadataCommitIntoSnapshot(previous, metadataCommit);
+            if (!snapshotOverride && updatedSnapshot) textLibrarySnapshotRef.current = updatedSnapshot;
             return updatedSnapshot;
           });
         }
@@ -6184,11 +6177,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return folderInputRef.audioAutoRestoreState;
   };
 
+  const localAudioMapTableRef = useRef(localAudioMapTable);
   const localAudioMapTextRef = useRef(localAudioMapText);
   const previousLegacyAudioDocumentIdRef = useRef(activeTextDocumentId);
   useLayoutEffect(() => {
+    localAudioMapTableRef.current = localAudioMapTable;
     localAudioMapTextRef.current = localAudioMapText;
   });
+
+  useEffect(() => () => {
+    Object.values(localAudioMapTableRef.current || {}).forEach(url => {
+      if (url) { try { URL.revokeObjectURL(url); } catch { /* noop */ } }
+    });
+    Object.values(localAudioMapTextRef.current || {}).forEach(url => {
+      if (url) { try { URL.revokeObjectURL(url); } catch { /* noop */ } }
+    });
+    clearTableAudioFolderRuntimeCache();
+    clearTableAudioZipRuntimeCache();
+    clearAudioStagingRuntimeCacheForMode('table');
+  }, []);
 
   const handleFolderSelect = (e) => {
     const liveScope = latestAudioFolderScopeRef.current;
@@ -6845,12 +6852,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
     cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive,
     textPlaybackRepresentationMode: textStructuredPreferences.playbackRepresentationMode,
-    textTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
     textPlaybackOrder: structuredTextAudioPlaybackOrder,
     textPlaybackChannelMode: textStructuredPreferences.playbackChannelMode,
     textActiveCursorSegmentId: playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT ? currentIndex : null,
     onTextPlaybackRepresentationModeChange: handleStructuredTextPlaybackRepresentationModeChange,
-    onTextTtsOnlyChange: handleStructuredTextGlobalTtsOnlyChange,
     onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true),
     isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen,
