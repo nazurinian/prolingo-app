@@ -88,6 +88,7 @@ import { executeGlobalPlaybackSessionService } from './services/playback/globalP
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
+import { getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode } from './domain/view/dataSystemBoundaryDomain';
 import { executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
 import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeBodyThemeBackgroundEffect, executeForegroundPlaybackVisibilityEffect, executeLogAutoScrollEffect, executeMobileHeaderScrollListenerEffect, executeMobileWindowScrollEffect, executeResponsiveViewportLifecycleEffect, executeSidebarHeaderVisibilityEffect, executeUnsavedCsvBeforeUnloadEffect } from './services/navigation/appWindowLifecycleService';
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
@@ -852,7 +853,28 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const selectedTextBrowserVoice = structuredTextVoiceState.textVoice;
   const selectedTextIndonesianVoice = structuredTextVoiceState.meaningVoice;
   const structuredTextModeActive = mode === 'text' && activeTextEditorModel === 'structured-v1';
+  const legacyTextModeActive = isLegacyTextMode(mode, activeTextEditorModel);
+  const legacyTextAudioCount = legacyTextModeActive ? Object.keys(localAudioMapText || {}).length : 0;
+  const batchScopeKey = getBatchScopeKey({ mode, activeTextEditorModel, activeTextDocumentId });
+  const previousBatchScopeKeyRef = useRef(batchScopeKey);
+  const latestAudioFolderScopeRef = useRef({ mode, activeTextEditorModel, activeTextDocumentId });
+  latestAudioFolderScopeRef.current = { mode, activeTextEditorModel, activeTextDocumentId };
   useEffect(() => { if (!structuredTextModeActive) setTextPlayerWorkspaceOpen(false); }, [structuredTextModeActive]);
+  useEffect(() => {
+    if (previousBatchScopeKeyRef.current !== batchScopeKey) {
+      previousBatchScopeKeyRef.current = batchScopeKey;
+      setIsBatchOpen(false);
+    }
+  }, [batchScopeKey, setIsBatchOpen]);
+  const setBatchOpenGuarded = useCallback((nextValue) => {
+    setIsBatchOpen(prev => {
+      const resolved = typeof nextValue === 'function' ? nextValue(prev) : Boolean(nextValue);
+      if (!resolved) return false;
+      return isBatchPopupAllowed(latestAudioFolderScopeRef.current);
+    });
+  }, [setIsBatchOpen]);
+  const canOpenBatchPopup = isBatchPopupAllowed({ mode, activeTextEditorModel });
+  const effectiveIsBatchOpen = Boolean(isBatchOpen && canOpenBatchPopup && previousBatchScopeKeyRef.current === batchScopeKey);
   useEffect(() => { setStructuredTextPlaybackSourceStatus(null); }, [activeTextDocumentTree?.id]);
   // P4-A11: speaker profiles are document metadata, not audio identity. The requested
   // voice can differ per conversation speaker while SEGMENT_ID/TXTAUDIO identity stays stable.
@@ -5680,6 +5702,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
 
   const runBatchDownload = async (options = {}) => {
+    if (mode !== 'table') {
+      addLog?.('Info', 'Blocked Table Batch download outside Table mode.');
+      return { status: 'table-only-r2' };
+    }
     if (generatorEngine === 'gemini' && !geminiOwnerState.unlocked && !geminiOwnerState.byokRegistered) {
       alert('Gemini terkunci. Daftarkan API key Anda atau unlock Owner Access.');
       return;
@@ -6161,11 +6187,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [refreshTableAudioStaging, addLog]);
 
   const loadAudioFolderFiles = async (files, _folderName = '', options = {}) => {
+    const liveScope = latestAudioFolderScopeRef.current;
+    if (
+      !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
+      || !isLegacyAudioFolderSupported(liveScope)
+      || liveScope.mode !== mode
+      || (mode === 'text' && liveScope.activeTextEditorModel !== activeTextEditorModel)
+    ) {
+      addLog?.('Info', 'Skipped Legacy Audio Folder load: only supported in Table or Legacy Text mode.');
+      return { count: 0, orphanCount: 0, blocked: true, reason: 'legacy-audio-folder-unsupported' };
+    }
     clearGeneratedAudioMetaForMode(mode);
     if (mode === 'table') revokeTableFolderVariantUrls();
     const result = executeAudioFolderSelectService({
       e: { target: { files, value: '' } },
       mode,
+      activeTextEditorModel: liveScope.activeTextEditorModel,
       localAudioMapTable,
       localAudioMapText,
       playlist,
@@ -6310,6 +6347,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // folder alone. Re-scan when dataset identity changes (import/add/delete), but
   // not for search/filter/sort because those do not change `playlist` identity.
   const audioDatasetIdentitySignature = useMemo(() => {
+    if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) return '';
     if (!playlist.length) return '';
     if (mode === 'table') {
       return playlist
@@ -6318,7 +6356,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         .join('|');
     }
     return playlist.map(item => String(item?.id || '')).join('|');
-  }, [mode, playlist]);
+  }, [mode, activeTextEditorModel, playlist]);
 
   const getAudioAutoRestoreState = () => {
     if (!folderInputRef.audioAutoRestoreState) {
@@ -6328,6 +6366,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleFolderSelect = (e) => {
+    const liveScope = latestAudioFolderScopeRef.current;
+    if (
+      !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
+      || !isLegacyAudioFolderSupported(liveScope)
+    ) {
+      if (e?.target) e.target.value = '';
+      addLog?.('Info', 'Legacy Audio Folder is only available in Table or Legacy Text mode.');
+      return { count: 0, orphanCount: 0, blocked: true, reason: 'legacy-audio-folder-unsupported' };
+    }
     const files = e?.target?.files;
     if (!files) return;
     const result = loadAudioFolderFiles(files, '', { automatic: false });
@@ -6336,34 +6383,82 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleRememberedAudioFolderOpen = ({ forcePicker = false } = {}) => {
+    const liveScope = latestAudioFolderScopeRef.current;
+    if (
+      !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
+      || !isLegacyAudioFolderSupported(liveScope)
+    ) {
+      addLog?.('Info', 'Legacy Audio Folder is disabled for Structured Text; use Audio Library / Portable ZIP in the Audio tab.');
+      return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
+    }
     // Manual reconnect/change always supersedes any slower automatic scan.
     const restoreState = getAudioAutoRestoreState();
     restoreState.generations[mode] = (restoreState.generations[mode] || 0) + 1;
+    const expectedMode = mode;
+    const expectedEditorModel = liveScope.activeTextEditorModel;
     return executeRememberedAudioFolderOpenService({
       mode,
+      activeTextEditorModel: expectedEditorModel,
       forcePicker,
-      onFiles: loadAudioFolderFiles,
-      fallbackOpen: () => folderInputRef.current?.click(),
+      onFiles: (files, folderName, options = {}) => {
+        const currentScope = latestAudioFolderScopeRef.current;
+        if (
+          currentScope.mode !== expectedMode
+          || currentScope.activeTextEditorModel !== expectedEditorModel
+          || !isLegacyAudioFolderSupported(currentScope)
+        ) {
+          return { stale: true };
+        }
+        return loadAudioFolderFiles(files, folderName, options);
+      },
+      fallbackOpen: () => {
+        const currentScope = latestAudioFolderScopeRef.current;
+        if (!isLegacyAudioFolderSupported(currentScope)) return;
+        folderInputRef.current?.click();
+      },
       addLog
     });
   };
 
   const handleRememberedAudioFolderRefresh = () => {
+    const liveScope = latestAudioFolderScopeRef.current;
+    if (
+      !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
+      || !isLegacyAudioFolderSupported(liveScope)
+    ) {
+      addLog?.('Info', 'Legacy Audio Folder is disabled for Structured Text; use Audio Library / Portable ZIP in the Audio tab.');
+      return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
+    }
     // Re-scan the remembered folder against the current dataset without forcing
     // the user to pick the folder again. This also supersedes slower auto scans.
     const restoreState = getAudioAutoRestoreState();
     const generation = (restoreState.generations[mode] || 0) + 1;
     restoreState.generations[mode] = generation;
+    const expectedMode = mode;
+    const expectedEditorModel = liveScope.activeTextEditorModel;
 
     return executeRememberedAudioFolderOpenService({
       mode,
+      activeTextEditorModel: expectedEditorModel,
       forcePicker: false,
       onFiles: (files, folderName, options = {}) => {
         const latestState = getAudioAutoRestoreState();
-        if (latestState.generations[mode] !== generation) return { stale: true };
+        const currentScope = latestAudioFolderScopeRef.current;
+        if (
+          latestState.generations[expectedMode] !== generation
+          || currentScope.mode !== expectedMode
+          || currentScope.activeTextEditorModel !== expectedEditorModel
+          || !isLegacyAudioFolderSupported(currentScope)
+        ) {
+          return { stale: true };
+        }
         return loadAudioFolderFiles(files, folderName, { ...options, automatic: true });
       },
-      fallbackOpen: () => folderInputRef.current?.click(),
+      fallbackOpen: () => {
+        const currentScope = latestAudioFolderScopeRef.current;
+        if (!isLegacyAudioFolderSupported(currentScope)) return;
+        folderInputRef.current?.click();
+      },
       addLog
     });
   };
@@ -6385,6 +6480,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   folderInputRef.tableAudioZipSummary = tableAudioZipSummary;
 
   useEffect(() => {
+    if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) return;
     if (!playlist.length || !audioDatasetIdentitySignature) return;
 
     const restoreState = getAudioAutoRestoreState();
@@ -6393,12 +6489,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     restoreState.signatures[mode] = audioDatasetIdentitySignature;
     const generation = (restoreState.generations[mode] || 0) + 1;
     restoreState.generations[mode] = generation;
+    const expectedMode = mode;
+    const expectedEditorModel = activeTextEditorModel;
 
     executeRememberedAudioFolderRestoreService({
       mode,
+      activeTextEditorModel: expectedEditorModel,
       onFiles: (files, folderName, options = {}) => {
         const latestState = getAudioAutoRestoreState();
-        if (latestState.generations[mode] !== generation) {
+        const currentScope = latestAudioFolderScopeRef.current;
+        if (
+          latestState.generations[expectedMode] !== generation
+          || currentScope.mode !== expectedMode
+          || currentScope.activeTextEditorModel !== expectedEditorModel
+          || !isLegacyAudioFolderSupported(currentScope)
+        ) {
           return { stale: true };
         }
         return loadAudioFolderFiles(files, folderName, options);
@@ -6408,7 +6513,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   // Auto-rescan only when the dataset's audio identities change. Search/filter/sort
   // do not change this signature, while CSV import/add/delete do.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, audioDatasetIdentitySignature]);
+  }, [mode, activeTextEditorModel, audioDatasetIdentitySignature]);
 
   const structuredTextAudioInventorySummary = useMemo(() => summarizeTextStructuredAudioRuntimeInventory({
     documentTree: activeTextDocumentTree,
@@ -6523,7 +6628,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   } : null;
 
   const renderBatchPopup = (options = {}) => renderBatchPopupView({
-    batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
+    batchPanelRef, mode, activeTextEditorModel, setIsBatchOpen: setBatchOpenGuarded, isBatchDownloading, batchConfig, setBatchConfig,
     generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
     tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
@@ -6645,7 +6750,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const renderMobileTools = () => renderMobileToolsView({
-    sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
+    sidebarSection, renderControlSectionTabs, currentMapCount, legacyTextAudioCount, mode, renderStatusBadge,
     tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
     preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange, isSystemBusy, voices, selectedVoice: activeBrowserTtsVoice,
     setSelectedVoice: handleActiveBrowserTtsVoiceChange, indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,
@@ -6671,7 +6776,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     batchConfig, setBatchConfig, runBatchDownload, tableCoverage: tableAudioBatchCoverage, structuredTextBatch: structuredTextBatchControls,
     batchSessions: activeTableAudioBatchSessions, stagingRecords: activeTableAudioStagingRecords, stagingSummary: activeTableAudioStagingSummary, batchAvailabilityById: tableAudioBatchAvailabilityById,
     onExportCurrentMp3: exportCurrentSelectionMp3, onExportCurrentZip: exportCurrentSelectionZip, onExportBatchSessions: exportBatchSessions, onClearBatchStaging: clearBatchSessionStaging, onDeleteBatchHistory: deleteBatchSessionHistory, directMp3Limit: DIRECT_MP3_BATCH_LIMIT,
-    isBatchOpen, setIsBatchOpen, showLogs, setShowLogs,
+    isBatchOpen: effectiveIsBatchOpen, setIsBatchOpen: setBatchOpenGuarded, showLogs, setShowLogs,
     systemLogs, logContainerRef, storageRefreshToken,
     onDatasetCacheCleared: handleStorageDatasetCacheCleared, onMasteryReset: handleStorageMasteryReset,
     onStudyTrackingReset: handleStorageStudyTrackingReset, masteryByVocabId, activityByVocabId,
@@ -6849,7 +6954,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef, sourceInputRef, fullPackInputRef,
     handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab, handleMobileTabSwitch,
     renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection, setSidebarSection,
-    renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange,
+    renderControlSectionTabs, currentMapCount, legacyTextAudioCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange,
     generatorEngine, setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices,
     edgeVoices, edgeVoice, setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice,
     edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth,
@@ -6858,7 +6963,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onGeminiOwnerUnlock: handleGeminiOwnerUnlock, onGeminiOwnerLock: handleGeminiOwnerLock, geminiByokAvailable: geminiOwnerState.byokAvailable,
     geminiByokRegistered: geminiOwnerState.byokRegistered, onGeminiByokRegister: handleGeminiByokRegister,
     onGeminiByokClear: handleGeminiByokClear, batchButtonRef,
-    isBatchDownloading, setIsBatchOpen, isBatchOpen, renderBatchPopup, debugButtonRef,
+    isBatchDownloading, setIsBatchOpen: setBatchOpenGuarded, isBatchOpen: effectiveIsBatchOpen, renderBatchPopup, debugButtonRef,
     setShowLogs, showLogs, logContainerRef, systemLogs, voices,
     selectedVoice: activeBrowserTtsVoice, setSelectedVoice: handleActiveBrowserTtsVoiceChange,
     indonesianVoices, selectedIndonesianVoice: activeBrowserTtsIndonesianVoice,

@@ -24,7 +24,7 @@ export const renderMainAppShellView = (props) => {
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
     handleMobileTabSwitch, renderWorkspaceTabs, theme, setTheme, handleModeSwitch, sidebarSection, setSidebarSection,
-    renderControlSectionTabs, currentMapCount, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio, setPreferLocalAudio, generatorEngine,
+    renderControlSectionTabs, currentMapCount, legacyTextAudioCount = null, renderStatusBadge, tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority, preferLocalAudio, setPreferLocalAudio, generatorEngine,
     setGeneratorEngine, aiVoiceName, setAiVoiceName, aiVoices, edgeVoices, edgeVoice,
     setEdgeVoice, edgeIndonesianVoice, setEdgeIndonesianVoice, edgeRate, setEdgeRate, edgePitch,
     setEdgePitch, edgeHealth, testEdgeBackend, userApiKey, onUserApiKeyChange,
@@ -180,6 +180,8 @@ export const renderMainAppShellView = (props) => {
                 mode={mode}
                 batchButtonRef={batchButtonRef}
                 isBatchDownloading={isBatchDownloading}
+                activeTextEditorModel={activeTextEditorModel}
+                legacyTextAudioCount={legacyTextAudioCount}
                 setIsBatchOpen={setIsBatchOpen}
                 isBatchOpen={isBatchOpen}
                 debugButtonRef={debugButtonRef}
@@ -309,24 +311,28 @@ export const renderMainAppShellView = (props) => {
           </div>
         </SidebarShell>
 
-        {isBatchOpen && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-[120] flex items-end justify-center md:items-center md:p-5">
-            <button
-              type="button"
-              aria-label="Close Batch workspace"
-              onClick={() => setIsBatchOpen(false)}
-              className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]"
-            />
-            <section
-              className="relative z-10 w-full max-w-2xl overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-2xl custom-scrollbar pb-[env(safe-area-inset-bottom,0px)]"
-              style={{ maxHeight: 'min(88dvh, 820px)' }}
-              aria-label="Batch workspace"
-            >
-              {renderBatchPopup({ inline: true, showClose: true })}
-            </section>
-          </div>,
-          document.body
-        )}
+        {isBatchOpen && typeof document !== 'undefined' && (() => {
+          const batchPopupNode = renderBatchPopup({ inline: true, showClose: true });
+          if (!batchPopupNode) return null;
+          return createPortal(
+            <div className="fixed inset-0 z-[120] flex items-end justify-center md:items-center md:p-5">
+              <button
+                type="button"
+                aria-label="Close Batch workspace"
+                onClick={() => setIsBatchOpen(false)}
+                className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px]"
+              />
+              <section
+                className="relative z-10 w-full max-w-2xl overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-2xl custom-scrollbar pb-[env(safe-area-inset-bottom,0px)]"
+                style={{ maxHeight: 'min(88dvh, 820px)' }}
+                aria-label="Batch workspace"
+              >
+                {batchPopupNode}
+              </section>
+            </div>,
+            document.body
+          );
+        })()}
 
         {/* MAIN BODY AREA */}
         <div className={`flex-1 bg-slate-50 dark:bg-slate-900 ${isMobile ? '' : 'overflow-hidden relative flex flex-col'}`}>

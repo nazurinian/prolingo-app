@@ -138,7 +138,7 @@ const MobileTools = ({
   activityByVocabId,
   currentVocabIds,
   onProgressRestored,
-  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId,
+  textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel = null, legacyTextAudioCount = null,
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
   handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
   structuredTextAudioCoverageMap,
@@ -330,6 +330,8 @@ const MobileTools = ({
               handleTextLibraryDeleteCollection={handleTextLibraryDeleteCollection}
               handleTextLibraryStructuredCommand={handleTextLibraryStructuredCommand}
               structuredTextAudioCoverageMap={structuredTextAudioCoverageMap}
+              activeTextEditorModel={activeTextEditorModel}
+              legacyTextAudioCount={legacyTextAudioCount}
               isBatchOpen={isBatchOpen}
               setIsBatchOpen={setIsBatchOpen}
               isBatchDownloading={isBatchDownloading}
@@ -385,6 +387,8 @@ const MobileTools = ({
               onDeleteBatchHistory={onDeleteBatchHistory}
               directMp3Limit={directMp3Limit}
               DownloadCloudIcon={DownloadCloudIcon}
+              activeTextEditorModel={activeTextEditorModel}
+              legacyTextAudioCount={legacyTextAudioCount}
               isBatchOpen={isBatchOpen}
               setIsBatchOpen={setIsBatchOpen}
               showLogs={showLogs}

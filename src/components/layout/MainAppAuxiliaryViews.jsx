@@ -6,17 +6,23 @@ import MasterDataToolbar from '../table/MasterDataToolbar';
 import BatchPopup from '../table/BatchPopup';
 import TextBatchPopup from '../text/TextBatchPopup.jsx';
 import { V5116_CONTROL_SECTIONS } from '../../constants/playbackConstants';
+import { resolveBatchPopupTarget } from '../../domain/view/dataSystemBoundaryDomain';
 
 const DownloadCloudIcon = ({className}) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M12 12v9"></path><path d="m8 17 4 4 4-4"></path></svg>;
 
 export const renderBatchPopupView = ({
-  batchPanelRef, mode, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
+  batchPanelRef, mode, activeTextEditorModel = null, setIsBatchOpen, isBatchDownloading, batchConfig, setBatchConfig,
   generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
   isBatchStopping, batchStatusText, tableCoverage = null, structuredTextBatch = null, inline = false, showClose = true,
   batchSessions = [], stagingRecords = [], stagingSummary = null, allStagingSummary = null, batchAvailabilityById = {}, onExportCurrentMp3 = null, onExportCurrentZip = null, onExportBatchSessions = null,
   onClearBatchStaging = null, onClearAllStaging = null, onDeleteBatchHistory = null, directMp3Limit = 10
 }) => {
-  if (mode === 'text' && structuredTextBatch) {
+  const target = resolveBatchPopupTarget({
+    mode,
+    activeTextEditorModel,
+    hasStructuredTextBatch: Boolean(structuredTextBatch)
+  });
+  if (target === 'structured-text') {
     return <TextBatchPopup
       batchPanelRef={batchPanelRef}
       setIsBatchOpen={setIsBatchOpen}
@@ -24,6 +30,9 @@ export const renderBatchPopupView = ({
       inline={inline}
       showClose={showClose}
     />;
+  }
+  if (target !== 'table') {
+    return null;
   }
   return <BatchPopup
     batchPanelRef={batchPanelRef}
@@ -96,7 +105,7 @@ export const renderControlSectionTabsView = ({ compact = false, sidebarSection, 
 };
 
 export const renderMobileToolsView = ({
-  sidebarSection, renderControlSectionTabs, currentMapCount, mode, renderStatusBadge,
+  sidebarSection, renderControlSectionTabs, currentMapCount, legacyTextAudioCount = null, mode, renderStatusBadge,
   tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
   setSelectedVoice, indonesianVoices, selectedIndonesianVoice, setSelectedIndonesianVoice,
@@ -127,6 +136,7 @@ export const renderMobileToolsView = ({
           sidebarSection={sidebarSection}
           renderControlSectionTabs={renderControlSectionTabs}
           currentMapCount={currentMapCount}
+          legacyTextAudioCount={legacyTextAudioCount}
           mode={mode}
           renderStatusBadge={renderStatusBadge}
           tableAudioVoiceOptions={tableAudioVoiceOptions}

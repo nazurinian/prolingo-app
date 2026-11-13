@@ -4,6 +4,7 @@ import { Layers, Upload, X, FileDown, Database, Save, Trash2, Plus, BookOpen } f
 import { V510_SOURCE_KEYS, V510_SOURCE_LABELS } from '../../constants/datasetConstants';
 import TextLibraryShell from '../text/TextLibraryShell.jsx';
 import TextStructuredEditor from '../text/TextStructuredEditor.jsx';
+import { isLegacyTextMode, isStructuredTextMode } from '../../domain/view/dataSystemBoundaryDomain';
 
 export default function MobileDataControls({
   mode, isMultiSourceMode, dirtySourceKeys, isSystemBusy, isCsvDirty, openFullPackPicker,
@@ -16,7 +17,7 @@ export default function MobileDataControls({
   textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
   handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument,
   handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
-  structuredTextAudioCoverageMap, isBatchOpen = false, setIsBatchOpen, isBatchDownloading = false
+  structuredTextAudioCoverageMap, activeTextEditorModel = null, isBatchOpen = false, setIsBatchOpen, isBatchDownloading = false
 }) {
   const [textMobileSurface, setTextMobileSurface] = useState('library');
   const [textWorkspaceOpen, setTextWorkspaceOpen] = useState(false);
@@ -30,13 +31,23 @@ export default function MobileDataControls({
   }, [mode, activeTextDocument?.editorModel, textMobileSurface]);
 
   if (mode === 'text') {
-    const canEditStructured = activeTextDocument?.editorModel === 'structured-v1';
+    const resolvedEditorModel = activeTextEditorModel || activeTextDocument?.editorModel || null;
+    const canEditStructured = isStructuredTextMode(mode, resolvedEditorModel);
+    const isLegacyText = isLegacyTextMode(mode, resolvedEditorModel);
     const workspace = <div className="space-y-3" data-text-mobile-workspace="true">
       <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-900/70 p-1" role="tablist" aria-label="Text mobile workspace">
         <button type="button" role="tab" aria-selected={textMobileSurface === 'library'} onClick={() => setTextMobileSurface('library')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] ${textMobileSurface === 'library' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Library & Sources</button>
         <button type="button" role="tab" aria-selected={textMobileSurface === 'edit'} disabled={!canEditStructured} onClick={() => canEditStructured && setTextMobileSurface('edit')} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-black transition active:scale-[0.98] disabled:opacity-35 ${textMobileSurface === 'edit' ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Edit Cards</button>
       </div>
-      <button type="button" disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen?.(!isBatchOpen)} className={`w-full min-h-11 rounded-xl border text-[10px] font-black flex items-center justify-center gap-2 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'} disabled:opacity-50`}><Layers className="w-4 h-4"/>{isBatchDownloading ? 'BULK AUDIO • RUNNING' : 'BULK AUDIO'}</button>
+      {canEditStructured ? (
+        <button type="button" disabled={isSystemBusy && !isBatchDownloading} onClick={() => setIsBatchOpen?.(!isBatchOpen)} className={`w-full min-h-11 rounded-xl border text-[10px] font-black flex items-center justify-center gap-2 ${isBatchOpen ? 'bg-purple-600 border-purple-600 text-white' : 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300'} disabled:opacity-50`}><Layers className="w-4 h-4"/>{isBatchDownloading ? 'BULK AUDIO • RUNNING' : 'BULK AUDIO'}</button>
+      ) : (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400" data-legacy-text-bulk-disabled="mobile">
+          {isLegacyText
+            ? 'Legacy Text uses single-line Browser TTS playback; Bulk Audio requires Structured Text.'
+            : 'Bulk Audio is available in Structured Text documents.'}
+        </div>
+      )}
       {textMobileSurface === 'library' && <TextLibraryShell
         catalog={textLibraryCatalog} activeDocument={activeTextDocument} activeDocumentTree={activeTextDocumentTree} activeDocumentId={activeTextDocumentId}
         isBusy={textLibraryCommandBusy} error={textLibraryCommandError} onSelectDocument={handleTextLibrarySelectDocument}
@@ -51,10 +62,10 @@ export default function MobileDataControls({
       <section className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
         <div className="flex items-start gap-2"><BookOpen className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-300"/><div className="min-w-0 flex-1"><p className="text-[10px] font-black text-slate-700 dark:text-slate-200">Text Data</p><p className="text-[8px] text-slate-400 truncate">{textModeLabel} • {activeTextDocument?.title || 'No active document'}</p></div><span className="rounded-md border border-indigo-100 dark:border-indigo-900 bg-white dark:bg-slate-800 px-1.5 py-1 text-[8px] font-black text-indigo-600 dark:text-indigo-300">{textModeLabel.toUpperCase()}</span></div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-center"><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textBlockCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Lines' : 'Cards'}</p></div><div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2"><p className="text-sm font-black">{textSegmentCount}</p><p className="text-[7px] uppercase text-slate-400">{activeTextDocument?.editorModel === 'legacy-line-v1' ? 'Playable' : 'Segments'}</p></div></div>
-        <p className="mt-2 text-[8px] text-slate-400">DATA = Library • JSON Sources • CRUD • Backup • Bulk Audio</p>
+        <p className="mt-2 text-[8px] text-slate-400">{canEditStructured ? 'DATA = Library • JSON Sources • CRUD • Backup • Bulk Audio' : 'DATA = Library • CRUD • Backup (Bulk Audio requires Structured Text)'}</p>
         <button type="button" onClick={() => setTextWorkspaceOpen(true)} className="mt-3 w-full min-h-11 rounded-lg bg-indigo-600 text-white text-[10px] font-black active:scale-[0.99]" data-text-mobile-open-workspace="true">OPEN DATA WORKSPACE</button>
       </section>
-      {typeof document !== 'undefined' && textWorkspaceOpen && createPortal(<div className="fixed inset-0 z-[160] bg-slate-950/60 backdrop-blur-[1px] p-0 sm:p-2" data-text-mobile-full-workspace="true"><section className="ml-auto h-[100dvh] w-full max-w-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-2xl sm:h-[calc(100dvh-1rem)] sm:rounded-2xl flex flex-col"><div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-3"><BookOpen className="w-5 h-5 text-indigo-600"/><div className="min-w-0 flex-1"><h2 className="text-sm font-black">Text Data Workspace</h2><p className="text-[9px] text-slate-400">Library • JSON Sources • CRUD • Backup • Bulk Audio</p></div><button type="button" onClick={() => setTextWorkspaceOpen(false)} className="min-h-11 min-w-11 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center" aria-label="Close Text Data workspace"><X className="w-4 h-4"/></button></div><div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-28">{workspace}</div></section></div>, document.body)}
+      {typeof document !== 'undefined' && textWorkspaceOpen && createPortal(<div className="fixed inset-0 z-[160] bg-slate-950/60 backdrop-blur-[1px] p-0 sm:p-2" data-text-mobile-full-workspace="true"><section className="ml-auto h-[100dvh] w-full max-w-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-2xl sm:h-[calc(100dvh-1rem)] sm:rounded-2xl flex flex-col"><div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-3"><BookOpen className="w-5 h-5 text-indigo-600"/><div className="min-w-0 flex-1"><h2 className="text-sm font-black">Text Data Workspace</h2><p className="text-[9px] text-slate-400">{canEditStructured ? 'Library • JSON Sources • CRUD • Backup • Bulk Audio' : 'Library • CRUD • Backup (Bulk Audio requires Structured Text)'}</p></div><button type="button" onClick={() => setTextWorkspaceOpen(false)} className="min-h-11 min-w-11 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center" aria-label="Close Text Data workspace"><X className="w-4 h-4"/></button></div><div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-28">{workspace}</div></section></div>, document.body)}
     </div>;
   }
   return (

@@ -3,6 +3,7 @@ import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileAr
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog';
+import { hasActiveLegacyAudioFolder, isLegacyAudioFolderSupported } from '../../domain/view/dataSystemBoundaryDomain';
 
 export default function DesktopSystemControls({
   generatorEngine, setGeneratorEngine, isSystemBusy, aiVoiceName, setAiVoiceName, aiVoices,
@@ -10,7 +11,7 @@ export default function DesktopSystemControls({
   edgeRate, setEdgeRate, edgePitch, setEdgePitch, edgeHealth, testEdgeBackend,
   userApiKey, onUserApiKeyChange, geminiOwnerConfigured, geminiOwnerUnlocked, onGeminiOwnerUnlock, onGeminiOwnerLock,
   geminiByokAvailable, geminiByokRegistered, onGeminiByokRegister, onGeminiByokClear,
-  folderInputRef, currentMapCount, mode, batchButtonRef,
+  folderInputRef, currentMapCount, legacyTextAudioCount = null, mode, activeTextEditorModel = null, batchButtonRef,
   isBatchDownloading, setIsBatchOpen, isBatchOpen, debugButtonRef,
   setShowLogs, showLogs, logContainerRef, systemLogs, storageRefreshToken,
   onDatasetCacheCleared, onMasteryReset, onStudyTrackingReset,
@@ -20,7 +21,13 @@ export default function DesktopSystemControls({
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
   const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const [clearGeneratedRamConfirmOpen, setClearGeneratedRamConfirmOpen] = React.useState(false);
-  const hasActiveAudioFolder = mode === 'table' ? !!folderInputRef?.tableAudioFolderSummary?.active : currentMapCount > 0;
+  const legacyAudioFolderSupported = isLegacyAudioFolderSupported({ mode, activeTextEditorModel });
+  const hasActiveAudioFolder = hasActiveLegacyAudioFolder({
+    mode,
+    activeTextEditorModel,
+    tableAudioFolderActive: Boolean(folderInputRef?.tableAudioFolderSummary?.active),
+    legacyTextAudioCount: Number.isFinite(legacyTextAudioCount) ? legacyTextAudioCount : currentMapCount
+  });
   return (
     <>
               {/* --- NEW: GENERATOR ENGINE SWITCHER --- */}
@@ -113,13 +120,23 @@ export default function DesktopSystemControls({
                 {!geminiOwnerUnlocked && geminiOwnerConfigured && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerUnlock} className="w-full px-2 py-1.5 rounded border border-purple-200 dark:border-purple-800 text-[10px] font-bold text-purple-700 dark:text-purple-300 disabled:opacity-50">Owner Unlock</button>}
                 {geminiOwnerUnlocked && <button type="button" disabled={isSystemBusy} onClick={onGeminiOwnerLock} className="w-full px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 text-[10px] font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50">Owner Lock</button>}
                 {!geminiByokAvailable && !geminiOwnerUnlocked && <p className="text-[9px] text-amber-600 dark:text-amber-400">BYOK vault belum dikonfigurasi di server.</p>}
-                {hasActiveAudioFolder ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button disabled={isSystemBusy} onClick={() => folderInputRef.refreshAudioFolder?.() ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/> Refresh Audio</button>
-                    <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: true }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-600 text-white border-green-700 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Change Folder</button>
+                {legacyAudioFolderSupported ? (
+                  hasActiveAudioFolder ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button disabled={isSystemBusy} onClick={() => folderInputRef.refreshAudioFolder?.() ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/> Refresh Audio</button>
+                      <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: true }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-green-600 text-white border-green-700 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Change Folder</button>
+                    </div>
+                  ) : (
+                    <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
+                  )
+                ) : activeTextEditorModel === 'structured-v1' ? (
+                  <div data-structured-text-audio-folder-notice="desktop" className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-2.5 py-2 text-[10px] text-slate-500 dark:text-slate-400">
+                    Structured Text manages audio in the <span className="font-bold text-slate-700 dark:text-slate-200">Audio</span> tab (Staging, Audio Library &amp; Portable ZIP). Legacy Audio Folder is not used here.
                   </div>
                 ) : (
-                  <button disabled={isSystemBusy} onClick={() => folderInputRef.openAudioFolder?.({ forcePicker: false }) ?? folderInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-bold border bg-slate-800 dark:bg-slate-900 text-white border-slate-900 dark:border-slate-600 disabled:opacity-50"><FolderOpen className="w-3.5 h-3.5"/> Load Audio Folder</button>
+                  <div data-legacy-audio-folder-pending="desktop" className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-2.5 py-2 text-[10px] text-slate-500 dark:text-slate-400">
+                    Audio Folder is available for Table and Legacy Text documents.
+                  </div>
                 )}
                 {mode === 'table' && folderInputRef?.tableAudioFolderSummary?.active && <button disabled={isSystemBusy} onClick={() => setDetachFolderConfirmOpen(true)} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-[10px] font-bold border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 disabled:opacity-35"><X className="w-3.5 h-3.5"/> Detach Audio Folder</button>}
                 {mode === 'table' && <div className="rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/15 p-2">

@@ -1,5 +1,6 @@
 import { getAudioVoiceFilenameLabel, normalizeAudioVocabIdentity } from '../../utils/audioUtils.js';
 import { resolveTableAudioBookId } from '../../domain/audio/audioStagingDomain.js';
+import { isLegacyAudioFolderSupported } from '../../domain/view/dataSystemBoundaryDomain.js';
 
 const FOLDER_OBJECT_URL_CACHE_LIMIT = 12;
 const tableFolderObjectUrlCache = new Map();
@@ -127,6 +128,7 @@ export const resolveTableAudioPartFromFilename = (fileName) => {
 export const executeAudioFolderSelectService = ({
   e,
   mode,
+  activeTextEditorModel = null,
   localAudioMapTable,
   localAudioMapText,
   playlist,
@@ -141,6 +143,10 @@ export const executeAudioFolderSelectService = ({
   onMatchedAudio = null,
   edgeVoices = []
 }) => {
+    if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) {
+        if (e?.target) e.target.value = '';
+        return { count: 0, orphanCount: 0, blocked: true, reason: 'legacy-audio-folder-unsupported' };
+    }
     const files = e.target.files;
     if (!files) return;
     let count = 0;
@@ -378,11 +384,15 @@ const isRememberedAudioFolderSupported = () => (
 
 export const executeRememberedAudioFolderOpenService = async ({
     mode,
+    activeTextEditorModel = null,
     forcePicker = false,
     onFiles,
     fallbackOpen,
     addLog
 }) => {
+    if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) {
+        return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
+    }
     if (!isRememberedAudioFolderSupported()) {
         fallbackOpen?.();
         return { status: 'legacy-fallback' };
@@ -430,9 +440,13 @@ export const executeRememberedAudioFolderOpenService = async ({
 
 export const executeRememberedAudioFolderRestoreService = async ({
     mode,
+    activeTextEditorModel = null,
     onFiles,
     addLog
 }) => {
+    if (!isLegacyAudioFolderSupported({ mode, activeTextEditorModel })) {
+        return { status: 'blocked', reason: 'legacy-audio-folder-unsupported' };
+    }
     if (!isRememberedAudioFolderSupported()) return { status: 'unsupported' };
 
     try {
