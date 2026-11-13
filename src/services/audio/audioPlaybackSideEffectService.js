@@ -1,3 +1,8 @@
+export const isBrowserTtsSpeechSupported = ({
+  synth = typeof window !== 'undefined' ? window.speechSynthesis : null,
+  Utterance = typeof SpeechSynthesisUtterance === 'function' ? SpeechSynthesisUtterance : null
+} = {}) => typeof Utterance === 'function' && Boolean(synth) && typeof synth.speak === 'function';
+
 export const executeBrowserTtsPlaybackService = ({
   textToRead,
   overrideVoice = null,
@@ -17,13 +22,14 @@ export const executeBrowserTtsPlaybackService = ({
       // its native speechSynthesis default rather than silently skipping TTS.
       const targetVoice = overrideVoice || selectedVoiceRef?.current || null;
       if (stopSignalRef.current || !String(textToRead || '').trim()
-          || typeof SpeechSynthesisUtterance !== 'function'
-          || !synth || typeof synth.speak !== 'function') {
+          || !isBrowserTtsSpeechSupported({ synth })) {
           resolve();
           return;
       }
 
-      try { synth.cancel(); } catch { resolve(); return; }
+      if (typeof synth.cancel === 'function') {
+          try { synth.cancel(); } catch { resolve(); return; }
+      }
       let settled = false;
 
       const finish = () => {
@@ -61,7 +67,7 @@ export const executeBrowserTtsPlaybackService = ({
           utterance.onend = handleUtteranceDone;
           utterance.onerror = handleUtteranceDone;
 
-          if (synth.paused) synth.resume();
+          if (synth.paused && typeof synth.resume === 'function') synth.resume();
           try {
             synth.speak(utterance);
             return true;

@@ -1,4 +1,10 @@
 import { TEXT_PARAGRAPH_CARD_ROLES, resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
+import {
+  TEXT_STRUCTURED_ORDER_MODES,
+  TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
+  TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES,
+  TEXT_STRUCTURED_REPEAT_MODES
+} from './textStructuredPlaybackPreferenceDomain.js';
 
 export const TEXT_STRUCTURED_PLAYBACK_CONTEXT = 'text-structured';
 export const TEXT_STRUCTURED_PLAYBACK_SCOPES = Object.freeze({
@@ -159,4 +165,114 @@ export const resolveStructuredTextPlayerTitle = item => {
     artist: [detail, segmentLabel].filter(Boolean).join(' • '),
     album: 'ProLingo Text Library'
   };
+};
+
+export const resolveStructuredTextSmartNavigationContext = ({
+  completeList,
+  activeDocumentId = null,
+  session = null,
+  savedResume = null,
+  preferences = {},
+  random = Math.random
+} = {}) => {
+  const items = Array.isArray(completeList) ? completeList : [];
+  if (!items.length) return null;
+
+  const activeSession = session && (!session.documentId || !activeDocumentId || session.documentId === activeDocumentId)
+    ? session
+    : null;
+  const savedForDoc = savedResume && (!activeDocumentId || savedResume.documentId === activeDocumentId)
+    ? savedResume
+    : null;
+  const cursorId = savedForDoc?.segmentId || activeSession?.cursorSegmentId || null;
+
+  // Global Prev/Next transport always obeys current persisted global preferences
+  // rather than inheriting manual Segment/Card overrides or stopped session modes.
+  const representationMode = preferences?.playbackRepresentationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
+    ? TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
+    : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT;
+  const playbackOrderMode = preferences?.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE
+    ? TEXT_STRUCTURED_ORDER_MODES.SHUFFLE
+    : TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL;
+  const playbackChannelMode = Object.values(TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES).includes(preferences?.playbackChannelMode)
+    ? preferences.playbackChannelMode
+    : TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY;
+  const repeatMode = Object.values(TEXT_STRUCTURED_REPEAT_MODES).includes(preferences?.repeatMode)
+    ? preferences.repeatMode
+    : TEXT_STRUCTURED_REPEAT_MODES.ONCE;
+  const repeatCount = null;
+
+  const validIds = new Set(items.map(item => item.id));
+  const matchesFullList = list => Array.isArray(list)
+    && list.length === items.length
+    && new Set(list.map(item => item?.id)).size === validIds.size
+    && list.every(item => validIds.has(item?.id));
+
+  let ordered;
+  let orderedListOverride = null;
+  let persistedOrderedList = null;
+
+  if (playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE) {
+    const canReuseSessionSnapshot = activeSession?.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE
+      && (!activeSession.scope || activeSession.scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT)
+      && matchesFullList(activeSession.orderedList);
+    const snapshot = canReuseSessionSnapshot
+      ? activeSession.orderedList
+      : (matchesFullList(savedForDoc?.orderedList) ? savedForDoc.orderedList : null);
+    ordered = snapshot || resolveStructuredTextPlaybackOrder({
+      list: items,
+      orderMode: playbackOrderMode,
+      anchorId: cursorId,
+      random
+    });
+    orderedListOverride = [...ordered];
+    persistedOrderedList = [...ordered];
+  } else {
+    ordered = resolveStructuredTextPlaybackOrder({
+      list: items,
+      orderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
+      anchorId: cursorId,
+      random
+    });
+  }
+
+  return {
+    cursorId,
+    representationMode,
+    playbackOrderMode,
+    playbackChannelMode,
+    repeatMode,
+    repeatCount,
+    ordered,
+    orderedListOverride,
+    persistedOrderedList
+  };
+};
+
+export const resolveStructuredTextSmartNavPlan = ({
+  completeList,
+  activeDocumentId = null,
+  session = null,
+  savedResume = null,
+  preferences = {},
+  direction = 'next',
+  random = Math.random
+} = {}) => {
+  const nav = resolveStructuredTextSmartNavigationContext({
+    completeList,
+    activeDocumentId,
+    session,
+    savedResume,
+    preferences,
+    random
+  });
+  if (!nav) return null;
+  const target = resolveStructuredTextNavigationTarget({
+    list: nav.ordered,
+    currentId: nav.cursorId,
+    direction,
+    representationMode: nav.representationMode
+  });
+  if (!target) return null;
+  return { ...nav, target };
 };

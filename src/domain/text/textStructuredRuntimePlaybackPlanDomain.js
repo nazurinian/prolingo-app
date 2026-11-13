@@ -27,6 +27,21 @@ const clean = value => String(value ?? '').trim();
 const normalizeChannel = value => String(value || '').toLowerCase() === 'meaning' ? 'meaning' : 'text';
 const runtimeReady = entry => Boolean(entry?.url || entry?.stagingBacked || entry?.zipBacked || entry?.folderBacked || entry?.blob || entry?.binaryReady);
 const contentFor = (segment, channel) => normalizeChannel(channel) === 'meaning' ? clean(segment?.meaning) : clean(segment?.text);
+const resolveScopedSegments = (block, segmentIds) => {
+  const orderedSegments = resolveTextStructuredOrderedSegments(block);
+  const allowedIds = Array.isArray(segmentIds)
+    ? new Set(segmentIds)
+    : (segmentIds instanceof Set ? segmentIds : null);
+  if (!allowedIds) {
+    return { orderedSegments, scopedSegments: orderedSegments, isPartialSegmentSlice: false };
+  }
+  const scopedSegments = orderedSegments.filter(segment => allowedIds.has(segment.id));
+  return {
+    orderedSegments,
+    scopedSegments,
+    isPartialSegmentSlice: scopedSegments.length < orderedSegments.length
+  };
+};
 
 const resolveFallbackProfile = ({ fallbackVoiceId, fallbackEngine = 'edge', fallbackRate = 0, fallbackPitch = 0 } = {}) => (
   clean(fallbackVoiceId)
@@ -84,6 +99,7 @@ export const buildTextStructuredSplitRuntimePlan = ({
   documentTree,
   block,
   channel = 'text',
+  segmentIds = null,
   audioVariants = [],
   runtimeAudioUrls = {},
   fallbackVoiceId = null,
@@ -106,11 +122,12 @@ export const buildTextStructuredSplitRuntimePlan = ({
     globalPlaybackOrder
   });
   const ttsOnly = resolveTextStructuredEffectiveTtsOnly({ documentTree, block, globalTtsOnly });
+  const { scopedSegments } = resolveScopedSegments(block, segmentIds);
   const steps = [];
   let localCount = 0;
   let ttsCount = 0;
 
-  for (const segment of resolveTextStructuredOrderedSegments(block)) {
+  for (const segment of scopedSegments) {
     const content = contentFor(segment, normalizedChannel);
     if (!content) continue;
     let resolved = null;
@@ -178,6 +195,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   documentTree,
   block,
   channel = 'text',
+  segmentIds = null,
   representationMode = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
   audioVariants = [],
   runtimeAudioUrls = {},
@@ -201,6 +219,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       documentTree,
       block,
       channel: normalizedChannel,
+      segmentIds,
       audioVariants,
       runtimeAudioUrls,
       fallbackVoiceId,
@@ -224,7 +243,12 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     };
   }
 
-  const fullRepresentation = buildTextStructuredFullRepresentation({ block, channel: normalizedChannel });
+  const { scopedSegments, isPartialSegmentSlice } = resolveScopedSegments(block, segmentIds);
+  const scopedBlock = isPartialSegmentSlice && block
+    ? { ...block, segments: scopedSegments }
+    : block;
+  const effectiveAllowFullArtifact = Boolean(allowFullArtifact) && !isPartialSegmentSlice;
+  const fullRepresentation = buildTextStructuredFullRepresentation({ block: scopedBlock, channel: normalizedChannel });
   const playbackOrder = resolveTextStructuredRuntimePlaybackOrder({
     documentTree,
     block,
@@ -282,7 +306,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     };
   }
 
-  const readyFull = allowFullArtifact ? resolveTextStructuredReadyFullRuntime({
+  const readyFull = effectiveAllowFullArtifact ? resolveTextStructuredReadyFullRuntime({
     block,
     channel: normalizedChannel,
     language,
@@ -324,6 +348,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     documentTree,
     block,
     channel: normalizedChannel,
+    segmentIds,
     audioVariants,
     runtimeAudioUrls,
     fallbackVoiceId,

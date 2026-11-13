@@ -82,7 +82,7 @@ import { buildTableAudioGeneratedVariantInventory, buildTableAudioPresenceMap, b
 import { buildTableAudioStagingVariantInventory, filterTableAudioBatchSessionsForPlaylist, filterTableAudioStagingRecordsForPlaylist, filterTableAudioVariantInventoryForPlaylist, isSameLogicalAudioVoice, isTableAudioScopeMatch, resolveBatchSessionAvailability, resolveTableAudioBookId, summarizeAudioStagingRecords } from './domain/audio/audioStagingDomain.js';
 import { clearTableAudioFolderRuntimeCache, executeAudioFolderSelectService, executeRememberedAudioFolderOpenService, executeRememberedAudioFolderRestoreService, forgetRememberedAudioFolderHandle, getTableAudioFolderVariantObjectUrl } from './services/audio/audioFolderLifecycleService';
 import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readTableAudioZipVariantBlob, scanTableAudioZipFiles } from './services/audio/tableAudioZipArchiveService.js';
-import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService } from './services/audio/audioPlaybackSideEffectService';
+import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService, isBrowserTtsSpeechSupported } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
@@ -104,7 +104,7 @@ import { executeCycleMasteryState } from './services/progress/masteryInteraction
 import { executeRecordStudyActivity } from './services/progress/studyTrackingInteractionService.js';
 import { reconcileTextIdentityState } from './domain/text/textIdentityDomain';
 import { resolveTextLibraryCatalog, resolveTextLibraryDocumentTree } from './domain/text/textLibraryDomain.js';
-import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextNavigationTarget, resolveStructuredTextPlaybackOrder, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
+import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, TEXT_STRUCTURED_PLAYBACK_SCOPES, resolveStructuredTextNavigationTarget, resolveStructuredTextSmartNavigationContext, resolveStructuredTextPlaybackList } from './domain/text/textStructuredPlaybackDomain.js';
 import { hasStructuredTextPlayableChannel, normalizeTextStructuredPreferences, resolveTextStructuredManualPlaybackProfile, resolveTextStructuredPlaybackRate, TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_ORDER_MODES, TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES, TEXT_STRUCTURED_RESUME_MODES } from './domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { resolveTextStructuredBrowserVoiceState, resolveTextStructuredVoicePreferencePatch } from './domain/text/textStructuredVoiceDomain.js';
 import { buildTextStructuredRuntimeAudioKey, buildTextStructuredRuntimeAudioStatusMap, resolveTextStructuredRuntimeAudio } from './domain/text/textStructuredAudioRuntimeDomain.js';
@@ -149,12 +149,13 @@ import { buildTextAudioIndexCsv, TEXT_AUDIO_INDEX_FILENAME } from './domain/text
 import { buildTextStructuredFullArtifactRecord, getTextStructuredFullAudioArtifacts } from './domain/text/textStructuredSplitFullDomain.js';
 import { triggerBrowserZipDownload } from './services/audio/browserZipService.js';
 import { exportStagedAudioZipGroups, exportTableAudioRecordZipGroups, DIRECT_MP3_BATCH_LIMIT } from './services/audio/audioBatchExportService.js';
-import { clearAudioStagingExportHistoryForMode, clearAudioStagingForMode, clearAudioStagingRuntimeCache, deleteAudioBatchSession, getAudioStagingBlob, getAudioStagingObjectUrl, listAudioBatchSessions, listAudioStagingMetadata, markAudioStagingExported, putAudioStagingBlob, recoverInterruptedAudioBatchSessions, releaseAudioStagingBlobs, requestPersistentAudioStorage, saveAudioBatchSession } from './services/persistence/audioStagingIndexedDbService.js';
+import { clearAudioStagingExportHistoryForMode, clearAudioStagingForMode, clearAudioStagingRuntimeCacheForMode, deleteAudioBatchSession, getAudioStagingBlob, getAudioStagingObjectUrl, listAudioBatchSessions, listAudioStagingMetadata, markAudioStagingExported, putAudioStagingBlob, recoverInterruptedAudioBatchSessions, releaseAudioStagingBlobs, requestPersistentAudioStorage, saveAudioBatchSession } from './services/persistence/audioStagingIndexedDbService.js';
 import { executeTextStructuredEdgeHealthCheck } from './services/audio/textStructuredEdgeAudioDownloadService.js';
 import { buildDerivedTextFullAudioFilename, buildDerivedTextFullAudioWav } from './services/audio/textStructuredFullAudioExportService.js';
 import { clearTextStructuredAudioFolderRuntimeCache, executeTextStructuredAudioFolderChoose, executeTextStructuredAudioFolderReconnect, executeTextStructuredAudioFolderRestore, getTextStructuredAudioFolderRuntimeObjectUrl, readTextStructuredAudioFolderFiles, readTextStructuredAudioFolderRuntimeBlob, scanTextStructuredAudioFolderFiles, writeTextStructuredAudioFile } from './services/audio/textStructuredAudioFolderService.js';
-import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRuntimeObjectUrl, readTextStructuredAudioZipRuntimeBlob, scanTextStructuredAudioZipFiles } from './services/audio/textStructuredAudioZipArchiveService.js';
-import { clearTextAudioStagingRuntimeCache, exportTextAudioStagingZipChunks, getTextAudioStagingBlob, getTextAudioStagingObjectUrl, listTextAudioStagingMetadata, putTextAudioStagingBlob, putTextFullAudioStagingBlob, releaseTextAudioStaging, releaseTextAudioStagingRecords, resolveTextAudioStagingPhysicalIdentity, summarizeTextAudioStaging, TEXT_AUDIO_STAGING_ZIP_MAX_BYTES } from './services/persistence/textAudioStagingService.js';
+import { clearTextStructuredAudioZipRuntimeCache, getTextStructuredAudioZipRuntimeObjectUrl, readTextStructuredAudioZipRuntimeBlob } from './services/audio/textStructuredAudioZipArchiveService.js';
+import { executeTextStructuredAudioZipImport } from './services/audio/textStructuredAudioZipImportService.js';
+import { clearTextAudioStagingRuntimeCache, getTextAudioStagingBlob, getTextAudioStagingObjectUrl, listTextAudioStagingMetadata, putTextAudioStagingBlob, putTextFullAudioStagingBlob, reconcileTextAudioStagingRuntimeBindings, releaseTextAudioStaging, releaseTextAudioStagingRecords, TEXT_AUDIO_STAGING_ZIP_MAX_BYTES } from './services/persistence/textAudioStagingService.js';
 import { executeTextAudioStagingGarbageCollection } from './services/persistence/textAudioStagingGcService.js';
 
 
@@ -298,6 +299,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const structuredTextAudioPendingVariantRef = useRef(new Map());
   const structuredTextAudioPendingCountersRef = useRef(null);
   const structuredTextAudioStagingHydratedRef = useRef(false);
+  const structuredTextAudioStagingHydrationTokenRef = useRef(0);
   // P4-A12: Text-owned generator/folder state. These preferences never read Table generator settings.
   const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(loadTextStructuredAudioGenerationPreferences);
   const [structuredTextAudioGenerationState, setStructuredTextAudioGenerationState] = useState({ running: false, completed: 0, total: 0, current: null, failedJobs: [], lastStatus: null, processed: 0, generated: 0, skippedReady: 0, failed: 0, remaining: 0, readyEstimate: 0, missingEstimate: 0 });
@@ -620,104 +622,49 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const addLog = useCallback((type, message) => executeSystemLogAppend({ type, message, setSystemLogs }), [setSystemLogs]);
 
+  const rehydrateStructuredTextAudioStagingRuntime = useCallback(async (
+    snapshot,
+    { resetExisting = false, markHydrated = true } = {}
+  ) => {
+    if (!Array.isArray(snapshot?.audioVariants) || !Array.isArray(snapshot?.blocks)) return null;
+    const hydrationToken = ++structuredTextAudioStagingHydrationTokenRef.current;
+    if (markHydrated) structuredTextAudioStagingHydratedRef.current = true;
+    try {
+      if (resetExisting) clearTextAudioStagingRuntimeCache();
+      const rows = await listTextAudioStagingMetadata({ includeReleased: false });
+      if (hydrationToken !== structuredTextAudioStagingHydrationTokenRef.current) return null;
+      const plan = reconcileTextAudioStagingRuntimeBindings({
+        snapshot,
+        activeRecords: rows || [],
+        prevRuntimeAudioUrls: structuredTextAudioRuntimeUrlsRef.current,
+        prevRuntimeFullAudioUrls: structuredTextFullAudioRuntimeUrlsRef.current,
+        resetExisting
+      });
+      structuredTextAudioStagingRecordsRef.current = plan.stagingRecordsMap;
+      structuredTextAudioStagingSummaryRef.current = plan.stagingSummary;
+      setStructuredTextAudioStagingSummary(plan.stagingSummary);
+      structuredTextAudioRuntimeUrlsRef.current = plan.runtimeAudioUrls;
+      structuredTextFullAudioRuntimeUrlsRef.current = plan.runtimeFullAudioUrls;
+      setStructuredTextAudioRuntimeUrls(plan.runtimeAudioUrls);
+      setStructuredTextFullAudioRuntimeUrls(plan.runtimeFullAudioUrls);
+      (plan.revokedUrls || []).forEach(url => {
+        try { URL.revokeObjectURL(url); } catch { /* noop */ }
+      });
+      return plan;
+    } catch (error) {
+      if (hydrationToken === structuredTextAudioStagingHydrationTokenRef.current) {
+        structuredTextAudioStagingHydratedRef.current = false;
+      }
+      addLog('Warn', `Text Staging restore failed: ${error?.message || error}`);
+      return null;
+    }
+  }, [addLog]);
+
   useEffect(() => {
     if (textDatabaseStatus !== 'ready' || structuredTextAudioStagingHydratedRef.current) return;
     if (!Array.isArray(textLibrarySnapshot?.audioVariants) || !Array.isArray(textLibrarySnapshot?.blocks)) return;
-    structuredTextAudioStagingHydratedRef.current = true;
-    let cancelled = false;
-    listTextAudioStagingMetadata({ includeReleased: false }).then(rows => {
-      if (cancelled) return;
-      const active = (rows || []).filter(record => record?.hasBlob);
-      structuredTextAudioStagingRecordsRef.current = new Map(active.map(record => [record.id, record]));
-      const stagingSummary = summarizeTextAudioStaging(active);
-      structuredTextAudioStagingSummaryRef.current = stagingSummary;
-      setStructuredTextAudioStagingSummary(stagingSummary);
-
-      const variants = textLibrarySnapshot?.audioVariants || [];
-      const variantsById = new Map(variants.map(item => [String(item?.id || '').toUpperCase(), item]));
-      const variantsByRf = new Map();
-      variants.forEach(variant => {
-        const rf = String(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
-        if (!rf) return;
-        const list = variantsByRf.get(rf) || [];
-        list.push(variant);
-        variantsByRf.set(rf, list);
-      });
-
-      const fullArtifactsByFingerprint = new Map();
-      (textLibrarySnapshot?.blocks || []).forEach(block => {
-        getTextStructuredFullAudioArtifacts(block).forEach(artifact => {
-          const fingerprint = String(artifact?.fullArtifactFingerprint || '').toLowerCase();
-          if (!fingerprint) return;
-          const list = fullArtifactsByFingerprint.get(fingerprint) || [];
-          list.push({ block, artifact });
-          fullArtifactsByFingerprint.set(fingerprint, list);
-        });
-      });
-
-      setStructuredTextAudioRuntimeUrls(prev => {
-        const next = { ...prev };
-        active.forEach(record => {
-          const physical = resolveTextAudioStagingPhysicalIdentity(record);
-          if (physical.representation !== 'split') return;
-          const recordRf = physical.identity;
-          const rfVariants = recordRf?.startsWith('rf-sha256-') ? (variantsByRf.get(recordRf) || []) : [];
-          const legacyVariantId = String(record?.metadata?.audioVariantId || record?.mapKey || '').toUpperCase();
-          const candidates = rfVariants.length ? rfVariants : [variantsById.get(legacyVariantId)].filter(Boolean);
-          candidates.forEach(variant => {
-            const variantId = String(variant?.id || '').toUpperCase();
-            if (!variantId) return;
-            if (rfVariants.length) {
-              if (String(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase() !== recordRf) return;
-            } else {
-              const recordFingerprint = String(record?.metadata?.contentFingerprint || '');
-              const variantFingerprint = String(variant?.metadata?.contentFingerprint || '');
-              if (!recordFingerprint || !variantFingerprint || recordFingerprint !== variantFingerprint) return;
-              if (String(record?.voiceId || '').toLowerCase() !== String(variant?.voiceId || '').toLowerCase()) return;
-              if (String(record?.engine || '').toLowerCase() !== String(variant?.engine || '').toLowerCase()) return;
-              if (String(record?.part || '').toLowerCase() !== String(variant?.channel || '').toLowerCase()) return;
-            }
-            const current = next[variantId];
-            if (current?.url) return;
-            next[variantId] = {
-              ...(current?.zipBacked ? { zipFallback: current } : current?.zipFallback ? { zipFallback: current.zipFallback } : {}),
-              stagingBacked: true,
-              stagingId: record.id,
-              renderFingerprint: recordRf?.startsWith('rf-sha256-') ? recordRf : null,
-              filename: record.filename || current?.filename || null,
-              mimeType: record.mimeType || current?.mimeType || null,
-              representation: 'split'
-            };
-          });
-        });
-        return next;
-      });
-
-      setStructuredTextFullAudioRuntimeUrls(prev => {
-        const next = { ...prev };
-        active.forEach(record => {
-          const physical = resolveTextAudioStagingPhysicalIdentity(record);
-          if (physical.representation !== 'full') return;
-          const consumers = fullArtifactsByFingerprint.get(physical.identity) || [];
-          if (!consumers.length) return;
-          next[physical.identity] = {
-            stagingBacked: true,
-            stagingId: record.id,
-            fullArtifactFingerprint: physical.identity,
-            filename: record.filename || consumers[0]?.artifact?.filename || null,
-            mimeType: record.mimeType || consumers[0]?.artifact?.mimeType || null,
-            representation: 'full',
-            consumerBlockIds: consumers.map(item => item.block?.id).filter(Boolean)
-          };
-        });
-        return next;
-      });
-    }).catch(error => {
-      structuredTextAudioStagingHydratedRef.current = false;
-      addLog('Warn', `Text Staging restore failed: ${error?.message || error}`);
-    });
-    return () => { cancelled = true; };
-  }, [textDatabaseStatus, textLibrarySnapshot?.audioVariants, textLibrarySnapshot?.blocks, addLog]);
+    rehydrateStructuredTextAudioStagingRuntime(textLibrarySnapshot, { resetExisting: false, markHydrated: true });
+  }, [textDatabaseStatus, textLibrarySnapshot, rehydrateStructuredTextAudioStagingRuntime]);
 
 
   const refreshTableAudioStaging = useCallback(async () => {
@@ -973,7 +920,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const fallbackReason = fallbackUsed
       ? (effectiveVoice?.name
           ? `Requested browser voice "${requestedVoiceId}" (${requestedSourceLabel}) is unavailable on this device; using Global Browser TTS "${effectiveVoice.name}".`
-          : `Requested browser voice "${requestedVoiceId}" (${requestedSourceLabel}) is unavailable on this device and no fallback browser voice is ready.`)
+          : `Requested browser voice "${requestedVoiceId}" (${requestedSourceLabel}) is unavailable on this device; using Browser system default when SpeechSynthesis is supported.`)
       : null;
     return {
       requestedVoiceId,
@@ -1324,6 +1271,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackRepresentationMode }));
   };
   const handleStructuredTextPlaybackFeelChange = useCallback((patch) => {
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'playbackOrderMode')
+      && patch.playbackOrderMode !== TEXT_STRUCTURED_ORDER_MODES.SHUFFLE
+      && structuredTextResumeCursorRef.current?.orderedList) {
+      structuredTextResumeCursorRef.current = {
+        ...structuredTextResumeCursorRef.current,
+        orderedList: null
+      };
+    }
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...(patch || {}) }));
   }, []);
   const handleStructuredTextAudioSourceModeChange = (audioSourceMode) => {
@@ -1967,87 +1922,65 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleStructuredTextAddAudioZipFiles = useCallback(async (files, snapshotOverride = null) => {
     const sourceSnapshot = snapshotOverride || textLibrarySnapshot;
-    const selected = Array.from(files || []).filter(file => /\.zip$/i.test(file?.name || '') || String(file?.type || '').includes('zip'));
-    if (!selected.length) return { status: 'no-files' };
-    const requirements = buildTextStructuredAudioRequirementsForSnapshot({
-      snapshot: sourceSnapshot,
-      preferences: structuredTextDownloadResolutionPreferences
-    });
-    const scan = await scanTextStructuredAudioZipFiles({
-      files: selected,
-      audioVariants: sourceSnapshot?.audioVariants || [],
-      segments: sourceSnapshot?.segments || [],
-      requirements,
-      blocks: sourceSnapshot?.blocks || [],
-      documents: sourceSnapshot?.documents || []
-    });
-
-    // Split matches may refer to logical slots that do not have an AudioVariant
-    // yet. Materialize those identities first, then import the ZIP Blob into the
-    // canonical Text Staging store. ZIP becomes a portable source, not a runtime
-    // dependency after import.
-    const missingEntries = scan.matches.filter(match => !match.variant && match.requirement).map(match => ({
-      requirement: match.requirement,
-      filename: match.filename || null,
-      mimeType: match.mimeType || null
-    }));
-    const materializedByRequirement = await materializeStructuredTextExternalRfRequirementsBulk(missingEntries, 'zip-imported-staging-ready');
-    const boundMatches = [];
-    const seenLogicalSlots = new Set();
-    for (const match of scan.matches) {
-      const requirementKey = match.requirement
-        ? `${String(match.requirement.segmentId).toUpperCase()}|${String(match.requirement.channel).toLowerCase()}|${String(match.requirement.renderFingerprint).toLowerCase()}`
-        : null;
-      const variant = match.variant || (requirementKey ? materializedByRequirement.get(requirementKey) : null);
-      if (!variant) continue;
-      const logicalKey = `${variant.id}|${String(match.renderFingerprint || '').toLowerCase()}`;
-      if (seenLogicalSlots.has(logicalKey)) continue;
-      seenLogicalSlots.add(logicalKey);
-      boundMatches.push({ ...match, variant });
-    }
-
-    const stagedSplitByRf = new Map();
-    const splitGroups = new Map();
-    boundMatches.forEach(match => {
-      const rf = String(match.renderFingerprint || match.variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
-      if (!rf) return;
-      const list = splitGroups.get(rf) || [];
-      list.push(match);
-      splitGroups.set(rf, list);
-    });
-    for (const [rf, group] of splitGroups.entries()) {
-      const first = group[0];
-      const variant = first.variant;
-      const segment = (sourceSnapshot?.segments || []).find(item => String(item?.id || '').toUpperCase() === String(variant?.segmentId || '').toUpperCase()) || null;
-      const blob = await readTextStructuredAudioZipRuntimeBlob({
-        archiveFile: first.archiveFile,
-        entry: first.entry,
-        filename: first.filename,
-        mimeType: first.mimeType
+    let imported;
+    try {
+      imported = await executeTextStructuredAudioZipImport({
+        files,
+        snapshot: sourceSnapshot,
+        preferences: structuredTextDownloadResolutionPreferences
       });
-      const stagingRecord = await putTextAudioStagingBlob({
-        audioVariantId: variant.id,
-        renderFingerprint: rf,
-        documentId: segment?.documentId || null,
-        segmentId: variant.segmentId,
-        channel: variant.channel,
-        engine: variant.engine,
-        voiceId: variant.voiceId,
-        filename: first.filename || variant.filename || null,
-        mimeType: blob.type || first.mimeType || variant.mimeType || null,
-        blob,
-        metadata: {
-          ...(variant.metadata || {}),
-          deliveryStatus: 'zip-imported-staging-ready',
-          importedFromPortableZip: true,
-          sourceArchiveName: first.archiveName || null,
-          sourceArchiveId: first.archiveId || null
+    } catch (error) {
+      addLog('Warn', `Portable ZIP import failed and rolled back cleanly: ${error?.message || error}`);
+      throw error;
+    }
+    if (imported?.status === 'no-files') return { status: 'no-files' };
+
+    const {
+      scan,
+      boundMatches,
+      fullLogical,
+      splitGroups,
+      fullGroups,
+      stagedSplitByRf,
+      stagedFullByFingerprint,
+      stagedSplitRecords,
+      stagedFullRecords,
+      metadataCommit
+    } = imported;
+
+    if (metadataCommit?.audioVariants?.length || metadataCommit?.blocks?.length) {
+      setTextLibrarySnapshot(previous => {
+        if (!previous) return previous;
+        let nextVariants = previous.audioVariants || [];
+        let nextCounters = previous.counters;
+        let nextBlocks = previous.blocks || [];
+        if (metadataCommit.audioVariants?.length) {
+          const variantUpdates = new Map(metadataCommit.audioVariants.map(record => [record.id, record]));
+          const seen = new Set(nextVariants.map(record => record.id));
+          nextVariants = nextVariants.map(record => variantUpdates.get(record.id) || record);
+          metadataCommit.audioVariants.forEach(record => { if (!seen.has(record.id)) nextVariants.push(record); });
+          if (metadataCommit.counters) nextCounters = metadataCommit.counters;
         }
+        if (metadataCommit.blocks?.length) {
+          const blockUpdates = new Map(metadataCommit.blocks.map(block => [block.id, block]));
+          nextBlocks = nextBlocks.map(block => blockUpdates.get(block.id) || block);
+        }
+        return { ...previous, counters: nextCounters, audioVariants: nextVariants, blocks: nextBlocks };
       });
-      rememberStructuredTextStagingRecord(stagingRecord, { deferUi: true });
-      stagedSplitByRf.set(rf, stagingRecord);
     }
+
+    stagedSplitRecords.forEach(record => rememberStructuredTextStagingRecord(record, { deferUi: true }));
+    stagedFullRecords.forEach(record => rememberStructuredTextStagingRecord(record, { deferUi: true }));
+
     if (stagedSplitByRf.size) {
+      const staleUrls = [];
+      Object.entries(structuredTextAudioRuntimeUrlsRef.current || {}).forEach(([id, entry]) => {
+        if (!entry?.url) return;
+        const matched = boundMatches.find(m => m.variant.id === id);
+        if (!matched) return;
+        const rf = String(matched.renderFingerprint || matched.variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
+        if (stagedSplitByRf.has(rf)) staleUrls.push(entry.url);
+      });
       setStructuredTextAudioRuntimeUrls(prev => {
         const next = { ...prev };
         boundMatches.forEach(match => {
@@ -2068,73 +2001,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         });
         return next;
       });
+      staleUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch { /* noop */ } });
     }
 
-    // Full entries use block-level artifact metadata and the same Staging DB.
-    // One physical Full fingerprint may be referenced by multiple Cards with
-    // identical current content/profile, so persist all logical consumers in one
-    // Text DB transaction while storing the Blob only once.
-    const uniqueFullLogical = new Map();
-    (scan.fullMatches || []).forEach(match => {
-      const key = `${String(match.block?.id || '').toUpperCase()}|${String(match.fullArtifactFingerprint || '').toLowerCase()}`;
-      if (!uniqueFullLogical.has(key)) uniqueFullLogical.set(key, match);
-    });
-    const fullLogical = [...uniqueFullLogical.values()];
-    let persistedFull = { artifacts: [], blocks: [], updated: 0 };
-    if (fullLogical.length) {
-      persistedFull = await executeTextFullAudioArtifactBulkUpsert(fullLogical.map(match => ({
-        blockId: match.block.id,
-        artifact: match.artifact
-      })));
-      if (persistedFull.blocks.length) {
-        setTextLibrarySnapshot(previous => {
-          if (!previous) return previous;
-          const updates = new Map(persistedFull.blocks.map(block => [block.id, block]));
-          return { ...previous, blocks: (previous.blocks || []).map(block => updates.get(block.id) || block) };
-        });
-      }
-    }
-
-    const fullGroups = new Map();
-    fullLogical.forEach(match => {
-      const fingerprint = String(match.fullArtifactFingerprint || '').toLowerCase();
-      const list = fullGroups.get(fingerprint) || [];
-      list.push(match);
-      fullGroups.set(fingerprint, list);
-    });
-    const stagedFullByFingerprint = new Map();
-    for (const [fingerprint, group] of fullGroups.entries()) {
-      const first = group[0];
-      const blob = await readTextStructuredAudioZipRuntimeBlob({
-        archiveFile: first.archiveFile,
-        entry: first.entry,
-        filename: first.filename,
-        mimeType: first.mimeType
-      });
-      const descriptor = first.artifact?.descriptor || null;
-      const stagingRecord = await putTextFullAudioStagingBlob({
-        fullArtifactFingerprint: fingerprint,
-        documentId: first.block?.documentId || first.document?.id || null,
-        blockId: first.block?.id,
-        channel: descriptor?.channel || 'text',
-        engine: descriptor?.engine || 'edge',
-        voiceId: descriptor?.voiceId,
-        filename: first.filename || first.artifact?.filename || null,
-        mimeType: blob.type || first.mimeType || first.artifact?.mimeType || null,
-        blob,
-        descriptor,
-        metadata: {
-          deliveryStatus: 'zip-imported-staging-ready',
-          importedFromPortableZip: true,
-          sourceArchiveName: first.archiveName || null,
-          sourceArchiveId: first.archiveId || null,
-          consumerBlockIds: group.map(item => item.block?.id).filter(Boolean)
-        }
-      });
-      rememberStructuredTextStagingRecord(stagingRecord, { deferUi: true });
-      stagedFullByFingerprint.set(fingerprint, stagingRecord);
-    }
     if (stagedFullByFingerprint.size) {
+      const staleFullUrls = [];
+      Object.entries(structuredTextFullAudioRuntimeUrlsRef.current || {}).forEach(([fp, entry]) => {
+        if (entry?.url && stagedFullByFingerprint.has(fp)) staleFullUrls.push(entry.url);
+      });
       setStructuredTextFullAudioRuntimeUrls(prev => {
         const next = { ...prev };
         fullGroups.forEach((group, fingerprint) => {
@@ -2154,7 +2028,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         });
         return next;
       });
+      staleFullUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch { /* noop */ } });
     }
+
     flushStructuredTextStagingSummary();
 
     setStructuredTextAudioZipState(prev => {
@@ -2176,7 +2052,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         physicalImportedCount: stagedSplitByRf.size + stagedFullByFingerprint.size
       };
     });
-    addLog('Text Audio', `Portable ZIP import: ${scan.archiveCount} archive(s) • Split ${boundMatches.length} logical / ${stagedSplitByRf.size} physical • Full ${fullLogical.length} logical / ${stagedFullByFingerprint.size} physical • ${scan.orphanCount} orphan. Imported audio now lives in Text Staging.`);
+    addLog('Text Audio', `Portable ZIP import: ${scan.archiveCount} archive(s) • Split ${boundMatches.length} logical / ${splitGroups.size} physical • Full ${fullLogical.length} logical / ${stagedFullByFingerprint.size} physical • ${scan.orphanCount} orphan. Imported audio now lives in Text Staging.`);
     return {
       status: 'added',
       ...scan,
@@ -2186,7 +2062,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       stagedSplitPhysical: stagedSplitByRf.size,
       stagedFullPhysical: stagedFullByFingerprint.size
     };
-  }, [textLibrarySnapshot, structuredTextDownloadResolutionPreferences, materializeStructuredTextExternalRfRequirementsBulk, rememberStructuredTextStagingRecord, flushStructuredTextStagingSummary, setTextLibrarySnapshot, addLog]);
+  }, [textLibrarySnapshot, structuredTextDownloadResolutionPreferences, rememberStructuredTextStagingRecord, flushStructuredTextStagingSummary, setTextLibrarySnapshot, addLog]);
 
   const reconcileStructuredTextExternalAudioSources = useCallback(async (snapshot) => {
     if (!snapshot) return { folder: null, zip: null };
@@ -3299,20 +3175,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return runStructuredTextAudioGenerationBatch(jobs);
   }, [structuredTextAudioGenerationState.failedJobs, runStructuredTextAudioGenerationBatch]);
 
-  const resolveStructuredTextBlockChannelPlaybackPlan = ({ block, channel, allowFullArtifact = true } = {}) => {
+  const resolveStructuredTextBlockChannelPlaybackPlan = ({ block, fullBlock = null, channel, allowFullArtifact = true, segmentIds = null } = {}) => {
+    const targetBlock = fullBlock || block;
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const firstSegment = (block?.segments || []).find(segment => String(normalizedChannel === 'meaning' ? segment?.meaning : segment?.text || '').trim()) || block?.segments?.[0] || null;
     const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
       documentTree: activeTextDocumentTree,
-      block,
+      block: targetBlock,
       segment: firstSegment,
       channel: normalizedChannel,
       preferences: structuredTextDownloadResolutionPreferences
     });
     return buildTextStructuredBlockRuntimePlaybackPlan({
       documentTree: activeTextDocumentTree,
-      block,
+      block: targetBlock,
       channel: normalizedChannel,
+      segmentIds,
       representationMode: textStructuredPreferences.playbackRepresentationMode,
       audioVariants: textLibrarySnapshot?.audioVariants || [],
       runtimeAudioUrls: structuredTextAudioRuntimeUrls,
@@ -3325,6 +3203,81 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder,
       globalTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
       allowFullArtifact
+    });
+  };
+
+  const speakStructuredTextBrowserTts = ({
+    textToRead,
+    voiceState,
+    channel,
+    blockId = null,
+    segmentId = null,
+    representation = null,
+    item = null,
+    speaker = null
+  }) => {
+    const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
+    const targetVoice = voiceState?.ttsVoice || null;
+    const targetVoiceId = voiceState?.requestedVoiceId || null;
+    const speechSupported = isBrowserTtsSpeechSupported({ synth });
+    const statusBase = {
+      channel: normalizedChannel,
+      ...(representation ? { representation } : {}),
+      blockId,
+      segmentId,
+      requestedVoice: targetVoiceId || null,
+      requestedSourceLabel: voiceState?.requestedSourceLabel || null,
+      ...(representation !== 'full' ? { syncedToFirstSpeaker: Boolean(voiceState?.syncedToFirstSpeaker) } : {})
+    };
+    if (!speechSupported) {
+      setStructuredTextPlaybackSourceStatus({
+        ...statusBase,
+        source: 'unavailable',
+        mode: 'unavailable',
+        origin: 'Browser TTS',
+        voiceId: targetVoiceId || null,
+        effectiveVoice: null,
+        effectiveSourceLabel: 'Browser TTS unavailable',
+        fallbackUsed: Boolean(voiceState?.fallbackUsed),
+        fallbackReason: voiceState?.fallbackReason || 'Browser SpeechSynthesis API is not available on this device.',
+        updatedAt: Date.now()
+      });
+      addLog('Warn', `${representation === 'full' ? 'Full Text' : 'Text Player'}: ${normalizedChannel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS API is unavailable; skipped.`);
+      return Promise.resolve();
+    }
+    const usingNativeDefault = !targetVoice;
+    const fallbackUsed = Boolean(voiceState?.fallbackUsed || (usingNativeDefault && targetVoiceId));
+    const effectiveVoiceName = targetVoice?.name || null;
+    if (targetVoiceId && targetVoice?.name !== targetVoiceId && speaker) {
+      addLog('Warn', `Text Player: speaker ${speaker} requested ${targetVoiceId}, unavailable in Browser TTS; using ${effectiveVoiceName || 'Browser system default'} fallback.`);
+    }
+    setStructuredTextPlaybackSourceStatus({
+      ...statusBase,
+      source: 'tts',
+      mode: 'tts',
+      origin: 'Browser TTS',
+      voiceId: effectiveVoiceName,
+      effectiveVoice: effectiveVoiceName,
+      effectiveSourceLabel: usingNativeDefault ? 'Browser system default' : (voiceState?.effectiveSourceLabel || null),
+      fallbackUsed,
+      fallbackReason: voiceState?.fallbackReason || (usingNativeDefault && targetVoiceId
+        ? `Requested browser voice "${targetVoiceId}" is unavailable on this device; using Browser system default.`
+        : null),
+      updatedAt: Date.now()
+    });
+    return executeBrowserTtsPlaybackService({
+      textToRead: textToRead || '',
+      overrideVoice: targetVoice,
+      selectedVoiceRef: { current: targetVoice },
+      stopSignalRef,
+      pauseStateRef,
+      synth,
+      currentUtteranceRef,
+      ttsReplayRef,
+      playbackResolveRef,
+      rateRef: null,
+      rate: resolveStructuredTextItemPlaybackRate(item, normalizedChannel),
+      pitch: 1
     });
   };
 
@@ -3394,59 +3347,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       ignoreSegmentOverride: true,
       block
     });
-    const targetVoice = voiceState.ttsVoice;
-    const targetVoiceId = voiceState.requestedVoiceId;
-    if (!targetVoice) {
-      setStructuredTextPlaybackSourceStatus({
-        source: 'unavailable',
-        mode: 'unavailable',
-        origin: 'Browser TTS',
-        representation: 'full',
-        channel: normalizedChannel,
-        blockId: block?.id || null,
-        segmentId: null,
-        voiceId: targetVoiceId || null,
-        requestedVoice: targetVoiceId || null,
-        requestedSourceLabel: voiceState.requestedSourceLabel,
-        effectiveVoice: null,
-        effectiveSourceLabel: voiceState.effectiveSourceLabel,
-        fallbackUsed: Boolean(voiceState.fallbackUsed),
-        fallbackReason: voiceState.fallbackReason || null,
-        updatedAt: Date.now()
-      });
-      addLog('Warn', `Full Text ${normalizedChannel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS voice is not ready; full channel skipped.`);
-      return;
-    }
-    setStructuredTextPlaybackSourceStatus({
-      source: 'tts',
-      mode: 'tts',
-      origin: 'Browser TTS',
-      representation: 'full',
+    return speakStructuredTextBrowserTts({
+      textToRead: step?.content || '',
+      voiceState,
       channel: normalizedChannel,
       blockId: block?.id || null,
       segmentId: null,
-      voiceId: targetVoice?.name || targetVoiceId || null,
-      requestedVoice: targetVoiceId || null,
-      requestedSourceLabel: voiceState.requestedSourceLabel,
-      effectiveVoice: targetVoice?.name || targetVoiceId || null,
-      effectiveSourceLabel: voiceState.effectiveSourceLabel,
-      fallbackUsed: Boolean(voiceState.fallbackUsed),
-      fallbackReason: voiceState.fallbackReason || null,
-      updatedAt: Date.now()
-    });
-    return executeBrowserTtsPlaybackService({
-      textToRead: step?.content || '',
-      overrideVoice: targetVoice,
-      selectedVoiceRef: { current: targetVoice },
-      stopSignalRef,
-      pauseStateRef,
-      synth,
-      currentUtteranceRef,
-      ttsReplayRef,
-      playbackResolveRef,
-      rateRef: null,
-      rate: resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
-      pitch: 1
+      representation: 'full',
+      item: firstSegmentItem
     });
   };
 
@@ -3591,60 +3499,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
 
     if (!playbackStillCurrent()) return;
-    if (!targetVoice) {
-      setStructuredTextPlaybackSourceStatus({
-        source: 'unavailable',
-        mode: 'unavailable',
-        origin: 'Browser TTS',
-        channel: channel === 'meaning' ? 'meaning' : 'text',
-        blockId: block?.id || item?.blockId || null,
-        segmentId: item?.segmentId || item?.id || null,
-        voiceId: targetVoiceId || null,
-        requestedVoice: targetVoiceId || null,
-        requestedSourceLabel: voiceState.requestedSourceLabel,
-        effectiveVoice: null,
-        effectiveSourceLabel: voiceState.effectiveSourceLabel,
-        fallbackUsed: Boolean(voiceState.fallbackUsed),
-        fallbackReason: voiceState.fallbackReason || null,
-        syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
-        updatedAt: Date.now()
-      });
-      addLog('Warn', `Text Player: ${channel === 'meaning' ? 'Meaning/ID' : 'Text/EN'} Browser TTS voice is not ready; channel skipped for ${item?.segmentId || item?.id || 'segment'}.`);
-      return;
-    }
-    if (targetVoiceId && targetVoice?.name !== targetVoiceId && item?.speaker) {
-      addLog('Warn', `Text Player: speaker ${item.speaker} requested ${targetVoiceId}, unavailable in Browser TTS; using ${targetVoice.name} fallback.`);
-    }
-    setStructuredTextPlaybackSourceStatus({
-      source: 'tts',
-      mode: 'tts',
-      origin: 'Browser TTS',
-      channel: channel === 'meaning' ? 'meaning' : 'text',
+    return speakStructuredTextBrowserTts({
+      textToRead,
+      voiceState,
+      channel,
       blockId: block?.id || item?.blockId || null,
       segmentId: item?.segmentId || item?.id || null,
-      voiceId: targetVoice?.name || targetVoiceId || null,
-      requestedVoice: targetVoiceId || null,
-      requestedSourceLabel: voiceState.requestedSourceLabel,
-      effectiveVoice: targetVoice?.name || targetVoiceId || null,
-      effectiveSourceLabel: voiceState.effectiveSourceLabel,
-      fallbackUsed: Boolean(voiceState.fallbackUsed),
-      fallbackReason: voiceState.fallbackReason || null,
-      syncedToFirstSpeaker: Boolean(voiceState.syncedToFirstSpeaker),
-      updatedAt: Date.now()
-    });
-    return executeBrowserTtsPlaybackService({
-      textToRead,
-      overrideVoice: targetVoice,
-      selectedVoiceRef: { current: targetVoice },
-      stopSignalRef,
-      pauseStateRef,
-      synth,
-      currentUtteranceRef,
-      ttsReplayRef,
-      playbackResolveRef,
-      rateRef: null,
-      rate: resolveStructuredTextItemPlaybackRate(item, channel),
-      pitch: 1
+      item,
+      speaker: item?.speaker || null
     });
   };
 
@@ -3665,11 +3527,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // transition. An immediate Stop must still resume at the chosen Card.
     const requestedSegmentId = cursorSegmentId || startSegmentId
       || (blockId ? activeTextDocumentTree.blocks?.find(block => block.id === blockId)?.segments?.[0]?.id : null);
+    const isManualUnitScope = scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
+      || scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD;
+    const globalShuffleActive = textStructuredPreferences.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE;
+    const preservedManualShuffleList = isManualUnitScope
+      && globalShuffleActive
+      && structuredTextResumeCursorRef.current.documentId === activeTextDocumentTree.id
+      && Array.isArray(structuredTextResumeCursorRef.current.orderedList)
+      ? structuredTextResumeCursorRef.current.orderedList
+      : null;
     if (requestedSegmentId) {
       structuredTextResumeCursorRef.current = {
         documentId: activeTextDocumentTree.id,
         segmentId: requestedSegmentId,
-        orderedList: Array.isArray(orderedListOverride) ? [...orderedListOverride] : null
+        orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedListOverride)
+          ? [...orderedListOverride]
+          : preservedManualShuffleList
       };
     }
     return executeStructuredTextPlaybackSessionService({
@@ -3699,9 +3572,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       orderedListOverride,
       onPlaybackCursor: ({ documentId, segmentId, orderedList }) => {
         if (documentId !== activeTextDocumentTree?.id || !segmentId) return;
+        const retainedManualShuffleList = isManualUnitScope
+          && globalShuffleActive
+          && structuredTextResumeCursorRef.current.documentId === documentId
+          && Array.isArray(structuredTextResumeCursorRef.current.orderedList)
+          ? structuredTextResumeCursorRef.current.orderedList
+          : null;
         structuredTextResumeCursorRef.current = {
           documentId, segmentId,
-          orderedList: Array.isArray(orderedList) ? [...orderedList] : null
+          orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedList)
+            ? [...orderedList]
+            : retainedManualShuffleList
         };
       },
       onPlaybackCompleted: ({ documentId, segmentId }) => {
@@ -3779,7 +3660,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const cursorId = allowResumeCursor && saved.documentId === activeTextDocumentId
       && structuredTextActivePlaybackList.some(item => item.id === saved.segmentId)
       ? saved.segmentId : null;
-    const savedOrderedList = cursorId && Array.isArray(saved.orderedList)
+    const savedOrderedList = cursorId
+      && textStructuredPreferences.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE
+      && Array.isArray(saved.orderedList)
       ? saved.orderedList : null;
     // DOCUMENT (rather than FROM_HERE) includes the complete current card in
     // Full mode and keeps the user free to navigate Prev back to earlier cards.
@@ -3799,50 +3682,42 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const session = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
       && playbackContextRef.current?.documentId === activeTextDocumentId
       ? playbackContextRef.current : null;
-    const saved = structuredTextResumeCursorRef.current;
-    const cursorId = (saved.documentId === activeTextDocumentId ? saved.segmentId : null)
-      || session?.cursorSegmentId || null;
-    const representationMode = session?.playbackRepresentationMode
-      || textStructuredPreferences.playbackRepresentationMode;
-    const playbackOrderMode = session?.playbackOrderMode || textStructuredPreferences.playbackOrderMode;
-    const completeList = structuredTextActivePlaybackList;
-    const matchesFullList = list => Array.isArray(list)
-      && list.length === completeList.length
-      && new Set(list.map(item => item.id)).size === completeList.length
-      && list.every(item => completeList.some(candidate => candidate.id === item.id));
-    // Freeze one Shuffle order for the whole navigation session. Never reshuffle
-    // on every Next / Prev click, and never shuffle sentences within a card.
-    const snapshot = matchesFullList(session?.orderedList) ? session.orderedList
-      : matchesFullList(saved.documentId === activeTextDocumentId ? saved.orderedList : null)
-        ? saved.orderedList : null;
-    const ordered = snapshot || resolveStructuredTextPlaybackOrder({
-      list: completeList,
-      orderMode: playbackOrderMode,
-      anchorId: cursorId
+    // Freeze one Shuffle order for the whole navigation session when Shuffle is
+    // active, and never inherit manual Segment/Card overrides or stale Shuffle
+    // lists after switching back to Sequential.
+    const nav = resolveStructuredTextSmartNavigationContext({
+      completeList: structuredTextActivePlaybackList,
+      activeDocumentId: activeTextDocumentId,
+      session,
+      savedResume: structuredTextResumeCursorRef.current,
+      preferences: textStructuredPreferences
     });
+    if (!nav) return;
     const target = resolveStructuredTextNavigationTarget({
-      list: ordered,
-      currentId: cursorId,
+      list: nav.ordered,
+      currentId: nav.cursorId,
       direction,
-      representationMode
+      representationMode: nav.representationMode
     });
     if (!target) return;
     // Synchronous cursor update avoids two quick Next taps targeting the same
     // old card before React/async audio start has committed its state.
     structuredTextResumeCursorRef.current = {
-      documentId: activeTextDocumentId, segmentId: target.id, orderedList: [...ordered]
+      documentId: activeTextDocumentId,
+      segmentId: target.id,
+      orderedList: nav.persistedOrderedList ? [...nav.persistedOrderedList] : null
     };
     // Force an exact new cursor, so Full navigates by Card and Split by sentence.
     // A manual Card/Sentence play can also escape its previous restricted scope.
     startStructuredTextPlayback({
       cursorSegmentId: target.id,
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
-      orderedListOverride: ordered,
-      playbackRepresentationMode: representationMode,
-      playbackOrderMode,
-      playbackChannelMode: session?.playbackChannelMode || textStructuredPreferences.playbackChannelMode,
-      repeatMode: session?.repeatMode || textStructuredPreferences.repeatMode,
-      repeatCount: session?.repeatCount ?? null
+      orderedListOverride: nav.orderedListOverride ? [...nav.orderedListOverride] : null,
+      playbackRepresentationMode: nav.representationMode,
+      playbackOrderMode: nav.playbackOrderMode,
+      playbackChannelMode: nav.playbackChannelMode,
+      repeatMode: nav.repeatMode,
+      repeatCount: nav.repeatCount
     });
   };
 
@@ -4038,24 +3913,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       ? `Attached ${result.packageId}: ${result.counts?.documents || 0} Document, ${result.counts?.blocks || 0} Card, ${result.counts?.segments || 0} Segment.`
       : `Synced ${result.packageId}: +${stats.created || 0} ~${stats.updated || 0} -${stats.deleted || 0}; local-preserved ${stats.preservedLocal || 0}.`);
     if (result?.snapshot) {
+      structuredTextAudioStagingHydratedRef.current = false;
       await runStructuredTextAudioStagingGc(result.snapshot, 'text-pack-sync');
+      await rehydrateStructuredTextAudioStagingRuntime(result.snapshot, { resetExisting: false });
       await reconcileStructuredTextExternalAudioSources(result.snapshot);
     }
     return result;
-  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, reconcileStructuredTextExternalAudioSources, addLog]);
+  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, rehydrateStructuredTextAudioStagingRuntime, reconcileStructuredTextExternalAudioSources, addLog]);
 
   const handleTextPackImportCopy = useCallback((file) => runTextLibraryUiCommand(async () => {
     const merged = await executeProLingoTextPackFileImportCopy({ file });
     setTextLibrarySnapshot(merged.snapshot);
+    if (merged?.snapshot) {
+      structuredTextAudioStagingHydratedRef.current = false;
+      await rehydrateStructuredTextAudioStagingRuntime(merged.snapshot, { resetExisting: false });
+    }
     addLog('Text Pack', `Imported independent copy ${merged.packageId}: +${merged.counts.documents} Document, +${merged.counts.blocks} Card, +${merged.counts.segments} Segment.`);
     return merged;
-  }), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  }), [runTextLibraryUiCommand, setTextLibrarySnapshot, rehydrateStructuredTextAudioStagingRuntime, addLog]);
 
   const handleTextExternalInitialImport = useCallback((file) => runTextLibraryUiCommand(async () => {
     const inspection = await inspectProLingoTextExternalJsonFile(file);
     if (inspection.status === 'new-source') {
       const result = await executeProLingoTextExternalJsonFileInitialImport({ file });
       applyTextSourceSnapshot(result.snapshot);
+      structuredTextAudioStagingHydratedRef.current = false;
+      await rehydrateStructuredTextAudioStagingRuntime(result.snapshot, { resetExisting: false });
       await reconcileStructuredTextExternalAudioSources(result.snapshot);
       addLog('External Text', `Imported ${result.externalSourceKey}: ${result.counts.documents} Workspace, ${result.counts.blocks} Card, ${result.counts.segments} Segment, ${result.counts.speakers} speaker(s).`);
       return { ...result, inspectionStatus: 'new-source' };
@@ -4066,19 +3949,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
     addLog('External Text', `${inspection.externalSourceKey} changed: import decision required (${inspection.summary?.conflicts || 0} conflict(s)).`);
     return { mode: 'external-decision-required', inspectionStatus: inspection.status, ...inspection };
-  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, reconcileStructuredTextExternalAudioSources, addLog]);
+  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, rehydrateStructuredTextAudioStagingRuntime, reconcileStructuredTextExternalAudioSources, addLog]);
 
   const handleTextExternalImportDecision = useCallback((file, decision) => runTextLibraryUiCommand(async () => {
     const result = await executeProLingoTextExternalJsonFileDecision({ file, decision });
     if (result?.snapshot) {
+      structuredTextAudioStagingHydratedRef.current = false;
       applyTextSourceSnapshot(result.snapshot);
       await runStructuredTextAudioStagingGc(result.snapshot, 'external-reconcile');
+      await rehydrateStructuredTextAudioStagingRuntime(result.snapshot, { resetExisting: false });
       await reconcileStructuredTextExternalAudioSources(result.snapshot);
     }
     const stats = result?.stats || {};
     addLog('External Text', `${result.externalSourceKey || file?.name || 'External source'} → ${decision}; +${stats.created || 0} ~${stats.updated || 0} -${stats.deleted || 0}, local ${stats.preservedLocal || 0}.`);
     return result;
-  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, reconcileStructuredTextExternalAudioSources, addLog]);
+  }), [runTextLibraryUiCommand, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, rehydrateStructuredTextAudioStagingRuntime, reconcileStructuredTextExternalAudioSources, addLog]);
 
   const handleTextSourceDetach = useCallback((attachmentId, removeData = false) => runTextLibraryUiCommand(async () => {
     if (removeData) forceStopAll();
@@ -4088,9 +3973,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     addLog('Text Source', removeData
       ? `Removed source-owned local data for ${result.attachment?.packageId || attachmentId} (${result.counts?.removed || 0} records).`
       : `Detached ${result.attachment?.packageId || attachmentId}; local data kept as independent Text data.`);
-    if (removeData && result?.snapshot) await runStructuredTextAudioStagingGc(result.snapshot, 'source-data-remove');
+    if (removeData && result?.snapshot) {
+      structuredTextAudioStagingHydratedRef.current = false;
+      await runStructuredTextAudioStagingGc(result.snapshot, 'source-data-remove');
+      await rehydrateStructuredTextAudioStagingRuntime(result.snapshot, { resetExisting: false });
+    }
     return result;
-  }), [runTextLibraryUiCommand, forceStopAll, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, addLog]);
+  }), [runTextLibraryUiCommand, forceStopAll, applyTextSourceSnapshot, runStructuredTextAudioStagingGc, rehydrateStructuredTextAudioStagingRuntime, addLog]);
 
   const textDatabaseBackupSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
@@ -4132,11 +4021,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setTextContent(projection.textContent);
     setTextSourceAttachments(await readTextSourceAttachments());
     const counts = result.diagnostics?.counts || {};
+    structuredTextAudioStagingHydratedRef.current = false;
     await runStructuredTextAudioStagingGc(result.snapshot, 'database-replace-restore');
+    await rehydrateStructuredTextAudioStagingRuntime(result.snapshot, { resetExisting: true });
     await reconcileStructuredTextExternalAudioSources(result.snapshot);
     addLog('Text DB', `REPLACE restore complete: ${counts.documents || 0} Document, ${counts.blocks || 0} Card, ${counts.segments || 0} Segment, ${counts.audioVariants || 0} audio metadata.`);
     return result;
-  }), [runTextLibraryUiCommand, forceStopAll, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, runStructuredTextAudioStagingGc, reconcileStructuredTextExternalAudioSources, addLog]);
+  }), [runTextLibraryUiCommand, forceStopAll, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, runStructuredTextAudioStagingGc, rehydrateStructuredTextAudioStagingRuntime, reconcileStructuredTextExternalAudioSources, addLog]);
 
 
   const handleStructuredTextRuntimeHardeningAudit = useCallback(() => runTextLibraryUiCommand(async () => {
@@ -4710,16 +4601,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const content = channel === 'meaning' ? item.meaning : item.text;
     if (!String(content || '').trim()) return null;
     const voiceState = resolveStructuredTextChannelVoiceState(item, channel);
-    if (!voiceState.ttsVoice) {
-      addLog('Warn', `Text TTS Preview: ${channel} voice unavailable for ${segmentId}.`);
+    if (!isBrowserTtsSpeechSupported({ synth })) {
+      addLog('Warn', `Text TTS Preview: Browser TTS API is unavailable for ${segmentId}/${channel}.`);
       return null;
     }
     return safePlayTransition(async () => {
-      addLog('Text TTS', `${segmentId}/${channel} • ${voiceState.assignmentSource || 'global'} • ${voiceState.requestedVoiceId || voiceState.ttsVoice.name}.`);
+      addLog('Text TTS', `${segmentId}/${channel} • ${voiceState.assignmentSource || 'global'} • ${voiceState.requestedVoiceId || voiceState.ttsVoice?.name || 'Browser system default'}.`);
       return executeBrowserTtsPlaybackService({
         textToRead: content,
-        overrideVoice: voiceState.ttsVoice,
-        selectedVoiceRef: { current: voiceState.ttsVoice },
+        overrideVoice: voiceState.ttsVoice || null,
+        selectedVoiceRef: { current: voiceState.ttsVoice || null },
         stopSignalRef,
         pauseStateRef,
         synth,
@@ -6307,7 +6198,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const clearTableGeneratedAudioRam = () => {
     const releasedCount = tableGeneratedSessionAudioCount;
-    clearAudioStagingRuntimeCache();
+    clearAudioStagingRuntimeCacheForMode('table');
     clearTableAudioFolderRuntimeCache();
     clearTableAudioZipRuntimeCache();
     resetTableAudioTransientCoverageStatePreservingFolder();

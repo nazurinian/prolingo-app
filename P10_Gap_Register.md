@@ -1,18 +1,18 @@
 # P10 App-Wide Gap Register (ProLingo v6)
 
-- **Repository / Baseline:** `nazurinian/prolingo-app` | `fix/text-data-system-boundaries` @ `c3b8f4f`
+- **Repository / Baseline:** `nazurinian/prolingo-app` | `fix/text-data-system-boundaries` @ `fe0f4de` (working tree includes bounded P10 H1–H3 remediation)
 - **Audit Scope:** Consolidated internal runtime + code-level gaps across **P9-B Playback**, **P9-C Bulk/Staging/ZIP**, **Legacy Audit Triage**, and **Stage 4 App-Wide Discovery** (`Table`, `Legacy Text`, `Paragraph`, `Conversation`, `Mixed`).
-- **Safety Constraint Check:** Zero production source files modified; all gaps require bounded future fix rounds.
+- **Remediation Status (H1–H3):** All **8 / 8 P1** findings (`P10-G001`–`P10-G008`) plus bonus P2 **`P10-G015`** (`P9C-D`) are **Fixed & Verified** in Node/Vite/ESLint. Remaining P2 (`P10-G009`–`P10-G014`, `P10-G016`–`P10-G018`) and P3 (`P10-G019`–`P10-G021`) items remain **Deferred / Out of Scope for H1–H3**. See [`P10_H1_H3_Remediation_Report.md`](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/P10_H1_H3_Remediation_Report.md).
 
 ---
 
 ## Summary by Severity & Confidence
 
-| Severity | Count | Gap IDs |
-|---|---:|---|
-| **P1 (High / Functional or Data Integrity)** | 8 | `P10-G001` – `P10-G008` |
-| **P2 (Medium / Voice, UI Parity, Export, Leak)** | 10 | `P10-G009` – `P10-G018` |
-| **P3 (Low / Cleanup, UX Consistency)** | 3 | `P10-G019` – `P10-G021` |
+| Severity | Count | Status after H1–H3 | Gap IDs |
+|---|---:|---|---|
+| **P1 (High / Functional or Data Integrity)** | 8 | **8 / 8 Fixed & Verified** | `P10-G001` – `P10-G008` |
+| **P2 (Medium / Voice, UI Parity, Export, Leak)** | 10 | **1 Bonus Fixed (`G015`), 9 Deferred** | `P10-G009` – `P10-G018` |
+| **P3 (Low / Cleanup, UX Consistency)** | 3 | **3 Deferred** | `P10-G019` – `P10-G021` |
 
 | Confidence Tag | Meaning | Count |
 |---|---|---:|
@@ -24,100 +24,98 @@
 ## Detailed Gap Register
 
 ### `P10-G001` — Unthrottled Spin Loop on `repeatMode=loop` When TTS Fails/Resolves Synchronously
+- **Status:** **Fixed & Verified (Wave H1)**
 - **Category:** Playback Reliability / Browser Freeze Hazard
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-B `S6-A`)
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
 - **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S6-A]`): 100 consecutive loop passes execute with zero inter-pass delay when channel resolves immediately (`unavailable TTS voice` / missing `SpeechSynthesisUtterance`). Related playback runtime loop in [textStructuredPlaybackSessionService.js](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/playback/textStructuredPlaybackSessionService.js).
-- **Repro Condition:** Set repeat mode to Loop, enable TTS path on an environment where voice lookup fails or `SpeechSynthesisUtterance` resolves immediately, and press Play.
-- **Bounded Fix Direction:** Enforce a minimum async yield (e.g. `waitPlaybackDelay` floor / consecutive immediate-error circuit breaker) between loop iterations.
-- **Required Test:** Extend Node P9-B `S6-A` contract to pass cleanly + browser smoke check when Web Speech API is unavailable.
-- **Manual Browser Check Required:** Yes (verify UX stops or throttles safely without tab hang).
+- **Implemented Fix:** Added progressive fast-settle step (`FAST_SETTLE_STEP_THRESHOLD_MS = 15`, `FAST_STEP_YIELD_MS = 16` after `>= 2` instant steps) and pass (`FAST_SETTLE_PASS_THRESHOLD_MS = 60`, `FAST_PASS_BACKOFF_STEP_MS = 40` capped at `250ms`) cancellable backoff in [textStructuredPlaybackSessionService.js:17-21,257,342,376](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/playback/textStructuredPlaybackSessionService.js#L17-L21), keeping normal `>= 60ms` playback passes delay-free.
+- **Verification & Classification:** **`FIXED`** — both `audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S6-A]`) and `audit-v603-p10-h1-h3-remediation.mjs` (`[H1][P10-G001]`) **PASS**.
+- **Manual Browser Check Required:** Yes (verify Stop responsiveness / no tab freeze when Web Speech API is unavailable).
 
 ---
 
 ### `P10-G002` — `FROM_HERE` Starting Mid-Card in `Full` Representation Replays Segment 1
+- **Status:** **Fixed & Verified (Wave H3)**
 - **Category:** Playback Ordering / Cursor Fidelity
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-B `S1-A`)
 - **Affected Modes:** Structured Text `Full` mode (`Paragraph`, `Conversation`, `Mixed`)
 - **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S1-A]`): starting `FROM_HERE` at `SEGMENT_000002` inside a multi-segment card yields `["SEGMENT_000001","SEGMENT_000002","SEGMENT_000003", ...]`, replaying Seg 1 before advancing.
-- **Repro Condition:** Enable `Full` global representation, trigger "Play from here" on Segment 2 of Card 1.
-- **Bounded Fix Direction:** In `Full` representation plan resolution, either play from the clicked card's Full artifact (skipping prior segments of Card 1) or slice remaining segments cleanly without prepending Seg 1.
-- **Required Test:** Flip P9-B `S1-A` probe from `[DEFECT]` into enforced `[CONTRACT]`.
+- **Implemented Fix:** Added `segmentIds` slice support via `resolveScopedSegments` in [textStructuredRuntimePlaybackPlanDomain.js:30-43,125,246-254](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredRuntimePlaybackPlanDomain.js#L30-L43) so partial card slices suppress `FULL_LOCAL` and build `fullRepresentation` and `splitFallback` strictly from remaining segments while preserving block-level `playbackOrder`/`ttsOnly`; updated [textStructuredPlaybackSessionService.js:206-233](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/playback/textStructuredPlaybackSessionService.js#L206-L233) to slice `planBlock` & `planSegmentIds` and filter returned steps on `!group.wholeBlock` while keeping `Card 2+` `FULL_LOCAL` intact; wired `fullBlock`/`segmentIds` in [App.jsx:3178](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L3178).
+- **Verification & Classification:** **`FIXED`** — both `audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S1-A]`) and `audit-v603-p10-h1-h3-remediation.mjs` (`[H3][P10-G002]`) **PASS**.
 - **Manual Browser Check Required:** Yes (click mid-card "From Here" in `Full` mode and verify audio/highlight).
 
 ---
 
 ### `P10-G003` — `handlePlayerSmartNav` Leaks Temporary Manual Override Settings Into Global Playback
+- **Status:** **Fixed & Verified (Wave H3)**
 - **Category:** Global vs Manual Session Isolation
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-B `S6-B`)
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S6-B]`): `handlePlayerSmartNav` unconditionally inherits `session.repeatMode`, `playbackRepresentationMode`, and `playbackChannelMode` even when the prior active session was a scoped manual Segment/Card play.
-- **Repro Condition:** Manually play a single Segment with Loop or temporary Split override, then click Global Prev/Next (`handlePlayerSmartNav`).
-- **Bounded Fix Direction:** Distinguish global session state from ephemeral manual Segment/Card session profile so global Prev/Next reads global settings unless global session itself owns those overrides.
-- **Required Test:** Flip P9-B `S6-B` into `[CONTRACT]` assertion.
-- **Manual Browser Check Required:** Yes.
+- **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S6-B]`): `handlePlayerSmartNav` previously inherited `session.repeatMode`, `playbackRepresentationMode`, and `playbackChannelMode` even when the prior active session was a scoped manual Segment/Card play.
+- **Implemented Fix:** Extracted `resolveStructuredTextSmartNavigationContext` and `resolveStructuredTextSmartNavPlan` in [textStructuredPlaybackDomain.js:170-277](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredPlaybackDomain.js#L170-L277) so global Prev/Next ALWAYS resolves `playbackRepresentationMode`, `playbackOrderMode`, `playbackChannelMode`, `repeatMode`, and `repeatCount: null` from current global `preferences` (never inheriting from `session`); wired `handlePlayerSmartNav` in [App.jsx:3676-3720](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L3676-L3720).
+- **Verification & Classification:** **`FIXED` (behavioral verification in `audit-v603-p10-h1-h3-remediation.mjs` `[H3][P10-G003]` PASS)**; note `audit-v603-p9b-playback-marathon.mjs` `[DEFECT S6-B]` is classified **`INVALID TEST` (archived pre-fix inline regex probe)** because its regex (`/session\?\.scope\s*===\s*TEXT_STRUCTURED_PLAYBACK_SCOPES\.(DOCUMENT|FROM_HERE)/` inside `navFn`) expected inline `session.scope` branching inside `App.jsx` whereas the clean architectural fix eliminated `session` setting inheritance completely via `textStructuredPlaybackDomain.js`.
+- **Manual Browser Check Required:** Yes (play manual Segment with Loop, then press Global Next/Prev).
 
 ---
 
 ### `P10-G004` — Stale `orderedListOverride` Overrides `Sequential` Mode
+- **Status:** **Fixed & Verified (Wave H3)**
 - **Category:** Playback Order / Shuffle State Leak
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-B `S7-A`)
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
 - **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S7-A]`): switching back to `Sequential` still resolved shuffled order `["SEGMENT_000006","SEGMENT_000004","SEGMENT_000005",...]` due to stale `orderedListOverride`.
-- **Repro Condition:** Enable Shuffle, play or pause, switch `playbackOrderMode` back to Sequential, trigger playback/smart nav.
-- **Bounded Fix Direction:** Clear or ignore `orderedListOverride` whenever `playbackOrderMode !== 'shuffle'` (and clear cached override on mode/order transitions).
-- **Required Test:** Flip P9-B `S7-A` into `[CONTRACT]` assertion.
-- **Manual Browser Check Required:** Yes.
+- **Implemented Fix:** Gated `overrideValid` & `persistedOrderedList` on `playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE` in [textStructuredPlaybackSessionService.js:141-158,202,329](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/playback/textStructuredPlaybackSessionService.js#L141-L158), ignored saved Shuffle snapshots when `playbackOrderMode !== 'shuffle'` in `resolveStructuredTextSmartNavigationContext` ([textStructuredPlaybackDomain.js:211-237](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/domain/text/textStructuredPlaybackDomain.js#L211-L237)), cleared resume `orderedList` in `handleStructuredTextPlaybackFeelChange` ([App.jsx:1273-1283](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1273-L1283)), and gated resume `orderedListOverride` in `startStructuredTextPlayback` & `handlePlayerGlobalPlay` ([App.jsx:3531-3586,3660-3672](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L3531-L3586)).
+- **Verification & Classification:** **`FIXED`** — both `audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S7-A]`) and `audit-v603-p10-h1-h3-remediation.mjs` (`[H3][P10-G004]`) **PASS**, and `audit-v603-beta8-p9-hf4d-navigation.mjs` (`20/20`) stays **PASS**.
+- **Manual Browser Check Required:** Yes (enable Shuffle -> pause/stop -> switch to Sequential -> press Next/Play).
 
 ---
 
 ### `P10-G005` — Missing Null-Voice Fallback Skips Native Browser TTS Completely
+- **Status:** **Fixed & Verified (Wave H1)**
 - **Category:** Browser TTS Resilience
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-B `S9-A`)
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S9-A]`): `playStructuredTextChannel` / `FullStep` in `src/App.jsx` return early when `!targetVoice`, contradicting `executeBrowserTtsPlaybackService`'s native system-default TTS fallback policy.
-- **Repro Condition:** Device/browser where `speechSynthesis.getVoices()` returns empty or matching voice object is `null`.
-- **Bounded Fix Direction:** Delegate to `executeBrowserTtsPlaybackService` with `overrideVoice = null` when TTS is intentionally requested instead of returning early on `!targetVoice` (note `P10-G001` throttle guard must accompany this if `SpeechSynthesisUtterance` itself is missing).
-- **Required Test:** Flip P9-B `S9-A` into `[CONTRACT]`.
-- **Manual Browser Check Required:** Yes (test with System Default Browser TTS).
+- **Primary Evidence:** `scripts/audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S9-A]`): `playStructuredTextChannel` / `FullStep` in `src/App.jsx` returned early when `!targetVoice`, contradicting `executeBrowserTtsPlaybackService`'s native system-default TTS fallback policy.
+- **Implemented Fix:** Added `isBrowserTtsSpeechSupported` helper & guards in [audioPlaybackSideEffectService.js:1-25](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/audioPlaybackSideEffectService.js#L1-L25) and shared `speakStructuredTextBrowserTts` in [App.jsx:3209,3350,3502,4604](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L3209) so missing named voices fall back to native OS TTS (`overrideVoice: null`) whenever Web Speech API is supported.
+- **Verification & Classification:** **`FIXED`** — both `audit-v603-p9b-playback-marathon.mjs` (`[DEFECT S9-A]`) and `audit-v603-p10-h1-h3-remediation.mjs` (`[H1][P10-G005]`) **PASS**.
+- **Manual Browser Check Required:** Yes (test with System Default Browser TTS when `getVoices()` returns empty or lacks named voice).
 
 ---
 
 ### `P10-G006` — Text DB Restore / Pack Sync Skips Staging Runtime ObjectURL Re-Hydration
+- **Status:** **Fixed & Verified (Wave H2)**
 - **Category:** Storage / Runtime State Desync
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-C `P9C-A`) & `Confirmed Code`
 - **Affected Modes:** Structured Text (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:** [App.jsx:4121-4139](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L4121-L4139) (`handleTextDatabaseBackupRestore`) and [App.jsx:626](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L626); P9-C probe `[DEFECT P9C-A]`. `structuredTextAudioStagingHydratedRef.current` stays `true`, so runtime ObjectURL maps (`structuredTextAudioRuntimeUrls` & `structuredTextFullAudioRuntimeUrls`) are neither cleared nor re-bound from IndexedDB Staging after restore/merge.
-- **Repro Condition:** Import a Text DB Backup or Pack Sync referencing Staging blobs already present in `Audio Staging IDB` during an active session without refreshing the page.
-- **Bounded Fix Direction:** Reset `structuredTextAudioStagingHydratedRef.current = false` (or trigger an explicit bounded Staging re-hydration pass for active variant/full fingerprints) inside backup restore & Pack Sync completion handlers.
-- **Required Test:** Flip P9-C `P9C-A` + add headless browser/IDB restore test.
-- **Manual Browser Check Required:** Yes (verify audio plays immediately after DB restore without page reload).
+- **Primary Evidence:** `handleTextDatabaseBackupRestore` and Pack Sync previously left `structuredTextAudioStagingHydratedRef.current` latched `true`, so runtime ObjectURL maps (`structuredTextAudioRuntimeUrls` & `structuredTextFullAudioRuntimeUrls`) were neither cleared nor re-bound from IndexedDB Staging after restore/merge.
+- **Implemented Fix:** Added pure `reconcileTextAudioStagingRuntimeBindings` in [textAudioStagingService.js:281](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textAudioStagingService.js#L281) (handling ID collisions & revoking superseded blob URLs safely without destructive GC) plus async-token-guarded `rehydrateStructuredTextAudioStagingRuntime` in [App.jsx:625-667](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L625-L667); wired into `handleTextDatabaseBackupRestore` (`resetExisting: true` at `App.jsx:4026`), `handleTextPackAttachOrSync`, `handleTextPackImportCopy`, `handleTextExternalInitialImport`, `handleTextExternalImportDecision`, and `handleTextSourceDetach` (`App.jsx:3918-3979`).
+- **Verification & Classification:** **`FIXED`** — both `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-A]`) and `audit-v603-p10-h1-h3-remediation.mjs` (`[H2][P10-G006]`) **PASS**.
+- **Manual Browser Check Required:** Yes (verify audio plays immediately after DB restore / Pack Sync without page reload).
 
 ---
 
 ### `P10-G007` — Non-Atomic Two-DB Portable ZIP Import Without Rollback on Failure
+- **Status:** **Fixed & Verified (Wave H2)**
 - **Category:** Data Integrity / Transaction Safety
 - **Severity / Confidence:** `P1` | `Confirmed Runtime` (P9-C `P9C-B`)
 - **Affected Modes:** Structured Text Portable ZIP Import
-- **Primary Evidence:** `scripts/audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-B]`): ZIP import writes `audioVariants` / `fullAudioArtifacts` metadata into Text Library IDB before extracting and storing binary blobs into Audio Staging IDB, with no compensation/rollback if blob decompression fails mid-stream.
-- **Repro Condition:** Import a Portable ProLingo ZIP containing valid manifest + corrupt/truncated `.mp3` entry mid-archive.
-- **Bounded Fix Direction:** Extract/validate & stage binary blobs into temporary/Staging entries first (or clean up committed Text Library variant metadata on Staging write failure before updating UI coverage).
-- **Required Test:** Flip P9-C `P9C-B` with corrupt-entry ZIP fixture asserting zero dangling `audioVariants` metadata.
-- **Manual Browser Check Required:** Optional (covered well by simulated IDB/JSZip fault injection).
+- **Primary Evidence:** ZIP import previously wrote `audioVariants` / `fullAudioArtifacts` metadata into Text Library IDB before extracting and storing binary blobs into Audio Staging IDB, with no rollback if blob decompression failed mid-archive.
+- **Implemented Fix:** Created transactional orchestrator `executeTextStructuredAudioZipImport` in [textStructuredAudioZipImportService.js:72](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/audio/textStructuredAudioZipImportService.js#L72) (**Phase 1:** decompress & validate all ZIP blobs before any DB write -> **Phase 2:** snapshot pre-existing Staging records via `getTextAudioStagingSnapshot`/`getTextFullAudioStagingSnapshot` & stage blobs -> **Phase 3:** atomic single-TX `executeTextZipImportMetadataCommit` in [textLibraryCommandService.js:399](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textLibraryCommandService.js#L399) -> full compensating rollback via `rollbackTextAudioStagingBatch` + `executeTextAudioImportRollback` on error or `AbortSignal`, restoring overwritten pre-existing Staging blobs via [audioStagingIndexedDbService.js:201-249](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/audioStagingIndexedDbService.js#L201-L249)); wired cleanly into `handleStructuredTextAddAudioZipFiles` in [App.jsx:1923-2035](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1923-L2035).
+- **Verification & Classification:** **`FIXED` (verified in `audit-v603-p10-h1-h3-remediation.mjs` `[H2][P10-G007]` PASS across corrupt-ZIP, Phase 2 Staging error, Phase 3 Text DB error, post-commit AbortSignal, and happy path)**; note `audit-v603-p9c-bulk-marathon.mjs:536` (`[DEFECT P9C-B]`, `assert.ok(firstWritePos > 0 && firstReadPos > firstWritePos)`) and `audit-v603-beta8-p4-staging-zip.mjs:212` (`assert.match(appSource, /zip-imported-staging-ready/)`) are classified **`INVALID TEST` (archived pre-fix / pre-extraction source regexes on `App.jsx`)**.
+- **Manual Browser Check Required:** Optional (import a valid Portable ZIP and a corrupt ZIP in browser to smoke-check UI feedback).
 
 ---
 
 ### `P10-G008` — Table "Clear Audio RAM" (`clearAudioStagingRuntimeCache()`) Revokes Text Staging ObjectURLs
+- **Status:** **Fixed & Verified (Wave H1)**
 - **Category:** Table/Text Boundary Isolation Leak
 - **Severity / Confidence:** `P1` | `Confirmed Code`
 - **Affected Modes:** `Table` -> impacts `Structured Text` (`Paragraph`, `Conversation`, `Mixed`)
-- **Primary Evidence:**
-  - [App.jsx:6308-6315](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L6308-L6315): `clearTableGeneratedAudioRam()` invokes `clearAudioStagingRuntimeCache()` (global across ALL modes) instead of `clearAudioStagingRuntimeCacheForMode('table')` ([audioStagingIndexedDbService.js:241](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/audioStagingIndexedDbService.js#L241)).
-  - [audioStagingIndexedDbService.js:288-300](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/audioStagingIndexedDbService.js#L288-L300): `clearAudioStagingForMode(mode)` likewise clears the whole global runtime cache at `L300` instead of calling `clearAudioStagingRuntimeCacheForMode(mode)`.
-- **Repro Condition:** Play/hydrate Staging audio in Structured Text, switch to Table, click **Clear Audio RAM** (or clear Table Staging), switch back to Text -> active Text Staging blob URLs have been revoked.
-- **Bounded Fix Direction:** Replace `clearAudioStagingRuntimeCache()` with `clearAudioStagingRuntimeCacheForMode('table')` in `clearTableGeneratedAudioRam()` and `clearAudioStagingRuntimeCacheForMode(mode)` in `clearAudioStagingForMode()`.
-- **Required Test:** Node unit test verifying `clearAudioStagingRuntimeCacheForMode('table')` preserves `'text'` ObjectURLs while revoking `'table'` URLs.
-- **Manual Browser Check Required:** Yes (verify playing Text Staging audio after Table Clear RAM).
+- **Primary Evidence:** `clearTableGeneratedAudioRam()` (`App.jsx`) and `clearAudioStagingForMode(mode)` (`audioStagingIndexedDbService.js`) previously called global `clearAudioStagingRuntimeCache()` instead of mode-scoped `clearAudioStagingRuntimeCacheForMode(...)`, revoking Structured Text Staging ObjectURLs from Table actions.
+- **Implemented Fix:** Replaced global `clearAudioStagingRuntimeCache()` in `clearTableGeneratedAudioRam` with `clearAudioStagingRuntimeCacheForMode('table')` ([App.jsx:6201](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L6201)), and updated `clearAudioStagingForMode` ([audioStagingIndexedDbService.js:353-367](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/audioStagingIndexedDbService.js#L353-L367)) to revoke only `clearAudioStagingRuntimeCacheForIds(ids)` + `clearAudioStagingRuntimeCacheForMode(mode)`.
+- **Verification & Classification:** **`FIXED`** — `audit-v603-p10-h1-h3-remediation.mjs` (`[H1][P10-G008]`) **PASS** (`clearAudioStagingRuntimeCacheForMode('table')` & `clearAudioStagingForMode('table')` preserve `'text'` ObjectURLs while revoking `'table'` ObjectURLs).
+- **Manual Browser Check Required:** Yes (verify playing Text Staging audio after Table Clear Audio RAM).
 
 ---
 
@@ -192,13 +190,14 @@
 ---
 
 ### `P10-G015` — Portable ZIP Split Import Overwrites Runtime ObjectURLs Without Revocation
+- **Status:** **Fixed & Verified (Bonus in Wave H2)**
 - **Category:** Memory / Blob URL Leak
 - **Severity / Confidence:** `P2` | `Confirmed Runtime` (P9-C `P9C-D`) & `Confirmed Code`
 - **Affected Modes:** Structured Text Portable ZIP Import
-- **Primary Evidence:** [App.jsx:2051-2070](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L2051-L2070) (`handleStructuredTextAddAudioZipFiles`) assigns `next[match.variant.id]` without calling `URL.revokeObjectURL(previous?.url)` (whereas Folder import at [App.jsx:1937](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1937) properly revokes `previous?.url`).
-- **Bounded Fix Direction:** Call `if (previous?.url && previous.url !== nextUrl) try { URL.revokeObjectURL(previous.url); } catch {}` on overwrite in `handleStructuredTextAddAudioZipFiles`.
-- **Required Test:** Flip P9-C `P9C-D` into `[CONTRACT]`.
-- **Manual Browser Check Required:** No (fully testable via Node/DOM mock).
+- **Primary Evidence:** `handleStructuredTextAddAudioZipFiles` previously overwrote runtime ObjectURL entries without revoking superseded `blob:` URLs.
+- **Implemented Fix:** Added stale Split and Full `URL.revokeObjectURL` cleanup during runtime state updates in `handleStructuredTextAddAudioZipFiles` ([App.jsx:1994-2035](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/App.jsx#L1994-L2035)) alongside `reconcileTextAudioStagingRuntimeBindings` ([textAudioStagingService.js:281](file:///c:/Users/HikamSeif/Documents/@%20Lain-Lain/2000%20Most%20Frequently%20Used%20Words/prolingo-app/src/services/persistence/textAudioStagingService.js#L281)).
+- **Verification & Classification:** **`FIXED`** — `audit-v603-p9c-bulk-marathon.mjs` (`[DEFECT P9C-D]`) now **PASSES**.
+- **Manual Browser Check Required:** No (verified cleanly in Node; note `P10-G009`–`P10-G014` and `P10-G016`–`P10-G021` remain Deferred / Out of Scope for H1–H3).
 
 ---
 

@@ -2,17 +2,21 @@ import {
   clearAudioStagingForMode,
   clearAudioStagingRuntimeCacheForIds,
   clearAudioStagingRuntimeCacheForMode,
+  deleteAudioStagingRecordsByIds,
   getAudioStagingBlob,
   getAudioStagingObjectUrl,
+  getAudioStagingSnapshotBySpec,
   listAudioStagingMetadata,
   markAudioStagingExported,
   putAudioStagingBlob,
-  releaseAudioStagingBlobs
+  releaseAudioStagingBlobs,
+  restoreAudioStagingSnapshotRecords
 } from './audioStagingIndexedDbService.js';
 import { triggerBrowserZipDownload } from '../audio/browserZipService.js';
 import { buildCanonicalTextDocumentZipFilename } from '../../domain/text/textFilenameDomain.js';
 import { buildProLingoTextAudioManifest, TEXT_AUDIO_MANIFEST_FILENAME } from '../../domain/text/textAudioManifestDomain.js';
 import { buildTextAudioIndexCsv, TEXT_AUDIO_INDEX_FILENAME } from '../../domain/text/textAudioIndexDomain.js';
+import { getTextStructuredFullAudioArtifacts } from '../../domain/text/textStructuredSplitFullDomain.js';
 
 export const TEXT_AUDIO_STAGING_MODE = 'text';
 export const TEXT_AUDIO_STAGING_ZIP_MAX_BYTES = 64 * 1024 * 1024;
@@ -22,6 +26,47 @@ const upper = value => clean(value).toUpperCase();
 const segmentNo = value => {
   const match = upper(value).match(/_(\d+)$/);
   return match ? Number(match[1]) : null;
+};
+
+const buildTextSplitStagingSpec = ({
+  audioVariantId = null,
+  renderFingerprint = null,
+  documentId = null,
+  engine = 'edge',
+  voiceId = null
+} = {}) => ({
+  mode: TEXT_AUDIO_STAGING_MODE,
+  mapKey: clean(renderFingerprint).toLowerCase() || upper(audioVariantId),
+  engine: clean(engine).toLowerCase() || 'edge',
+  voiceId: clean(voiceId) || null,
+  bookId: upper(documentId) || null
+});
+
+const buildTextFullStagingSpec = ({
+  fullArtifactFingerprint,
+  documentId = null,
+  engine = 'edge',
+  voiceId = null
+} = {}) => {
+  const fingerprint = clean(fullArtifactFingerprint).toLowerCase();
+  if (!fingerprint.startsWith('full-sha256-')) throw new Error('Full Text Staging requires a valid Full Artifact fingerprint.');
+  return {
+    mode: TEXT_AUDIO_STAGING_MODE,
+    mapKey: fingerprint,
+    engine: clean(engine).toLowerCase() || 'edge',
+    voiceId: clean(voiceId) || null,
+    bookId: upper(documentId) || null
+  };
+};
+
+export const getTextAudioStagingSnapshot = args => getAudioStagingSnapshotBySpec(buildTextSplitStagingSpec(args));
+
+export const getTextFullAudioStagingSnapshot = args => getAudioStagingSnapshotBySpec(buildTextFullStagingSpec(args));
+
+export const rollbackTextAudioStagingBatch = async ({ createdIds = [], previousSnapshots = [] } = {}) => {
+  const restored = await restoreAudioStagingSnapshotRecords(previousSnapshots);
+  const deleted = await deleteAudioStagingRecordsByIds(createdIds);
+  return { restored, deleted };
 };
 
 export const putTextAudioStagingBlob = async ({
@@ -37,19 +82,15 @@ export const putTextAudioStagingBlob = async ({
   blob,
   metadata = null
 }) => {
-  const physicalKey = clean(renderFingerprint).toLowerCase() || upper(audioVariantId);
+  const spec = buildTextSplitStagingSpec({ audioVariantId, renderFingerprint, documentId, engine, voiceId });
   const record = await putAudioStagingBlob({
-    mode: TEXT_AUDIO_STAGING_MODE,
-    mapKey: physicalKey,
+    ...spec,
     part: clean(channel).toLowerCase() || 'text',
-    engine: clean(engine).toLowerCase() || 'edge',
-    voiceId: clean(voiceId) || null,
     filename: clean(filename) || null,
     mimeType: mimeType || blob?.type || null,
     blob,
     stableId: upper(segmentId),
     displayId: segmentNo(segmentId),
-    bookId: upper(documentId) || null,
     metadata: {
       audioVariantId: upper(audioVariantId),
       renderFingerprint: clean(renderFingerprint).toLowerCase() || null,
@@ -79,23 +120,18 @@ export const putTextFullAudioStagingBlob = async ({
   descriptor = null,
   metadata = null
 }) => {
-  const fingerprint = clean(fullArtifactFingerprint).toLowerCase();
-  if (!fingerprint.startsWith('full-sha256-')) throw new Error('Full Text Staging requires a valid Full Artifact fingerprint.');
+  const spec = buildTextFullStagingSpec({ fullArtifactFingerprint, documentId, engine, voiceId });
   const record = await putAudioStagingBlob({
-    mode: TEXT_AUDIO_STAGING_MODE,
-    mapKey: fingerprint,
+    ...spec,
     part: clean(channel).toLowerCase() || 'text',
-    engine: clean(engine).toLowerCase() || 'edge',
-    voiceId: clean(voiceId) || null,
     filename: clean(filename) || null,
     mimeType: mimeType || blob?.type || null,
     blob,
     stableId: upper(blockId),
     displayId: null,
-    bookId: upper(documentId) || null,
     metadata: {
       representation: 'full',
-      fullArtifactFingerprint: fingerprint,
+      fullArtifactFingerprint: spec.mapKey,
       documentId: upper(documentId) || null,
       blockId: upper(blockId),
       channel: clean(channel).toLowerCase() || 'text',
@@ -239,4 +275,143 @@ export const exportTextAudioStagingZipChunks = async ({
     results.push({ ...result, records: exported, ids: exported.map(record => record.id) });
   }
   return results;
+};
+
+/** Reconcile Text Staging IndexedDB records against the active Text Library snapshot without destructive GC. */
+export const reconcileTextAudioStagingRuntimeBindings = ({
+  snapshot,
+  activeRecords = [],
+  prevRuntimeAudioUrls = {},
+  prevRuntimeFullAudioUrls = {},
+  resetExisting = false
+} = {}) => {
+  const active = (Array.isArray(activeRecords) ? activeRecords : []).filter(record => record?.hasBlob);
+  const stagingRecordsMap = new Map(active.map(record => [record.id, record]));
+  const stagingSummary = summarizeTextAudioStaging(active);
+  const revokedUrls = new Set();
+
+  const variants = Array.isArray(snapshot?.audioVariants) ? snapshot.audioVariants : [];
+  const variantsById = new Map(variants.map(item => [upper(item?.id), item]));
+  const variantsByRf = new Map();
+  variants.forEach(variant => {
+    const rf = clean(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
+    if (!rf) return;
+    const list = variantsByRf.get(rf) || [];
+    list.push(variant);
+    variantsByRf.set(rf, list);
+  });
+
+  const fullArtifactsByFingerprint = new Map();
+  (Array.isArray(snapshot?.blocks) ? snapshot.blocks : []).forEach(block => {
+    getTextStructuredFullAudioArtifacts(block).forEach(artifact => {
+      const fingerprint = clean(artifact?.fullArtifactFingerprint || '').toLowerCase();
+      if (!fingerprint) return;
+      const list = fullArtifactsByFingerprint.get(fingerprint) || [];
+      list.push({ block, artifact });
+      fullArtifactsByFingerprint.set(fingerprint, list);
+    });
+  });
+
+  const runtimeAudioUrls = {};
+  Object.entries(prevRuntimeAudioUrls || {}).forEach(([variantId, entry]) => {
+    if (!entry) return;
+    const id = upper(variantId);
+    const variant = variantsById.get(id);
+    if (resetExisting || !variant) {
+      if (entry?.url) revokedUrls.add(entry.url);
+      if (resetExisting && entry?.zipFallback?.url) revokedUrls.add(entry.zipFallback.url);
+      return;
+    }
+    if (!entry?.stagingBacked) {
+      runtimeAudioUrls[id] = entry;
+      return;
+    }
+    const variantRf = clean(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase();
+    const stillValidStaging = stagingRecordsMap.has(entry.stagingId)
+      && (!entry.renderFingerprint || !variantRf || clean(entry.renderFingerprint).toLowerCase() === variantRf);
+    if (stillValidStaging) {
+      runtimeAudioUrls[id] = entry;
+      return;
+    }
+    if (entry?.url) revokedUrls.add(entry.url);
+    if (entry?.zipFallback) runtimeAudioUrls[id] = entry.zipFallback;
+  });
+
+  active.forEach(record => {
+    const physical = resolveTextAudioStagingPhysicalIdentity(record);
+    if (physical.representation !== 'split') return;
+    const recordRf = physical.identity;
+    const rfVariants = recordRf?.startsWith('rf-sha256-') ? (variantsByRf.get(recordRf) || []) : [];
+    const legacyVariantId = upper(record?.metadata?.audioVariantId || record?.mapKey || '');
+    const candidates = rfVariants.length ? rfVariants : [variantsById.get(legacyVariantId)].filter(Boolean);
+    candidates.forEach(variant => {
+      const variantId = upper(variant?.id);
+      if (!variantId) return;
+      if (rfVariants.length) {
+        if (clean(variant?.metadata?.audioRenderFingerprintV1 || '').toLowerCase() !== recordRf) return;
+      } else {
+        const recordFingerprint = String(record?.metadata?.contentFingerprint || '');
+        const variantFingerprint = String(variant?.metadata?.contentFingerprint || '');
+        if (!recordFingerprint || !variantFingerprint || recordFingerprint !== variantFingerprint) return;
+        if (clean(record?.voiceId).toLowerCase() !== clean(variant?.voiceId).toLowerCase()) return;
+        if (clean(record?.engine).toLowerCase() !== clean(variant?.engine).toLowerCase()) return;
+        if (clean(record?.part).toLowerCase() !== clean(variant?.channel).toLowerCase()) return;
+      }
+      const current = runtimeAudioUrls[variantId];
+      if (current?.stagingBacked && current.stagingId === record.id) return;
+      if (current?.url && current?.stagingBacked) revokedUrls.add(current.url);
+      runtimeAudioUrls[variantId] = {
+        ...(current?.zipBacked ? { zipFallback: current } : current?.zipFallback ? { zipFallback: current.zipFallback } : {}),
+        stagingBacked: true,
+        stagingId: record.id,
+        renderFingerprint: recordRf?.startsWith('rf-sha256-') ? recordRf : null,
+        filename: record.filename || current?.filename || null,
+        mimeType: record.mimeType || current?.mimeType || null,
+        representation: 'split'
+      };
+    });
+  });
+
+  const runtimeFullAudioUrls = {};
+  Object.entries(prevRuntimeFullAudioUrls || {}).forEach(([fp, entry]) => {
+    if (!entry) return;
+    const fingerprint = clean(fp).toLowerCase();
+    const stillExists = fullArtifactsByFingerprint.has(fingerprint);
+    if (resetExisting || !stillExists) {
+      if (entry?.url) revokedUrls.add(entry.url);
+      return;
+    }
+    if (entry?.stagingBacked && !stagingRecordsMap.has(entry.stagingId)) {
+      if (entry?.url) revokedUrls.add(entry.url);
+      return;
+    }
+    runtimeFullAudioUrls[fingerprint] = entry;
+  });
+
+  active.forEach(record => {
+    const physical = resolveTextAudioStagingPhysicalIdentity(record);
+    if (physical.representation !== 'full') return;
+    const consumers = fullArtifactsByFingerprint.get(physical.identity) || [];
+    if (!consumers.length) return;
+    const current = runtimeFullAudioUrls[physical.identity];
+    if (current?.stagingBacked && current.stagingId === record.id) return;
+    if (current?.url && current?.stagingBacked) revokedUrls.add(current.url);
+    runtimeFullAudioUrls[physical.identity] = {
+      stagingBacked: true,
+      stagingId: record.id,
+      fullArtifactFingerprint: physical.identity,
+      filename: record.filename || consumers[0]?.artifact?.filename || null,
+      mimeType: record.mimeType || consumers[0]?.artifact?.mimeType || null,
+      representation: 'full',
+      consumerBlockIds: consumers.map(item => item.block?.id).filter(Boolean)
+    };
+  });
+
+  return {
+    stagingRecordsMap,
+    stagingSummary,
+    runtimeAudioUrls,
+    runtimeFullAudioUrls,
+    revokedUrls: [...revokedUrls]
+  };
 };

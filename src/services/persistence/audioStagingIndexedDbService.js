@@ -197,6 +197,71 @@ export const markAudioStagingExported = async (ids, { kind = 'zip', sessionId = 
   }
 };
 
+/** Read raw metadata + blob rows for rollback snapshotting before overwrite. */
+export const getAudioStagingSnapshotBySpec = async spec => {
+  const id = buildAudioStagingId(spec || {});
+  const db = await openDb();
+  try {
+    const tx = db.transaction([META_STORE, BLOB_STORE], 'readonly');
+    const [meta, blobRow] = await Promise.all([
+      waitRequest(tx.objectStore(META_STORE).get(id)),
+      waitRequest(tx.objectStore(BLOB_STORE).get(id))
+    ]);
+    await waitTransaction(tx);
+    return { id, meta: meta || null, blobRow: blobRow || null };
+  } finally {
+    db.close();
+  }
+};
+
+/** Delete staging metadata and binary blobs for the given record IDs (e.g. failed import rollback). */
+export const deleteAudioStagingRecordsByIds = async ids => {
+  const list = [...new Set((Array.isArray(ids) ? ids : [ids]).filter(Boolean))];
+  if (!list.length) return 0;
+  const db = await openDb();
+  try {
+    const tx = db.transaction([META_STORE, BLOB_STORE], 'readwrite');
+    const metaStore = tx.objectStore(META_STORE);
+    const blobStore = tx.objectStore(BLOB_STORE);
+    for (const id of list) {
+      metaStore.delete(id);
+      blobStore.delete(id);
+    }
+    await waitTransaction(tx);
+    clearAudioStagingRuntimeCacheForIds(list);
+    return list.length;
+  } finally {
+    db.close();
+  }
+};
+
+/** Restore previously snapshotted staging metadata + binary blob rows on rollback. */
+export const restoreAudioStagingSnapshotRecords = async snapshots => {
+  const list = (Array.isArray(snapshots) ? snapshots : []).filter(item => item?.id);
+  if (!list.length) return 0;
+  const db = await openDb();
+  try {
+    const tx = db.transaction([META_STORE, BLOB_STORE], 'readwrite');
+    const metaStore = tx.objectStore(META_STORE);
+    const blobStore = tx.objectStore(BLOB_STORE);
+    for (const entry of list) {
+      if (!entry.meta) {
+        metaStore.delete(entry.id);
+        blobStore.delete(entry.id);
+        continue;
+      }
+      metaStore.put(entry.meta);
+      if (entry.blobRow) blobStore.put(entry.blobRow);
+      else blobStore.delete(entry.id);
+    }
+    await waitTransaction(tx);
+    clearAudioStagingRuntimeCacheForIds(list.map(entry => entry.id));
+    return list.length;
+  } finally {
+    db.close();
+  }
+};
+
 const objectUrlCache = new Map();
 const touchCache = id => {
   const entry = objectUrlCache.get(id);
@@ -297,7 +362,8 @@ export const clearAudioStagingForMode = async (mode = 'table', { clearHistory = 
     const blobStore = tx.objectStore(BLOB_STORE);
     ids.forEach(id => { metaStore.delete(id); blobStore.delete(id); });
     await waitTransaction(tx);
-    clearAudioStagingRuntimeCache();
+    clearAudioStagingRuntimeCacheForIds(ids);
+    clearAudioStagingRuntimeCacheForMode(mode);
     return { released: ids.length, deletedMetadata: ids.length };
   } finally {
     db.close();
