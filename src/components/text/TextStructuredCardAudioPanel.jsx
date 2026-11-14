@@ -808,7 +808,7 @@ export const TextStructuredCardAudioPanel = memoComponent(({
       </div>
 
       {/* Body */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 space-y-3" style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3 md:p-4 space-y-3" style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom, 0px))' }}>
         {activeSurface === 'player' ? (
           <div className="space-y-3" data-text-card-audio-player-surface="true">
             {/* 1. Effective Voice Reporting & Inheritance Chain */}
