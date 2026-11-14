@@ -14,6 +14,8 @@ import { getTextStructuredAudioDownloadChannelMode, getTextStructuredAudioDownlo
 import { getTextStructuredAudioSyncProfile } from '../../domain/text/textStructuredAudioSyncProfileDomain.js';
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import TextAudioDataPanel from './TextAudioDataPanel.jsx';
+import CommitOnReleaseRange from '../common/CommitOnReleaseRange.jsx';
+import { isTextGlobalBrowserTtsDirty, isTextGlobalEdgeDirty, isTextWorkspaceAudioDirty, isTextSpeakerAudioDirty } from '../../domain/text/textStructuredResetPresentationDomain.js';
 import { PlaybackProfileOrderEditor } from './TextStructuredPlaybackControls.jsx';
 import { BrowserTtsVoiceOptgroups, EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
 import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
@@ -34,39 +36,44 @@ const compactVoiceLabel = value => {
 const normalizedRate = (value, fallback = 1) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 const emitTargetChange = (onChange, nextValue, targetItem = null, targetChannel = null) => {
-  if (!onChange) return;
-  if (targetItem) {
-    onChange(targetItem, nextValue, targetChannel);
-    return;
-  }
-  if (targetChannel) {
-    onChange(nextValue, targetChannel);
-    return;
-  }
-  onChange(nextValue);
+  if (!onChange) return null;
+  if (targetItem) return onChange(targetItem, nextValue, targetChannel);
+  if (targetChannel) return onChange(nextValue, targetChannel);
+  return onChange(nextValue);
 };
 
-const RateControl = memoComponent(({ label, value, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
-  const currentRate = normalizedRate(value);
+const RateControl = memoComponent(({ label, value, defaultRate = 1, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
+  const [previewRate, setPreviewRate] = useState(null);
+  const persistedRate = normalizedRate(value);
+  const currentRate = previewRate === null ? persistedRate : normalizedRate(previewRate);
+  const inheritedRate = normalizedRate(defaultRate);
+  const modified = currentRate !== inheritedRate;
+
   return <label className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2.5">
     <span className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
       <span>{label}</span>
       <span className="inline-flex items-center gap-1.5">
         <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 text-[10px] font-black normal-case text-indigo-700 dark:text-indigo-300">{currentRate.toFixed(1)}×</span>
-        {currentRate !== 1 && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={(event) => { event.preventDefault(); emitTargetChange(onChange, 1, targetItem, targetChannel); }}
-            className="rounded border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 hover:text-indigo-600"
-            title="Reset speed to 1.0×"
-          >
-            1.0×
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={disabled || !modified}
+          onClick={event => { event.preventDefault(); emitTargetChange(onChange, inheritedRate, targetItem, targetChannel); }}
+          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 ${modified ? 'opacity-100' : 'opacity-40'}`}
+          title="Restore inherited/default playback speed"
+          aria-label={`Reset ${label} to inherited/default speed`}
+        >
+          <RotateCcw className="h-3 w-3"/>
+        </button>
       </span>
     </span>
-    <input type="range" min="0.5" max="2" step="0.1" value={currentRate} disabled={disabled} onChange={event => emitTargetChange(onChange, Number(event.target.value), targetItem, targetChannel)} className="w-full accent-indigo-600 disabled:opacity-40"/>
+    <CommitOnReleaseRange
+      min="0.5" max="2" step="0.1"
+      value={persistedRate}
+      disabled={disabled}
+      onPreview={setPreviewRate}
+      onCommit={next => emitTargetChange(onChange, next, targetItem, targetChannel)}
+      className="w-full accent-indigo-600 disabled:opacity-40"
+    />
     {helper && <span className="mt-1 block text-[8px] font-semibold normal-case text-sky-600 dark:text-sky-300">{helper}</span>}
   </label>;
 });
