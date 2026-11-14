@@ -253,6 +253,13 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const [audioSurface, setAudioSurface] = useState('playback');
   const [localReadyExpanded, setLocalReadyExpanded] = useState({});
   const [resetConfirmTarget, setResetConfirmTarget] = useState(null);
+  const workspaceAudioDirty = useMemo(() => isTextWorkspaceAudioDirty(documentTree), [documentTree?.metadata]);
+  const allSpeakersAudioDirty = useMemo(
+    () => isTextSpeakerAudioDirty(documentTree, { includeSync: true }),
+    [documentTree?.metadata]
+  );
+  const [edgeRatePreview, setEdgeRatePreview] = useState(null);
+  const [edgePitchPreview, setEdgePitchPreview] = useState(null);
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
   const sourceMode = preferences.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
@@ -272,13 +279,6 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const stagingCount = Number(audioLibrary?.staging?.count || 0);
   const globalBrowserDirty = isTextGlobalBrowserTtsDirty(preferences);
   const globalEdgeDirty = isTextGlobalEdgeDirty(generationPreferences);
-  const workspaceAudioDirty = useMemo(() => isTextWorkspaceAudioDirty(documentTree), [documentTree?.metadata]);
-  const allSpeakersAudioDirty = useMemo(
-    () => isTextSpeakerAudioDirty(documentTree, { includeSync: true }),
-    [documentTree?.metadata]
-  );
-  const [edgeRatePreview, setEdgeRatePreview] = useState(null);
-  const [edgePitchPreview, setEdgePitchPreview] = useState(null);
   const localVoiceCountEn = (availableLocalVoices?.channels?.text || []).length;
   const localVoiceCountId = (availableLocalVoices?.channels?.meaning || []).length;
 
