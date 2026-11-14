@@ -773,15 +773,17 @@ allPassed &= run('A4-ext-removed-speaker-detach-and-clean-removal', () => {
     ...card,
     segments: card.segments.map(seg => seg.speakerKey === 'farah' ? { ...seg, speakerKey: 'ben' } : seg)
   }));
-  const cleanRemoved = planTextExternalUpdateExisting({
-    localSnapshot: state,
-    package: withoutFarahPkg,
-    existingImport: initial.importRecord,
-    conflictPolicy: 'keep-local',
-    now: 2000
-  });
-  const regAfterCleanRemove = getTextStructuredSpeakerRegistry(cleanRemoved.snapshot.documents.find(d => d.id === docId));
-  assert.equal(regAfterCleanRemove.some(s => s.id === farah.id), false);
+  for (const policy of ['keep-local', 'use-incoming']) {
+    const cleanRemoved = planTextExternalUpdateExisting({
+      localSnapshot: state,
+      package: withoutFarahPkg,
+      existingImport: initial.importRecord,
+      conflictPolicy: policy,
+      now: policy === 'keep-local' ? 2000 : 2050
+    });
+    const regAfterCleanRemove = getTextStructuredSpeakerRegistry(cleanRemoved.snapshot.documents.find(d => d.id === docId));
+    assert.equal(regAfterCleanRemove.some(s => s.id === farah.id), false, `(${policy}) Genuinely unreferenced removed speaker must still delete`);
+  }
 
   // If Farah was locally renamed before incoming removed her, keep-local detaches her (no externalKey) so she survives subsequent updates too.
   const metaRenamedFarah = buildTextStructuredUpsertSpeakerRegistryMetadata({
@@ -820,6 +822,87 @@ allPassed &= run('A4-ext-removed-speaker-detach-and-clean-removal', () => {
   });
   const regAfterFollowUp = getTextStructuredSpeakerRegistry(followUpPlan.snapshot.documents.find(d => d.id === docId));
   assert.ok(regAfterFollowUp.some(s => s.id === farah.id && s.label === 'Farah K.'));
+});
+
+allPassed &= run('A4-ext-removed-speaker-referenced-by-local-segment-preserved', () => {
+  const v1 = loadFixture('P12_Conversation_Only_Additional_Test_v1.json');
+  const initial = planProLingoTextExternalInitialImport({
+    localSnapshot: emptySnapshot(),
+    package: v1,
+    now: 1000
+  });
+  let state = initial.snapshot;
+  const docId = initial.importRecord.documentId;
+  const doc = state.documents.find(item => item.id === docId);
+  const farah = getTextStructuredSpeakerRegistry(doc).find(s => s.externalKey === 'farah');
+  const planningCard = state.blocks.find(b => b.documentId === docId && ext(b)?.cardKey === 'planning');
+  assert.ok(farah && planningCard);
+
+  // Add one local-only Segment inside external Card "planning" assigned to Farah via speakerIdentityV1 (do NOT rename Farah).
+  const localFarahSegCmd = applyTextLibraryCommand(state, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      blockId: planningCard.id,
+      text: 'Quick follow-up question from Farah.',
+      meaning: 'Pertanyaan lanjutan singkat dari Farah.',
+      speaker: farah.label,
+      metadata: { [TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]: farah.id }
+    }
+  }, 1100);
+  state = localFarahSegCmd.snapshot;
+  const localSegId = localFarahSegCmd.result.id;
+
+  // Incoming removes Farah from workspace.speakers and reassigns every source-owned Farah segment to Ben, retaining planning.
+  const withoutFarahPkg = structuredClone(v1);
+  withoutFarahPkg.workspace.speakers = withoutFarahPkg.workspace.speakers.filter(s => s.speakerKey !== 'farah');
+  withoutFarahPkg.workspace.cards = withoutFarahPkg.workspace.cards.map(card => ({
+    ...card,
+    segments: card.segments.map(seg => seg.speakerKey === 'farah' ? { ...seg, speakerKey: 'ben' } : seg)
+  }));
+
+  for (const policy of ['keep-local', 'use-incoming']) {
+    const updated = planTextExternalUpdateExisting({
+      localSnapshot: state,
+      package: withoutFarahPkg,
+      existingImport: initial.importRecord,
+      conflictPolicy: policy,
+      now: policy === 'keep-local' ? 2000 : 2100
+    });
+
+    const keptLocalSeg = updated.snapshot.segments.find(s => s.id === localSegId);
+    assert.ok(keptLocalSeg, `(${policy}) Local-only Segment referencing Farah must survive`);
+    assert.equal(keptLocalSeg.blockId, planningCard.id);
+    assert.equal(keptLocalSeg.speaker, 'Farah');
+    assert.equal(keptLocalSeg.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY], farah.id);
+
+    const nextRegistry = getTextStructuredSpeakerRegistry(updated.snapshot.documents.find(d => d.id === docId));
+    const keptFarah = nextRegistry.find(s => s.id === farah.id);
+    assert.ok(keptFarah, `(${policy}) Speaker registry entry referenced by surviving local Segment must survive`);
+    assert.equal(keptFarah.uid, farah.uid);
+    assert.equal(keptFarah.label, 'Farah');
+    assert.equal(Boolean(keptFarah.externalKey), false);
+    assert.equal(Object.hasOwn(keptFarah, 'externalKey'), false);
+    assert.equal(updated.stats.deleted, 0);
+
+    // Incoming external Farah segments moved cleanly to Ben.
+    for (const segKey of ['clarify-01', 'clarify-04', 'close-02']) {
+      assert.equal(bySegKey(updated.snapshot, docId).get(segKey)?.speaker, 'Ben');
+    }
+
+    // Subsequent external update continues preserving both local segment and detached Farah speaker.
+    const followUpPkg = structuredClone(withoutFarahPkg);
+    followUpPkg.workspace.cards[0].segments[3].text = 'I need to review six new words.';
+    const followUp = planTextExternalUpdateExisting({
+      localSnapshot: updated.snapshot,
+      package: followUpPkg,
+      existingImport: updated.importRecord,
+      conflictPolicy: policy,
+      now: 2500
+    });
+    const regAfterFollowUp = getTextStructuredSpeakerRegistry(followUp.snapshot.documents.find(d => d.id === docId));
+    assert.ok(regAfterFollowUp.some(s => s.id === farah.id && s.label === 'Farah' && !s.externalKey));
+    assert.equal(followUp.snapshot.segments.find(s => s.id === localSegId)?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY], farah.id);
+  }
 });
 
 if (!allPassed) {

@@ -156,6 +156,11 @@ export const inspectTextExternalReconciliation = ({ localSnapshot, package: pack
   };
 };
 
+const detachExternalSpeaker = entry => {
+  const { externalKey: _detached, ...detached } = entry;
+  return detached;
+};
+
 const buildIncomingSpeakerMap = ({ packageValue, existingRegistry = [], conflictPolicy, baselineFingerprints, localFingerprints, incomingFingerprints }) => {
   const existingByExternal = new Map((existingRegistry || []).filter(item => clean(item?.externalKey)).map(item => [clean(item.externalKey), item]));
   const next = [];
@@ -184,7 +189,7 @@ const buildIncomingSpeakerMap = ({ packageValue, existingRegistry = [], conflict
     if ((packageValue.workspace.speakers || []).some(item => item.speakerKey === key)) return;
     const decision = revisionDecision({ baseline: baselineFingerprints?.speakers?.[key], local: localFingerprints?.speakers?.[key], incoming: null, conflictPolicy });
     if (decision.action === 'local') {
-      const { externalKey: _detached, ...detached } = entry;
+      const detached = detachExternalSpeaker(entry);
       next.push(detached);
       decisions.push({ key, speakerId: entry.id, action: 'detach-local', conflict: decision.conflict, entry: detached });
     } else decisions.push({ key, speakerId: entry.id, action: 'remove', conflict: decision.conflict, entry });
@@ -508,6 +513,33 @@ export const planTextExternalUpdateExisting = ({
       };
     })
     : nextSegments;
+
+  // Preserve & detach externally removed speakers still referenced by surviving workspace segments.
+  const survivingSpeakerIds = new Set(
+    syncedSegments
+      .filter(segment => segment.documentId === document.id)
+      .map(segment => clean(segment?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]))
+      .filter(Boolean)
+  );
+  const seenRegistryIds = new Set(speakerPlan.registry.map(item => item.id));
+  const rescuedSpeakers = [];
+  speakerPlan.decisions.forEach(item => {
+    if (item.action !== 'remove' || !item.entry?.id || seenRegistryIds.has(item.entry.id)) return;
+    if (!survivingSpeakerIds.has(item.entry.id)) return;
+    seenRegistryIds.add(item.entry.id);
+    rescuedSpeakers.push(detachExternalSpeaker(item.entry));
+    stats.deleted = Math.max(0, stats.deleted - 1);
+    stats.preservedLocal += 1;
+  });
+  if (rescuedSpeakers.length) {
+    nextDocument = {
+      ...nextDocument,
+      metadata: {
+        ...(nextDocument.metadata || {}),
+        [TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY]: [...speakerPlan.registry, ...rescuedSpeakers]
+      }
+    };
+  }
 
   let nextAudioVariants = snapshot.audioVariants.filter(variant => !removedSegmentIds.has(variant.segmentId));
   nextAudioVariants = invalidateVariantsForSegments(nextAudioVariants, changedSegmentIds, 'external-json-reconcile', now);
