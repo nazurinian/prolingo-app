@@ -420,7 +420,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                 message: 'Clears default Text Browser TTS EN/ID voice selections and resets Browser TTS speeds to default (1.0×). Workspace/Card/Speaker overrides, Staging MP3 files, and Table settings are preserved.'
               })}
               data-text-reset-global-browser-tts="true"
-              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-100 transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-40 transition-colors"
               title="Reset Global Browser TTS voices and speeds"
             >
               <RotateCcw className="w-2.5 h-2.5"/>
@@ -454,7 +454,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                   message: 'Removes this Workspace’s Narrator Browser TTS/speed/Local Priority overrides and resets Workspace MP3 Voice Preset to Global Edge inheritance. Card, Segment, and Speaker overrides as well as downloaded Staging MP3 binaries are preserved.'
                 })}
                 data-text-reset-workspace="true"
-                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 px-2 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 px-2 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-100 transition-colors"
                 title="Reset this Workspace's audio overrides to Global defaults"
               >
                 <RotateCcw className="w-2.5 h-2.5"/>
