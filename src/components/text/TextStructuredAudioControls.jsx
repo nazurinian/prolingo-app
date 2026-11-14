@@ -270,6 +270,15 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const folderLocked = audioLibrary?.folderState?.locked === true || audioLibrary?.folderState?.status === 'deprecated-locked';
   const zipCount = Array.isArray(audioLibrary?.zipState?.archives) ? audioLibrary.zipState.archives.length : 0;
   const stagingCount = Number(audioLibrary?.staging?.count || 0);
+  const globalBrowserDirty = isTextGlobalBrowserTtsDirty(preferences);
+  const globalEdgeDirty = isTextGlobalEdgeDirty(generationPreferences);
+  const workspaceAudioDirty = useMemo(() => isTextWorkspaceAudioDirty(documentTree), [documentTree?.metadata]);
+  const allSpeakersAudioDirty = useMemo(
+    () => isTextSpeakerAudioDirty(documentTree, { includeSync: true }),
+    [documentTree?.metadata]
+  );
+  const [edgeRatePreview, setEdgeRatePreview] = useState(null);
+  const [edgePitchPreview, setEdgePitchPreview] = useState(null);
   const localVoiceCountEn = (availableLocalVoices?.channels?.text || []).length;
   const localVoiceCountId = (availableLocalVoices?.channels?.meaning || []).length;
 
@@ -305,7 +314,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           <span>{resolution.fallbackReason}</span>
         </div>
       )}
-      <RateControl label={`${label} Playback Speed`} value={rate} disabled={disabled} onChange={onDocumentRateChange} targetChannel={channel}/>
+      <RateControl key={`${documentTree.id}-${channel}`} label={`${label} Playback Speed`} value={rate} defaultRate={globalRate} disabled={disabled} onChange={onDocumentRateChange} targetChannel={channel}/>
       {/* Workspace-pinned local voices are shown in the dedicated CUSTOM panel below. */}
     </div>;
   };
@@ -509,6 +518,9 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
         {speakers.length > 1 && <p className="text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Sync temporarily links followers to Speaker 1 without overwriting their saved individual voices or speeds.</p>}
         {speakers.map(({ id, label }, index) => {
           const speakerTarget = speakerMetaById.get(id) || { id, label };
+          const speakerAudioDirty = isTextSpeakerAudioDirty(documentTree, { speakerId: id, speaker: label, includeSync: false });
+          const inheritedEnRate = rateProfile.channels?.text || globalTextRate || 1;
+          const inheritedIdRate = rateProfile.channels?.meaning || globalMeaningRate || 1;
           const savedEnVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'text' }) || '';
           const savedIdVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'meaning' }) || '';
           const savedEnRate = rateProfile.speakerIds?.text?.[id] || rateProfile.speakers?.text?.[label?.toLowerCase?.()] || rateProfile.channels?.text || globalTextRate || 1;
@@ -565,8 +577,8 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               )}
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="text"/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="text"/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
-              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="meaning"/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="meaning"/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="text"/><RateControl key={`${documentTree.id}-${id}-text`} label="EN Speed" value={effectiveEnRate} defaultRate={inheritedEnRate} disabled={disabled || enRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="text"/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="meaning"/><RateControl key={`${documentTree.id}-${id}-meaning`} label="ID Speed" value={effectiveIdRate} defaultRate={inheritedIdRate} disabled={disabled || idRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="meaning"/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
             </div>
             {syncNotes.length > 0 && <div className="mt-2 space-y-0.5 px-0.5" data-text-audio-sync-notes={id}>{syncNotes.map(note => <p key={note} className="text-[8px] font-semibold leading-relaxed text-sky-600 dark:text-sky-300">{note}</p>)}</div>}
             <button type="button" onClick={() => setLocalReadyExpanded(current => ({ ...current, [id]: !current[id] }))} className="mt-2 flex min-h-9 w-full items-center justify-between rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 text-left text-[9px] font-black text-emerald-700 dark:text-emerald-300" aria-expanded={localReadyOpen}>
@@ -650,16 +662,16 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
               <span>Download Rate</span>
-              <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgeRate || 0) >= 0 ? '+' : ''}{generationPreferences?.edgeRate || 0}%</span>
+              <span className="font-black text-violet-700 dark:text-violet-300">{Number(edgeRatePreview ?? generationPreferences?.edgeRate ?? 0) >= 0 ? '+' : ''}{edgeRatePreview ?? generationPreferences?.edgeRate ?? 0}%</span>
             </span>
-            <input disabled={disabled} type="range" min="-50" max="50" step="10" value={generationPreferences?.edgeRate || 0} onChange={event => onGenerationPreferencesChange?.({ edgeRate: Number(event.target.value) })} className="w-full accent-violet-600"/>
+            <CommitOnReleaseRange disabled={disabled} min="-50" max="50" step="10" value={generationPreferences?.edgeRate ?? 0} onPreview={setEdgeRatePreview} onCommit={value => onGenerationPreferencesChange?.({ edgeRate: value })} className="w-full accent-violet-600"/>
           </label>
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
               <span>Download Pitch</span>
-              <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz</span>
+              <span className="font-black text-violet-700 dark:text-violet-300">{Number(edgePitchPreview ?? generationPreferences?.edgePitch ?? 0) >= 0 ? '+' : ''}{edgePitchPreview ?? generationPreferences?.edgePitch ?? 0}Hz</span>
             </span>
-            <input disabled={disabled} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/>
+            <CommitOnReleaseRange disabled={disabled} min="-20" max="20" step="5" value={generationPreferences?.edgePitch ?? 0} onPreview={setEdgePitchPreview} onCommit={value => onGenerationPreferencesChange?.({ edgePitch: value })} className="w-full accent-violet-600"/>
           </label>
         </div>
       </details>
