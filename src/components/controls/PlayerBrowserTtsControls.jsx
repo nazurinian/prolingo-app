@@ -2,7 +2,10 @@ import React from 'react';
 import { Link2, Unlink } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
 
-export default function PlayerBrowserTtsControls({
+const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
+const EMPTY_VOICES = Object.freeze([]);
+
+const PlayerBrowserTtsControls = memoComponent(function PlayerBrowserTtsControls({
   voices,
   selectedVoice,
   setSelectedVoice,
@@ -20,6 +23,18 @@ export default function PlayerBrowserTtsControls({
   ratesLinked = true,
   setRatesLinked,
 }) {
+  const safeVoices = Array.isArray(voices) ? voices : EMPTY_VOICES;
+  const safeIndonesianVoices = Array.isArray(indonesianVoices) ? indonesianVoices : EMPTY_VOICES;
+  const handleEnglishChange = React.useCallback(
+    e => setSelectedVoice?.(safeVoices.find(v => v.name === e.target.value)),
+    [setSelectedVoice, safeVoices]
+  );
+  const handleIndonesianChange = React.useCallback(
+    e => setSelectedIndonesianVoice?.(safeIndonesianVoices.find(v => v.name === e.target.value)),
+    [setSelectedIndonesianVoice, safeIndonesianVoices]
+  );
+  const selectClassName = `w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`;
+
   const renderRate = ({ label, value, onChange, accent = 'accent-indigo-600' }) => (
     <label className="block rounded-lg border border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 p-2">
       <span className="mb-1 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
@@ -47,24 +62,24 @@ export default function PlayerBrowserTtsControls({
 
       {structuredTextModeActive && <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">English Voice (Text)</p>}
       <GroupedVoiceSelect
-        voices={voices}
+        voices={safeVoices}
         selectedValue={selectedVoice?.name || ''}
-        onChange={e => setSelectedVoice(voices.find(v => v.name === e.target.value))}
+        onChange={handleEnglishChange}
         disabled={isSystemBusy}
-        className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={selectClassName}
         context="main"
       />
 
       {showIndonesianVoice && (
         <div className="mt-2">
           <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Indonesian Voice (Meaning)</p>
-          {indonesianVoices.length > 0 ? (
+          {safeIndonesianVoices.length > 0 ? (
             <GroupedVoiceSelect
-              voices={indonesianVoices}
+              voices={safeIndonesianVoices}
               selectedValue={selectedIndonesianVoice?.name || ''}
-              onChange={e => setSelectedIndonesianVoice(indonesianVoices.find(v => v.name === e.target.value))}
+              onChange={handleIndonesianChange}
               disabled={isSystemBusy}
-              className={`w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={selectClassName}
               context="meaning"
             />
           ) : (
@@ -81,4 +96,6 @@ export default function PlayerBrowserTtsControls({
       ) : renderRate({ label: 'Playback speed', value: rate, onChange: e => setRate(e.target.value) })}
     </div>
   );
-}
+});
+
+export default PlayerBrowserTtsControls;

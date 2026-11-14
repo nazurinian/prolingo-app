@@ -1,5 +1,6 @@
 import {
-  compareVoicesWithinGroup,
+  comparePrecomputedVoiceEntries,
+  createVoiceGroupCache,
   getEnglishRegionCountryName,
   NAMED_ENGLISH_REGION_CODES
 } from './voicePresentationDomain.js';
@@ -168,27 +169,45 @@ export const getBrowserTtsVoiceValue = voiceLike => {
   return clean(voiceLike);
 };
 
-export const dedupeBrowserTtsVoices = voices => {
-  const seen = new Set();
-  const result = [];
-  (Array.isArray(voices) ? voices : []).forEach(voice => {
-    const isObject = Boolean(voice && typeof voice === 'object');
-    const name = isObject ? clean(voice.name || voice.voiceURI || voice.id || voice.label) : clean(voice);
-    if (!name || seen.has(name)) return;
-    seen.add(name);
-    result.push(isObject ? voice : { name, lang: '' });
-  });
-  return result;
+const ENGLISH_REGION_LABEL_BY_CODE = new Map(ENGLISH_REGION_GROUPS);
+const BROWSER_VOICE_META_WEAK_CACHE = new WeakMap();
+const BROWSER_DEDUPE_WEAK_CACHE = new WeakMap();
+
+const getBrowserVoiceSnapshotToken = voice => {
+  if (!voice || typeof voice !== 'object') return clean(voice);
+  return [
+    clean(voice.name || voice.voiceURI || voice.label || voice.id),
+    clean(voice.lang),
+    voice.natural === true ? '1' : '0',
+    voice.standard === true ? '1' : '0',
+    voice.child === true || voice.isChild === true ? '1' : '0',
+    lower(voice.age)
+  ].join('\u0001');
 };
 
-// Display-only Browser TTS voice label formatter. Keep raw voice.name / voiceURI in stored values and IDs.
-export const formatBrowserTtsVoiceLabel = (voiceLike, { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}) => {
+const lookupBrowserGroupCache = createVoiceGroupCache({
+  maxEntries: 24,
+  getToken: getBrowserVoiceSnapshotToken
+});
+
+const getBrowserVoiceSortLanguage = regionCode => {
+  if (regionCode === 'ID') return 'id';
+  if (regionCode === 'JV') return 'jv';
+  if (regionCode === 'SU') return 'su';
+  return '';
+};
+
+const resolveBrowserVoiceMeta = voiceLike => {
   const isObject = Boolean(voiceLike && typeof voiceLike === 'object');
+  const token = isObject ? getBrowserVoiceSnapshotToken(voiceLike) : '';
+  if (isObject) {
+    const cached = BROWSER_VOICE_META_WEAK_CACHE.get(voiceLike);
+    if (cached && cached.token === token) return cached.meta;
+  }
+
   const rawName = isObject
     ? clean(voiceLike.name || voiceLike.voiceURI || voiceLike.label || voiceLike.id)
     : clean(voiceLike);
-  if (!rawName) return fallbackLabel;
-
   const langLike = isObject ? clean(voiceLike.lang) : '';
   const compactName = extractCompactVoiceName(rawName);
   const regionInfo = inferRegionCode(voiceLike, rawName, langLike);
@@ -201,109 +220,144 @@ export const formatBrowserTtsVoiceLabel = (voiceLike, { fallbackLabel = 'Browser
   const standard = isStandardVoice(voiceLike, rawName, natural);
   const child = isChildVoice(voiceLike, rawName, compactName, regionInfo.code);
   const variant = natural ? 'Natural' : standard ? 'Standard' : null;
+  const baseLabel = rawName
+    ? [
+        compactName || rawName,
+        variant,
+        regionDisplay,
+        child ? 'Child' : null
+      ].filter(Boolean).join(' · ')
+    : '';
 
-  return [
-    compactName || rawName,
-    variant,
-    regionDisplay,
-    child ? 'Child' : null,
-    includeEngineHint ? 'Browser TTS' : null
-  ].filter(Boolean).join(' · ');
+  const meta = {
+    rawName,
+    langLike,
+    compactName: compactName || rawName,
+    regionInfo,
+    language: getBrowserVoiceSortLanguage(regionInfo.code),
+    countryName: regionInfo.code
+      ? (getEnglishRegionCountryName(regionInfo.code) || regionInfo.code.toUpperCase())
+      : '\uffff',
+    baseLabel,
+    idOrName: clean(voiceLike?.id || voiceLike?.name)
+  };
+  if (isObject) {
+    BROWSER_VOICE_META_WEAK_CACHE.set(voiceLike, { token, meta });
+  }
+  return meta;
 };
 
-const getBrowserVoiceSortLanguage = regionCode => {
-  if (regionCode === 'ID') return 'id';
-  if (regionCode === 'JV') return 'jv';
-  if (regionCode === 'SU') return 'su';
-  return '';
-};
-
-export const groupBrowserTtsVoicesByRegion = (voiceList, context = 'general') => {
-  const groups = {};
-  if (context === 'meaning') {
-    groups[BROWSER_TTS_GROUP_LABELS.ID] = [];
-    groups[BROWSER_TTS_GROUP_LABELS.JV] = [];
-    groups[BROWSER_TTS_GROUP_LABELS.SU] = [];
-    groups[BROWSER_TTS_GROUP_LABELS.ID_OTHER] = [];
-  } else {
-    ENGLISH_REGION_GROUPS.forEach(([, label]) => {
-      groups[label] = [];
-    });
-    groups[BROWSER_TTS_GROUP_LABELS.OTHER_EN] = [];
-    if (context !== 'main') {
-      groups[BROWSER_TTS_GROUP_LABELS.ID_GENERAL] = [];
+export const dedupeBrowserTtsVoices = voices => {
+  const list = Array.isArray(voices) ? voices : [];
+  if (Array.isArray(voices)) {
+    const cached = BROWSER_DEDUPE_WEAK_CACHE.get(voices);
+    if (cached && cached.refs.length === list.length) {
+      let matches = true;
+      for (let i = 0; i < list.length; i += 1) {
+        if (list[i] !== cached.refs[i] || getBrowserVoiceSnapshotToken(list[i]) !== cached.tokens[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return cached.result;
     }
   }
 
-  (Array.isArray(voiceList) ? voiceList : []).forEach(voice => {
-    if (!voice) return;
-    const isObject = typeof voice === 'object';
-    const rawName = isObject ? clean(voice.name || voice.voiceURI || voice.label || voice.id) : clean(voice);
-    const langLike = isObject ? clean(voice.lang) : '';
-    const regionInfo = inferRegionCode(voice, rawName, langLike);
-
-    if (context === 'main') {
-      if (regionInfo.isIndoRegion || regionInfo.explicitForeign) return;
-      const matched = ENGLISH_REGION_GROUPS.find(([code]) => code === regionInfo.code);
-      if (matched) groups[matched[1]].push(voice);
-      else groups[BROWSER_TTS_GROUP_LABELS.OTHER_EN].push(voice);
-      return;
+  const seen = new Set();
+  const result = [];
+  const refs = Array.isArray(voices) ? new Array(list.length) : null;
+  const tokens = Array.isArray(voices) ? new Array(list.length) : null;
+  for (let i = 0; i < list.length; i += 1) {
+    const voice = list[i];
+    if (refs) {
+      refs[i] = voice;
+      tokens[i] = getBrowserVoiceSnapshotToken(voice);
     }
+    const isObject = Boolean(voice && typeof voice === 'object');
+    const name = isObject ? clean(voice.name || voice.voiceURI || voice.id || voice.label) : clean(voice);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    result.push(isObject ? voice : { name, lang: '' });
+  }
+  if (Array.isArray(voices)) {
+    BROWSER_DEDUPE_WEAK_CACHE.set(voices, { refs, tokens, result });
+  }
+  return result;
+};
 
-    if (context === 'meaning') {
-      if (regionInfo.isEnglish || (regionInfo.explicitForeign && !regionInfo.isIndoRegion)) return;
-      if (regionInfo.code === 'ID') groups[BROWSER_TTS_GROUP_LABELS.ID].push(voice);
-      else if (regionInfo.code === 'JV') groups[BROWSER_TTS_GROUP_LABELS.JV].push(voice);
-      else if (regionInfo.code === 'SU') groups[BROWSER_TTS_GROUP_LABELS.SU].push(voice);
+// Display-only Browser TTS voice label formatter. Keep raw voice.name / voiceURI in stored values and IDs.
+export const formatBrowserTtsVoiceLabel = (voiceLike, { fallbackLabel = 'Browser system default', includeEngineHint = false } = {}) => {
+  const meta = resolveBrowserVoiceMeta(voiceLike);
+  if (!meta.rawName) return fallbackLabel;
+  return includeEngineHint ? `${meta.baseLabel} · Browser TTS` : meta.baseLabel;
+};
+
+export const groupBrowserTtsVoicesByRegion = (voiceList, context = 'general') => {
+  const normalizedContext = context || 'general';
+  const cacheSlot = lookupBrowserGroupCache(voiceList, normalizedContext);
+  if (cacheSlot.groups) return cacheSlot.groups;
+  const { list, store } = cacheSlot;
+
+  const decoratedGroups = {};
+  if (normalizedContext === 'meaning') {
+    decoratedGroups[BROWSER_TTS_GROUP_LABELS.ID] = [];
+    decoratedGroups[BROWSER_TTS_GROUP_LABELS.JV] = [];
+    decoratedGroups[BROWSER_TTS_GROUP_LABELS.SU] = [];
+    decoratedGroups[BROWSER_TTS_GROUP_LABELS.ID_OTHER] = [];
+  } else {
+    ENGLISH_REGION_GROUPS.forEach(([, label]) => {
+      decoratedGroups[label] = [];
+    });
+    decoratedGroups[BROWSER_TTS_GROUP_LABELS.OTHER_EN] = [];
+    if (normalizedContext !== 'main') {
+      decoratedGroups[BROWSER_TTS_GROUP_LABELS.ID_GENERAL] = [];
+    }
+  }
+
+  for (let i = 0; i < list.length; i += 1) {
+    const voice = list[i];
+    if (!voice) continue;
+    const meta = resolveBrowserVoiceMeta(voice);
+    const { regionInfo, langLike } = meta;
+    let targetGroup = null;
+
+    if (normalizedContext === 'main') {
+      if (regionInfo.isIndoRegion || regionInfo.explicitForeign) continue;
+      targetGroup = ENGLISH_REGION_LABEL_BY_CODE.get(regionInfo.code) || BROWSER_TTS_GROUP_LABELS.OTHER_EN;
+    } else if (normalizedContext === 'meaning') {
+      if (regionInfo.isEnglish || (regionInfo.explicitForeign && !regionInfo.isIndoRegion)) continue;
+      if (regionInfo.code === 'ID') targetGroup = BROWSER_TTS_GROUP_LABELS.ID;
+      else if (regionInfo.code === 'JV') targetGroup = BROWSER_TTS_GROUP_LABELS.JV;
+      else if (regionInfo.code === 'SU') targetGroup = BROWSER_TTS_GROUP_LABELS.SU;
       else if (regionInfo.isIndoRegion || (!regionInfo.isEnglish && !langLike)) {
-        groups[BROWSER_TTS_GROUP_LABELS.ID_OTHER].push(voice);
+        targetGroup = BROWSER_TTS_GROUP_LABELS.ID_OTHER;
       }
-      return;
+    } else if (regionInfo.isIndoRegion) {
+      targetGroup = BROWSER_TTS_GROUP_LABELS.ID_GENERAL;
+    } else if (regionInfo.isEnglish || !langLike) {
+      targetGroup = ENGLISH_REGION_LABEL_BY_CODE.get(regionInfo.code) || BROWSER_TTS_GROUP_LABELS.OTHER_EN;
     }
+    if (!targetGroup) continue;
 
-    if (regionInfo.isIndoRegion) {
-      groups[BROWSER_TTS_GROUP_LABELS.ID_GENERAL].push(voice);
-      return;
-    }
+    decoratedGroups[targetGroup].push({
+      voice,
+      language: meta.language,
+      countryName: meta.countryName,
+      name: meta.compactName,
+      label: meta.baseLabel || meta.rawName,
+      idOrName: meta.idOrName
+    });
+  }
 
-    if (regionInfo.isEnglish || !langLike) {
-      const matched = ENGLISH_REGION_GROUPS.find(([code]) => code === regionInfo.code);
-      if (matched) groups[matched[1]].push(voice);
-      else groups[BROWSER_TTS_GROUP_LABELS.OTHER_EN].push(voice);
-    }
-  });
-
-  const getVoiceMeta = item => {
-    const isObject = Boolean(item && typeof item === 'object');
-    const rawName = isObject ? clean(item.name || item.voiceURI || item.label || item.id) : clean(item);
-    const langLike = isObject ? clean(item.lang) : '';
-    const regionInfo = inferRegionCode(item, rawName, langLike);
-    return {
-      compactName: extractCompactVoiceName(rawName) || rawName,
-      regionCode: regionInfo.code,
-      language: getBrowserVoiceSortLanguage(regionInfo.code),
-      label: formatBrowserTtsVoiceLabel(item, { fallbackLabel: rawName })
-    };
-  };
-
-  Object.entries(groups).forEach(([groupLabel, items]) => {
+  const groups = {};
+  Object.entries(decoratedGroups).forEach(([groupLabel, entries]) => {
     const isOtherEnglish = groupLabel === BROWSER_TTS_GROUP_LABELS.OTHER_EN;
     const isGeneralIndo = groupLabel === BROWSER_TTS_GROUP_LABELS.ID_GENERAL;
-    items.sort((a, b) => {
-      const metaA = getVoiceMeta(a);
-      const metaB = getVoiceMeta(b);
-      return compareVoicesWithinGroup({
-        a,
-        b,
-        isOtherEnglish,
-        isGeneralIndo,
-        getName: item => (item === a ? metaA.compactName : metaB.compactName),
-        getRegionCode: item => (item === a ? metaA.regionCode : metaB.regionCode),
-        getLanguage: item => (item === a ? metaA.language : metaB.language),
-        getLabel: item => (item === a ? metaA.label : metaB.label)
-      });
-    });
+    if (entries.length > 1) {
+      entries.sort((entryA, entryB) => comparePrecomputedVoiceEntries(entryA, entryB, { isOtherEnglish, isGeneralIndo }));
+    }
+    groups[groupLabel] = entries.map(entry => entry.voice);
   });
 
-  return groups;
+  return store(groups);
 };

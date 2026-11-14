@@ -20,7 +20,9 @@ const compactVoiceLabel = value => {
   return tail.replace(/Neural$/i, '').replace(/Multilingual$/i, '') || raw;
 };
 
-const ToggleRow = ({ checked, disabled = false, onClick, children, tone = 'indigo', selectionMode = 'multiple', testId = undefined }) => {
+const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
+
+const ToggleRow = memoComponent(({ checked, disabled = false, onClick, children, tone = 'indigo', selectionMode = 'multiple', testId = undefined }) => {
   const activeClass = tone === 'amber'
     ? 'text-amber-700 dark:text-amber-300'
     : 'text-indigo-700 dark:text-indigo-300';
@@ -40,16 +42,14 @@ const ToggleRow = ({ checked, disabled = false, onClick, children, tone = 'indig
       <span className="truncate">{children}</span>
     </button>
   );
-};
+});
 
-const ScopeButton = ({ active, disabled, onClick, children }) => <button
+const ScopeButton = memoComponent(({ active, disabled, onClick, children }) => <button
   type="button"
   disabled={disabled}
   onClick={onClick}
   className={`min-h-9 rounded-lg border px-2.5 py-1.5 text-[9px] font-black transition ${active ? 'border-cyan-600 bg-cyan-600 text-white shadow-sm' : 'border-cyan-200 dark:border-cyan-900 bg-white dark:bg-slate-900 text-cyan-800 dark:text-cyan-300 hover:bg-cyan-50/60'} disabled:opacity-35`}
->{children}</button>;
-
-const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
+>{children}</button>);
 
 const TextBatchLiveTelemetry = memoComponent(({ fallbackTotal = 0 }) => {
   const liveTelemetry = React.useSyncExternalStore(
@@ -106,7 +106,7 @@ const TextBatchStopButtonContent = memoComponent(({ fallbackTotal = 0, fallbackS
   return <>STOP {progressDone}/{progressTotal}</>;
 });
 
-export const TextBatchPopup = ({
+export const TextBatchPopup = memoComponent(({
   batchPanelRef,
   setIsBatchOpen,
   structuredTextBatch,
@@ -210,12 +210,25 @@ export const TextBatchPopup = ({
       }
     : rawGenerationCoverage;
 
-  const englishBulkVoices = (structuredTextBatch?.voices || []).filter(v => String(v?.lang || '').startsWith('en-'));
-  const meaningBulkVoices = (structuredTextBatch?.voices || []).filter(v => /-ID$/i.test(String(v?.lang || '')));
-  const englishBulkGroups = Object.entries(groupEdgeVoicesByRegion(englishBulkVoices, 'main'))
-    .filter(([, items]) => items.length > 0);
-  const meaningBulkGroups = Object.entries(groupEdgeVoicesByRegion(meaningBulkVoices, 'meaning'))
-    .filter(([, items]) => items.length > 0);
+  const batchVoices = structuredTextBatch?.voices;
+  const {
+    englishBulkVoices,
+    meaningBulkVoices,
+    englishBulkGroups,
+    meaningBulkGroups
+  } = React.useMemo(() => {
+    const allVoices = Array.isArray(batchVoices) ? batchVoices : [];
+    const enVoices = allVoices.filter(v => String(v?.lang || '').startsWith('en-'));
+    const idVoices = allVoices.filter(v => /-ID$/i.test(String(v?.lang || '')));
+    return {
+      englishBulkVoices: enVoices,
+      meaningBulkVoices: idVoices,
+      englishBulkGroups: Object.entries(groupEdgeVoicesByRegion(enVoices, 'main'))
+        .filter(([, items]) => items.length > 0),
+      meaningBulkGroups: Object.entries(groupEdgeVoicesByRegion(idVoices, 'meaning'))
+        .filter(([, items]) => items.length > 0)
+    };
+  }, [batchVoices]);
   const missingBulkTextVoiceIds = bulkTextVoiceIds.filter(voiceId => !englishBulkVoices.some(voice => voice.id === voiceId));
   const missingBulkMeaningVoiceIds = bulkMeaningVoiceIds.filter(voiceId => !meaningBulkVoices.some(voice => voice.id === voiceId));
   const missingGlobalTextEdgeVoiceId = structuredTextBatch?.preferences?.edgeTextVoiceId
@@ -962,6 +975,6 @@ export const TextBatchPopup = ({
 
     </div>
   );
-};
+});
 
 export default TextBatchPopup;

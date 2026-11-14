@@ -21,6 +21,7 @@ import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
+const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
 const compactVoiceLabel = value => {
   const name = clean(value);
   if (!name) return 'Default';
@@ -31,9 +32,21 @@ const compactVoiceLabel = value => {
   return name.length > 28 ? `${name.slice(0, 27)}…` : name;
 };
 const normalizedRate = (value, fallback = 1) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-const collectVoiceNames = voices => dedupeBrowserTtsVoices(voices).map(voice => clean(voice?.name)).filter(Boolean);
 
-const RateControl = ({ label, value, disabled, helper = null, onChange }) => {
+const emitTargetChange = (onChange, nextValue, targetItem = null, targetChannel = null) => {
+  if (!onChange) return;
+  if (targetItem) {
+    onChange(targetItem, nextValue, targetChannel);
+    return;
+  }
+  if (targetChannel) {
+    onChange(nextValue, targetChannel);
+    return;
+  }
+  onChange(nextValue);
+};
+
+const RateControl = memoComponent(({ label, value, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
   const currentRate = normalizedRate(value);
   return <label className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2.5">
     <span className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -44,7 +57,7 @@ const RateControl = ({ label, value, disabled, helper = null, onChange }) => {
           <button
             type="button"
             disabled={disabled}
-            onClick={(event) => { event.preventDefault(); onChange?.(1); }}
+            onClick={(event) => { event.preventDefault(); emitTargetChange(onChange, 1, targetItem, targetChannel); }}
             className="rounded border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 hover:text-indigo-600"
             title="Reset speed to 1.0×"
           >
@@ -53,14 +66,19 @@ const RateControl = ({ label, value, disabled, helper = null, onChange }) => {
         )}
       </span>
     </span>
-    <input type="range" min="0.5" max="2" step="0.1" value={currentRate} disabled={disabled} onChange={event => onChange?.(Number(event.target.value))} className="w-full accent-indigo-600 disabled:opacity-40"/>
+    <input type="range" min="0.5" max="2" step="0.1" value={currentRate} disabled={disabled} onChange={event => emitTargetChange(onChange, Number(event.target.value), targetItem, targetChannel)} className="w-full accent-indigo-600 disabled:opacity-40"/>
     {helper && <span className="mt-1 block text-[8px] font-semibold normal-case text-sky-600 dark:text-sky-300">{helper}</span>}
   </label>;
-};
+});
 
-const VoiceSelect = ({ label, value, voices, context = 'general', fallbackLabel, disabled, helper = null, onChange }) => {
-  const voiceOptions = dedupeBrowserTtsVoices(voices);
-  const voiceNames = collectVoiceNames(voiceOptions);
+const VoiceSelect = memoComponent(({ label, value, voices, context = 'general', fallbackLabel, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
+  const { voiceOptions, voiceNameSet } = useMemo(() => {
+    const deduped = dedupeBrowserTtsVoices(voices);
+    return {
+      voiceOptions: deduped,
+      voiceNameSet: new Set(deduped.map(voice => clean(voice?.name)).filter(Boolean))
+    };
+  }, [voices]);
   return <label className="block rounded-xl border border-indigo-100 dark:border-indigo-900/80 bg-white dark:bg-slate-900/50 p-2.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
     <span className="flex items-center justify-between gap-1">
       <span>{label}</span>
@@ -68,23 +86,33 @@ const VoiceSelect = ({ label, value, voices, context = 'general', fallbackLabel,
         {value ? 'Workspace Narrator' : 'Inherits Global Browser TTS'}
       </span>
     </span>
-    <select value={value || ''} disabled={disabled} onChange={event => onChange?.(event.target.value || null)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
+    <select value={value || ''} disabled={disabled} onChange={event => emitTargetChange(onChange, event.target.value || null, targetItem, targetChannel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
       <option value="">{fallbackLabel}</option>
-      {value && !voiceNames.includes(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
+      {value && !voiceNameSet.has(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
       <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
     </select>
     {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
   </label>;
-};
+});
 
-const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, voices, disabled, onChange }) => {
+const TextGlobalVoiceSelect = memoComponent(({ channel, title, selected, effectiveName, voices, disabled, onChange }) => {
   // The dropdown's DEFAULT label remains stable; the resolved voice is shown
   // separately so users can see what the active browser actually exposes.
-  const voiceOptions = dedupeBrowserTtsVoices(voices);
-  const voiceNames = collectVoiceNames(voiceOptions);
   const requestedName = selected || effectiveName || null;
-  const availableVoice = voiceOptions.find(voice => clean(voice?.name) === clean(requestedName)) || voiceOptions[0] || null;
-  const missingRequested = Boolean(selected && !voiceNames.includes(selected));
+  const { voiceOptions, voiceNameSet, voiceByName } = useMemo(() => {
+    const deduped = dedupeBrowserTtsVoices(voices);
+    const nameSet = new Set();
+    const byName = new Map();
+    deduped.forEach(voice => {
+      const cleaned = clean(voice?.name);
+      if (!cleaned) return;
+      nameSet.add(cleaned);
+      if (!byName.has(cleaned)) byName.set(cleaned, voice);
+    });
+    return { voiceOptions: deduped, voiceNameSet: nameSet, voiceByName: byName };
+  }, [voices]);
+  const availableVoice = voiceByName.get(clean(requestedName)) || voiceOptions[0] || null;
+  const missingRequested = Boolean(selected && !voiceNameSet.has(selected));
   const context = channel === 'meaning' ? 'meaning' : 'main';
   return <label className="block rounded-xl border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-900/45 p-2.5 text-[9px] font-bold text-slate-700 dark:text-slate-200">
     <span className="block mb-1.5">{title}</span>
@@ -92,7 +120,7 @@ const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, voices
       onChange={event => onChange?.(event.target.value || null, channel)}
       className="w-full min-w-0 rounded-lg border border-sky-200 dark:border-sky-900 bg-white dark:bg-slate-800 px-2.5 py-2 text-[10px] text-slate-700 dark:text-slate-200">
       <option value="">DEFAULT · Browser automatic</option>
-      {selected && !voiceNames.includes(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
+      {selected && !voiceNameSet.has(selected) && <option value={selected}>Unavailable · {formatTextStructuredBrowserVoiceLabel(selected)}</option>}
       <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
     </select>
     <span className="mt-1.5 block text-[9px] font-semibold text-sky-600 dark:text-sky-300" data-text-global-voice-effective={channel}>
@@ -101,7 +129,7 @@ const TextGlobalVoiceSelect = ({ channel, title, selected, effectiveName, voices
     {missingRequested && <span className="mt-1 block text-[8px] font-semibold text-amber-700 dark:text-amber-300">Saved voice unavailable here; using a browser fallback.</span>}
     {!voiceOptions.length && <span className="mt-1 block text-[8px] text-slate-500 dark:text-slate-400">No named voices exposed. Browser/device speech support determines fallback.</span>}
   </label>;
-};
+});
 
 const DownloadPresetSelect = ({ value, disabled, onChange }) => <select value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT} disabled={disabled} onChange={event => onChange?.(event.target.value)} className="w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-semibold text-violet-800 dark:text-violet-200 disabled:opacity-55" data-text-download-preset-select="true">
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}>DEFAULT • Inherit Global Edge Voice</option>
@@ -158,7 +186,7 @@ const SourceStatus = ({ status }) => {
   </div>;
 };
 
-export default function TextStructuredAudioControls({
+const TextStructuredAudioControls = memoComponent(function TextStructuredAudioControls({
   documentTree,
   preferences = {},
   englishVoices = [],
@@ -198,6 +226,10 @@ export default function TextStructuredAudioControls({
   onResetSpeakersAudio = null
 }) {
   const speakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
+  const speakerMetaById = useMemo(
+    () => new Map(speakers.map(speaker => [speaker.id, speaker])),
+    [speakers]
+  );
   const voiceProfile = useMemo(() => getTextStructuredVoiceOverrideProfile(documentTree), [documentTree?.metadata]);
   const rateProfile = useMemo(() => getTextStructuredPlaybackRateProfile(documentTree), [documentTree?.metadata]);
   const localProfile = useMemo(() => getTextStructuredLocalAudioProfile(documentTree), [documentTree?.metadata]);
@@ -234,7 +266,7 @@ export default function TextStructuredAudioControls({
   const localVoiceCountEn = (availableLocalVoices?.channels?.text || []).length;
   const localVoiceCountId = (availableLocalVoices?.channels?.meaning || []).length;
 
-  const renderDocumentChannel = (channel, label, voiceOptions, fallback, globalRate, localOptions) => {
+  const renderDocumentChannel = (channel, label, voiceOptions, fallback, globalRate) => {
     const rate = rateProfile.channels?.[channel] || globalRate || 1;
     const resolution = resolveTextStructuredBrowserVoiceResolution({
       documentTree,
@@ -242,7 +274,7 @@ export default function TextStructuredAudioControls({
       segment: null,
       channel,
       globalVoiceName: fallback,
-      availableBrowserVoices: channel === 'meaning' ? indonesianVoices : englishVoices,
+      availableBrowserVoices: channel === 'meaning' ? indonesianVoiceOptions : englishVoiceOptions,
       ignoreSegmentOverride: true,
       representationMode: 'full'
     });
@@ -257,7 +289,8 @@ export default function TextStructuredAudioControls({
         fallbackLabel="AUTO · Inherit Global"
         disabled={disabled}
         helper={`Effective: ${formatTextStructuredBrowserVoiceLabel(effectiveVoiceObj)} (${resolution.effectiveSourceLabel})`}
-        onChange={value => onDocumentVoiceChange?.(value, channel)}
+        onChange={onDocumentVoiceChange}
+        targetChannel={channel}
       />
       {resolution.fallbackUsed && resolution.fallbackReason && (
         <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/35 px-2.5 py-1.5 text-[8px] font-semibold text-amber-800 dark:text-amber-200 flex items-start gap-1.5" data-text-workspace-voice-fallback={channel}>
@@ -265,7 +298,7 @@ export default function TextStructuredAudioControls({
           <span>{resolution.fallbackReason}</span>
         </div>
       )}
-      <RateControl label={`${label} Playback Speed`} value={rate} disabled={disabled} onChange={value => onDocumentRateChange?.(value, channel)}/>
+      <RateControl label={`${label} Playback Speed`} value={rate} disabled={disabled} onChange={onDocumentRateChange} targetChannel={channel}/>
       {/* Workspace-pinned local voices are shown in the dedicated CUSTOM panel below. */}
     </div>;
   };
@@ -468,6 +501,7 @@ export default function TextStructuredAudioControls({
         </div>}
         {speakers.length > 1 && <p className="text-[8px] leading-relaxed text-slate-500 dark:text-slate-400">Sync temporarily links followers to Speaker 1 without overwriting their saved individual voices or speeds.</p>}
         {speakers.map(({ id, label }, index) => {
+          const speakerTarget = speakerMetaById.get(id) || { id, label };
           const savedEnVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'text' }) || '';
           const savedIdVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'meaning' }) || '';
           const savedEnRate = rateProfile.speakerIds?.text?.[id] || rateProfile.speakers?.text?.[label?.toLowerCase?.()] || rateProfile.channels?.text || globalTextRate || 1;
@@ -524,8 +558,8 @@ export default function TextStructuredAudioControls({
               )}
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'text')}/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'text')}/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
-              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerVoiceChange?.({ id, label }, value, 'meaning')}/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={value => onSpeakerRateChange?.({ id, label }, value, 'meaning')}/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="text"/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="text"/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="meaning"/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="meaning"/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
             </div>
             {syncNotes.length > 0 && <div className="mt-2 space-y-0.5 px-0.5" data-text-audio-sync-notes={id}>{syncNotes.map(note => <p key={note} className="text-[8px] font-semibold leading-relaxed text-sky-600 dark:text-sky-300">{note}</p>)}</div>}
             <button type="button" onClick={() => setLocalReadyExpanded(current => ({ ...current, [id]: !current[id] }))} className="mt-2 flex min-h-9 w-full items-center justify-between rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 text-left text-[9px] font-black text-emerald-700 dark:text-emerald-300" aria-expanded={localReadyOpen}>
@@ -685,4 +719,6 @@ export default function TextStructuredAudioControls({
       }}
     />
   </div>;
-}
+});
+
+export default TextStructuredAudioControls;

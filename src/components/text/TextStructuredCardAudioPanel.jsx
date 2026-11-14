@@ -48,10 +48,6 @@ const clue = (segment, channel = 'text') => {
   return value.length > 54 ? `${value.slice(0, 53)}…` : value;
 };
 
-const uniqueVoiceNames = voices => [...new Set((Array.isArray(voices) ? voices : [])
-  .map(voice => clean(voice?.name))
-  .filter(Boolean))];
-
 const clonePlaybackProfiles = profiles => (Array.isArray(profiles) ? profiles : []).map(profile => ({
   engine: clean(profile?.engine || 'edge').toLowerCase() || 'edge',
   voiceId: clean(profile?.voiceId),
@@ -135,14 +131,42 @@ const isPlayerDraftDirty = (draft, baseline, segments) => {
   return false;
 };
 
-const VoiceSelect = ({ value, inheritedLabel, voices, context = 'general', disabled, onChange, testId }) => {
-  const voiceOptions = dedupeBrowserTtsVoices(voices);
-  const names = uniqueVoiceNames(voiceOptions);
-  const missing = value && !names.includes(value);
+const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
+const EMPTY_VOICE_LIST = Object.freeze([]);
+
+const VoiceSelect = memoComponent(({
+  value,
+  inheritedLabel,
+  voices,
+  context = 'general',
+  disabled,
+  onChange,
+  testId,
+  onTargetChange = null,
+  targetId = null,
+  targetChannel = null,
+  targetMeta = null
+}) => {
+  const { voiceOptions, voiceNameSet } = useMemo(() => {
+    const deduped = dedupeBrowserTtsVoices(voices);
+    return {
+      voiceOptions: deduped,
+      voiceNameSet: new Set(deduped.map(voice => clean(voice?.name)).filter(Boolean))
+    };
+  }, [voices]);
+  const missing = value && !voiceNameSet.has(value);
   return <select
     value={value || ''}
     disabled={disabled}
-    onChange={event => onChange?.(event.target.value || null)}
+    onChange={event => {
+      const nextValue = event.target.value || null;
+      if (onTargetChange) {
+        if (targetId !== null) onTargetChange(targetId, targetChannel, nextValue);
+        else onTargetChange(targetChannel, nextValue, targetMeta);
+        return;
+      }
+      onChange?.(nextValue);
+    }}
     className="w-full min-w-0 min-h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs md:text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-50"
     data-text-voice-override-select={testId}
   >
@@ -150,16 +174,38 @@ const VoiceSelect = ({ value, inheritedLabel, voices, context = 'general', disab
     {missing && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
     <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
   </select>;
-};
+});
 
-const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', disabled, onChange, testId }) => {
-  const voiceList = Array.isArray(voices) ? voices : [];
+const EdgeVoiceSelect = memoComponent(({
+  value,
+  inheritedVoiceId,
+  voices,
+  channel = 'text',
+  disabled,
+  onChange,
+  testId,
+  onTargetChange = null,
+  targetId = null,
+  targetMeta = undefined
+}) => {
+  const voiceList = Array.isArray(voices) ? voices : EMPTY_VOICE_LIST;
   const context = channel === 'meaning' ? 'meaning' : 'main';
-  const known = voiceList.some(voice => voice?.id === value);
+  const known = useMemo(
+    () => voiceList.some(voice => voice?.id === value),
+    [voiceList, value]
+  );
   return <select
     value={value || ''}
     disabled={disabled}
-    onChange={event => onChange?.(event.target.value || null)}
+    onChange={event => {
+      const nextValue = event.target.value || null;
+      if (onTargetChange) {
+        if (targetMeta !== undefined) onTargetChange(targetId, channel, nextValue, targetMeta);
+        else onTargetChange(targetId, channel, nextValue);
+        return;
+      }
+      onChange?.(nextValue);
+    }}
     className="w-full min-w-0 min-h-10 rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs md:text-[10px] font-medium text-violet-800 dark:text-violet-200 disabled:opacity-50"
     data-text-download-voice-select={testId}
   >
@@ -167,13 +213,31 @@ const EdgeVoiceSelect = ({ value, inheritedVoiceId, voices, channel = 'text', di
     {value && !known && <option value={value} disabled>Unavailable · {value}</option>}
     <EdgeVoiceOptgroups voices={voiceList} context={context} />
   </select>;
-};
+});
 
-const DownloadPresetSelect = ({ value, disabled, onChange, testId }) => <select value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT} disabled={disabled} onChange={event => onChange?.(event.target.value)} className="w-full min-w-0 min-h-10 rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[10px] font-semibold text-violet-800 dark:text-violet-200 disabled:opacity-50" data-text-card-download-preset={testId}>
+const DownloadPresetSelect = memoComponent(({
+  value,
+  disabled,
+  onChange,
+  testId,
+  onTargetChange = null,
+  targetId = null,
+  targetChannel = null
+}) => <select
+  value={value || TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}
+  disabled={disabled}
+  onChange={event => {
+    const nextValue = event.target.value;
+    if (onTargetChange) onTargetChange(targetId, targetChannel, nextValue);
+    else onChange?.(nextValue);
+  }}
+  className="w-full min-w-0 min-h-10 rounded-xl border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[10px] font-semibold text-violet-800 dark:text-violet-200 disabled:opacity-50"
+  data-text-card-download-preset={testId}
+>
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT}>DEFAULT • Inherit Workspace Edge</option>
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER}>FOLLOW PLAYER • Match TTS Voice</option>
   <option value={TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM}>CUSTOM • Pin Card Edge Voice</option>
-</select>;
+</select>);
 
 const CardPlaybackOrderEditor = ({ channel = 'text', cardOrder, globalOrder, availableLocalVoices, disabled, onChange }) => {
   const profiles = Array.isArray(cardOrder?.channels?.[channel]) ? cardOrder.channels[channel] : [];
@@ -309,6 +373,8 @@ export const TextStructuredCardAudioPanel = ({
   const cardDownloadProfile = getTextStructuredAudioDownloadProfile(block);
   const cardPlaybackOrder = getTextStructuredAudioPlaybackOrder(draftBlock);
   const speakers = useMemo(() => collectTextStructuredCardSpeakers(block), [block]);
+  const englishVoiceOptions = useMemo(() => dedupeBrowserTtsVoices(englishVoices), [englishVoices]);
+  const indonesianVoiceOptions = useMemo(() => dedupeBrowserTtsVoices(indonesianVoices), [indonesianVoices]);
   const firstSegment = draftBlock?.segments?.[0] || segments[0] || null;
   const isConversation = block?.blockType === 'conversation';
 
@@ -437,7 +503,7 @@ export const TextStructuredCardAudioPanel = ({
     return `${formatTextStructuredBrowserVoiceLabel(findBrowserVoiceEntry(resolved.voiceName, channel))} · ${getTextStructuredVoiceSourceDisplayLabel(resolved.source)}`;
   };
 
-  const handleDraftCardVoiceChange = (channel, voiceName, speaker = null) => {
+  const handleDraftCardVoiceChange = React.useCallback((channel, voiceName, speaker = null) => {
     const cleanedVoice = clean(voiceName) || null;
     setPlayerDraft(prev => {
       if (speaker?.id) {
@@ -454,9 +520,9 @@ export const TextStructuredCardAudioPanel = ({
         cardChannels: { ...prev.cardChannels, [channel]: cleanedVoice }
       };
     });
-  };
+  }, []);
 
-  const handleDraftSegmentVoiceChange = (segmentId, channel, voiceName) => {
+  const handleDraftSegmentVoiceChange = React.useCallback((segmentId, channel, voiceName) => {
     const cleanedVoice = clean(voiceName) || null;
     setPlayerDraft(prev => ({
       ...prev,
@@ -468,9 +534,9 @@ export const TextStructuredCardAudioPanel = ({
         }
       }
     }));
-  };
+  }, []);
 
-  const handleDraftCardPlaybackOrderChange = (profiles, channel) => {
+  const handleDraftCardPlaybackOrderChange = React.useCallback((profiles, channel) => {
     setPlayerDraft(prev => ({
       ...prev,
       playbackOrder: {
@@ -478,7 +544,7 @@ export const TextStructuredCardAudioPanel = ({
         [channel]: clonePlaybackProfiles(profiles)
       }
     }));
-  };
+  }, []);
 
   const handleResetPlayerDraft = () => {
     setPlayerDraft(buildInitialPlayerDraft(block, segments));
@@ -838,10 +904,12 @@ export const TextStructuredCardAudioPanel = ({
                       <VoiceSelect
                         value={value}
                         inheritedLabel={inheritedFor(firstSegment, channel, true)}
-                        voices={isMeaning ? indonesianVoices : englishVoices}
+                        voices={isMeaning ? indonesianVoiceOptions : englishVoiceOptions}
                         context={isMeaning ? 'meaning' : 'main'}
                         disabled={disabled}
-                        onChange={voiceName => handleDraftCardVoiceChange(channel, voiceName, null)}
+                        onTargetChange={handleDraftCardVoiceChange}
+                        targetChannel={channel}
+                        targetMeta={null}
                         testId={`${block.id}:${channel}`}
                       />
                     </label>;
@@ -862,7 +930,8 @@ export const TextStructuredCardAudioPanel = ({
 
                 {speakers.length === 0 && <div className="rounded-xl border border-dashed border-sky-200 dark:border-sky-900 p-3 text-center text-[9px] text-slate-400">Add speaker names to Conversation Segments first.</div>}
 
-                {speakers.map(({ id, key, label }) => {
+                {speakers.map(speaker => {
+                  const { id, key, label } = speaker;
                   const sample = draftBlock.segments.find(segment => segment?.metadata?.speakerIdentityV1 === id) || draftBlock.segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || null;
                   const speakerExpanded = expandedSpeakerKey === id;
                   const enOverride = cardProfile.speakerIds?.text?.[id] || cardProfile.speakers?.text?.[key] || '';
@@ -884,7 +953,7 @@ export const TextStructuredCardAudioPanel = ({
                         const value = cardProfile.speakerIds?.[channel]?.[id] || cardProfile.speakers?.[channel]?.[key] || '';
                         return <label key={channel} className="block min-w-0">
                           <span className="mb-1 block text-[8px] font-black uppercase tracking-wide text-slate-500">{isMeaning ? 'ID (Meaning) TTS' : 'EN (Text) TTS'}</span>
-                          <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoices : englishVoices} context={isMeaning ? 'meaning' : 'main'} disabled={disabled} onChange={voiceName => handleDraftCardVoiceChange(channel, voiceName, { id, label })} testId={`${block.id}:${id}:${channel}`}/>
+                          <VoiceSelect value={value} inheritedLabel={inheritedFor(sample, channel, true)} voices={isMeaning ? indonesianVoiceOptions : englishVoiceOptions} context={isMeaning ? 'meaning' : 'main'} disabled={disabled} onTargetChange={handleDraftCardVoiceChange} targetChannel={channel} targetMeta={speaker} testId={`${block.id}:${id}:${channel}`}/>
                         </label>;
                       })}
                     </div>}
@@ -930,10 +999,12 @@ export const TextStructuredCardAudioPanel = ({
                                   <VoiceSelect
                                     value={value}
                                     inheritedLabel={`${formatTextStructuredBrowserVoiceLabel(findBrowserVoiceEntry(inherited.voiceName, channel))} · ${getTextStructuredVoiceSourceDisplayLabel(inherited.source)}`}
-                                    voices={isMeaning ? indonesianVoices : englishVoices}
+                                    voices={isMeaning ? indonesianVoiceOptions : englishVoiceOptions}
                                     context={isMeaning ? 'meaning' : 'main'}
                                     disabled={disabled}
-                                    onChange={voiceName => handleDraftSegmentVoiceChange(segment.id, channel, voiceName)}
+                                    onTargetChange={handleDraftSegmentVoiceChange}
+                                    targetId={segment.id}
+                                    targetChannel={channel}
                                     testId={`${segment.id}:${channel}`}
                                   />
                                 </div>
@@ -1156,8 +1227,8 @@ export const TextStructuredCardAudioPanel = ({
                       <span className="text-[9px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">{isMeaning ? 'ID (Meaning) Preset' : 'EN (Text) Preset'}</span>
                       <span className="text-[8px] font-semibold text-slate-400 truncate max-w-[8rem]" title={inherited.voiceId}>Base: {compactVoiceLabel(inherited.voiceId)}</span>
                     </div>
-                    <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onCardDownloadModeChange?.(block.id, channel, next)} testId={`${block.id}:${channel}`}/>
-                    {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, null)} testId={`${block.id}:download:${channel}`}/></div>}
+                    <DownloadPresetSelect value={mode} disabled={disabled} onTargetChange={onCardDownloadModeChange} targetId={block.id} targetChannel={channel} testId={`${block.id}:${channel}`}/>
+                    {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onTargetChange={onCardDownloadVoiceChange} targetId={block.id} targetMeta={null} testId={`${block.id}:download:${channel}`}/></div>}
                     {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[8px] font-semibold text-sky-600 dark:text-sky-300">Maps each segment's effective TTS playback voice to Edge.</p>}
                   </div>;
                 })}
@@ -1165,7 +1236,8 @@ export const TextStructuredCardAudioPanel = ({
 
               {isConversation && <div className="mt-2 pt-2 border-t border-violet-200/60 dark:border-violet-900/60 space-y-2">
                 <p className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">Speaker Edge Overrides (optional — overrides Card preset for a specific speaker):</p>
-                {speakers.map(({ id, key, label }) => {
+                {speakers.map(speaker => {
+                  const { id, key, label } = speaker;
                   const sample = segments.find(segment => segment?.metadata?.speakerIdentityV1 === id) || segments.find(segment => normalizeTextStructuredSpeakerKey(segment?.speaker) === key) || firstSegment;
                   return <div key={`download-${id}`} className="rounded-xl border border-violet-100 dark:border-violet-900 bg-white/80 dark:bg-slate-900/40 p-2.5">
                     <p className="mb-1.5 text-[10px] font-black text-violet-700 dark:text-violet-300">{label}</p>
@@ -1175,7 +1247,7 @@ export const TextStructuredCardAudioPanel = ({
                         const value = cardDownloadProfile.speakerIds?.[channel]?.[id] || cardDownloadProfile.speakers?.[channel]?.[key] || '';
                         return <label key={channel} className="block min-w-0">
                           <span className="mb-1 block text-[8px] font-bold text-slate-500">{channel === 'meaning' ? 'ID Edge Voice' : 'EN Edge Voice'}</span>
-                          <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onCardDownloadVoiceChange?.(block.id, channel, voiceId, { id, label })} testId={`${block.id}:${id}:download:${channel}`}/>
+                          <EdgeVoiceSelect value={value} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onTargetChange={onCardDownloadVoiceChange} targetId={block.id} targetMeta={speaker} testId={`${block.id}:${id}:download:${channel}`}/>
                         </label>;
                       })}
                     </div>
@@ -1310,8 +1382,8 @@ export const TextStructuredCardAudioPanel = ({
                         const inherited = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment: { ...segment, metadata: { ...(segment.metadata?.speakerIdentityV1 ? { speakerIdentityV1: segment.metadata.speakerIdentityV1 } : {}) } }, channel, preferences: generationPreferences });
                         return <div key={`download-${channel}`} className="block min-w-0">
                           <span className="mb-1 block text-[8px] font-bold text-violet-600 dark:text-violet-300">{channel === 'meaning' ? 'ID download preset' : 'EN download preset'}</span>
-                          <DownloadPresetSelect value={mode} disabled={disabled} onChange={next => onSegmentDownloadModeChange?.(segment.id, channel, next)} testId={`${segment.id}:${channel}`}/>
-                          {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onChange={voiceId => onSegmentDownloadVoiceChange?.(segment.id, channel, voiceId)} testId={`${segment.id}:download:${channel}`}/></div>}
+                          <DownloadPresetSelect value={mode} disabled={disabled} onTargetChange={onSegmentDownloadModeChange} targetId={segment.id} targetChannel={channel} testId={`${segment.id}:${channel}`}/>
+                          {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.CUSTOM && <div className="mt-1.5"><EdgeVoiceSelect value={segmentDownload.channels?.[channel] || ''} inheritedVoiceId={inherited.voiceId} voices={edgeGenerationVoices} channel={channel} disabled={disabled} onTargetChange={onSegmentDownloadVoiceChange} targetId={segment.id} testId={`${segment.id}:download:${channel}`}/></div>}
                           {mode === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER && <p className="mt-1.5 text-[8px] font-semibold text-sky-600 dark:text-sky-300">Follows this Segment's effective playback voice.</p>}
                         </div>;
                       })}

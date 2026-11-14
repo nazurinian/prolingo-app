@@ -173,7 +173,116 @@ export const formatEdgeVoiceLabel = (
   return unavailable ? `${base} · Unavailable` : base;
 };
 
-const INDO_LANG_RANK = Object.freeze({ id: 0, jv: 1, su: 2 });
+export const INDO_LANG_RANK = Object.freeze({ id: 0, jv: 1, su: 2 });
+export const VOICE_COLLATORS = Object.freeze({
+  name: new Intl.Collator('en', { sensitivity: 'base', numeric: true }),
+  alpha: new Intl.Collator('en', { sensitivity: 'base' })
+});
+const NAMED_ENGLISH_LABEL_BY_CODE = new Map(NAMED_ENGLISH_REGION_GROUPS);
+
+/** Bounded WeakMap + snapshot-signature cache that invalidates on element or flag mutation. */
+export const createVoiceGroupCache = ({ maxEntries = 24, getToken }) => {
+  const weakCache = new WeakMap();
+  const signatureCache = new Map();
+
+  const attachWeak = (voiceList, context, entry) => {
+    if (!Array.isArray(voiceList)) return;
+    let byContext = weakCache.get(voiceList);
+    if (!byContext) {
+      byContext = new Map();
+      weakCache.set(voiceList, byContext);
+    }
+    byContext.set(context, entry);
+  };
+
+  return (voiceList, context) => {
+    const normalizedContext = context || 'general';
+    const list = Array.isArray(voiceList) ? voiceList : [];
+    if (Array.isArray(voiceList)) {
+      const cached = weakCache.get(voiceList)?.get(normalizedContext);
+      if (cached && cached.refs.length === list.length) {
+        let matches = true;
+        for (let i = 0; i < list.length; i += 1) {
+          if (list[i] !== cached.refs[i] || getToken(list[i]) !== cached.tokens[i]) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) return { list, groups: cached.groups, store: null };
+      }
+    }
+
+    const refs = new Array(list.length);
+    const tokens = new Array(list.length);
+    for (let i = 0; i < list.length; i += 1) {
+      refs[i] = list[i];
+      tokens[i] = getToken(list[i]);
+    }
+    const signature = `${normalizedContext}\u0002${tokens.join('\u0003')}`;
+    const signatureHit = signatureCache.get(signature);
+    if (signatureHit && signatureHit.refs.length === refs.length) {
+      let matches = true;
+      for (let i = 0; i < refs.length; i += 1) {
+        if (signatureHit.refs[i] !== refs[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        attachWeak(voiceList, normalizedContext, { refs, tokens, groups: signatureHit.groups });
+        return { list, groups: signatureHit.groups, store: null };
+      }
+    }
+
+    return {
+      list,
+      groups: null,
+      store: groups => {
+        if (signatureCache.size >= maxEntries) {
+          const oldestKey = signatureCache.keys().next().value;
+          if (oldestKey !== undefined) signatureCache.delete(oldestKey);
+        }
+        signatureCache.set(signature, { refs, groups });
+        attachWeak(voiceList, normalizedContext, { refs, tokens, groups });
+        return groups;
+      }
+    };
+  };
+};
+
+const getEdgeVoiceSnapshotToken = voice => {
+  if (!voice || typeof voice !== 'object') return clean(voice);
+  return [
+    clean(voice.id),
+    clean(voice.label),
+    clean(voice.lang),
+    voice.available === true ? '1' : voice.available === false ? '0' : '',
+    voice.unavailable === true ? '1' : voice.unavailable === false ? '0' : '',
+    voice.child === true || voice.isChild === true ? '1' : '0'
+  ].join('\u0001');
+};
+
+const lookupEdgeGroupCache = createVoiceGroupCache({
+  maxEntries: 24,
+  getToken: getEdgeVoiceSnapshotToken
+});
+
+/** Compare Schwartzian-precomputed voice sort entries within a region optgroup. */
+export const comparePrecomputedVoiceEntries = (entryA, entryB, { isOtherEnglish = false, isGeneralIndo = false } = {}) => {
+  if (isGeneralIndo) {
+    const langDiff = (INDO_LANG_RANK[entryA.language] ?? 9) - (INDO_LANG_RANK[entryB.language] ?? 9);
+    if (langDiff !== 0) return langDiff;
+  }
+  if (isOtherEnglish) {
+    const countryDiff = VOICE_COLLATORS.alpha.compare(entryA.countryName, entryB.countryName);
+    if (countryDiff !== 0) return countryDiff;
+  }
+  const nameDiff = VOICE_COLLATORS.name.compare(entryA.name, entryB.name);
+  if (nameDiff !== 0) return nameDiff;
+  const labelDiff = VOICE_COLLATORS.name.compare(entryA.label, entryB.label);
+  if (labelDiff !== 0) return labelDiff;
+  return VOICE_COLLATORS.alpha.compare(entryA.idOrName, entryB.idOrName);
+};
 
 export const compareVoicesWithinGroup = ({
   a,
@@ -192,78 +301,80 @@ export const compareVoicesWithinGroup = ({
   if (isOtherEnglish) {
     const countryA = getEnglishRegionCountryName(getRegionCode?.(a)) || upper(getRegionCode?.(a)) || '\uffff';
     const countryB = getEnglishRegionCountryName(getRegionCode?.(b)) || upper(getRegionCode?.(b)) || '\uffff';
-    const countryDiff = countryA.localeCompare(countryB, 'en', { sensitivity: 'base' });
+    const countryDiff = VOICE_COLLATORS.alpha.compare(countryA, countryB);
     if (countryDiff !== 0) return countryDiff;
   }
   const nameA = clean(getName?.(a));
   const nameB = clean(getName?.(b));
-  const nameDiff = nameA.localeCompare(nameB, 'en', { sensitivity: 'base', numeric: true });
+  const nameDiff = VOICE_COLLATORS.name.compare(nameA, nameB);
   if (nameDiff !== 0) return nameDiff;
-  const labelDiff = clean(getLabel?.(a)).localeCompare(clean(getLabel?.(b)), 'en', { sensitivity: 'base', numeric: true });
+  const labelDiff = VOICE_COLLATORS.name.compare(clean(getLabel?.(a)), clean(getLabel?.(b)));
   if (labelDiff !== 0) return labelDiff;
-  return clean(a?.id || a?.name).localeCompare(clean(b?.id || b?.name), 'en', { sensitivity: 'base' });
+  return VOICE_COLLATORS.alpha.compare(clean(a?.id || a?.name), clean(b?.id || b?.name));
 };
 
 export const groupEdgeVoicesByRegion = (voiceList, context = 'general') => {
-  const groups = {};
-  if (context === 'meaning') {
-    groups[VOICE_REGION_GROUP_LABELS.ID] = [];
-    groups[VOICE_REGION_GROUP_LABELS.JV] = [];
-    groups[VOICE_REGION_GROUP_LABELS.SU] = [];
-    groups[VOICE_REGION_GROUP_LABELS.ID_OTHER] = [];
+  const normalizedContext = context || 'general';
+  const cacheSlot = lookupEdgeGroupCache(voiceList, normalizedContext);
+  if (cacheSlot.groups) return cacheSlot.groups;
+  const { list, store } = cacheSlot;
+
+  const decoratedGroups = {};
+  if (normalizedContext === 'meaning') {
+    decoratedGroups[VOICE_REGION_GROUP_LABELS.ID] = [];
+    decoratedGroups[VOICE_REGION_GROUP_LABELS.JV] = [];
+    decoratedGroups[VOICE_REGION_GROUP_LABELS.SU] = [];
+    decoratedGroups[VOICE_REGION_GROUP_LABELS.ID_OTHER] = [];
   } else {
     NAMED_ENGLISH_REGION_GROUPS.forEach(([, label]) => {
-      groups[label] = [];
+      decoratedGroups[label] = [];
     });
-    groups[VOICE_REGION_GROUP_LABELS.OTHER_EN] = [];
-    if (context !== 'main') {
-      groups[VOICE_REGION_GROUP_LABELS.ID_GENERAL] = [];
+    decoratedGroups[VOICE_REGION_GROUP_LABELS.OTHER_EN] = [];
+    if (normalizedContext !== 'main') {
+      decoratedGroups[VOICE_REGION_GROUP_LABELS.ID_GENERAL] = [];
     }
   }
 
-  (Array.isArray(voiceList) ? voiceList : []).forEach(voice => {
-    if (!voice) return;
+  for (let i = 0; i < list.length; i += 1) {
+    const voice = list[i];
+    if (!voice) continue;
     const { language, regionCode, isEnglish, isIndoRegion } = extractEdgeVoiceLocaleInfo(voice);
-    if (context === 'main') {
-      if (isIndoRegion || !isEnglish) return;
-      const matched = NAMED_ENGLISH_REGION_GROUPS.find(([code]) => code === regionCode);
-      if (matched) groups[matched[1]].push(voice);
-      else groups[VOICE_REGION_GROUP_LABELS.OTHER_EN].push(voice);
-      return;
+    let targetGroup = null;
+    if (normalizedContext === 'main') {
+      if (isIndoRegion || !isEnglish) continue;
+      targetGroup = NAMED_ENGLISH_LABEL_BY_CODE.get(regionCode) || VOICE_REGION_GROUP_LABELS.OTHER_EN;
+    } else if (normalizedContext === 'meaning') {
+      if (!isIndoRegion) continue;
+      if (language === 'id') targetGroup = VOICE_REGION_GROUP_LABELS.ID;
+      else if (language === 'jv') targetGroup = VOICE_REGION_GROUP_LABELS.JV;
+      else if (language === 'su') targetGroup = VOICE_REGION_GROUP_LABELS.SU;
+      else targetGroup = VOICE_REGION_GROUP_LABELS.ID_OTHER;
+    } else if (isIndoRegion) {
+      targetGroup = VOICE_REGION_GROUP_LABELS.ID_GENERAL;
+    } else if (isEnglish) {
+      targetGroup = NAMED_ENGLISH_LABEL_BY_CODE.get(regionCode) || VOICE_REGION_GROUP_LABELS.OTHER_EN;
     }
-    if (context === 'meaning') {
-      if (!isIndoRegion) return;
-      if (language === 'id') groups[VOICE_REGION_GROUP_LABELS.ID].push(voice);
-      else if (language === 'jv') groups[VOICE_REGION_GROUP_LABELS.JV].push(voice);
-      else if (language === 'su') groups[VOICE_REGION_GROUP_LABELS.SU].push(voice);
-      else groups[VOICE_REGION_GROUP_LABELS.ID_OTHER].push(voice);
-      return;
-    }
-    if (isIndoRegion) {
-      groups[VOICE_REGION_GROUP_LABELS.ID_GENERAL].push(voice);
-      return;
-    }
-    if (isEnglish) {
-      const matched = NAMED_ENGLISH_REGION_GROUPS.find(([code]) => code === regionCode);
-      if (matched) groups[matched[1]].push(voice);
-      else groups[VOICE_REGION_GROUP_LABELS.OTHER_EN].push(voice);
-    }
-  });
+    if (!targetGroup) continue;
 
-  Object.entries(groups).forEach(([groupLabel, items]) => {
+    decoratedGroups[targetGroup].push({
+      voice,
+      language,
+      countryName: getEnglishRegionCountryName(regionCode) || upper(regionCode) || '\uffff',
+      name: clean(extractEdgeVoiceShortName(voice)),
+      label: clean(voice?.label || voice?.id),
+      idOrName: clean(voice?.id || voice?.name)
+    });
+  }
+
+  const groups = {};
+  Object.entries(decoratedGroups).forEach(([groupLabel, entries]) => {
     const isOtherEnglish = groupLabel === VOICE_REGION_GROUP_LABELS.OTHER_EN;
     const isGeneralIndo = groupLabel === VOICE_REGION_GROUP_LABELS.ID_GENERAL;
-    items.sort((a, b) => compareVoicesWithinGroup({
-      a,
-      b,
-      isOtherEnglish,
-      isGeneralIndo,
-      getName: extractEdgeVoiceShortName,
-      getRegionCode: item => extractEdgeVoiceLocaleInfo(item).regionCode,
-      getLanguage: item => extractEdgeVoiceLocaleInfo(item).language,
-      getLabel: item => clean(item?.label || item?.id)
-    }));
+    if (entries.length > 1) {
+      entries.sort((entryA, entryB) => comparePrecomputedVoiceEntries(entryA, entryB, { isOtherEnglish, isGeneralIndo }));
+    }
+    groups[groupLabel] = entries.map(entry => entry.voice);
   });
 
-  return groups;
+  return store(groups);
 };
