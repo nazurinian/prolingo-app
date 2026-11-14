@@ -126,15 +126,17 @@ const loadModule = absPath => {
   return mod.exports;
 };
 
-const renderTree = node => {
+const renderTree = (node, onVisitElement = null) => {
   if (node == null || typeof node === 'boolean') return [];
-  if (Array.isArray(node)) return node.flatMap(renderTree);
+  if (Array.isArray(node)) return node.flatMap(item => renderTree(item, onVisitElement));
   if (typeof node === 'string' || typeof node === 'number') return [node];
   if (typeof node === 'object' && typeof node.type === 'function') {
-    return renderTree(node.type(node.props || {}));
+    onVisitElement?.(node);
+    return renderTree(node.type(node.props || {}), onVisitElement);
   }
   if (typeof node === 'object' && node.type) {
-    const children = renderTree(node.props?.children);
+    onVisitElement?.(node);
+    const children = renderTree(node.props?.children, onVisitElement);
     return [{ ...node, children }];
   }
   return [];
@@ -472,6 +474,261 @@ run('4. Header, MainAppShellView, PlayerBrowserTtsControls & Reset buttons keep 
   assert.deepEqual(committedRates, [], 'Player slider does not call setRate during drag');
   collectNodes(playerTree, n => n.type === 'input' && n.props?.type === 'range')[0].props.onPointerUp();
   assert.deepEqual(committedRates, ['1.5'], 'Player slider commits once on release');
+});
+
+run('5. emitTargetChange propagates async results and null rejections so failed slider commits restore persisted values', async () => {
+  const { default: TextStructuredAudioControls } = loadModule(path.join(root, 'src/components/text/TextStructuredAudioControls.jsx'));
+  const { default: CommitOnReleaseRange } = loadModule(path.join(root, 'src/components/common/CommitOnReleaseRange.jsx'));
+  const flushAsyncTicks = async () => {
+    await Promise.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  };
+
+  // Part A: Paragraph Workspace slider & voice callbacks (2-arg signature: nextValue, channel)
+  let workspaceDoc = {
+    id: 'DOC_PROP',
+    title: 'Workspace Async Prop Doc',
+    editorModel: 'structured-v1',
+    documentType: 'paragraph',
+    textLanguage: 'en',
+    meaningLanguage: 'id',
+    metadata: { audioPlaybackRateProfileV1: { channels: { text: 1.7, meaning: null }, speakerIds: { text: {}, meaning: {} }, speakers: { text: {}, meaning: {} } } },
+    blocks: [{ id: 'B1', blockType: 'paragraph', metadata: {}, segments: [{ id: 'S1', text: 'Hi.', meaning: 'Hai.', metadata: {} }] }]
+  };
+  let docRateHandler = async (val, ch) => ({ scope: 'workspace', val, ch });
+  let docVoiceHandler = async (val, ch) => ({ scope: 'workspace-voice', val, ch });
+  const docRateCalls = [];
+  const docVoiceCalls = [];
+
+  resetHooks();
+  mockWindowListeners.clear();
+  const renderWorkspace = () => {
+    const rangeNodes = [];
+    hookSlot = 0;
+    const tree = renderTree(mockReact.createElement(TextStructuredAudioControls, {
+      documentTree: workspaceDoc,
+      preferences: { browserTextRate: 1.4, browserMeaningRate: 1.2 },
+      globalTextRate: 1.4,
+      globalMeaningRate: 1.2,
+      generationPreferences: {},
+      edgeGenerationVoices: initialEdgeVoices,
+      onDocumentRateChange: (...args) => {
+        docRateCalls.push(args);
+        return docRateHandler(...args);
+      },
+      onDocumentVoiceChange: (...args) => {
+        docVoiceCalls.push(args);
+        return docVoiceHandler(...args);
+      }
+    }), el => {
+      if (el.type === CommitOnReleaseRange) rangeNodes.push(el.props);
+    });
+    flushEffects();
+    return { tree, rangeNodes };
+  };
+
+  let ws = renderWorkspace();
+  const wsEnRangeProps = ws.rangeNodes.find(p => p['aria-label'] === 'EN Playback Speed');
+  assert.ok(wsEnRangeProps, 'Workspace EN Playback Speed CommitOnReleaseRange mounted');
+
+  // Direct return propagation check for Workspace rate & voice callbacks
+  const okWsResult = await wsEnRangeProps.onCommit(1.8);
+  assert.deepEqual(okWsResult, { scope: 'workspace', val: 1.8, ch: 'text' }, 'Workspace successful async commit propagates returned value');
+  assert.deepEqual(docRateCalls.at(-1), [1.8, 'text'], 'Workspace rate callback keeps (value, channel) signature');
+
+  const [wsEnChannel] = collectNodes(ws.tree, n => n.props?.['data-text-workspace-narrator-channel'] === 'text');
+  const [wsEnSelect] = collectNodes([wsEnChannel], n => n.type === 'select');
+  assert.ok(wsEnSelect, 'Workspace EN VoiceSelect select rendered');
+  const okWsVoice = await wsEnSelect.props.onChange({ target: { value: 'Voice W' } });
+  assert.deepEqual(okWsVoice, { scope: 'workspace-voice', val: 'Voice W', ch: 'text' }, 'Workspace voice callback propagates async result');
+  assert.deepEqual(docVoiceCalls.at(-1), ['Voice W', 'text'], 'Workspace voice callback keeps (value, channel) signature');
+
+  docRateHandler = async () => null;
+  docVoiceHandler = async () => null;
+  assert.equal(await wsEnRangeProps.onCommit(1.9), null, 'Rejected Workspace async commit propagates null');
+  assert.equal(await wsEnSelect.props.onChange({ target: { value: 'Voice W2' } }), null, 'Rejected Workspace voice commit propagates null');
+
+  docRateHandler = () => null;
+  assert.equal(wsEnRangeProps.onCommit(1.6), null, 'Synchronous null Workspace commit propagates null immediately');
+
+  // Integrated slider drag -> rejected async save (null) restores persisted 1.7x
+  docRateHandler = async () => null;
+  ws = renderWorkspace();
+  let wsEnInput = collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0];
+  wsEnInput.props.onPointerDown();
+  wsEnInput.props.onChange({ target: { value: '1.9' } });
+  ws = renderWorkspace();
+  assert.equal(
+    textOf(collectNodes(ws.tree, n => n.props?.['data-text-rate-readout'] === 'workspace:text')[0]).trim(),
+    '1.9×',
+    'Workspace readout previews 1.9x while dragging'
+  );
+  wsEnInput = collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0];
+  assert.equal(wsEnInput.props.value, 1.9);
+  wsEnInput.props.onPointerUp();
+  await flushAsyncTicks();
+  ws = renderWorkspace();
+  assert.equal(
+    textOf(collectNodes(ws.tree, n => n.props?.['data-text-rate-readout'] === 'workspace:text')[0]).trim(),
+    '1.7×',
+    'Rejected Workspace async save returning null must restore persisted 1.7x readout'
+  );
+  assert.equal(
+    collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0].props.value,
+    1.7,
+    'Rejected Workspace async save returning null must restore persisted 1.7 slider value'
+  );
+
+  // Integrated slider drag -> thrown/rejected Promise restores persisted 1.7x
+  docRateHandler = async () => { throw new Error('IndexedDB write failed'); };
+  ws = renderWorkspace();
+  wsEnInput = collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0];
+  wsEnInput.props.onPointerDown();
+  wsEnInput.props.onChange({ target: { value: '1.3' } });
+  ws = renderWorkspace();
+  collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0].props.onPointerUp();
+  await flushAsyncTicks();
+  ws = renderWorkspace();
+  assert.equal(
+    textOf(collectNodes(ws.tree, n => n.props?.['data-text-rate-readout'] === 'workspace:text')[0]).trim(),
+    '1.7×',
+    'Failed Workspace async promise rejection must restore persisted 1.7x readout'
+  );
+  assert.equal(
+    collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0].props.value,
+    1.7,
+    'Failed Workspace async promise rejection must restore persisted 1.7 slider value'
+  );
+
+  // Successful Workspace save updates persisted metadata and keeps new rate
+  docRateHandler = async (val, ch) => {
+    workspaceDoc = {
+      ...workspaceDoc,
+      metadata: {
+        ...workspaceDoc.metadata,
+        audioPlaybackRateProfileV1: { ...workspaceDoc.metadata.audioPlaybackRateProfileV1, channels: { text: val, meaning: null } }
+      }
+    };
+    return { id: workspaceDoc.id, channel: ch, rate: val };
+  };
+  ws = renderWorkspace();
+  wsEnInput = collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0];
+  wsEnInput.props.onPointerDown();
+  wsEnInput.props.onChange({ target: { value: '1.9' } });
+  ws = renderWorkspace();
+  collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0].props.onPointerUp();
+  await flushAsyncTicks();
+  ws = renderWorkspace();
+  assert.equal(textOf(collectNodes(ws.tree, n => n.props?.['data-text-rate-readout'] === 'workspace:text')[0]).trim(), '1.9×');
+  assert.equal(collectNodes(ws.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Playback Speed')[0].props.value, 1.9);
+
+  // Part B: Conversation Speaker slider & voice callbacks (3-arg signature: speakerTarget, nextValue, channel)
+  const speakerDoc = {
+    id: 'DOC_SPK_PROP',
+    title: 'Speaker Async Prop Doc',
+    editorModel: 'structured-v1',
+    documentType: 'conversation',
+    textLanguage: 'en',
+    meaningLanguage: 'id',
+    metadata: {
+      speakerRegistryV1: { SPK_1: { id: 'SPK_1', key: 'alice', label: 'Alice' } },
+      audioPlaybackRateProfileV1: { channels: { text: null, meaning: null }, speakerIds: { text: { SPK_1: 1.2 }, meaning: {} }, speakers: { text: {}, meaning: {} } }
+    },
+    blocks: [{
+      id: 'BLK_1',
+      blockType: 'conversation',
+      metadata: {},
+      segments: [{ id: 'SEG_1', speaker: 'Alice', metadata: { speakerIdentityV1: 'SPK_1' }, text: 'Hello.', meaning: 'Halo.' }]
+    }]
+  };
+  let speakerRateHandler = async (target, val, ch) => ({ scope: 'speaker', id: target?.id, label: target?.label, val, ch });
+  let speakerVoiceHandler = async (target, val, ch) => ({ scope: 'speaker-voice', id: target?.id, label: target?.label, val, ch });
+  const speakerRateCalls = [];
+  const speakerVoiceCalls = [];
+
+  resetHooks();
+  mockWindowListeners.clear();
+  const renderSpeaker = () => {
+    const rangeNodes = [];
+    hookSlot = 0;
+    const tree = renderTree(mockReact.createElement(TextStructuredAudioControls, {
+      documentTree: speakerDoc,
+      preferences: { browserTextRate: 1.0, browserMeaningRate: 1.0 },
+      globalTextRate: 1.0,
+      globalMeaningRate: 1.0,
+      generationPreferences: {},
+      edgeGenerationVoices: initialEdgeVoices,
+      onSpeakerRateChange: (...args) => {
+        speakerRateCalls.push(args);
+        return speakerRateHandler(...args);
+      },
+      onSpeakerVoiceChange: (...args) => {
+        speakerVoiceCalls.push(args);
+        return speakerVoiceHandler(...args);
+      }
+    }), el => {
+      if (el.type === CommitOnReleaseRange) rangeNodes.push(el.props);
+    });
+    flushEffects();
+    return { tree, rangeNodes };
+  };
+
+  let spk = renderSpeaker();
+  const spkEnRangeProps = spk.rangeNodes.find(p => p['aria-label'] === 'EN Speed');
+  assert.ok(spkEnRangeProps, 'Speaker EN Speed CommitOnReleaseRange mounted');
+
+  const okSpkResult = await spkEnRangeProps.onCommit(1.5);
+  assert.deepEqual(
+    okSpkResult,
+    { scope: 'speaker', id: 'SPK_1', label: 'Alice', val: 1.5, ch: 'text' },
+    'Speaker successful async commit propagates returned value'
+  );
+  assert.deepEqual(
+    speakerRateCalls.at(-1),
+    [{ id: 'SPK_1', key: 'SPK_1', label: 'Alice', segmentIds: ['SEG_1'], persisted: true }, 1.5, 'text'],
+    'Speaker rate callback keeps (speakerTarget, value, channel) 3-arg signature'
+  );
+
+  const [spkCard] = collectNodes(spk.tree, n => n.props?.['data-text-audio-speaker'] === 'SPK_1');
+  const [spkEnSelect] = collectNodes([spkCard], n => n.type === 'select');
+  assert.ok(spkEnSelect, 'Speaker EN VoiceSelect select rendered');
+  const okSpkVoice = await spkEnSelect.props.onChange({ target: { value: 'Voice S' } });
+  assert.deepEqual(
+    okSpkVoice,
+    { scope: 'speaker-voice', id: 'SPK_1', label: 'Alice', val: 'Voice S', ch: 'text' },
+    'Speaker voice callback propagates async result'
+  );
+  assert.deepEqual(
+    speakerVoiceCalls.at(-1),
+    [{ id: 'SPK_1', key: 'SPK_1', label: 'Alice', segmentIds: ['SEG_1'], persisted: true }, 'Voice S', 'text'],
+    'Speaker voice callback keeps (speakerTarget, value, channel) 3-arg signature'
+  );
+
+  speakerRateHandler = async () => null;
+  speakerVoiceHandler = async () => null;
+  assert.equal(await spkEnRangeProps.onCommit(1.6), null, 'Rejected Speaker rate commit propagates null');
+  assert.equal(await spkEnSelect.props.onChange({ target: { value: 'Voice S2' } }), null, 'Rejected Speaker voice commit propagates null');
+
+  // Integrated Speaker slider drag -> rejected async save (null) restores persisted 1.2x
+  spk = renderSpeaker();
+  let spkEnInput = collectNodes(spk.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Speed')[0];
+  spkEnInput.props.onPointerDown();
+  spkEnInput.props.onChange({ target: { value: '1.8' } });
+  spk = renderSpeaker();
+  assert.equal(textOf(collectNodes(spk.tree, n => n.props?.['data-text-rate-readout'] === 'speaker:SPK_1:text')[0]).trim(), '1.8×');
+  collectNodes(spk.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Speed')[0].props.onPointerUp();
+  await flushAsyncTicks();
+  spk = renderSpeaker();
+  assert.equal(
+    textOf(collectNodes(spk.tree, n => n.props?.['data-text-rate-readout'] === 'speaker:SPK_1:text')[0]).trim(),
+    '1.2×',
+    'Rejected Speaker async save returning null must restore persisted 1.2x readout'
+  );
+  assert.equal(
+    collectNodes(spk.tree, n => n.type === 'input' && n.props?.['aria-label'] === 'EN Speed')[0].props.value,
+    1.2,
+    'Rejected Speaker async save returning null must restore persisted 1.2 slider value'
+  );
 });
 
 let passed = 0;

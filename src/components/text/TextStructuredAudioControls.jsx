@@ -43,16 +43,10 @@ const compactVoiceLabel = value => {
 const normalizedRate = (value, fallback = 1) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 const emitTargetChange = (onChange, nextValue, targetItem = null, targetChannel = null) => {
-  if (!onChange) return;
-  if (targetItem) {
-    onChange(targetItem, nextValue, targetChannel);
-    return;
-  }
-  if (targetChannel) {
-    onChange(nextValue, targetChannel);
-    return;
-  }
-  onChange(nextValue);
+  if (!onChange) return undefined;
+  if (targetItem) return onChange(targetItem, nextValue, targetChannel);
+  if (targetChannel) return onChange(nextValue, targetChannel);
+  return onChange(nextValue);
 };
 
 const RateControl = memoComponent(({
