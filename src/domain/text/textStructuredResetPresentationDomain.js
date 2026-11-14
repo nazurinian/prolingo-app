@@ -50,7 +50,18 @@ const canonical = value => {
   }
   return value;
 };
-const sameMetadata = (left, right) => JSON.stringify(canonical(left || {})) === JSON.stringify(canonical(right || {}));
+const sameMetadata = (left, right) => {
+  const current = left || {};
+  const reset = right || {};
+  const keys = new Set([...Object.keys(current), ...Object.keys(reset)]);
+  for (const key of keys) {
+    // Protected large metadata (including Full audio artifacts) is passed
+    // through by reference; never traverse it when only audio overrides change.
+    if (Object.is(current[key], reset[key])) continue;
+    if (JSON.stringify(canonical(current[key])) !== JSON.stringify(canonical(reset[key]))) return false;
+  }
+  return true;
+};
 
 export const isTextWorkspaceAudioDirty = documentLike => {
   const metadata = documentLike?.metadata || {};
@@ -66,7 +77,7 @@ export const isTextSpeakerAudioDirty = (documentLike, {
   includeSync = false
 } = {}) => {
   const metadata = documentLike?.metadata || {};
-  return !sameMetadata(
+  if (!sameMetadata(
     metadata,
     buildResetTextSpeakerAudioMetadata(metadata, {
       speakerId,
@@ -74,5 +85,21 @@ export const isTextSpeakerAudioDirty = (documentLike, {
       includeSync,
       isDocument: true
     })
-  );
+  )) return true;
+
+  // The production speaker-reset command also updates speaker overrides
+  // in every Card/Block. Check those as well, or a Card-only override would
+  // leave its Speaker Reset icon incorrectly disabled.
+  return (documentLike?.blocks || []).some(block => {
+    const blockMetadata = block?.metadata || {};
+    return !sameMetadata(
+      blockMetadata,
+      buildResetTextSpeakerAudioMetadata(blockMetadata, {
+        speakerId,
+        speaker,
+        includeSync: false,
+        isDocument: false
+      })
+    );
+  });
 };
