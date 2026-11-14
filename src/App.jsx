@@ -4934,7 +4934,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return nextPrefs;
   }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, structuredTextAudioGenerationPreferences, addLog]);
 
-  const handleStructuredTextResetWorkspaceAudioPreferences = useCallback(async ({ includeSpeakers = false, includeCardsAndSegments = false } = {}) => {
+  const handleStructuredTextResetWorkspaceAudioPreferences = useCallback(async ({ includeSpeakers = false, includeCardsAndSegments = false, scope = TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE } = {}) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const guard = canExecuteTextStructuredReset({
       zipImportActive: structuredTextZipImportBusy || Boolean(structuredTextZipImportCoordinatorRef.current?.isActive?.()),
@@ -4948,19 +4948,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Warn', guard.reason);
       return null;
     }
-    clearStructuredTextResetRuntimePlaybackState();
+    // Match normal per-setting behaviour: narrator changes stop live playback,
+    // but Edge Download preset changes do not reset transport or resume cursor.
+    if (scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS) forceStopAll();
+    else if (scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE) clearStructuredTextResetRuntimePlaybackState();
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.RESET_AUDIO_PREFERENCES,
       payload: {
-        scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE,
+        scope,
         documentId: activeTextDocumentTree.id,
         includeSpeakers: Boolean(includeSpeakers),
         includeCardsAndSegments: Boolean(includeCardsAndSegments)
       }
     });
-    if (result) addLog('Text Audio Reset', `Workspace "${activeTextDocumentTree.title || activeTextDocumentTree.id}" audio preferences reset to Global inheritance.`);
+    if (result) addLog('Text Audio Reset', `Workspace "${activeTextDocumentTree.title || activeTextDocumentTree.id}" ${scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_EDGE_PRESET ? 'Edge MP3 presets' : scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS ? 'Browser TTS narrator and speed' : 'audio preferences'} reset to Global inheritance.`);
     return result;
-  }, [activeTextDocumentTree, structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, forceStopAll, handleStructuredTextCancelGeneration, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextResetSpeakerAudioPreferences = useCallback(async ({ speakerId = null, speaker = null, includeSync = true } = {}) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -5064,7 +5067,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     [handleStructuredTextResetGlobalGenerationPreferences]
   );
   const handleStructuredTextResetWorkspaceDefault = useCallback(
-    () => handleStructuredTextResetWorkspaceAudioPreferences({ includeSpeakers: false, includeCardsAndSegments: false }),
+    () => handleStructuredTextResetWorkspaceAudioPreferences({ scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS }),
+    [handleStructuredTextResetWorkspaceAudioPreferences]
+  );
+  const handleStructuredTextResetWorkspaceEdgePreset = useCallback(
+    () => handleStructuredTextResetWorkspaceAudioPreferences({ scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_EDGE_PRESET }),
     [handleStructuredTextResetWorkspaceAudioPreferences]
   );
 
@@ -7410,6 +7417,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onResetGlobalBrowserTts: handleStructuredTextResetGlobalBrowserTts,
     onResetGlobalEdge: handleStructuredTextResetGlobalEdgeOnly,
     onResetWorkspaceAudio: handleStructuredTextResetWorkspaceDefault,
+    onResetWorkspaceEdgePreset: handleStructuredTextResetWorkspaceEdgePreset,
     onResetSpeakersAudio: handleStructuredTextResetSpeakerAudioPreferences
   };
 
