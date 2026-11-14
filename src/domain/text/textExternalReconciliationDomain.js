@@ -38,10 +38,6 @@ const allocateLocalId = (state, kind) => {
 };
 
 const externalMeta = record => record?.metadata?.[TEXT_EXTERNAL_ENTITY_METADATA_KEY] || null;
-const withExternalMeta = (record, externalValue) => ({
-  ...record,
-  metadata: { ...(record?.metadata || {}), [TEXT_EXTERNAL_ENTITY_METADATA_KEY]: externalValue }
-});
 const withoutExternalMeta = record => {
   const metadata = { ...(record?.metadata || {}) };
   delete metadata[TEXT_EXTERNAL_ENTITY_METADATA_KEY];
@@ -91,6 +87,18 @@ const revisionDecision = ({ baseline, local, incoming, conflictPolicy = 'keep-lo
 export const inspectTextExternalReconciliation = ({ localSnapshot, package: packageCandidate, existingImport }) => {
   const packageValue = validateProLingoTextExternalPackage(packageCandidate).package;
   const incomingDataFingerprint = buildTextExternalPackageDataFingerprint(packageValue);
+  const localDocExists = Array.isArray(localSnapshot?.documents)
+    && localSnapshot.documents.some(item => item?.id === existingImport?.documentId);
+  if (!localDocExists) {
+    return {
+      status: 'missing-local-workspace',
+      externalSourceKey: packageValue.externalSourceKey,
+      dataFingerprint: incomingDataFingerprint,
+      existingImport,
+      conflicts: [],
+      summary: { added: 0, updated: 0, removed: 0, conflicts: 0 }
+    };
+  }
   const incomingFingerprints = buildTextExternalPackageEntityFingerprints(packageValue);
   const existingDataFingerprint = clean(existingImport?.dataFingerprint) || (existingImport?.baselinePackage ? buildTextExternalPackageDataFingerprint(existingImport.baselinePackage) : null);
   if (existingDataFingerprint && existingDataFingerprint === incomingDataFingerprint) {
@@ -176,9 +184,18 @@ const buildIncomingSpeakerMap = ({ packageValue, existingRegistry = [], conflict
     if ((packageValue.workspace.speakers || []).some(item => item.speakerKey === key)) return;
     const decision = revisionDecision({ baseline: baselineFingerprints?.speakers?.[key], local: localFingerprints?.speakers?.[key], incoming: null, conflictPolicy });
     if (decision.action === 'local') {
-      next.push({ ...entry, externalKey: undefined });
-      decisions.push({ key, action: 'detach-local', conflict: decision.conflict, entry });
-    } else decisions.push({ key, action: 'remove', conflict: decision.conflict, entry });
+      const { externalKey: _detached, ...detached } = entry;
+      next.push(detached);
+      decisions.push({ key, speakerId: entry.id, action: 'detach-local', conflict: decision.conflict, entry: detached });
+    } else decisions.push({ key, speakerId: entry.id, action: 'remove', conflict: decision.conflict, entry });
+  });
+  // Preserve user-added or detached local-only speakers lacking externalKey.
+  const seenIds = new Set(next.map(item => item.id));
+  (existingRegistry || []).forEach(entry => {
+    if (!entry?.id || clean(entry?.externalKey) || seenIds.has(entry.id)) return;
+    seenIds.add(entry.id);
+    next.push(entry);
+    decisions.push({ key: null, speakerId: entry.id, action: 'preserve-local', conflict: false, entry });
   });
   return { registry: next, decisions };
 };
@@ -224,26 +241,42 @@ export const planTextExternalUpdateExisting = ({
 
   const oldRegistry = document.metadata?.[TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY] || [];
   const speakerPlan = buildIncomingSpeakerMap({ packageValue, existingRegistry: oldRegistry, conflictPolicy, baselineFingerprints, localFingerprints, incomingFingerprints });
-  speakerPlan.decisions.filter(item => item.conflict).forEach(item => conflicts.push({ kind: 'speakers', key: item.key }));
+  speakerPlan.decisions.filter(item => item.conflict).forEach(item => {
+    conflicts.push({ kind: 'speakers', key: item.key });
+    stats.conflicts += 1;
+  });
+  speakerPlan.decisions.forEach(item => {
+    if (item.action === 'preserve-local' || item.action === 'detach-local' || (item.action === 'keep' && item.conflict)) {
+      stats.preservedLocal += 1;
+    } else if (item.action === 'add') {
+      stats.created += 1;
+    } else if (item.action === 'update') {
+      stats.updated += 1;
+    } else if (item.action === 'remove') {
+      stats.deleted += 1;
+    }
+  });
   const speakerByExternal = new Map(speakerPlan.registry.filter(item => clean(item?.externalKey)).map(item => [clean(item.externalKey), item]));
+  const nextDocumentMetadata = {
+    ...(nextDocument.metadata || {}),
+    [TEXT_EXTERNAL_SOURCE_METADATA_KEY]: {
+      ...(nextDocument.metadata?.[TEXT_EXTERNAL_SOURCE_METADATA_KEY] || {}),
+      externalSourceKey: packageValue.externalSourceKey,
+      workspaceKey: packageValue.workspace.workspaceKey,
+      packageType: packageValue.packageType,
+      packageVersion: packageValue.packageVersion,
+      source: clone(packageValue.source),
+      collectionHint: packageValue.collectionHint ? clone(packageValue.collectionHint) : null,
+      importedAt: nextDocument.metadata?.[TEXT_EXTERNAL_SOURCE_METADATA_KEY]?.importedAt || existingImport?.importedAt || now,
+      lastImportedAt: now,
+      sourceFileName: fileName || existingImport?.fileName || null
+    }
+  };
+  if (speakerPlan.registry.length) nextDocumentMetadata[TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY] = speakerPlan.registry;
+  else delete nextDocumentMetadata[TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY];
   nextDocument = {
     ...nextDocument,
-    metadata: {
-      ...(nextDocument.metadata || {}),
-      ...(speakerPlan.registry.length ? { [TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY]: speakerPlan.registry } : {}),
-      [TEXT_EXTERNAL_SOURCE_METADATA_KEY]: {
-        ...(nextDocument.metadata?.[TEXT_EXTERNAL_SOURCE_METADATA_KEY] || {}),
-        externalSourceKey: packageValue.externalSourceKey,
-        workspaceKey: packageValue.workspace.workspaceKey,
-        packageType: packageValue.packageType,
-        packageVersion: packageValue.packageVersion,
-        source: clone(packageValue.source),
-        collectionHint: packageValue.collectionHint ? clone(packageValue.collectionHint) : null,
-        importedAt: nextDocument.metadata?.[TEXT_EXTERNAL_SOURCE_METADATA_KEY]?.importedAt || existingImport?.importedAt || now,
-        lastImportedAt: now,
-        sourceFileName: fileName || existingImport?.fileName || null
-      }
-    }
+    metadata: nextDocumentMetadata
   };
 
   const localBlocks = snapshot.blocks.filter(item => item.documentId === document.id).sort(byOrder);
@@ -251,12 +284,22 @@ export const planTextExternalUpdateExisting = ({
   const nextBlocks = snapshot.blocks.filter(item => item.documentId !== document.id);
   const nextSegments = snapshot.segments.filter(item => item.documentId !== document.id);
 
+  const localSegmentsByBlock = new Map();
+  localSegments.forEach(segment => {
+    const list = localSegmentsByBlock.get(segment.blockId) || [];
+    list.push(segment);
+    localSegmentsByBlock.set(segment.blockId, list);
+  });
+
   if (packageValue.workspace.workspaceType === 'legacy') {
     const localByEntry = new Map();
+    const localOnlyBlocks = [];
     localBlocks.forEach(block => {
-      const segment = localSegments.find(item => item.blockId === block.id) || null;
+      const blockSegs = localSegmentsByBlock.get(block.id) || [];
+      const segment = blockSegs[0] || null;
       const key = clean(externalMeta(block)?.entryKey || externalMeta(segment)?.entryKey);
-      if (key) localByEntry.set(key, { block, segment });
+      if (key) localByEntry.set(key, { block, segment, extraSegments: blockSegs.slice(1) });
+      else localOnlyBlocks.push({ block, segments: blockSegs });
     });
     for (const entry of packageValue.workspace.entries) {
       const current = localByEntry.get(entry.entryKey) || null;
@@ -273,26 +316,47 @@ export const planTextExternalUpdateExisting = ({
       if (decision.conflict) { conflicts.push({ kind: 'legacyEntries', key: entry.entryKey }); stats.conflicts += 1; }
       if (decision.action === 'incoming') {
         nextBlocks.push({ ...current.block, order: entry.order, updatedAt: now });
-        nextSegments.push({ ...current.segment, text: entry.text, meaning: entry.meaning, updatedAt: now });
-        changedSegmentIds.add(current.segment.id); stats.updated += 1;
+        if (current.segment) {
+          nextSegments.push({ ...current.segment, text: entry.text, meaning: entry.meaning, updatedAt: now });
+          changedSegmentIds.add(current.segment.id);
+        }
+        stats.updated += 1;
       } else {
-        nextBlocks.push(current.block); nextSegments.push(current.segment); stats.preservedLocal += 1;
+        nextBlocks.push(current.block);
+        if (current.segment) nextSegments.push(current.segment);
+        stats.preservedLocal += 1;
       }
+      current.extraSegments.forEach(extra => {
+        nextSegments.push(extra);
+        stats.preservedLocal += 1;
+      });
       localByEntry.delete(entry.entryKey);
     }
-    localByEntry.forEach(({ block, segment }, key) => {
+    localByEntry.forEach(({ block, segment, extraSegments }, key) => {
       const decision = revisionDecision({ baseline: baselineFingerprints.legacyEntries?.[key], local: localFingerprints.legacyEntries?.[key], incoming: null, conflictPolicy });
       if (decision.conflict) { conflicts.push({ kind: 'legacyEntries', key }); stats.conflicts += 1; }
       if (decision.action === 'local') {
         nextBlocks.push(withoutExternalMeta(block));
-        nextSegments.push(withoutExternalMeta(segment));
-        stats.preservedLocal += 1;
+        if (segment) nextSegments.push(withoutExternalMeta(segment));
+        extraSegments.forEach(extra => nextSegments.push(extra));
+        stats.preservedLocal += 1 + extraSegments.length;
+      } else if (extraSegments.length) {
+        nextBlocks.push(withoutExternalMeta(block));
+        if (segment) { removedSegmentIds.add(segment.id); stats.deleted += 1; }
+        extraSegments.forEach(extra => { nextSegments.push(extra); stats.preservedLocal += 1; });
       } else {
-        removedSegmentIds.add(segment.id); stats.deleted += 2;
+        if (segment) removedSegmentIds.add(segment.id);
+        stats.deleted += segment ? 2 : 1;
       }
+    });
+    localOnlyBlocks.forEach(({ block, segments }) => {
+      nextBlocks.push(block);
+      segments.forEach(segment => nextSegments.push(segment));
+      stats.preservedLocal += 1 + segments.length;
     });
   } else {
     const localByCard = new Map(localBlocks.map(block => [clean(externalMeta(block)?.cardKey), block]).filter(([key]) => key));
+    const localOnlyBlocks = localBlocks.filter(block => !clean(externalMeta(block)?.cardKey));
     const localSegmentsByKey = new Map(localSegments.map(segment => [clean(externalMeta(segment)?.segmentKey), segment]).filter(([key]) => key));
     for (const card of packageValue.workspace.cards) {
       let block = localByCard.get(card.cardKey) || null;
@@ -330,6 +394,12 @@ export const planTextExternalUpdateExisting = ({
           segment = createTextSegmentRecord({ id, uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SEGMENT), documentId: document.id, blockId: block.id, order: incomingSegment.order, text: incomingSegment.text, meaning: incomingSegment.meaning, speaker: speakerEntry?.label || null, createdAt: now, updatedAt: now, metadata: { ...(speakerEntry ? { [TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]: speakerEntry.id } : {}), [TEXT_EXTERNAL_ENTITY_METADATA_KEY]: sourceEntityMeta({ packageValue, cardKey: card.cardKey, segmentKey: incomingSegment.segmentKey, speakerKey: incomingSegment.speakerKey || null }) } });
           changedSegmentIds.add(id); stats.created += 1;
         } else if (segDecision.action === 'incoming') {
+          const nextSegMeta = {
+            ...(segment.metadata || {}),
+            [TEXT_EXTERNAL_ENTITY_METADATA_KEY]: sourceEntityMeta({ packageValue, cardKey: card.cardKey, segmentKey: incomingSegment.segmentKey, speakerKey: incomingSegment.speakerKey || null })
+          };
+          if (speakerEntry) nextSegMeta[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY] = speakerEntry.id;
+          else delete nextSegMeta[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY];
           segment = {
             ...segment,
             blockId: block.id,
@@ -338,35 +408,62 @@ export const planTextExternalUpdateExisting = ({
             meaning: incomingSegment.meaning,
             speaker: speakerEntry?.label || null,
             updatedAt: now,
-            metadata: {
-              ...(segment.metadata || {}),
-              ...(speakerEntry ? { [TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]: speakerEntry.id } : {}),
-              [TEXT_EXTERNAL_ENTITY_METADATA_KEY]: sourceEntityMeta({ packageValue, cardKey: card.cardKey, segmentKey: incomingSegment.segmentKey, speakerKey: incomingSegment.speakerKey || null })
-            }
+            metadata: nextSegMeta
           };
           changedSegmentIds.add(segment.id); stats.updated += 1;
         } else stats.preservedLocal += 1;
         nextSegments.push(segment);
         localSegmentsByKey.delete(incomingSegment.segmentKey);
       }
+      // Preserve user-added local-only Segments belonging to this retained external Card.
+      (localSegmentsByBlock.get(block.id) || []).forEach(localSegment => {
+        if (clean(externalMeta(localSegment)?.segmentKey)) return;
+        nextSegments.push(localSegment);
+        stats.preservedLocal += 1;
+      });
     }
-    // Cards removed from incoming: keep only when locally changed/conflicted; otherwise delete Card + descendants.
+    // Preserve user-added local-only Cards and all of their child Segments.
+    localOnlyBlocks.forEach(localBlock => {
+      nextBlocks.push(localBlock);
+      const childSegments = localSegmentsByBlock.get(localBlock.id) || [];
+      childSegments.forEach(segment => {
+        const key = clean(externalMeta(segment)?.segmentKey);
+        if (key) localSegmentsByKey.delete(key);
+        nextSegments.push(segment);
+      });
+      stats.preservedLocal += 1 + childSegments.length;
+    });
+    // Cards removed from incoming: keep only when locally changed/conflicted or holding preserved children.
     localByCard.forEach((block, cardKey) => {
       const decision = revisionDecision({ baseline: baselineFingerprints.cards?.[cardKey], local: localFingerprints.cards?.[cardKey], incoming: null, conflictPolicy });
-      const childSegments = localSegments.filter(segment => segment.blockId === block.id);
-      const hasChangedChild = childSegments.some(segment => {
+      const childSegments = localSegmentsByBlock.get(block.id) || [];
+      const childPlans = childSegments.map(segment => {
         const key = clean(externalMeta(segment)?.segmentKey);
-        if (!key) return true;
+        if (!key) return { segment, key: null, keep: true, localOnly: true, conflict: false };
         const d = revisionDecision({ baseline: baselineFingerprints.segments?.[key], local: localFingerprints.segments?.[key], incoming: null, conflictPolicy });
-        return d.action === 'local';
+        return { segment, key, keep: d.action === 'local', localOnly: false, conflict: d.conflict };
       });
+      const hasKeptChild = childPlans.some(item => item.keep);
       if (decision.conflict) { conflicts.push({ kind: 'cards', key: cardKey }); stats.conflicts += 1; }
-      if (decision.action === 'local' || hasChangedChild) {
+      childPlans.filter(item => item.conflict).forEach(item => { conflicts.push({ kind: 'segments', key: item.key }); stats.conflicts += 1; });
+      if (decision.action === 'local' || hasKeptChild) {
         nextBlocks.push(withoutExternalMeta(block));
-        childSegments.forEach(segment => { nextSegments.push(withoutExternalMeta(segment)); localSegmentsByKey.delete(clean(externalMeta(segment)?.segmentKey)); });
-        stats.preservedLocal += 1 + childSegments.length;
+        stats.preservedLocal += 1;
+        childPlans.forEach(({ segment, key, keep, localOnly }) => {
+          if (key) localSegmentsByKey.delete(key);
+          if (localOnly || keep || decision.action === 'local') {
+            nextSegments.push(localOnly ? segment : withoutExternalMeta(segment));
+            stats.preservedLocal += 1;
+          } else {
+            removedSegmentIds.add(segment.id);
+            stats.deleted += 1;
+          }
+        });
       } else {
-        childSegments.forEach(segment => { removedSegmentIds.add(segment.id); localSegmentsByKey.delete(clean(externalMeta(segment)?.segmentKey)); });
+        childPlans.forEach(({ segment, key }) => {
+          if (key) localSegmentsByKey.delete(key);
+          removedSegmentIds.add(segment.id);
+        });
         stats.deleted += 1 + childSegments.length;
       }
     });
@@ -381,6 +478,37 @@ export const planTextExternalUpdateExisting = ({
     });
   }
 
+  // Synchronize incoming speaker display-name renames onto all retained/preserved workspace segments.
+  const updatedSpeakersById = new Map();
+  const updatedSpeakersByExternalKey = new Map();
+  speakerPlan.decisions.forEach(item => {
+    if (item.action !== 'update' || !item.entry?.id || !clean(item.entry?.label)) return;
+    updatedSpeakersById.set(item.entry.id, item.entry);
+    if (clean(item.entry?.externalKey)) {
+      updatedSpeakersByExternalKey.set(clean(item.entry.externalKey), item.entry);
+    }
+  });
+  const syncedSegments = updatedSpeakersById.size
+    ? nextSegments.map(segment => {
+      if (segment.documentId !== document.id) return segment;
+      const speakerId = clean(segment?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]);
+      const matchedById = speakerId ? updatedSpeakersById.get(speakerId) || null : null;
+      const matchedSpeaker = matchedById || (!speakerId ? updatedSpeakersByExternalKey.get(clean(externalMeta(segment)?.speakerKey)) || null : null);
+      if (!matchedSpeaker) return segment;
+      const targetLabel = clean(matchedSpeaker.label);
+      const nextSpeakerMeta = speakerId
+        ? segment.metadata
+        : { ...(segment.metadata || {}), [TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]: matchedSpeaker.id };
+      if (clean(segment.speaker) === targetLabel && nextSpeakerMeta === segment.metadata) return segment;
+      return {
+        ...segment,
+        speaker: targetLabel,
+        updatedAt: now,
+        metadata: nextSpeakerMeta
+      };
+    })
+    : nextSegments;
+
   let nextAudioVariants = snapshot.audioVariants.filter(variant => !removedSegmentIds.has(variant.segmentId));
   nextAudioVariants = invalidateVariantsForSegments(nextAudioVariants, changedSegmentIds, 'external-json-reconcile', now);
   const nextSnapshot = normalizeTextLibraryRuntimeSnapshot({
@@ -389,7 +517,7 @@ export const planTextExternalUpdateExisting = ({
     activeDocumentId: document.id,
     documents: snapshot.documents.map(item => item.id === document.id ? nextDocument : item),
     blocks: nextBlocks,
-    segments: nextSegments,
+    segments: syncedSegments,
     audioVariants: nextAudioVariants
   });
   const nextImportRecord = {

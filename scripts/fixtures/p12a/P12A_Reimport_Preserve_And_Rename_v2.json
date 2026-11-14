@@ -1,0 +1,157 @@
+{
+  "packageType": "prolingo-text-external",
+  "packageVersion": 1,
+  "externalSourceKey": "p12-conversation-study-session-v1",
+  "collectionHint": {
+    "collectionKey": "p12-acceptance",
+    "title": "P12 Conversation Acceptance"
+  },
+  "source": {
+    "sourceKind": "acceptance-fixture",
+    "title": "P12 Study Session — Conversation Only",
+    "reference": "P12 internal QA, 2026-11-14",
+    "notes": "P12-A preservation/rename re-import fixture. Test only in a disposable QA workspace after Export DB backup."
+  },
+  "workspace": {
+    "workspaceKey": "main",
+    "title": "P12 • Study Session (Conversation Only)",
+    "workspaceType": "conversation",
+    "conversationMode": "conversation-only",
+    "textLanguage": "en-GB",
+    "meaningLanguage": "id",
+    "speakers": [
+      {
+        "speakerKey": "amelia",
+        "order": 1,
+        "displayName": "Amy"
+      },
+      {
+        "speakerKey": "ben",
+        "order": 2,
+        "displayName": "Ben"
+      },
+      {
+        "speakerKey": "farah",
+        "order": 3,
+        "displayName": "Farah"
+      }
+    ],
+    "cards": [
+      {
+        "cardKey": "planning",
+        "order": 1,
+        "type": "conversation",
+        "title": "Planning our practice",
+        "segments": [
+          {
+            "segmentKey": "plan-01",
+            "order": 1,
+            "speakerKey": "amelia",
+            "text": "Good morning! Are you ready for our English practice?",
+            "meaning": "Selamat pagi! Apakah kamu siap untuk latihan bahasa Inggris kita?"
+          },
+          {
+            "segmentKey": "plan-02",
+            "order": 2,
+            "speakerKey": "ben",
+            "text": "Almost. I need to review five new words first.",
+            "meaning": "Hampir. Aku perlu mengulang lima kata baru terlebih dahulu."
+          },
+          {
+            "segmentKey": "plan-03",
+            "order": 3,
+            "speakerKey": "amelia",
+            "text": "Could you say that again, please?",
+            "meaning": "Bisakah kamu mengatakannya sekali lagi, tolong?"
+          },
+          {
+            "segmentKey": "plan-04",
+            "order": 4,
+            "speakerKey": "ben",
+            "text": "I need to review five new words before we start.",
+            "meaning": "Saya perlu mengulang lima kata baru sebelum kita mulai."
+          }
+        ]
+      },
+      {
+        "cardKey": "clarifying",
+        "order": 2,
+        "type": "conversation",
+        "title": "Asking for clarification",
+        "segments": [
+          {
+            "segmentKey": "clarify-01",
+            "order": 1,
+            "speakerKey": "farah",
+            "text": "What does the word confident mean?",
+            "meaning": "Apa arti kata confident?"
+          },
+          {
+            "segmentKey": "clarify-02",
+            "order": 2,
+            "speakerKey": "amelia",
+            "text": "It means feeling sure about yourself.",
+            "meaning": "Artinya merasa yakin terhadap dirimu sendiri."
+          },
+          {
+            "segmentKey": "clarify-03",
+            "order": 3,
+            "speakerKey": "ben",
+            "text": "Could you give us an example?",
+            "meaning": "Bisakah kamu memberikan contoh kepada kami?"
+          },
+          {
+            "segmentKey": "clarify-04",
+            "order": 4,
+            "speakerKey": "farah",
+            "text": "I feel confident when I practise every day.",
+            "meaning": "Aku merasa percaya diri ketika berlatih setiap hari."
+          },
+          {
+            "segmentKey": "clarify-05",
+            "order": 5,
+            "speakerKey": "amelia",
+            "text": "Could you say that again, please?",
+            "meaning": "Bisakah kamu mengatakannya sekali lagi, tolong?"
+          }
+        ]
+      },
+      {
+        "cardKey": "closing",
+        "order": 3,
+        "type": "conversation",
+        "title": "Review and finish",
+        "segments": [
+          {
+            "segmentKey": "close-01",
+            "order": 1,
+            "speakerKey": "ben",
+            "text": "Shall we practise the dialogue once more?",
+            "meaning": "Bagaimana kalau kita berlatih dialognya sekali lagi?"
+          },
+          {
+            "segmentKey": "close-02",
+            "order": 2,
+            "speakerKey": "farah",
+            "text": "Yes, and let us speak a little more slowly.",
+            "meaning": "Ya, dan mari kita berbicara sedikit lebih pelan."
+          },
+          {
+            "segmentKey": "close-03",
+            "order": 3,
+            "speakerKey": "amelia",
+            "text": "That sounds good. We can practise again tomorrow.",
+            "meaning": "Kedengarannya bagus. Kita bisa berlatih lagi besok."
+          },
+          {
+            "segmentKey": "close-04",
+            "order": 4,
+            "speakerKey": "ben",
+            "text": "Thank you, everyone. See you tomorrow!",
+            "meaning": "Terima kasih, semuanya. Sampai jumpa besok!"
+          }
+        ]
+      }
+    ]
+  }
+}

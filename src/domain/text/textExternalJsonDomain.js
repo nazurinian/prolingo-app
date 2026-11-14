@@ -592,11 +592,25 @@ export const buildTextExternalPackageEntityFingerprints = packageCandidate => {
 
 const localExternalMeta = record => record?.metadata?.[TEXT_EXTERNAL_ENTITY_METADATA_KEY] || null;
 
+const normalizeSpeakerLabel = value => clean(value).toLowerCase().replace(/\s+/g, ' ');
+
 const resolveSpeakerKeyForLocalSegment = ({ segment, speakerRegistry = [] }) => {
+  const registry = Array.isArray(speakerRegistry) ? speakerRegistry : [];
   const speakerId = clean(segment?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]);
-  if (!speakerId) return null;
-  const entry = (Array.isArray(speakerRegistry) ? speakerRegistry : []).find(item => clean(item?.id) === speakerId) || null;
-  return clean(entry?.externalKey) || null;
+  const segmentLabel = normalizeSpeakerLabel(segment?.speaker);
+  const entryById = speakerId ? registry.find(item => clean(item?.id) === speakerId) || null : null;
+  const entryByLabel = segmentLabel ? registry.find(item => normalizeSpeakerLabel(item?.label) === segmentLabel) || null : null;
+
+  if (entryById) {
+    if (entryByLabel && entryByLabel.id !== entryById.id) {
+      return clean(entryByLabel.externalKey) || `local:${entryByLabel.id}`;
+    }
+    return clean(entryById.externalKey) || `local:${entryById.id}`;
+  }
+  if (entryByLabel) return clean(entryByLabel.externalKey) || `local:${entryByLabel.id}`;
+  if (speakerId) return `local:${speakerId}`;
+  if (segmentLabel) return `local-label:${segmentLabel}`;
+  return null;
 };
 
 export const buildTextExternalLocalEntityFingerprints = ({ localSnapshot: snapshotCandidate, documentId }) => {
@@ -648,7 +662,7 @@ export const buildTextExternalLocalEntityFingerprints = ({ localSnapshot: snapsh
       if (!segmentKey) return;
       fingerprints.segments[segmentKey] = buildCanonicalSha256Fingerprint(
         block.blockType === 'conversation'
-          ? { ...paragraphSegmentSemantic(segment), speakerKey: clean(segmentMeta?.speakerKey) || resolveSpeakerKeyForLocalSegment({ segment, speakerRegistry }) }
+          ? { ...paragraphSegmentSemantic(segment), speakerKey: resolveSpeakerKeyForLocalSegment({ segment, speakerRegistry }) }
           : paragraphSegmentSemantic(segment),
         'sha256'
       );
