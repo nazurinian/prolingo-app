@@ -47,7 +47,7 @@ const RateControl = memoComponent(({ label, value, defaultRate = 1, disabled, he
   const persistedRate = normalizedRate(value);
   const currentRate = previewRate === null ? persistedRate : normalizedRate(previewRate);
   const inheritedRate = normalizedRate(defaultRate);
-  const modified = currentRate !== inheritedRate;
+  const modified = persistedRate !== inheritedRate;
 
   return <label className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2.5">
     <span className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -253,10 +253,10 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const [audioSurface, setAudioSurface] = useState('playback');
   const [localReadyExpanded, setLocalReadyExpanded] = useState({});
   const [resetConfirmTarget, setResetConfirmTarget] = useState(null);
-  const workspaceAudioDirty = useMemo(() => isTextWorkspaceAudioDirty(documentTree), [documentTree?.metadata]);
+  const workspaceAudioDirty = useMemo(() => isTextWorkspaceAudioDirty(documentTree), [documentTree?.id, documentTree?.metadata]);
   const allSpeakersAudioDirty = useMemo(
     () => isTextSpeakerAudioDirty(documentTree, { includeSync: true }),
-    [documentTree?.metadata]
+    [documentTree?.id, documentTree?.metadata]
   );
   const [edgeRatePreview, setEdgeRatePreview] = useState(null);
   const [edgePitchPreview, setEdgePitchPreview] = useState(null);
@@ -630,7 +630,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
             title: 'Reset Global Edge Generation Defaults?',
             message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
           })}
-          className={`mb-2 min-h-9 w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 px-2.5 text-[9px] font-black text-violet-700 dark:text-violet-300 hover:border-violet-400 ${globalEdgeDirty ? 'opacity-100' : 'opacity-40'}`}
+          className={`mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 ${globalEdgeDirty ? 'opacity-100' : 'opacity-40'}`}
           data-text-global-edge-restore-default="true"><RotateCcw className="h-3.5 w-3.5"/></button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
