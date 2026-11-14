@@ -1,6 +1,7 @@
 import React from 'react';
 import { CloudLightning, Server, FolderOpen, RotateCcw, Layers, Terminal, FileArchive, X } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import CommitOnReleaseRange from '../common/CommitOnReleaseRange';
 import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 import StorageManagerPanel from '../progress/StorageManagerPanel';
@@ -30,6 +31,10 @@ export default function DesktopSystemControls({
   const [detachFolderConfirmOpen, setDetachFolderConfirmOpen] = React.useState(false);
   const [resetCoverageConfirmOpen, setResetCoverageConfirmOpen] = React.useState(false);
   const [clearGeneratedRamConfirmOpen, setClearGeneratedRamConfirmOpen] = React.useState(false);
+  const [previewEdgeRate, setPreviewEdgeRate] = React.useState(null);
+  const [previewEdgePitch, setPreviewEdgePitch] = React.useState(null);
+  const displayEdgeRate = previewEdgeRate === null ? edgeRate : previewEdgeRate;
+  const displayEdgePitch = previewEdgePitch === null ? edgePitch : previewEdgePitch;
   const legacyAudioFolderSupported = isLegacyAudioFolderSupported({ mode, activeTextEditorModel });
   const hasActiveAudioFolder = hasActiveLegacyAudioFolder({
     mode,
@@ -99,12 +104,12 @@ export default function DesktopSystemControls({
 
                         <div className="grid grid-cols-2 gap-2 mt-2">
                              <div>
-                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)</label>
-                                 <input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({displayEdgeRate > 0 ? '+' : ''}{displayEdgeRate}%)</label>
+                                 <CommitOnReleaseRange disabled={isSystemBusy} min={-50} max={50} step={10} value={edgeRate} onPreview={setPreviewEdgeRate} onCommit={next => setEdgeRate(parseInt(next, 10))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} aria-label="Rate" />
                              </div>
                              <div>
-                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)</label>
-                                 <input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                 <label className="text-[9px] text-slate-500 font-bold block mb-1">Pitch ({displayEdgePitch > 0 ? '+' : ''}{displayEdgePitch}Hz)</label>
+                                 <CommitOnReleaseRange disabled={isSystemBusy} min={-20} max={20} step={5} value={edgePitch} onPreview={setPreviewEdgePitch} onCommit={next => setEdgePitch(parseInt(next, 10))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} aria-label="Pitch" />
                              </div>
                         </div>
                         <div className={`rounded border px-2 py-2 text-[10px] ${edgeHealth.status === 'online' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : edgeHealth.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400'}`}>

@@ -4809,18 +4809,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextDocumentRateChange = useCallback(async (rateValue, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
+    const globalChannelRate = Number(
+      channel === 'meaning'
+        ? (textStructuredPreferences?.browserMeaningRate || textStructuredPreferences?.browserTtsRate || 1)
+        : (textStructuredPreferences?.browserTextRate || textStructuredPreferences?.browserTtsRate || 1)
+    ) || 1;
+    const numericRate = rateValue === null || rateValue === undefined || rateValue === '' ? null : Number(rateValue);
+    const rateOverride = numericRate === null || !Number.isFinite(numericRate) || Math.abs(numericRate - globalChannelRate) < 1e-6
+      ? null
+      : numericRate;
     const metadata = buildTextStructuredPlaybackRateProfileMetadata({
       metadata: activeTextDocumentTree.metadata,
       channel,
-      rate: rateValue
+      rate: rateOverride
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
       payload: { id: activeTextDocumentTree.id, metadata }
     });
-    if (result) addLog('Text Audio', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}×.`);
+    if (result) {
+      const rateLabel = rateOverride === null
+        ? `Inherit Global (${globalChannelRate.toFixed(1)}×)`
+        : `${Number(rateOverride).toFixed(1)}×`;
+      addLog('Text Audio', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} speed → ${rateLabel}.`);
+    }
     return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, textStructuredPreferences, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextDocumentDownloadVoiceChange = useCallback(async (voiceId, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -4934,7 +4948,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return nextPrefs;
   }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, structuredTextAudioGenerationPreferences, addLog]);
 
-  const handleStructuredTextResetWorkspaceAudioPreferences = useCallback(async ({ includeSpeakers = false, includeCardsAndSegments = false } = {}) => {
+  const handleStructuredTextResetWorkspaceAudioPreferences = useCallback(async ({ includeSpeakers = false, includeCardsAndSegments = false, scope = TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE } = {}) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const guard = canExecuteTextStructuredReset({
       zipImportActive: structuredTextZipImportBusy || Boolean(structuredTextZipImportCoordinatorRef.current?.isActive?.()),
@@ -4948,19 +4962,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Warn', guard.reason);
       return null;
     }
-    clearStructuredTextResetRuntimePlaybackState();
+    // Match normal per-setting behaviour: narrator changes stop live playback,
+    // but Edge Download preset changes do not reset transport or resume cursor.
+    if (scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS) forceStopAll();
+    else if (scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE) clearStructuredTextResetRuntimePlaybackState();
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.RESET_AUDIO_PREFERENCES,
       payload: {
-        scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE,
+        scope,
         documentId: activeTextDocumentTree.id,
         includeSpeakers: Boolean(includeSpeakers),
         includeCardsAndSegments: Boolean(includeCardsAndSegments)
       }
     });
-    if (result) addLog('Text Audio Reset', `Workspace "${activeTextDocumentTree.title || activeTextDocumentTree.id}" audio preferences reset to Global inheritance.`);
+    if (result) addLog('Text Audio Reset', `Workspace "${activeTextDocumentTree.title || activeTextDocumentTree.id}" ${scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_EDGE_PRESET ? 'Edge MP3 presets' : scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS ? 'Browser TTS narrator and speed' : 'audio preferences'} reset to Global inheritance.`);
     return result;
-  }, [activeTextDocumentTree, structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, forceStopAll, handleStructuredTextCancelGeneration, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextResetSpeakerAudioPreferences = useCallback(async ({ speakerId = null, speaker = null, includeSync = true } = {}) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -5064,7 +5081,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     [handleStructuredTextResetGlobalGenerationPreferences]
   );
   const handleStructuredTextResetWorkspaceDefault = useCallback(
-    () => handleStructuredTextResetWorkspaceAudioPreferences({ includeSpeakers: false, includeCardsAndSegments: false }),
+    () => handleStructuredTextResetWorkspaceAudioPreferences({ scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS }),
+    [handleStructuredTextResetWorkspaceAudioPreferences]
+  );
+  const handleStructuredTextResetWorkspaceEdgePreset = useCallback(
+    () => handleStructuredTextResetWorkspaceAudioPreferences({ scope: TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_EDGE_PRESET }),
     [handleStructuredTextResetWorkspaceAudioPreferences]
   );
 
@@ -5106,19 +5127,35 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
     if (!identity) return null;
+    const globalChannelRate = Number(
+      channel === 'meaning'
+        ? (textStructuredPreferences?.browserMeaningRate || textStructuredPreferences?.browserTtsRate || 1)
+        : (textStructuredPreferences?.browserTextRate || textStructuredPreferences?.browserTtsRate || 1)
+    ) || 1;
+    const docRateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
+    const inheritedRate = Number(docRateProfile?.channels?.[channel] || globalChannelRate) || 1;
+    const numericRate = rateValue === null || rateValue === undefined || rateValue === '' ? null : Number(rateValue);
+    const rateOverride = numericRate === null || !Number.isFinite(numericRate) || Math.abs(numericRate - inheritedRate) < 1e-6
+      ? null
+      : numericRate;
     const metadata = buildTextStructuredPlaybackRateProfileMetadata({
       metadata: activeTextDocumentTree.metadata,
       speakerId: identity.id,
       channel,
-      rate: rateValue
+      rate: rateOverride
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
       payload: { id: activeTextDocumentTree.id, metadata }
     });
-    if (result) addLog('Text Audio', `${identity.label} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}× • ${identity.id}.`);
+    if (result) {
+      const rateLabel = rateOverride === null
+        ? `Inherit Default (${inheritedRate.toFixed(1)}×)`
+        : `${Number(rateOverride).toFixed(1)}×`;
+      addLog('Text Audio', `${identity.label} • ${channel} speed → ${rateLabel} • ${identity.id}.`);
+    }
     return result;
-  }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, textStructuredPreferences, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextSyncSpeakerVoice = useCallback(async (channel = 'text', enabled = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -7410,6 +7447,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     onResetGlobalBrowserTts: handleStructuredTextResetGlobalBrowserTts,
     onResetGlobalEdge: handleStructuredTextResetGlobalEdgeOnly,
     onResetWorkspaceAudio: handleStructuredTextResetWorkspaceDefault,
+    onResetWorkspaceEdgePreset: handleStructuredTextResetWorkspaceEdgePreset,
     onResetSpeakersAudio: handleStructuredTextResetSpeakerAudioPreferences
   };
 

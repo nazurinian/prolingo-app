@@ -55,6 +55,9 @@ const mockReact = {
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
   memo: fn => fn
 };
+if (typeof globalThis.document === 'undefined') {
+  globalThis.document = { body: {} };
+}
 const fakeIcons = new Proxy({}, { get: (_, key) => typeof key === 'string' ? function Icon() { return null; } : null });
 const moduleCache = new Map();
 const loadModule = absPath => {
@@ -186,16 +189,31 @@ run('1. TextStructuredPlaybackControls renders Reset Defaults with SafetyConfirm
   let resetCalls = 0;
 
   resetHooks();
-  let tree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
+  const cleanTree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
     documentTree: doc,
     preferences: {},
+    disabled: false,
+    resetDisabled: false,
+    onResetPlaybackPreferences: () => { resetCalls += 1; }
+  }));
+  const [cleanBtn] = collectNodes(cleanTree, n => n.type === 'button' && n.props?.['data-text-reset-playback'] === 'true');
+  assert.ok(cleanBtn, 'Playback reset button must render on clean defaults');
+  assert.equal(cleanBtn.props.disabled, true, 'Clean Playback defaults keep Reset Defaults disabled');
+  assert.ok(String(cleanBtn.props.className).includes('opacity-40'), 'Clean Playback defaults dim Reset Defaults to opacity-40');
+
+  const dirtyPreferences = { displayMode: 'text-only' };
+  resetHooks();
+  let tree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
+    documentTree: doc,
+    preferences: dirtyPreferences,
     disabled: true, // Active playback locks other settings while Reset stays clickable
     resetDisabled: false,
     onResetPlaybackPreferences: () => { resetCalls += 1; }
   }));
   const [resetBtn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-playback'] === 'true');
   assert.ok(resetBtn, 'Playback reset button must render');
-  assert.equal(resetBtn.props.disabled, false, 'Reset Defaults remains clickable when playback is active so Reset can stop playback');
+  assert.equal(resetBtn.props.disabled, false, 'Dirty Reset Defaults remains clickable when playback is active so Reset can stop playback');
+  assert.ok(String(resetBtn.props.className).includes('opacity-100'), 'Dirty Playback Reset shows opacity-100');
 
   resetBtn.props.onClick();
   assert.equal(resetCalls, 0, 'Reset must NOT execute without confirmation');
@@ -203,7 +221,7 @@ run('1. TextStructuredPlaybackControls renders Reset Defaults with SafetyConfirm
   hookSlot = 0;
   tree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
     documentTree: doc,
-    preferences: {},
+    preferences: dirtyPreferences,
     disabled: true,
     resetDisabled: false,
     onResetPlaybackPreferences: () => { resetCalls += 1; }
@@ -217,7 +235,7 @@ run('1. TextStructuredPlaybackControls renders Reset Defaults with SafetyConfirm
   hookSlot = 0;
   tree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
     documentTree: doc,
-    preferences: {},
+    preferences: dirtyPreferences,
     disabled: true,
     resetDisabled: false,
     onResetPlaybackPreferences: () => { resetCalls += 1; }
@@ -230,26 +248,69 @@ run('1. TextStructuredPlaybackControls renders Reset Defaults with SafetyConfirm
   resetHooks();
   const lockedTree = renderTree(mockReact.createElement(TextStructuredPlaybackControls, {
     documentTree: doc,
-    preferences: {},
+    preferences: dirtyPreferences,
     resetDisabled: true,
     onResetPlaybackPreferences: () => {}
   }));
   const [lockedBtn] = collectNodes(lockedTree, n => n.type === 'button' && n.props?.['data-text-reset-playback'] === 'true');
   assert.equal(lockedBtn.props.disabled, true, 'resetDisabled locks Playback Reset during ZIP import / DB TX');
+  assert.ok(String(lockedBtn.props.className).includes('opacity-100'), 'Busy lock preserves opacity-100 on dirty Playback Reset');
 });
 
 run('2. TextStructuredAudioControls resets Global Browser TTS, Workspace, Speakers (individual/all), and Global Edge via SafetyConfirmDialog', () => {
   const { default: TextStructuredAudioControls } = loadModule(path.join(root, 'src/components/text/TextStructuredAudioControls.jsx'));
-  const mixedDoc = {
+  const cleanMixedDoc = {
     ...makeParagraphDocument(),
     documentType: 'mixed',
     metadata: makeConversationDocument().metadata,
     blocks: [...makeParagraphDocument().blocks, ...makeConversationDocument().blocks]
   };
+  const cleanProps = {
+    documentTree: cleanMixedDoc,
+    preferences: {},
+    generationPreferences: {},
+    edgeGenerationVoices: initialEdgeVoices,
+    onResetGlobalBrowserTts: () => {},
+    onResetGlobalEdge: () => {},
+    onResetWorkspaceAudio: () => {},
+    onResetSpeakersAudio: () => {}
+  };
+  resetHooks();
+  let cleanTree = renderTree(mockReact.createElement(TextStructuredAudioControls, cleanProps));
+  for (const [pred, label] of [
+    [n => n.type === 'button' && n.props?.['data-text-reset-global-browser-tts'] === 'true', 'Clean Global Browser TTS'],
+    [n => n.type === 'button' && n.props?.['data-text-reset-workspace'] === 'true', 'Clean Workspace'],
+    [n => n.type === 'button' && n.props?.['data-text-reset-all-speakers'] === 'true', 'Clean All Speakers'],
+    [n => n.type === 'button' && n.props?.['data-text-reset-speaker'] === 'SPK_ALICE', 'Clean Single Speaker Alice']
+  ]) {
+    const [b] = collectNodes(cleanTree, pred);
+    assert.ok(b, `Expected clean button for ${label}`);
+    assert.equal(b.props.disabled, true, `${label} should start disabled when at default`);
+    assert.ok(String(b.props.className).includes('opacity-40'), `${label} should start at opacity-40`);
+  }
+  const [cleanDownloadTab] = collectNodes(cleanTree, n => n.type === 'button' && n.props?.['data-text-audio-tab'] === 'download');
+  cleanDownloadTab.props.onClick();
+  hookSlot = 0;
+  cleanTree = renderTree(mockReact.createElement(TextStructuredAudioControls, cleanProps));
+  const [cleanEdgeReset] = collectNodes(cleanTree, n => n.type === 'button' && n.props?.['data-text-global-edge-restore-default'] === 'true');
+  assert.equal(cleanEdgeReset.props.disabled, true, 'Clean Global Edge reset should start disabled');
+  assert.ok(String(cleanEdgeReset.props.className).includes('opacity-40'), 'Clean Global Edge reset should start at opacity-40');
+
+  const dirtyMixedDoc = {
+    ...cleanMixedDoc,
+    metadata: {
+      ...cleanMixedDoc.metadata,
+      audioVoiceOverrideV1: {
+        channels: { text: 'Microsoft Ryan Online (Natural) - English (United Kingdom)', meaning: null },
+        speakerIds: { text: { SPK_ALICE: 'Microsoft Libby Online (Natural) - English (United Kingdom)' }, meaning: {} },
+        speakers: { text: {}, meaning: {} }
+      }
+    }
+  };
   const called = [];
   const props = {
-    documentTree: mixedDoc,
-    preferences: { audioSourceMode: 'local-first' },
+    documentTree: dirtyMixedDoc,
+    preferences: { audioSourceMode: 'local-first', browserTextVoiceName: 'Microsoft Sonia Online (Natural) - English (United Kingdom)' },
     generationPreferences: { edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural', edgeRate: 20, edgePitch: -10 },
     edgeGenerationVoices: initialEdgeVoices,
     onResetGlobalBrowserTts: () => called.push('global-browser-tts'),
@@ -264,6 +325,7 @@ run('2. TextStructuredAudioControls resets Global Browser TTS, Workspace, Speake
     const [btn] = collectNodes(tree, selectorPredicate);
     assert.ok(btn, `Expected reset button for ${expectedLabel}`);
     assert.equal(btn.props.disabled, false, `${expectedLabel} button should be enabled`);
+    assert.ok(String(btn.props.className).includes('opacity-100'), `${expectedLabel} dirty button should have opacity-100`);
     btn.props.onClick();
     assert.equal(called.length, 0, `${expectedLabel} must wait for confirmation`);
     hookSlot = 0;
@@ -302,6 +364,22 @@ run('2. TextStructuredAudioControls resets Global Browser TTS, Workspace, Speake
 run('3. TextBatchPopup renders Reset Bulk with confirmation gate and respects resetDisabled', () => {
   const { TextBatchPopup } = loadModule(path.join(root, 'src/components/text/TextBatchPopup.jsx'));
   let bulkResetCount = 0;
+  const cleanBatchProps = {
+    setIsBatchOpen: () => {},
+    structuredTextBatch: {
+      running: false,
+      resetDisabled: false,
+      voices: initialEdgeVoices,
+      preferences: {},
+      resetPreferences: () => { bulkResetCount += 1; }
+    }
+  };
+  resetHooks();
+  const cleanTree = renderTree(mockReact.createElement(TextBatchPopup, cleanBatchProps));
+  const [cleanBtn] = collectNodes(cleanTree, n => n.type === 'button' && n.props?.['data-text-reset-bulk-preferences'] === 'true');
+  assert.equal(cleanBtn.props.disabled, true);
+  assert.ok(String(cleanBtn.props.className).includes('opacity-40'));
+
   const batchProps = {
     setIsBatchOpen: () => {},
     structuredTextBatch: {
@@ -321,6 +399,8 @@ run('3. TextBatchPopup renders Reset Bulk with confirmation gate and respects re
   let tree = renderTree(mockReact.createElement(TextBatchPopup, batchProps));
   const [btn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-bulk-preferences'] === 'true');
   assert.ok(btn);
+  assert.equal(btn.props.disabled, false);
+  assert.ok(String(btn.props.className).includes('opacity-100'));
   btn.props.onClick();
   assert.equal(bulkResetCount, 0);
   hookSlot = 0;
@@ -337,6 +417,7 @@ run('3. TextBatchPopup renders Reset Bulk with confirmation gate and respects re
   }));
   const [lockedBtn] = collectNodes(lockedTree, n => n.type === 'button' && n.props?.['data-text-reset-bulk-preferences'] === 'true');
   assert.equal(lockedBtn.props.disabled, true);
+  assert.ok(String(lockedBtn.props.className).includes('opacity-100'));
 });
 
 run('4. D2-C Domain: buildTextStructuredCardMissingFullRequirements skips Ready, Stale, and Conversation cards', () => {
@@ -472,30 +553,54 @@ run('5. D2-C & Reset UI in TextStructuredCardAudioPanel: checkbox defaults OFF, 
   });
   assert.equal(JSON.stringify(bulkPrefsBefore), bulkSnapshot, 'Bulk preferences must remain untouched');
 
+  // Clean Card & Segment Reset start disabled at opacity-40
+  const [cleanCardResetBtn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-card-audio'] === 'true');
+  assert.ok(cleanCardResetBtn);
+  assert.equal(cleanCardResetBtn.props.disabled, true, 'Clean Card Reset starts disabled');
+  assert.ok(String(cleanCardResetBtn.props.className).includes('opacity-40'), 'Clean Card Reset starts at opacity-40');
+
+  const dirtyBlock = {
+    ...block,
+    metadata: { audioVoiceOverrideV1: { channels: { text: 'Microsoft Ryan Online (Natural) - English (United Kingdom)', meaning: null } } },
+    segments: block.segments.map((seg, idx) => idx === 0
+      ? { ...seg, metadata: { audioVoiceOverrideV1: { channels: { text: 'Microsoft Libby Online (Natural) - English (United Kingdom)', meaning: null } } } }
+      : seg)
+  };
+  const dirtyDoc = { ...doc, blocks: [dirtyBlock] };
+
   // Card Reset gate
+  resetHooks();
+  tree = renderPanel({ documentTree: dirtyDoc, block: dirtyBlock });
   const [cardResetBtn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-card-audio'] === 'true');
   assert.ok(cardResetBtn);
+  assert.equal(cardResetBtn.props.disabled, false, 'Overridden Card Reset must be enabled');
+  assert.ok(String(cardResetBtn.props.className).includes('opacity-100'), 'Overridden Card Reset must have opacity-100');
   cardResetBtn.props.onClick();
   assert.equal(resetCalls.length, 0);
   hookSlot = 0;
-  tree = renderPanel();
+  tree = renderPanel({ documentTree: dirtyDoc, block: dirtyBlock });
   findConfirmButtons(tree).confirmButton.props.onClick();
   assert.deepEqual(resetCalls.pop(), ['card', 'BLK_D2_1']);
 
   // Expand Segment overrides + verify Segment Reset gate
   hookSlot = 0;
-  tree = renderPanel();
+  tree = renderPanel({ documentTree: dirtyDoc, block: dirtyBlock });
   const [segSection] = collectNodes(tree, n => n.props?.['data-text-segment-voice-overrides'] === 'true');
   const [segToggleBtn] = collectNodes([segSection], n => n.type === 'button');
   segToggleBtn.props.onClick();
   hookSlot = 0;
-  tree = renderPanel();
+  tree = renderPanel({ documentTree: dirtyDoc, block: dirtyBlock });
   const [segResetBtn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-segment-audio'] === 'SEG_D2_1');
   assert.ok(segResetBtn, 'Segment Reset button must appear in Segment overrides');
+  assert.equal(segResetBtn.props.disabled, false, 'Overridden Segment Reset must be enabled');
+  assert.ok(String(segResetBtn.props.className).includes('opacity-100'), 'Overridden Segment Reset must have opacity-100');
+  const [cleanSegResetBtn] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-reset-segment-audio'] === 'SEG_D2_2');
+  assert.equal(cleanSegResetBtn.props.disabled, true, 'Clean Segment 2 Reset must stay disabled');
+  assert.ok(String(cleanSegResetBtn.props.className).includes('opacity-40'), 'Clean Segment 2 Reset must stay opacity-40');
   segResetBtn.props.onClick();
   assert.equal(resetCalls.length, 0);
   hookSlot = 0;
-  tree = renderPanel();
+  tree = renderPanel({ documentTree: dirtyDoc, block: dirtyBlock });
   findConfirmButtons(tree).confirmButton.props.onClick();
   assert.deepEqual(resetCalls.pop(), ['segment', 'SEG_D2_1']);
 

@@ -76,7 +76,7 @@ const Header = ({
               {mode === 'text' ? (
                 <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-950/30 p-1 rounded-lg border border-indigo-200 dark:border-indigo-900 min-w-0 max-w-xl">
                   <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-300 ml-1 flex-shrink-0"/>
-                  <select disabled={textLibraryCommandBusy || !activeTextDocumentId} value={activeTextDocumentId || ''} onChange={event => handleTextLibrarySelectDocument?.(event.target.value)} className="bg-transparent text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none min-w-0 max-w-64 cursor-pointer disabled:opacity-100 dark:bg-slate-800">
+                  <select disabled={!activeTextDocumentId} aria-busy={textLibraryCommandBusy || undefined} value={activeTextDocumentId || ''} onChange={event => { if (!textLibraryCommandBusy) handleTextLibrarySelectDocument?.(event.target.value); }} className="bg-transparent text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none min-w-0 max-w-64 cursor-pointer disabled:opacity-100 dark:bg-slate-800">
                     {(textLibraryCatalog?.rootDocuments || []).length > 0 && <optgroup label="Library Root">{textLibraryCatalog.rootDocuments.map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>}
                     {(textLibraryCatalog?.collections || []).map(collection => <optgroup key={collection.id} label={collection.title}>{(collection.documents || []).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</optgroup>)}
                   </select>

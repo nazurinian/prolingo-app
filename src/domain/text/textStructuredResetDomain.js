@@ -45,6 +45,8 @@ export const TEXT_STRUCTURED_RESET_SCOPES = Object.freeze({
   GLOBAL_BULK: 'global-bulk',
   GLOBAL_EDGE_AND_BULK: 'global-edge-and-bulk',
   WORKSPACE: 'workspace',
+  WORKSPACE_BROWSER_TTS: 'workspace-browser-tts',
+  WORKSPACE_EDGE_PRESET: 'workspace-edge-preset',
   SPEAKERS: 'speakers',
   CARD: 'card',
   SEGMENT: 'segment'
@@ -122,7 +124,8 @@ const stripStructuredProfileMetadata = ({
   metadata,
   target = 'all',
   speakerId = null,
-  speaker = null
+  speaker = null,
+  profileKeys = null
 }) => {
   const result = cloneMetadataObject(metadata);
   const targetSpeakerId = lower(speakerId);
@@ -130,6 +133,7 @@ const stripStructuredProfileMetadata = ({
   const specificSpeaker = Boolean(targetSpeakerId || targetSpeakerKey);
 
   PROFILE_DEFS.forEach(({ key, getProfile, hasModes }) => {
+    if (profileKeys && !profileKeys.includes(key)) return;
     if (!Object.prototype.hasOwnProperty.call(result, key)) return;
     if (target === 'all') {
       delete result[key];
@@ -327,6 +331,32 @@ export const buildResetTextWorkspaceAudioMetadata = (metadata, { includeSpeakers
   }
   return result;
 };
+
+/**
+ * A Workspace Browser TTS reset is the equivalent of selecting Inherit on
+ * both narrator-voice and playback-rate controls. Local MP3, speaker,
+ * playback-order, and download profiles are not part of this selection.
+ */
+export const buildResetTextWorkspaceBrowserTtsMetadata = metadata =>
+  stripStructuredProfileMetadata({
+    metadata,
+    target: 'channels',
+    profileKeys: [
+      TEXT_STRUCTURED_VOICE_OVERRIDE_METADATA_KEY,
+      TEXT_STRUCTURED_PLAYBACK_RATE_PROFILE_KEY
+    ]
+  });
+
+/**
+ * Restore Workspace EN/ID Edge Download presets to DEFAULT/Global.
+ * Keep narrator, speaker, local-player, and all stored audio untouched.
+ */
+export const buildResetTextWorkspaceEdgePresetMetadata = metadata =>
+  stripStructuredProfileMetadata({
+    metadata,
+    target: 'channels',
+    profileKeys: [TEXT_STRUCTURED_AUDIO_DOWNLOAD_PROFILE_KEY]
+  });
 
 /**
  * Clears speaker-level audio overrides across Document or Card metadata while preserving speaker registries.

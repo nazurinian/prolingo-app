@@ -12,6 +12,7 @@ import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDo
 import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { formatEdgeVoiceLabel, groupEdgeVoicesByRegion } from '../../domain/audio/voicePresentationDomain.js';
 import { EdgeVoiceOptgroups } from '../common/GroupedVoiceSelect.jsx';
+import { getTextResetButtonState, isTextBulkGenerationDirty } from '../../domain/text/textStructuredResetPresentationDomain.js';
 
 const compactVoiceLabel = value => {
   const raw = String(value || '').trim();
@@ -255,6 +256,8 @@ export const TextBatchPopup = memoComponent(({
   const resolvedWorkspaces = structuredTextBatch?.workspacesResolved || structuredTextBatch?.documentsResolved || [];
   const running = Boolean(structuredTextBatch?.running);
   const resetDisabled = Boolean(structuredTextBatch?.resetDisabled);
+  const bulkDirty = isTextBulkGenerationDirty(structuredTextBatch?.preferences || {});
+  const bulkResetState = getTextResetButtonState({ dirty: bulkDirty, busyBlocked: running || resetDisabled });
   const hasCollectionScope = Boolean(structuredTextBatch?.activeCollectionId) && workspaceOptions.some(workspace => workspace.collectionId === structuredTextBatch.activeCollectionId);
   const selectedCard = cardOptions.find(card => card.id === textScope?.cardId) || cardOptions[0] || null;
   const failedJobs = structuredTextBatch?.generationState?.failedJobs || [];
@@ -400,10 +403,10 @@ export const TextBatchPopup = memoComponent(({
           {structuredTextBatch?.resetPreferences && (
             <button
               type="button"
-              disabled={running || resetDisabled}
+              disabled={bulkResetState.disabled}
               onClick={() => setBulkResetConfirmOpen(true)}
               data-text-reset-bulk-preferences="true"
-              className="inline-flex items-center gap-1 rounded-lg border border-amber-400/50 bg-amber-500/20 px-2 py-1 text-[9px] font-black text-amber-100 hover:bg-amber-500/35 disabled:opacity-40 transition-colors"
+              className={`inline-flex items-center gap-1 rounded-lg border border-amber-400/50 bg-amber-500/20 px-2 py-1 text-[9px] font-black text-amber-100 ${bulkResetState.dirty && !bulkResetState.busyBlocked ? 'hover:bg-amber-500/35' : ''} ${bulkResetState.opacityClass} ${bulkResetState.interactionClass}`}
               title="Reset Bulk Audio generation and export preferences to defaults"
             >
               <RotateCcw className="w-3 h-3"/>

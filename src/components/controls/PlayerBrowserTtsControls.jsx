@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link2, Unlink } from 'lucide-react';
 import { GroupedVoiceSelect } from '../common/GroupedVoiceSelect';
+import CommitOnReleaseRange from '../common/CommitOnReleaseRange';
 
 const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
 const EMPTY_VOICES = Object.freeze([]);
@@ -35,14 +36,29 @@ const PlayerBrowserTtsControls = memoComponent(function PlayerBrowserTtsControls
   );
   const selectClassName = `w-full text-xs p-2 border rounded text-slate-600 dark:text-slate-300 dark:bg-slate-700 dark:border-slate-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`;
 
-  const renderRate = ({ label, value, onChange, accent = 'accent-indigo-600' }) => (
+  const [previewRate, setPreviewRate] = React.useState(null);
+  const [previewMeaningRate, setPreviewMeaningRate] = React.useState(null);
+  const renderRate = ({ label, value, previewValue, onPreview, onCommit, accent = 'accent-indigo-600' }) => {
+    const shownRate = previewValue === null ? value : previewValue;
+    return (
     <label className="block rounded-lg border border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 p-2">
       <span className="mb-1 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-300">
-        <span>{label}</span><span className="text-xs normal-case">{Number(value || 1).toFixed(1)}×</span>
+        <span>{label}</span><span className="text-xs normal-case tabular-nums">{Number(shownRate || 1).toFixed(1)}×</span>
       </span>
-      <input type="range" min="0.5" max="2" step="0.1" value={value} onChange={onChange} disabled={isSystemBusy} className={`w-full h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer ${accent} disabled:opacity-40`} />
+      <CommitOnReleaseRange
+        min={0.5}
+        max={2}
+        step={0.1}
+        value={value}
+        disabled={isSystemBusy}
+        onPreview={onPreview}
+        onCommit={next => onCommit?.(String(next))}
+        className={`w-full h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer ${accent} disabled:opacity-40`}
+        aria-label={label}
+      />
     </label>
-  );
+    );
+  };
 
   return (
     <div className="space-y-2 border-t border-slate-100 dark:border-slate-700 pt-2" data-player-browser-tts-controls="true">
@@ -90,10 +106,10 @@ const PlayerBrowserTtsControls = memoComponent(function PlayerBrowserTtsControls
 
       {structuredTextModeActive ? (
         <div className="grid gap-2 pt-1" data-text-player-channel-rates="true">
-          {renderRate({ label: 'EN / Text speed', value: rate, onChange: e => setRate(e.target.value) })}
-          {renderRate({ label: 'ID / Meaning speed', value: meaningRate, onChange: e => setMeaningRate?.(e.target.value), accent: 'accent-sky-600' })}
+          {renderRate({ label: 'EN / Text speed', value: rate, previewValue: previewRate, onPreview: setPreviewRate, onCommit: setRate })}
+          {renderRate({ label: 'ID / Meaning speed', value: meaningRate, previewValue: previewMeaningRate, onPreview: setPreviewMeaningRate, onCommit: setMeaningRate, accent: 'accent-sky-600' })}
         </div>
-      ) : renderRate({ label: 'Playback speed', value: rate, onChange: e => setRate(e.target.value) })}
+      ) : renderRate({ label: 'Playback speed', value: rate, previewValue: previewRate, onPreview: setPreviewRate, onCommit: setRate })}
     </div>
   );
 });
