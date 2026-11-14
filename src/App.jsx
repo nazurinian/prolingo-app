@@ -114,7 +114,7 @@ import { buildTextStructuredAudioDownloadProfileMetadata, getTextStructuredTreeF
 import { buildTextStructuredAudioPlaybackOrderMetadata, buildTextStructuredGlobalAudioPlaybackOrderPreference, getTextStructuredGlobalAudioPlaybackOrder, resolveTextStructuredEffectivePlaybackOrder, resolveTextStructuredEffectiveTtsOnly } from './domain/text/textStructuredAudioPlaybackOrderDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
 import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
-import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredSpeakerVoiceProfileV2Metadata, buildTextStructuredUpsertSpeakerRegistryMetadata, collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './domain/text/textStructuredSpeakerIdentityDomain.js';
+import { buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './domain/text/textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredAudioRequirementsForSnapshot } from './domain/text/textStructuredAudioRequirementDomain.js';
@@ -4762,32 +4762,31 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const ensureStructuredTextSpeakerIdentity = useCallback(async (speakerLike) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     const candidates = collectTextStructuredConversationSpeakerIdentities(activeTextDocumentTree);
-    const requestedId = typeof speakerLike === 'object' ? String(speakerLike?.id || '').trim() : '';
-    const requestedLabel = typeof speakerLike === 'object' ? String(speakerLike?.label || '').trim() : String(speakerLike || '').trim();
+    const rawSpeakerText = typeof speakerLike === 'object' ? '' : String(speakerLike || '').trim();
+    const requestedId = typeof speakerLike === 'object' ? String(speakerLike?.id || '').trim() : rawSpeakerText;
+    const requestedLabel = typeof speakerLike === 'object' ? String(speakerLike?.label || '').trim() : rawSpeakerText;
     const normalizedLabel = requestedLabel.toLowerCase().replace(/\s+/g, ' ');
     const identity = candidates.find(item => requestedId && item.id === requestedId)
       || candidates.find(item => String(item.label || '').trim().toLowerCase().replace(/\s+/g, ' ') === normalizedLabel)
       || null;
     if (!identity?.id) return null;
-    for (const segmentId of identity.segmentIds || []) {
-      const segment = (activeTextDocumentTree.blocks || []).flatMap(block => block.segments || []).find(item => item.id === segmentId);
-      if (!segment || getTextStructuredSegmentSpeakerId(segment) === identity.id) continue;
-      await handleTextLibraryStructuredCommand({
-        type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
-        payload: { id: segment.id, metadata: buildTextStructuredSegmentSpeakerIdentityMetadata(segment.metadata, identity.id) }
-      });
-    }
-    const registryMetadata = buildTextStructuredUpsertSpeakerRegistryMetadata({
-      metadata: activeTextDocumentTree.metadata,
-      documentId: activeTextDocumentTree.id,
-      speakerId: identity.id,
-      label: identity.label
+    const ensureResult = await handleTextLibraryStructuredCommand({
+      type: TEXT_LIBRARY_COMMAND_TYPES.REGISTER_SPEAKER,
+      payload: {
+        documentId: activeTextDocumentTree.id,
+        speakerId: identity.id,
+        label: identity.label,
+        segmentIds: identity.segmentIds || []
+      }
     });
-    await handleTextLibraryStructuredCommand({
-      type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
-      payload: { id: activeTextDocumentTree.id, metadata: registryMetadata }
-    });
-    return identity;
+    if (!ensureResult) return null;
+    const latestDoc = ensureResult?.librarySnapshot?.documents?.find(item => item.id === activeTextDocumentTree.id)
+      || ensureResult?.snapshot?.documents?.find(item => item.id === activeTextDocumentTree.id)
+      || null;
+    return {
+      ...identity,
+      documentMetadata: latestDoc?.metadata ?? activeTextDocumentTree.metadata
+    };
   }, [activeTextDocumentTree, handleTextLibraryStructuredCommand]);
 
   const handleStructuredTextDocumentVoiceChange = useCallback(async (voiceName, channel = 'text') => {
@@ -5109,7 +5108,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
     if (!identity) return null;
     const metadata = buildTextStructuredSpeakerVoiceProfileV2Metadata({
-      metadata: activeTextDocumentTree.metadata,
+      metadata: identity.documentMetadata ?? activeTextDocumentTree.metadata,
       speakerId: identity.id,
       channel,
       voiceName
@@ -5139,7 +5138,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       ? null
       : numericRate;
     const metadata = buildTextStructuredPlaybackRateProfileMetadata({
-      metadata: activeTextDocumentTree.metadata,
+      metadata: identity.documentMetadata ?? activeTextDocumentTree.metadata,
       speakerId: identity.id,
       channel,
       rate: rateOverride
@@ -5217,7 +5216,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
     if (!identity) return null;
-    const metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata: activeTextDocumentTree.metadata, channel, voiceId, speakerId: identity.id });
+    const metadata = buildTextStructuredLocalAudioProfileMetadata({ metadata: identity.documentMetadata ?? activeTextDocumentTree.metadata, channel, voiceId, speakerId: identity.id });
     const result = await handleTextLibraryStructuredCommand({ type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT, payload: { id: activeTextDocumentTree.id, metadata } });
     if (result) addLog('Text Audio', `${identity.label} custom local ${channel} → ${voiceId || 'Global TTS'}.`);
     return result;
@@ -5228,7 +5227,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
     if (!identity) return null;
     const metadata = buildTextStructuredAudioDownloadProfileMetadata({
-      metadata: activeTextDocumentTree.metadata,
+      metadata: identity.documentMetadata ?? activeTextDocumentTree.metadata,
       channel,
       voiceId,
       speakerId: identity.id

@@ -14,6 +14,7 @@ import {
   normalizeTextLibraryRuntimeSnapshot
 } from './textLibraryDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
+import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
 import { createTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from './textGlobalIdentityDomain.js';
 import {
@@ -23,10 +24,12 @@ import {
   normalizeTextParagraphSentenceMutationParts
 } from './textParagraphSentenceAuthoringDomain.js';
 import {
+  buildTextStructuredRemoveSpeakerRegistryMetadata,
   buildTextStructuredSegmentSpeakerIdentityMetadata,
   buildTextStructuredUpsertSpeakerRegistryMetadata,
   deriveTextStructuredSpeakerId,
-  getTextStructuredSegmentSpeakerId
+  getTextStructuredSegmentSpeakerId,
+  getTextStructuredSpeakerRegistry
 } from './textStructuredSpeakerIdentityDomain.js';
 import {
   buildTextStructuredFullAudioArtifactsMetadata,
@@ -66,6 +69,9 @@ const COMMAND_TYPES = Object.freeze({
   DELETE_AUDIO_VARIANT: 'audioVariant.delete',
   UPSERT_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.upsert',
   DELETE_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.delete',
+  REGISTER_SPEAKER: 'speaker.register',
+  RENAME_SPEAKER: 'speaker.rename',
+  REMOVE_SPEAKER: 'speaker.remove',
   RESET_AUDIO_PREFERENCES: 'audioPreferences.reset'
 });
 
@@ -447,21 +453,59 @@ const reorderBlocks = (snapshot, payload, now) => {
   }, { entity: 'block', action: 'reorder', documentId: document.id, orderedIds: ids });
 };
 
+const resolveSegmentSpeakerIdForAuthoring = ({
+  document,
+  explicitSpeakerId = null,
+  speakerChanged = false,
+  currentSegment = null,
+  speakerLabel = ''
+}) => {
+  const cleanLabel = String(speakerLabel || '').trim();
+  if (!cleanLabel) return null;
+  if (explicitSpeakerId) return explicitSpeakerId;
+  if (!speakerChanged) {
+    const existingSegmentSpeakerId = getTextStructuredSegmentSpeakerId(currentSegment);
+    if (existingSegmentSpeakerId) return existingSegmentSpeakerId;
+  }
+  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
+  const existingRegistered = getTextStructuredSpeakerRegistry({ metadata: document?.metadata })
+    .find(entry => normalizeTextStructuredSpeakerKey(entry.label) === normalizedLabel);
+  if (existingRegistered?.id) return existingRegistered.id;
+  return deriveTextStructuredSpeakerId({ documentId: document.id, speaker: cleanLabel });
+};
+
+const resolveDocumentMetadataForAuthoringSpeaker = ({ document, speakerId, speakerLabel }) => {
+  if (!speakerId) return document.metadata;
+  const cleanLabel = String(speakerLabel || '').trim();
+  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
+  const existingRegistered = getTextStructuredSpeakerRegistry({ metadata: document.metadata })
+    .find(entry => entry.id === speakerId) || null;
+  if (existingRegistered && normalizeTextStructuredSpeakerKey(existingRegistered.label) === normalizedLabel) {
+    return document.metadata;
+  }
+  return buildTextStructuredUpsertSpeakerRegistryMetadata({
+    metadata: document.metadata,
+    documentId: document.id,
+    speakerId,
+    label: cleanLabel
+  });
+};
+
 const createSegment = (snapshot, payload, now) => {
   const block = requireBlock(snapshot, payload?.blockId);
   const document = requireStructuredDocument(snapshot, block.documentId);
   const allocated = allocateIdentity(snapshot, 'SEGMENT');
   const siblings = snapshot.segments.filter(item => item.blockId === block.id);
   const speakerLabel = block.blockType === 'conversation' ? String(payload?.speaker || '').trim() : '';
-  const speakerId = speakerLabel
-    ? (String(payload?.metadata?.speakerIdentityV1 || '').trim() || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: speakerLabel }))
-    : null;
+  const speakerId = resolveSegmentSpeakerIdForAuthoring({
+    document,
+    explicitSpeakerId: String(payload?.metadata?.speakerIdentityV1 || '').trim() || null,
+    speakerLabel
+  });
   const segmentMetadata = speakerId
     ? buildTextStructuredSegmentSpeakerIdentityMetadata(payload?.metadata, speakerId)
     : payload?.metadata;
-  const documentMetadata = speakerId
-    ? buildTextStructuredUpsertSpeakerRegistryMetadata({ metadata: document.metadata, documentId: document.id, speakerId, label: speakerLabel })
-    : document.metadata;
+  const documentMetadata = resolveDocumentMetadataForAuthoringSpeaker({ document, speakerId, speakerLabel });
   const record = createTextSegmentRecord({
     id: allocated.id,
     uid: allocated.uid,
@@ -495,15 +539,17 @@ const updateSegment = (snapshot, payload, now) => {
   const speakerChanged = payload?.speaker !== undefined
     && String(current.speaker || '').trim().toLowerCase().replace(/\s+/g, ' ') !== speakerLabel.toLowerCase().replace(/\s+/g, ' ');
   const explicitSpeakerId = payload?.metadata === undefined ? null : String(candidateMetadata?.speakerIdentityV1 || '').trim() || null;
-  const speakerId = speakerLabel
-    ? (explicitSpeakerId || (!speakerChanged ? getTextStructuredSegmentSpeakerId(current) : null) || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: speakerLabel }))
-    : null;
+  const speakerId = resolveSegmentSpeakerIdForAuthoring({
+    document,
+    explicitSpeakerId,
+    speakerChanged,
+    currentSegment: current,
+    speakerLabel
+  });
   const segmentMetadata = speakerId
     ? buildTextStructuredSegmentSpeakerIdentityMetadata(candidateMetadata, speakerId)
     : candidateMetadata;
-  const documentMetadata = speakerId
-    ? buildTextStructuredUpsertSpeakerRegistryMetadata({ metadata: document.metadata, documentId: document.id, speakerId, label: speakerLabel })
-    : document.metadata;
+  const documentMetadata = resolveDocumentMetadataForAuthoringSpeaker({ document, speakerId, speakerLabel });
   const record = createTextSegmentRecord({
     ...current,
     text: payload?.text === undefined ? current.text : payload.text,
@@ -822,6 +868,185 @@ const deleteFullAudioArtifact = (snapshot, payload, now) => {
 
 const metadataSignature = metadata => JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {});
 
+const getDocumentConversationBlockIds = (snapshot, documentId) => new Set(
+  snapshot.blocks
+    .filter(item => item.documentId === documentId && item.blockType === 'conversation')
+    .map(item => item.id)
+);
+
+const registerSpeaker = (snapshot, payload, now) => {
+  const document = requireStructuredDocument(snapshot, payload?.documentId || payload?.id);
+  const cleanLabel = String(payload?.label || '').trim();
+  if (!cleanLabel) throw new Error('Speaker registry requires a non-empty label');
+  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
+  const currentRegistry = getTextStructuredSpeakerRegistry({ metadata: document.metadata });
+  const existingByLabel = currentRegistry.find(entry => normalizeTextStructuredSpeakerKey(entry.label) === normalizedLabel) || null;
+  if (payload?.requireNew && existingByLabel) {
+    throw new Error(`Speaker label “${cleanLabel}” is already registered`);
+  }
+  const requestedSpeakerId = String(payload?.speakerId || '').trim();
+  const resolvedSpeakerId = requestedSpeakerId
+    || existingByLabel?.id
+    || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: cleanLabel });
+
+  const nextDocMetadata = buildTextStructuredUpsertSpeakerRegistryMetadata({
+    metadata: document.metadata,
+    documentId: document.id,
+    speakerId: resolvedSpeakerId,
+    label: cleanLabel
+  });
+
+  const conversationBlockIds = getDocumentConversationBlockIds(snapshot, document.id);
+  const requestedSegmentIds = new Set(
+    (Array.isArray(payload?.segmentIds) ? payload.segmentIds : [])
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+  );
+
+  const changedSegmentIds = [];
+  const nextSegments = snapshot.segments.map(item => {
+    if (item.documentId !== document.id || !conversationBlockIds.has(item.blockId)) return item;
+    const currentSpeakerId = getTextStructuredSegmentSpeakerId(item);
+    const shouldBind = (requestedSegmentIds.has(item.id) && (!currentSpeakerId || currentSpeakerId === resolvedSpeakerId))
+      || (!currentSpeakerId && normalizeTextStructuredSpeakerKey(item.speaker) === normalizedLabel);
+    if (!shouldBind) return item;
+    const nextSegMetadata = buildTextStructuredSegmentSpeakerIdentityMetadata(item.metadata, resolvedSpeakerId);
+    if (metadataSignature(item.metadata) === metadataSignature(nextSegMetadata)) return item;
+    changedSegmentIds.push(item.id);
+    return { ...item, metadata: nextSegMetadata, updatedAt: now };
+  });
+
+  const docMetadataChanged = metadataSignature(document.metadata) !== metadataSignature(nextDocMetadata);
+  const hasChanges = docMetadataChanged || changedSegmentIds.length > 0;
+  const nextDocuments = hasChanges
+    ? snapshot.documents.map(item => item.id === document.id ? { ...item, metadata: nextDocMetadata, updatedAt: now } : item)
+    : snapshot.documents;
+
+  return finalize({
+    ...snapshot,
+    documents: nextDocuments,
+    segments: nextSegments
+  }, {
+    entity: 'speaker',
+    action: 'register',
+    id: resolvedSpeakerId,
+    documentId: document.id,
+    changedSegmentIds
+  });
+};
+
+const renameSpeaker = (snapshot, payload, now) => {
+  const document = requireStructuredDocument(snapshot, payload?.documentId || payload?.id);
+  const speakerId = String(payload?.speakerId || '').trim();
+  if (!speakerId) throw new Error('Speaker rename requires a speaker ID.');
+  const cleanLabel = String(payload?.label || '').trim();
+  if (!cleanLabel) throw new Error('Speaker label cannot be empty.');
+  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
+
+  const currentRegistry = getTextStructuredSpeakerRegistry({ metadata: document.metadata });
+  const existingEntry = currentRegistry.find(entry => entry.id === speakerId) || null;
+  const conversationBlockIds = getDocumentConversationBlockIds(snapshot, document.id);
+  const requestedSegmentIds = new Set(
+    (Array.isArray(payload?.segmentIds) ? payload.segmentIds : [])
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+  );
+
+  // Check registered label collisions first via canonical registry validation, then check unregistered detected speakers.
+  const nextDocMetadata = buildTextStructuredUpsertSpeakerRegistryMetadata({
+    metadata: document.metadata,
+    documentId: document.id,
+    speakerId,
+    label: cleanLabel
+  });
+
+  const belongsToTargetSpeaker = segment => {
+    const currentSegSpeakerId = getTextStructuredSegmentSpeakerId(segment);
+    if (currentSegSpeakerId) return currentSegSpeakerId === speakerId;
+    if (requestedSegmentIds.has(segment.id)) return true;
+    if (existingEntry && normalizeTextStructuredSpeakerKey(segment.speaker) === normalizeTextStructuredSpeakerKey(existingEntry.label)) return true;
+    const segmentLabel = String(segment.speaker || '').trim();
+    return Boolean(segmentLabel) && deriveTextStructuredSpeakerId({ documentId: document.id, speaker: segmentLabel }) === speakerId;
+  };
+
+  for (const segment of snapshot.segments) {
+    if (segment.documentId !== document.id || !conversationBlockIds.has(segment.blockId)) continue;
+    if (belongsToTargetSpeaker(segment)) continue;
+    if (normalizeTextStructuredSpeakerKey(segment.speaker) === normalizedLabel) {
+      throw new Error(`Speaker label “${cleanLabel}” is already used in this document`);
+    }
+  }
+
+  const changedSegmentIds = [];
+  const nextSegments = snapshot.segments.map(item => {
+    if (item.documentId !== document.id || !conversationBlockIds.has(item.blockId)) return item;
+    if (!belongsToTargetSpeaker(item)) return item;
+    const nextSegMetadata = buildTextStructuredSegmentSpeakerIdentityMetadata(item.metadata, speakerId);
+    const labelChanged = String(item.speaker || '') !== cleanLabel;
+    const metadataChanged = metadataSignature(item.metadata) !== metadataSignature(nextSegMetadata);
+    if (!labelChanged && !metadataChanged) return item;
+    changedSegmentIds.push(item.id);
+    return { ...item, speaker: cleanLabel, metadata: nextSegMetadata, updatedAt: now };
+  });
+
+  const docMetadataChanged = metadataSignature(document.metadata) !== metadataSignature(nextDocMetadata);
+  const hasChanges = docMetadataChanged || changedSegmentIds.length > 0;
+  const nextDocuments = hasChanges
+    ? snapshot.documents.map(item => item.id === document.id ? { ...item, metadata: nextDocMetadata, updatedAt: now } : item)
+    : snapshot.documents;
+
+  return finalize({
+    ...snapshot,
+    documents: nextDocuments,
+    segments: nextSegments
+  }, {
+    entity: 'speaker',
+    action: 'rename',
+    id: speakerId,
+    documentId: document.id,
+    changedSegmentIds
+  });
+};
+
+const removeSpeaker = (snapshot, payload, now) => {
+  const document = requireStructuredDocument(snapshot, payload?.documentId || payload?.id);
+  const speakerId = String(payload?.speakerId || '').trim();
+  if (!speakerId) throw new Error('Speaker removal requires a speaker ID.');
+  const currentRegistry = getTextStructuredSpeakerRegistry({ metadata: document.metadata });
+  const existingEntry = currentRegistry.find(entry => entry.id === speakerId) || null;
+  if (!existingEntry) {
+    return finalize(snapshot, { entity: 'speaker', action: 'remove', id: speakerId, documentId: document.id, unchanged: true });
+  }
+  const conversationBlockIds = getDocumentConversationBlockIds(snapshot, document.id);
+  const existingNormalizedLabel = normalizeTextStructuredSpeakerKey(existingEntry.label);
+  const isUsed = snapshot.segments.some(segment => {
+    if (segment.documentId !== document.id || !conversationBlockIds.has(segment.blockId)) return false;
+    const segSpeakerId = getTextStructuredSegmentSpeakerId(segment);
+    if (segSpeakerId) return segSpeakerId === speakerId;
+    return Boolean(existingNormalizedLabel) && normalizeTextStructuredSpeakerKey(segment.speaker) === existingNormalizedLabel;
+  });
+  if (isUsed) {
+    throw new Error(`Speaker “${existingEntry.label}” is in use and cannot be removed`);
+  }
+  const nextDocMetadata = buildTextStructuredRemoveSpeakerRegistryMetadata({
+    metadata: document.metadata,
+    speakerId
+  });
+  const docMetadataChanged = metadataSignature(document.metadata) !== metadataSignature(nextDocMetadata);
+  const nextDocuments = docMetadataChanged
+    ? snapshot.documents.map(item => item.id === document.id ? { ...item, metadata: nextDocMetadata, updatedAt: now } : item)
+    : snapshot.documents;
+  return finalize({
+    ...snapshot,
+    documents: nextDocuments
+  }, {
+    entity: 'speaker',
+    action: 'remove',
+    id: speakerId,
+    documentId: document.id
+  });
+};
+
 const resetAudioPreferences = (snapshot, payload, now) => {
   const scope = String(payload?.scope || '').trim();
   const docPatchById = new Map();
@@ -973,6 +1198,9 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.DELETE_AUDIO_VARIANT: return deleteAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_FULL_AUDIO_ARTIFACT: return upsertFullAudioArtifact(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_FULL_AUDIO_ARTIFACT: return deleteFullAudioArtifact(snapshot, payload, now);
+    case COMMAND_TYPES.REGISTER_SPEAKER: return registerSpeaker(snapshot, payload, now);
+    case COMMAND_TYPES.RENAME_SPEAKER: return renameSpeaker(snapshot, payload, now);
+    case COMMAND_TYPES.REMOVE_SPEAKER: return removeSpeaker(snapshot, payload, now);
     case COMMAND_TYPES.RESET_AUDIO_PREFERENCES: return resetAudioPreferences(snapshot, payload, now);
     default: throw new Error(`Unknown Text Library command: ${type || '(missing)'}`);
   }
