@@ -9,12 +9,32 @@ const lower = value => clean(value).toLowerCase();
 const normalizedContent = value => String(value ?? '').replace(/\r\n?/g, '\n').trim();
 const normalizeNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
-export const buildTextStructuredAudioContentFingerprintV2 = ({ channel = 'text', content = '' } = {}) =>
-  buildCanonicalSha256Fingerprint({
+const MAX_FINGERPRINT_CACHE_ENTRIES = 4096;
+const contentFingerprintCache = new Map();
+const renderFingerprintCache = new Map();
+
+const setBoundedCacheEntry = (cache, key, value) => {
+  if (cache.size >= MAX_FINGERPRINT_CACHE_ENTRIES && !cache.has(key)) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+  cache.set(key, value);
+};
+
+export const buildTextStructuredAudioContentFingerprintV2 = ({ channel = 'text', content = '' } = {}) => {
+  const normalizedChannel = lower(channel) === 'meaning' ? 'meaning' : 'text';
+  const normalized = normalizedContent(content);
+  const cacheKey = `${normalizedChannel}\0${normalized}`;
+  const cached = contentFingerprintCache.get(cacheKey);
+  if (cached) return cached;
+  const fingerprint = buildCanonicalSha256Fingerprint({
     version: 2,
-    channel: lower(channel) === 'meaning' ? 'meaning' : 'text',
-    content: normalizedContent(content)
+    channel: normalizedChannel,
+    content: normalized
   }, 'sha256');
+  setBoundedCacheEntry(contentFingerprintCache, cacheKey, fingerprint);
+  return fingerprint;
+};
 
 export const buildTextStructuredAudioRenderDescriptor = ({
   channel = 'text',
@@ -46,8 +66,14 @@ export const buildTextStructuredAudioRenderDescriptor = ({
 export const buildTextStructuredAudioRenderFingerprint = request => {
   const descriptor = buildTextStructuredAudioRenderDescriptor(request);
   if (!descriptor.voiceId) throw new Error('Render Fingerprint requires a resolved voiceId');
+  const cacheKey = `${descriptor.channel}\0${descriptor.contentFingerprint}\0${descriptor.language}\0${descriptor.engine}\0${descriptor.voiceId}\0${descriptor.rate}\0${descriptor.pitch}\0${descriptor.rendererVersion}\0${descriptor.codecProfile}`;
+  let renderFingerprint = renderFingerprintCache.get(cacheKey);
+  if (!renderFingerprint) {
+    renderFingerprint = buildCanonicalSha256Fingerprint(descriptor, 'rf-sha256');
+    setBoundedCacheEntry(renderFingerprintCache, cacheKey, renderFingerprint);
+  }
   return {
-    renderFingerprint: buildCanonicalSha256Fingerprint(descriptor, 'rf-sha256'),
+    renderFingerprint,
     contentFingerprintV2: descriptor.contentFingerprint,
     descriptor
   };

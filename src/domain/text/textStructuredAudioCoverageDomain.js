@@ -17,6 +17,8 @@ export const TEXT_AUDIO_COVERAGE_STATUS = Object.freeze({
 const clean = value => String(value ?? '').trim();
 const same = (a, b) => clean(a).toLowerCase() === clean(b).toLowerCase();
 
+const EMPTY_VARIANTS = Object.freeze([]);
+
 const variantsForSlot = ({ audioVariants, segmentId, channel }) => (Array.isArray(audioVariants) ? audioVariants : [])
   .filter(variant => String(variant?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
   .filter(variant => String(variant?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
@@ -24,11 +26,33 @@ const variantsForSlot = ({ audioVariants, segmentId, channel }) => (Array.isArra
   .filter(variant => String(variant?.engine || '').toLowerCase() === 'edge')
   .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0));
 
+const indexVariantsBySlot = audioVariants => {
+  const map = new Map();
+  for (const variant of (Array.isArray(audioVariants) ? audioVariants : [])) {
+    if (String(variant?.source || '').toLowerCase() !== 'generated') continue;
+    if (String(variant?.engine || '').toLowerCase() !== 'edge') continue;
+    const key = `${String(variant?.segmentId || '').toUpperCase()}|${String(variant?.channel || '').toLowerCase()}`;
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = [];
+      map.set(key, bucket);
+    }
+    bucket.push(variant);
+  }
+  for (const bucket of map.values()) {
+    if (bucket.length > 1) {
+      bucket.sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0));
+    }
+  }
+  return map;
+};
+
 const hasRuntimeBinary = runtime => Boolean(runtime?.url || runtime?.folderBacked || runtime?.zipBacked || runtime?.stagingBacked);
 const runtimeSource = runtime => runtime?.stagingBacked ? 'staging' : runtime?.zipBacked ? 'zip' : runtime?.folderBacked ? 'folder' : runtime?.url ? 'runtime' : null;
 
 export const resolveTextStructuredAudioCoverageSlot = ({
   audioVariants,
+  preindexedVariants = null,
   runtimeAudioUrls,
   segmentId,
   channel,
@@ -37,7 +61,7 @@ export const resolveTextStructuredAudioCoverageSlot = ({
   requiredVoiceSource = 'global-download',
   expectedRenderFingerprint = null
 }) => {
-  const variants = variantsForSlot({ audioVariants, segmentId, channel });
+  const variants = Array.isArray(preindexedVariants) ? preindexedVariants : variantsForSlot({ audioVariants, segmentId, channel });
   const exactVoice = variants.filter(variant => same(variant?.voiceId, requiredVoiceId));
   const expectedRf = clean(expectedRenderFingerprint).toLowerCase();
 
@@ -83,6 +107,7 @@ export const resolveTextStructuredAudioCoverageSlot = ({
 
 export const buildTextStructuredAudioCoverageMap = ({ documentTree, audioVariants, runtimeAudioUrls, preferences }) => {
   const map = {};
+  const variantsBySlot = indexVariantsBySlot(audioVariants);
   (Array.isArray(documentTree?.blocks) ? documentTree.blocks : []).forEach(block => {
     (Array.isArray(block?.segments) ? block.segments : []).forEach(segment => {
       ['text', 'meaning'].forEach(channel => {
@@ -101,8 +126,10 @@ export const buildTextStructuredAudioCoverageMap = ({ documentTree, audioVariant
             pitch: preferences?.edgePitch ?? 0
           }).renderFingerprint;
         }
+        const preindexedVariants = variantsBySlot.get(`${String(segment.id || '').toUpperCase()}|${channel}`) || EMPTY_VARIANTS;
         map[buildTextStructuredRuntimeAudioKey(segment.id, channel)] = resolveTextStructuredAudioCoverageSlot({
           audioVariants,
+          preindexedVariants,
           runtimeAudioUrls,
           segmentId: segment.id,
           channel,

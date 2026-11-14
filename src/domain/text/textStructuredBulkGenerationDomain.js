@@ -149,13 +149,17 @@ const stagingPhysicalIdentity = record => {
   return null;
 };
 
-const resolveSplitLogicalState = ({ requirement, audioVariants, runtimeAudioUrls, stagingPhysical }) => {
-  const candidates = (Array.isArray(audioVariants) ? audioVariants : []).filter(variant =>
-    upper(variant?.segmentId) === upper(requirement.segmentId)
-    && lower(variant?.channel) === requirement.channel
-    && lower(variant?.engine) === 'edge'
-    && lower(variant?.voiceId) === lower(requirement.voiceId)
-  );
+const EMPTY_VARIANTS = Object.freeze([]);
+
+const resolveSplitLogicalState = ({ requirement, audioVariants, preindexedCandidates = null, runtimeAudioUrls, stagingPhysical }) => {
+  const candidates = Array.isArray(preindexedCandidates)
+    ? preindexedCandidates
+    : (Array.isArray(audioVariants) ? audioVariants : []).filter(variant =>
+        upper(variant?.segmentId) === upper(requirement.segmentId)
+        && lower(variant?.channel) === requirement.channel
+        && lower(variant?.engine) === 'edge'
+        && lower(variant?.voiceId) === lower(requirement.voiceId)
+      );
   const exact = candidates.find(variant => lower(variant?.metadata?.audioRenderFingerprintV1) === requirement.physicalKey) || null;
   const runtime = exact ? runtimeAudioUrls?.[exact.id] : null;
   const physicalReady = stagingPhysical.has(requirement.physicalKey)
@@ -271,6 +275,17 @@ export const buildTextStructuredBulkGenerationPlan = ({
     edgeVoices
   });
   const stagingPhysical = new Set(activeStagingRecords(stagingRecords).map(stagingPhysicalIdentity).filter(Boolean));
+  const variantsBySlotVoice = new Map();
+  for (const variant of (Array.isArray(audioVariants) ? audioVariants : [])) {
+    if (lower(variant?.engine) !== 'edge') continue;
+    const key = `${upper(variant?.segmentId)}|${lower(variant?.channel)}|${lower(variant?.voiceId)}`;
+    let bucket = variantsBySlotVoice.get(key);
+    if (!bucket) {
+      bucket = [];
+      variantsBySlotVoice.set(key, bucket);
+    }
+    bucket.push(variant);
+  }
   const requirements = [];
 
   for (const documentTree of (Array.isArray(documentTrees) ? documentTrees : [])) {
@@ -320,7 +335,8 @@ export const buildTextStructuredBulkGenerationPlan = ({
                 renderDescriptor: render.descriptor,
                 contentFingerprintV2: render.contentFingerprintV2
               };
-              requirements.push({ ...requirement, ...resolveSplitLogicalState({ requirement, audioVariants, runtimeAudioUrls, stagingPhysical }) });
+              const preindexedCandidates = variantsBySlotVoice.get(`${upper(segment.id)}|${channel}|${lower(voiceId)}`) || EMPTY_VARIANTS;
+              requirements.push({ ...requirement, ...resolveSplitLogicalState({ requirement, audioVariants, preindexedCandidates, runtimeAudioUrls, stagingPhysical }) });
             }
           }
         }

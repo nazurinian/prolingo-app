@@ -236,3 +236,35 @@ export const resolveTextStructuredEffectiveDownloadVoice = ({
 
   return { voiceId: defaultVoiceId, source: 'global-download', presetMode: TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.DEFAULT };
 };
+
+const inspectFollowPlayerModes = (record, usage) => {
+  const modes = (record?.metadata?.[TEXT_STRUCTURED_AUDIO_DOWNLOAD_PROFILE_KEY] || record?.[TEXT_STRUCTURED_AUDIO_DOWNLOAD_PROFILE_KEY])?.modes;
+  if (!modes || typeof modes !== 'object') return;
+  if (modes.text === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER) usage.text = true;
+  if (modes.meaning === TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES.FOLLOW_PLAYER) usage.meaning = true;
+};
+
+export const getTextStructuredTreesFollowPlayerUsage = (documentTrees = []) => {
+  const usage = { text: false, meaning: false, any: false };
+  const trees = Array.isArray(documentTrees) ? documentTrees : [documentTrees];
+  for (const tree of trees) {
+    if (!tree) continue;
+    inspectFollowPlayerModes(tree, usage);
+    if (usage.text && usage.meaning) break;
+    for (const block of (Array.isArray(tree.blocks) ? tree.blocks : [])) {
+      inspectFollowPlayerModes(block, usage);
+      if (usage.text && usage.meaning) break;
+      for (const segment of (Array.isArray(block?.segments) ? block.segments : [])) {
+        inspectFollowPlayerModes(segment, usage);
+        if (usage.text && usage.meaning) break;
+      }
+      if (usage.text && usage.meaning) break;
+    }
+    if (usage.text && usage.meaning) break;
+  }
+  usage.any = usage.text || usage.meaning;
+  return usage;
+};
+
+export const getTextStructuredTreeFollowPlayerUsage = (documentTree = null) =>
+  getTextStructuredTreesFollowPlayerUsage(documentTree ? [documentTree] : []);
