@@ -37,7 +37,9 @@ import {
   buildResetTextBlockAudioMetadata,
   buildResetTextSegmentAudioMetadata,
   buildResetTextSpeakerAudioMetadata,
-  buildResetTextWorkspaceAudioMetadata
+  buildResetTextWorkspaceAudioMetadata,
+  buildResetTextWorkspaceBrowserTtsMetadata,
+  buildResetTextWorkspaceEdgePresetMetadata
 } from './textStructuredResetDomain.js';
 
 const COMMAND_TYPES = Object.freeze({
@@ -842,6 +844,18 @@ const resetAudioPreferences = (snapshot, payload, now) => {
         .filter(item => item.documentId === document.id)
         .forEach(item => segmentPatchById.set(item.id, buildResetTextSegmentAudioMetadata(item.metadata)));
     }
+  } else if (
+    scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS
+    || scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_EDGE_PRESET
+  ) {
+    const document = requireStructuredDocument(snapshot, payload?.documentId);
+    targetId = document.id;
+    documentId = document.id;
+    docPatchById.set(document.id,
+      scope === TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE_BROWSER_TTS
+        ? buildResetTextWorkspaceBrowserTtsMetadata(document.metadata)
+        : buildResetTextWorkspaceEdgePresetMetadata(document.metadata)
+    );
   } else if (scope === TEXT_STRUCTURED_RESET_SCOPES.SPEAKERS) {
     const document = requireStructuredDocument(snapshot, payload?.documentId);
     targetId = payload?.speakerId || payload?.speaker || document.id;
