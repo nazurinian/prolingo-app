@@ -459,7 +459,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                   message: 'Restores Workspace narrator voices and speeds to Inherit Global Browser TTS. MP3 presets, local playback priority, Speaker/Card/Segment overrides, and Staging audio are preserved.'
                 })}
                 data-text-reset-workspace="true"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-100 transition-colors"
                 title="Reset Workspace Browser TTS narrator and speed to Inherit Global"
                 aria-label="Reset Workspace Browser TTS to Global defaults"
               >
@@ -617,7 +617,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
             title: 'Reset Global Edge Generation Defaults?',
             message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
           })}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-100"
           title="Reset Global Edge voices, rate and pitch to defaults"
           aria-label="Reset Global Edge Generation defaults"
           data-text-global-edge-restore-default="true"><RotateCcw className="w-3 h-3"/></button>
@@ -679,7 +679,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                 title: `Reset Workspace "${documentTree?.title || 'Workspace'}" MP3 Voice Presets?`,
                 message: 'Sets Workspace EN and ID MP3 presets to DEFAULT (Inherit Global Edge). Browser TTS narrator/speeds, Speaker/Card/Segment overrides, local audio and Staging MP3 files remain unchanged.'
               })}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-100"
               title="Reset Workspace MP3 voice presets to DEFAULT"
               aria-label="Reset Workspace MP3 voice presets to Global Edge"
               data-text-reset-workspace-edge-preset="true"
