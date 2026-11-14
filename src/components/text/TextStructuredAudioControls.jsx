@@ -223,6 +223,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   onResetGlobalBrowserTts = null,
   onResetGlobalEdge = null,
   onResetWorkspaceAudio = null,
+  onResetWorkspaceEdgePreset = null,
   onResetSpeakersAudio = null
 }) {
   const speakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
@@ -437,28 +438,32 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
       {hasParagraphCards && <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />}
 
       {hasParagraphCards && <div className="space-y-2 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/75 dark:bg-slate-900/35 p-2.5" data-text-audio-paragraph="true">
-        <div className="flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <Volume2 className="w-3.5 h-3.5 text-indigo-500"/>
-            <span className="text-[10px] font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">This Workspace Narrator (Browser TTS)</span>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-1.5">
+              <Volume2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-indigo-500"/>
+              <div className="min-w-0">
+                <span className="block text-[10px] font-black uppercase tracking-wide leading-snug text-slate-700 dark:text-slate-200">This Workspace Narrator (Browser TTS)</span>
+                <span className="block mt-1 text-[9px] font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">EN {englishVoiceOptions.length} voices • ID {indonesianVoiceOptions.length} voices</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[8px] font-semibold text-slate-400">EN {englishVoiceOptions.length} • ID {indonesianVoiceOptions.length}</span>
+          <div className="shrink-0">
             {onResetWorkspaceAudio && (
               <button
                 type="button"
                 disabled={disabled || resetDisabled}
                 onClick={() => setResetConfirmTarget({
                   kind: 'workspace',
-                  title: `Reset Workspace "${documentTree?.title || 'Workspace'}" Audio Preferences?`,
-                  message: 'Removes this Workspace’s Narrator Browser TTS/speed/Local Priority overrides and resets Workspace MP3 Voice Preset to Global Edge inheritance. Card, Segment, and Speaker overrides as well as downloaded Staging MP3 binaries are preserved.'
+                  title: `Reset Workspace "${documentTree?.title || 'Workspace'}" Browser TTS?`,
+                  message: 'Restores Workspace narrator voices and speeds to Inherit Global Browser TTS. MP3 presets, local playback priority, Speaker/Card/Segment overrides, and Staging audio are preserved.'
                 })}
                 data-text-reset-workspace="true"
-                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 px-2 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
-                title="Reset this Workspace's audio overrides to Global defaults"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-40 transition-colors"
+                title="Reset Workspace Browser TTS narrator and speed to Inherit Global"
+                aria-label="Reset Workspace Browser TTS to Global defaults"
               >
-                <RotateCcw className="w-2.5 h-2.5"/>
-                <span>Reset Workspace</span>
+                <RotateCcw className="w-3 h-3"/>
               </button>
             )}
           </div>
@@ -605,14 +610,18 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
         <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
+        <div className="mb-2 flex justify-end">
         <button type="button" disabled={disabled || resetDisabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural' && Number(generationPreferences?.edgeRate || 0) === 0 && Number(generationPreferences?.edgePitch || 0) === 0)}
           onClick={() => setResetConfirmTarget({
             kind: 'global-edge',
             title: 'Reset Global Edge Generation Defaults?',
             message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
           })}
-          className="mb-2 min-h-9 w-full rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 px-2.5 text-[9px] font-black text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
-          data-text-global-edge-restore-default="true">Reset Global Edge · Sonia EN / Gadis ID · 0% / 0Hz</button>
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
+          title="Reset Global Edge voices, rate and pitch to defaults"
+          aria-label="Reset Global Edge Generation defaults"
+          data-text-global-edge-restore-default="true"><RotateCcw className="w-3 h-3"/></button>
+        </div>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
             <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">
@@ -661,6 +670,22 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2" data-text-audio-workspace-edge-preset="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">2. This Workspace · MP3 Voice Preset</summary>
         <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">DEFAULT = Global Edge · FOLLOW PLAYER = map the effective Browser TTS voice (including Card/Segment overrides) · CUSTOM = this Workspace's own Edge voice.</p>
+        {onResetWorkspaceEdgePreset && (
+          <div className="flex justify-end">
+            <button type="button"
+              disabled={disabled || resetDisabled}
+              onClick={() => setResetConfirmTarget({
+                kind: 'workspace-edge-preset',
+                title: `Reset Workspace "${documentTree?.title || 'Workspace'}" MP3 Voice Presets?`,
+                message: 'Sets Workspace EN and ID MP3 presets to DEFAULT (Inherit Global Edge). Browser TTS narrator/speeds, Speaker/Card/Segment overrides, local audio and Staging MP3 files remain unchanged.'
+              })}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-45"
+              title="Reset Workspace MP3 voice presets to DEFAULT"
+              aria-label="Reset Workspace MP3 voice presets to Global Edge"
+              data-text-reset-workspace-edge-preset="true"
+            ><RotateCcw className="h-3 w-3"/></button>
+          </div>
+        )}
         <div className="grid gap-2 md:grid-cols-2">
           {['text', 'meaning'].map(channel => {
             const isMeaning = channel === 'meaning';
@@ -714,6 +739,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
         if (target.kind === 'global-browser-tts') onResetGlobalBrowserTts?.();
         else if (target.kind === 'global-edge') onResetGlobalEdge?.();
         else if (target.kind === 'workspace') onResetWorkspaceAudio?.();
+        else if (target.kind === 'workspace-edge-preset') onResetWorkspaceEdgePreset?.();
         else if (target.kind === 'all-speakers') onResetSpeakersAudio?.({ includeSync: true });
         else if (target.kind === 'speaker') onResetSpeakersAudio?.({ speakerId: target.speakerId, speaker: target.speaker, includeSync: false });
       }}
