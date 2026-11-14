@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Download, FileDown, Headphones, ListOrdered, Play, Plus, RotateCcw, Server, Square, Trash2, Users, Volume2, X } from 'lucide-react';
 import {
   collectTextStructuredCardSpeakers,
@@ -131,6 +131,41 @@ const isPlayerDraftDirty = (draft, baseline, segments) => {
   return false;
 };
 
+const serializePlayerRecord = record => Object.keys(record && typeof record === 'object' ? record : {})
+  .sort()
+  .reduce((acc, key) => {
+    const normalized = clean(record[key]) || null;
+    if (normalized !== null) acc.push([key, normalized]);
+    return acc;
+  }, []);
+
+const buildSavedPlayerBaselineSignature = (blockId, baseline) => JSON.stringify({
+  blockId: clean(blockId),
+  cardChannels: {
+    text: clean(baseline?.cardChannels?.text) || null,
+    meaning: clean(baseline?.cardChannels?.meaning) || null
+  },
+  speakerIds: {
+    text: serializePlayerRecord(baseline?.speakerIds?.text),
+    meaning: serializePlayerRecord(baseline?.speakerIds?.meaning)
+  },
+  speakers: {
+    text: serializePlayerRecord(baseline?.speakers?.text),
+    meaning: serializePlayerRecord(baseline?.speakers?.meaning)
+  },
+  segmentChannels: Object.keys(baseline?.segmentChannels && typeof baseline.segmentChannels === 'object' ? baseline.segmentChannels : {})
+    .sort()
+    .map(segmentId => [
+      segmentId,
+      clean(baseline.segmentChannels[segmentId]?.text) || null,
+      clean(baseline.segmentChannels[segmentId]?.meaning) || null
+    ]),
+  playbackOrder: {
+    text: Array.isArray(baseline?.playbackOrder?.text) ? baseline.playbackOrder.text : [],
+    meaning: Array.isArray(baseline?.playbackOrder?.meaning) ? baseline.playbackOrder.meaning : []
+  }
+});
+
 const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
 const EMPTY_VOICE_LIST = Object.freeze([]);
 
@@ -261,7 +296,7 @@ const CardPlaybackOrderEditor = ({ channel = 'text', cardOrder, globalOrder, ava
   </div>;
 };
 
-export const TextStructuredCardAudioPanel = ({
+export const TextStructuredCardAudioPanel = memoComponent(({
   documentTree,
   block,
   englishVoices = [],
@@ -306,13 +341,20 @@ export const TextStructuredCardAudioPanel = ({
   const [confirmResetTarget, setConfirmResetTarget] = useState(null);
   const includeMissingFullAudio = Boolean(block?.id && includeMissingFullByBlockId[block.id]);
   const overlayRef = useLiveOverlayViewportRef(true);
-  const segments = Array.isArray(block?.segments) ? block.segments : [];
+  const segments = useMemo(() => (Array.isArray(block?.segments) ? block.segments : []), [block?.segments]);
   const savedPlayerBaseline = useMemo(() => buildInitialPlayerDraft(block, segments), [block, segments]);
-  const [playerDraft, setPlayerDraft] = useState(() => buildInitialPlayerDraft(block, segments));
+  const savedPlayerSignature = useMemo(
+    () => buildSavedPlayerBaselineSignature(block?.id, savedPlayerBaseline),
+    [block?.id, savedPlayerBaseline]
+  );
+  const [playerDraft, setPlayerDraft] = useState(() => savedPlayerBaseline);
+  const lastSyncedSavedSignatureRef = useRef(savedPlayerSignature);
 
   useEffect(() => {
-    setPlayerDraft(buildInitialPlayerDraft(block, segments));
-  }, [block, segments]);
+    if (lastSyncedSavedSignatureRef.current === savedPlayerSignature) return;
+    lastSyncedSavedSignatureRef.current = savedPlayerSignature;
+    setPlayerDraft(savedPlayerBaseline);
+  }, [savedPlayerSignature, savedPlayerBaseline]);
 
   const isPlayerDirty = useMemo(
     () => isPlayerDraftDirty(playerDraft, savedPlayerBaseline, segments),
@@ -546,9 +588,9 @@ export const TextStructuredCardAudioPanel = ({
     }));
   }, []);
 
-  const handleResetPlayerDraft = () => {
-    setPlayerDraft(buildInitialPlayerDraft(block, segments));
-  };
+  const handleResetPlayerDraft = React.useCallback(() => {
+    setPlayerDraft(savedPlayerBaseline);
+  }, [savedPlayerBaseline]);
 
   const handleApplyPlayerDraft = () => {
     if (!isPlayerDirty || disabled) return;
@@ -702,13 +744,13 @@ export const TextStructuredCardAudioPanel = ({
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 shrink-0 rounded-xl bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center"><Volume2 className="w-4 h-4"/></div>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-xs md:text-sm font-black text-slate-800 dark:text-white truncate">Card Audio • {block?.title || 'Card'}</h3>
-              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase ${isConversation ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'}`}>
+            <div className="min-h-6 flex flex-nowrap items-center gap-1.5 overflow-hidden">
+              <h3 className="text-xs md:text-sm font-black leading-tight text-slate-800 dark:text-white truncate">Card Audio • {block?.title || 'Card'}</h3>
+              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase leading-none ${isConversation ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'}`}>
                 {isConversation ? 'Conversation' : 'Paragraph'}
               </span>
               {isPlayerDirty && (
-                <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[8px] font-black uppercase text-amber-800 dark:text-amber-300" data-text-card-player-dirty-badge="true">
+                <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[8px] font-black uppercase leading-none text-amber-800 dark:text-amber-300" data-text-card-player-dirty-badge="true">
                   Unsaved Draft
                 </span>
               )}
@@ -1489,12 +1531,19 @@ export const TextStructuredCardAudioPanel = ({
             handleResetPlayerDraft();
             onResetCardAudioPreferences?.(target.id);
           } else if (target.scope === 'segment') {
+            setPlayerDraft(prev => ({
+              ...prev,
+              segmentChannels: {
+                ...prev.segmentChannels,
+                [target.id]: savedPlayerBaseline?.segmentChannels?.[target.id] || { text: null, meaning: null }
+              }
+            }));
             onResetSegmentAudioPreferences?.(target.id);
           }
         }}
       />
     </div>
   </div>;
-};
+});
 
 export default TextStructuredCardAudioPanel;
