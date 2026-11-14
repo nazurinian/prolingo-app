@@ -17,6 +17,7 @@ import {
   getStructuredTextResumeModeLabel
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { TEXT_CARD_EXPANSION_MODES } from '../../domain/text/textStructuredCardExpansionDomain.js';
+import { getTextResetButtonState, isTextGlobalPlaybackDirty } from '../../domain/text/textStructuredResetPresentationDomain.js';
 
 const DISPLAY_OPTIONS = [
   TEXT_STRUCTURED_DISPLAY_MODES.TEXT_ONLY,
@@ -158,6 +159,13 @@ export default function TextStructuredPlaybackControls({
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
 
+  const playbackDirty = isTextGlobalPlaybackDirty({
+    ...(preferences || {}),
+    ...(playbackRepresentationMode ? { playbackRepresentationMode } : {}),
+    ...(playbackOrder ? { globalAudioPlaybackOrderV1: { ...playbackOrder, ttsOnly: null } } : {})
+  });
+  const playbackResetState = getTextResetButtonState({ dirty: playbackDirty, busyBlocked: resetDisabled });
+
   const tabs = [
     { id: 'playback', label: 'Playback' },
     { id: 'manual', label: 'Manual Play' },
@@ -185,10 +193,10 @@ export default function TextStructuredPlaybackControls({
           {onResetPlaybackPreferences && (
             <button
               type="button"
-              disabled={resetDisabled}
+              disabled={playbackResetState.disabled}
               onClick={() => setConfirmResetOpen(true)}
               data-text-reset-playback="true"
-              className="ml-1 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-2 py-1 text-[9px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:opacity-40 transition-colors"
+              className={`ml-1 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-2 py-1 text-[9px] font-black text-amber-800 dark:text-amber-200 ${playbackResetState.dirty && !playbackResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${playbackResetState.opacityClass} ${playbackResetState.interactionClass}`}
               title="Reset Text Player, Manual Play, Display, and Local Priority defaults"
             >
               <RotateCcw className="w-3 h-3"/>

@@ -19,6 +19,15 @@ import { BrowserTtsVoiceOptgroups, EdgeVoiceOptgroups } from '../common/GroupedV
 import { dedupeBrowserTtsVoices } from '../../domain/audio/browserTtsVoicePresentationDomain.js';
 import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
+import CommitOnReleaseRange from '../common/CommitOnReleaseRange.jsx';
+import {
+  getTextResetButtonState,
+  isTextGlobalBrowserTtsDirty,
+  isTextGlobalEdgeDirty,
+  isTextSpeakerAudioDirty,
+  isTextWorkspaceBrowserTtsDirty,
+  isTextWorkspaceEdgePresetDirty
+} from '../../domain/text/textStructuredResetPresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const memoComponent = typeof React.memo === 'function' ? React.memo : fn => fn;
@@ -46,29 +55,68 @@ const emitTargetChange = (onChange, nextValue, targetItem = null, targetChannel 
   onChange(nextValue);
 };
 
-const RateControl = memoComponent(({ label, value, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
-  const currentRate = normalizedRate(value);
-  return <label className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2.5">
-    <span className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
-      <span>{label}</span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 text-[10px] font-black normal-case text-indigo-700 dark:text-indigo-300">{currentRate.toFixed(1)}×</span>
-        {currentRate !== 1 && (
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={(event) => { event.preventDefault(); emitTargetChange(onChange, 1, targetItem, targetChannel); }}
-            className="rounded border border-slate-200 dark:border-slate-700 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 hover:text-indigo-600"
-            title="Reset speed to 1.0×"
-          >
-            1.0×
-          </button>
-        )}
+const RateControl = memoComponent(({
+  label,
+  value,
+  savedOverride = null,
+  disabled,
+  resetDisabled = false,
+  helper = null,
+  onChange,
+  targetItem = null,
+  targetChannel = null,
+  resetTitle = null,
+  resetTestId = null
+}) => {
+  const [previewRate, setPreviewRate] = useState(null);
+  const savedRate = normalizedRate(value);
+  const displayRate = previewRate === null ? savedRate : normalizedRate(previewRate);
+  const hasOverride = savedOverride !== null && savedOverride !== undefined;
+  const resetState = getTextResetButtonState({
+    dirty: hasOverride,
+    busyBlocked: Boolean(disabled || resetDisabled)
+  });
+  return <div className="block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-2.5">
+    <div className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="inline-flex shrink-0 items-center gap-1.5">
+        <span
+          className="inline-flex min-w-[2.5rem] items-center justify-center rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 text-[10px] font-black normal-case tabular-nums text-indigo-700 dark:text-indigo-300"
+          data-text-rate-readout={resetTestId || undefined}
+        >
+          {displayRate.toFixed(1)}×
+        </span>
+        <button
+          type="button"
+          disabled={resetState.disabled}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setPreviewRate(null);
+            emitTargetChange(onChange, null, targetItem, targetChannel);
+          }}
+          data-text-reset-rate-override={resetTestId || undefined}
+          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 ${resetState.dirty && !resetState.busyBlocked ? 'hover:bg-indigo-50 dark:hover:bg-indigo-950/40' : ''} ${resetState.opacityClass} ${resetState.interactionClass}`}
+          title={resetTitle || 'Reset speed override to Inherit Global'}
+          aria-label={resetTitle || `Reset ${label}`}
+        >
+          <RotateCcw className="w-3 h-3"/>
+        </button>
       </span>
-    </span>
-    <input type="range" min="0.5" max="2" step="0.1" value={currentRate} disabled={disabled} onChange={event => emitTargetChange(onChange, Number(event.target.value), targetItem, targetChannel)} className="w-full accent-indigo-600 disabled:opacity-40"/>
+    </div>
+    <CommitOnReleaseRange
+      min={0.5}
+      max={2}
+      step={0.1}
+      value={savedRate}
+      disabled={disabled}
+      onPreview={setPreviewRate}
+      onCommit={next => emitTargetChange(onChange, next, targetItem, targetChannel)}
+      className="w-full accent-indigo-600 disabled:opacity-40"
+      aria-label={label}
+    />
     {helper && <span className="mt-1 block text-[8px] font-semibold normal-case text-sky-600 dark:text-sky-300">{helper}</span>}
-  </label>;
+  </div>;
 });
 
 const VoiceSelect = memoComponent(({ label, value, voices, context = 'general', fallbackLabel, disabled, helper = null, onChange, targetItem = null, targetChannel = null }) => {
@@ -247,7 +295,27 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const [audioSurface, setAudioSurface] = useState('playback');
   const [localReadyExpanded, setLocalReadyExpanded] = useState({});
   const [resetConfirmTarget, setResetConfirmTarget] = useState(null);
+  const [previewEdgeRate, setPreviewEdgeRate] = useState(null);
+  const [previewEdgePitch, setPreviewEdgePitch] = useState(null);
+
+  const globalBrowserTtsDirty = useMemo(() => isTextGlobalBrowserTtsDirty(preferences), [preferences]);
+  const workspaceBrowserTtsDirty = useMemo(() => isTextWorkspaceBrowserTtsDirty(documentTree), [documentTree]);
+  const allSpeakersDirty = useMemo(() => isTextSpeakerAudioDirty(documentTree, { includeSync: true }), [documentTree]);
+  const globalEdgeDirty = useMemo(() => isTextGlobalEdgeDirty(generationPreferences), [generationPreferences]);
+  const workspaceEdgePresetDirty = useMemo(() => isTextWorkspaceEdgePresetDirty(documentTree), [documentTree]);
+
   if (!documentTree || documentTree.editorModel !== 'structured-v1') return null;
+
+  const busyResetBlocked = Boolean(disabled || resetDisabled);
+  const globalBrowserTtsResetState = getTextResetButtonState({ dirty: globalBrowserTtsDirty, busyBlocked: busyResetBlocked });
+  const workspaceBrowserTtsResetState = getTextResetButtonState({ dirty: workspaceBrowserTtsDirty, busyBlocked: busyResetBlocked });
+  const allSpeakersResetState = getTextResetButtonState({ dirty: allSpeakersDirty, busyBlocked: busyResetBlocked });
+  const globalEdgeResetState = getTextResetButtonState({ dirty: globalEdgeDirty, busyBlocked: busyResetBlocked });
+  const workspaceEdgePresetResetState = getTextResetButtonState({ dirty: workspaceEdgePresetDirty, busyBlocked: busyResetBlocked });
+  const savedEdgeRate = Number(generationPreferences?.edgeRate || 0);
+  const displayEdgeRate = previewEdgeRate === null ? savedEdgeRate : Number(previewEdgeRate);
+  const savedEdgePitch = Number(generationPreferences?.edgePitch || 0);
+  const displayEdgePitch = previewEdgePitch === null ? savedEdgePitch : Number(previewEdgePitch);
 
   const sourceMode = preferences.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
   const hasParagraphCards = documentTree.documentType === 'paragraph' || documentTree.documentType === 'mixed' || (documentTree.blocks || []).some(block => block?.blockType === 'paragraph');
@@ -268,7 +336,9 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
   const localVoiceCountId = (availableLocalVoices?.channels?.meaning || []).length;
 
   const renderDocumentChannel = (channel, label, voiceOptions, fallback, globalRate) => {
-    const rate = rateProfile.channels?.[channel] || globalRate || 1;
+    const savedRateOverride = rateProfile.channels?.[channel] ?? null;
+    const rate = savedRateOverride ?? globalRate ?? 1;
+    const speedLabel = channel === 'meaning' ? 'ID Playback Speed' : 'EN Playback Speed';
     const resolution = resolveTextStructuredBrowserVoiceResolution({
       documentTree,
       block: null,
@@ -299,7 +369,17 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           <span>{resolution.fallbackReason}</span>
         </div>
       )}
-      <RateControl label={`${label} Playback Speed`} value={rate} disabled={disabled} onChange={onDocumentRateChange} targetChannel={channel}/>
+      <RateControl
+        label={speedLabel}
+        value={rate}
+        savedOverride={savedRateOverride}
+        disabled={disabled}
+        resetDisabled={resetDisabled}
+        onChange={onDocumentRateChange}
+        targetChannel={channel}
+        resetTitle={`Reset ${channel === 'meaning' ? 'ID' : 'EN'} speed override to Inherit Global (${Number(globalRate || 1).toFixed(1)}×)`}
+        resetTestId={`workspace:${channel}`}
+      />
       {/* Workspace-pinned local voices are shown in the dedicated CUSTOM panel below. */}
     </div>;
   };
@@ -414,14 +494,14 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           {onResetGlobalBrowserTts && (
             <button
               type="button"
-              disabled={disabled || resetDisabled}
+              disabled={globalBrowserTtsResetState.disabled}
               onClick={() => setResetConfirmTarget({
                 kind: 'global-browser-tts',
                 title: 'Reset Text Global Browser TTS?',
                 message: 'Clears default Text Browser TTS EN/ID voice selections and resets Browser TTS speeds to default (1.0×). Workspace/Card/Speaker overrides, Staging MP3 files, and Table settings are preserved.'
               })}
               data-text-reset-global-browser-tts="true"
-              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-40 transition-colors"
+              className={`inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 ${globalBrowserTtsResetState.dirty && !globalBrowserTtsResetState.busyBlocked ? 'hover:bg-sky-50' : ''} ${globalBrowserTtsResetState.opacityClass} ${globalBrowserTtsResetState.interactionClass}`}
               title="Reset Global Browser TTS voices and speeds"
             >
               <RotateCcw className="w-2.5 h-2.5"/>
@@ -452,14 +532,14 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
             {onResetWorkspaceAudio && (
               <button
                 type="button"
-                disabled={disabled || resetDisabled}
+                disabled={workspaceBrowserTtsResetState.disabled}
                 onClick={() => setResetConfirmTarget({
                   kind: 'workspace',
                   title: `Reset Workspace "${documentTree?.title || 'Workspace'}" Browser TTS?`,
                   message: 'Restores Workspace narrator voices and speeds to Inherit Global Browser TTS. MP3 presets, local playback priority, Speaker/Card/Segment overrides, and Staging audio are preserved.'
                 })}
                 data-text-reset-workspace="true"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 disabled:opacity-100 transition-colors"
+                className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 ${workspaceBrowserTtsResetState.dirty && !workspaceBrowserTtsResetState.busyBlocked ? 'hover:bg-indigo-100' : ''} ${workspaceBrowserTtsResetState.opacityClass} ${workspaceBrowserTtsResetState.interactionClass}`}
                 title="Reset Workspace Browser TTS narrator and speed to Inherit Global"
                 aria-label="Reset Workspace Browser TTS to Global defaults"
               >
@@ -479,14 +559,14 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           {onResetSpeakersAudio && speakers.length > 0 && (
             <button
               type="button"
-              disabled={disabled || resetDisabled}
+              disabled={allSpeakersResetState.disabled}
               onClick={() => setResetConfirmTarget({
                 kind: 'all-speakers',
                 title: 'Reset All Conversation Speaker Audio Settings?',
                 message: 'Clears Speaker Browser TTS, speed, Custom Local, and Speaker Edge overrides (plus Speaker Sync) across this Workspace while keeping speaker identities, Cards, Segments, and Staging MP3 audio intact.'
               })}
               data-text-reset-all-speakers="true"
-              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50/80 dark:bg-sky-950/30 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-100 disabled:opacity-40 transition-colors"
+              className={`inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50/80 dark:bg-sky-950/30 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 ${allSpeakersResetState.dirty && !allSpeakersResetState.busyBlocked ? 'hover:bg-sky-100' : ''} ${allSpeakersResetState.opacityClass} ${allSpeakersResetState.interactionClass}`}
               title="Reset all Speaker voice, speed, sync, and download overrides"
             >
               <RotateCcw className="w-2.5 h-2.5"/>
@@ -509,8 +589,12 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           const speakerTarget = speakerMetaById.get(id) || { id, label };
           const savedEnVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'text' }) || '';
           const savedIdVoice = getTextStructuredSpeakerAssignedVoiceName({ documentTree, speaker: label, speakerId: id, channel: 'meaning' }) || '';
-          const savedEnRate = rateProfile.speakerIds?.text?.[id] || rateProfile.speakers?.text?.[label?.toLowerCase?.()] || rateProfile.channels?.text || globalTextRate || 1;
-          const savedIdRate = rateProfile.speakerIds?.meaning?.[id] || rateProfile.speakers?.meaning?.[label?.toLowerCase?.()] || rateProfile.channels?.meaning || globalMeaningRate || 1;
+          const savedEnRateOverride = rateProfile.speakerIds?.text?.[id] ?? rateProfile.speakers?.text?.[label?.toLowerCase?.()] ?? null;
+          const savedIdRateOverride = rateProfile.speakerIds?.meaning?.[id] ?? rateProfile.speakers?.meaning?.[label?.toLowerCase?.()] ?? null;
+          const savedEnRate = savedEnRateOverride ?? rateProfile.channels?.text ?? globalTextRate ?? 1;
+          const savedIdRate = savedIdRateOverride ?? rateProfile.channels?.meaning ?? globalMeaningRate ?? 1;
+          const speakerDirty = isTextSpeakerAudioDirty(documentTree, { speakerId: id, speaker: label, includeSync: false });
+          const speakerResetState = getTextResetButtonState({ dirty: speakerDirty, busyBlocked: busyResetBlocked });
           const local = availableLocalVoices?.speakerIds?.[id] || { text: [], meaning: [] };
           const savedLocalEn = localProfile.speakerIds?.text?.[id] || localProfile.speakers?.text?.[label?.toLowerCase?.()] || localProfile.channels?.text || '';
           const savedLocalId = localProfile.speakerIds?.meaning?.[id] || localProfile.speakers?.meaning?.[label?.toLowerCase?.()] || localProfile.channels?.meaning || '';
@@ -545,7 +629,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               {onResetSpeakersAudio && (
                 <button
                   type="button"
-                  disabled={disabled || resetDisabled}
+                  disabled={speakerResetState.disabled}
                   onClick={() => setResetConfirmTarget({
                     kind: 'speaker',
                     speakerId: id,
@@ -554,7 +638,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                     message: `Restores "${label}" to Workspace/Global voice, speed, Custom Local, and Edge inheritance while keeping its speaker identity and downloaded Staging MP3 binaries.`
                   })}
                   data-text-reset-speaker={id}
-                  className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 hover:border-sky-300 disabled:opacity-40 transition-colors"
+                  className={`ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 ${speakerResetState.dirty && !speakerResetState.busyBlocked ? 'hover:border-sky-300' : ''} ${speakerResetState.opacityClass} ${speakerResetState.interactionClass}`}
                   title={`Reset audio preferences for ${label}`}
                 >
                   <RotateCcw className="w-2.5 h-2.5"/>
@@ -563,8 +647,8 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               )}
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="text"/><RateControl label="EN Speed" value={effectiveEnRate} disabled={disabled || enRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="text"/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
-              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="meaning"/><RateControl label="ID Speed" value={effectiveIdRate} disabled={disabled || idRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="meaning"/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="EN • TTS Voice" value={effectiveEnVoice} voices={englishVoiceOptions} context="main" fallbackLabel={`Global • ${compactVoiceLabel(defaultTextVoiceName)}`} disabled={disabled || enVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="text"/><RateControl label="EN Speed" value={effectiveEnRate} savedOverride={savedEnRateOverride} disabled={disabled || enRateFollower} resetDisabled={resetDisabled || enRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="text" resetTitle={`Reset ${label} EN speed override`} resetTestId={`speaker:${id}:text`}/>{customLocal && <LocalVoiceSelect label="EN • Custom Local" value={effectiveLocalEn} options={local.text || []} disabled={disabled || enVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'text')}/>}</div>
+              <div className="space-y-2"><VoiceSelect label="ID • TTS Voice" value={effectiveIdVoice} voices={indonesianVoiceOptions} context="meaning" fallbackLabel={`Global • ${compactVoiceLabel(defaultMeaningVoiceName)}`} disabled={disabled || idVoiceFollower} onChange={onSpeakerVoiceChange} targetItem={speakerTarget} targetChannel="meaning"/><RateControl label="ID Speed" value={effectiveIdRate} savedOverride={savedIdRateOverride} disabled={disabled || idRateFollower} resetDisabled={resetDisabled || idRateFollower} onChange={onSpeakerRateChange} targetItem={speakerTarget} targetChannel="meaning" resetTitle={`Reset ${label} ID speed override`} resetTestId={`speaker:${id}:meaning`}/>{customLocal && <LocalVoiceSelect label="ID • Custom Local" value={effectiveLocalId} options={local.meaning || []} disabled={disabled || idVoiceFollower} onChange={value => onSpeakerLocalAudioVoiceChange?.({ id, label }, value, 'meaning')}/>}</div>
             </div>
             {syncNotes.length > 0 && <div className="mt-2 space-y-0.5 px-0.5" data-text-audio-sync-notes={id}>{syncNotes.map(note => <p key={note} className="text-[8px] font-semibold leading-relaxed text-sky-600 dark:text-sky-300">{note}</p>)}</div>}
             <button type="button" onClick={() => setLocalReadyExpanded(current => ({ ...current, [id]: !current[id] }))} className="mt-2 flex min-h-9 w-full items-center justify-between rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 px-2.5 text-left text-[9px] font-black text-emerald-700 dark:text-emerald-300" aria-expanded={localReadyOpen}>
@@ -611,13 +695,13 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
         <div className="my-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <p className="min-w-0 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
-          <button type="button" disabled={disabled || resetDisabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural' && Number(generationPreferences?.edgeRate || 0) === 0 && Number(generationPreferences?.edgePitch || 0) === 0)}
+          <button type="button" disabled={globalEdgeResetState.disabled}
           onClick={() => setResetConfirmTarget({
             kind: 'global-edge',
             title: 'Reset Global Edge Generation Defaults?',
             message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
           })}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-100"
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 ${globalEdgeResetState.dirty && !globalEdgeResetState.busyBlocked ? 'hover:border-violet-400' : ''} ${globalEdgeResetState.opacityClass} ${globalEdgeResetState.interactionClass}`}
           title="Reset Global Edge voices, rate and pitch to defaults"
           aria-label="Reset Global Edge Generation defaults"
           data-text-global-edge-restore-default="true"><RotateCcw className="w-3 h-3"/></button>
@@ -652,16 +736,36 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
               <span>Rate</span>
-              <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgeRate || 0) >= 0 ? '+' : ''}{generationPreferences?.edgeRate || 0}%</span>
+              <span className="min-w-[3rem] text-right font-black tabular-nums text-violet-700 dark:text-violet-300">{displayEdgeRate >= 0 ? '+' : ''}{displayEdgeRate}%</span>
             </span>
-            <input disabled={disabled} type="range" min="-50" max="50" step="10" value={generationPreferences?.edgeRate || 0} onChange={event => onGenerationPreferencesChange?.({ edgeRate: Number(event.target.value) })} className="w-full accent-violet-600"/>
+            <CommitOnReleaseRange
+              disabled={disabled}
+              min={-50}
+              max={50}
+              step={10}
+              value={savedEdgeRate}
+              onPreview={setPreviewEdgeRate}
+              onCommit={next => onGenerationPreferencesChange?.({ edgeRate: next })}
+              className="w-full accent-violet-600"
+              aria-label="Rate"
+            />
           </label>
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
               <span>Pitch</span>
-              <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz</span>
+              <span className="min-w-[3rem] text-right font-black tabular-nums text-violet-700 dark:text-violet-300">{displayEdgePitch >= 0 ? '+' : ''}{displayEdgePitch}Hz</span>
             </span>
-            <input disabled={disabled} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/>
+            <CommitOnReleaseRange
+              disabled={disabled}
+              min={-20}
+              max={20}
+              step={5}
+              value={savedEdgePitch}
+              onPreview={setPreviewEdgePitch}
+              onCommit={next => onGenerationPreferencesChange?.({ edgePitch: next })}
+              className="w-full accent-violet-600"
+              aria-label="Pitch"
+            />
           </label>
         </div>
       </details>
@@ -673,13 +777,13 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           <p className="min-w-0 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">DEFAULT = Global Edge · FOLLOW PLAYER = map the effective Browser TTS voice (including Card/Segment overrides) · CUSTOM = this Workspace's own Edge voice.</p>
           {onResetWorkspaceEdgePreset && (
             <button type="button"
-              disabled={disabled || resetDisabled}
+              disabled={workspaceEdgePresetResetState.disabled}
               onClick={() => setResetConfirmTarget({
                 kind: 'workspace-edge-preset',
                 title: `Reset Workspace "${documentTree?.title || 'Workspace'}" MP3 Voice Presets?`,
                 message: 'Sets Workspace EN and ID MP3 presets to DEFAULT (Inherit Global Edge). Browser TTS narrator/speeds, Speaker/Card/Segment overrides, local audio and Staging MP3 files remain unchanged.'
               })}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 disabled:opacity-100"
+              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 ${workspaceEdgePresetResetState.dirty && !workspaceEdgePresetResetState.busyBlocked ? 'hover:border-violet-400' : ''} ${workspaceEdgePresetResetState.opacityClass} ${workspaceEdgePresetResetState.interactionClass}`}
               title="Reset Workspace MP3 voice presets to DEFAULT"
               aria-label="Reset Workspace MP3 voice presets to Global Edge"
               data-text-reset-workspace-edge-preset="true"

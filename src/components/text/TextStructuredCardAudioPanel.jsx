@@ -29,6 +29,11 @@ import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain.js';
 import { buildTextStructuredCardMissingFullRequirements } from '../../domain/text/textStructuredBulkGenerationDomain.js';
 import { SafetyConfirmDialog } from '../modals/ConfirmDialog.jsx';
+import {
+  getTextResetButtonState,
+  isTextCardAudioDirty,
+  isTextSegmentAudioDirty
+} from '../../domain/text/textStructuredResetPresentationDomain.js';
 
 const clean = value => String(value ?? '').trim();
 
@@ -339,6 +344,11 @@ export const TextStructuredCardAudioPanel = memoComponent(({
   const [workflowExpanded, setWorkflowExpanded] = useState(false);
   const [includeMissingFullByBlockId, setIncludeMissingFullByBlockId] = useState({});
   const [confirmResetTarget, setConfirmResetTarget] = useState(null);
+  const cardAudioDirty = useMemo(() => isTextCardAudioDirty(block), [block]);
+  const cardResetState = getTextResetButtonState({
+    dirty: cardAudioDirty,
+    busyBlocked: Boolean(disabled || resetDisabled || generationRunning)
+  });
   const includeMissingFullAudio = Boolean(block?.id && includeMissingFullByBlockId[block.id]);
   const overlayRef = useLiveOverlayViewportRef(true);
   const segments = useMemo(() => (Array.isArray(block?.segments) ? block.segments : []), [block?.segments]);
@@ -762,7 +772,7 @@ export const TextStructuredCardAudioPanel = memoComponent(({
           {onResetCardAudioPreferences && (
             <button
               type="button"
-              disabled={disabled || resetDisabled || generationRunning}
+              disabled={cardResetState.disabled}
               onClick={() => setConfirmResetTarget({
                 scope: 'card',
                 id: block.id,
@@ -770,7 +780,7 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                 message: 'Clears saved Card Player & Download overrides, Card local priority, Card-speaker overrides, and its Segment overrides back to Workspace/Global inheritance (and discards unsaved drafts in this sheet). Downloaded Staging MP3 binaries and Full Card artifacts stay intact.'
               })}
               data-text-reset-card-audio="true"
-              className="shrink-0 min-h-8 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/35 px-2.5 text-[9px] font-black text-amber-800 dark:text-amber-200 hover:bg-amber-100 disabled:opacity-40 transition-colors"
+              className={`shrink-0 min-h-8 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/35 px-2.5 text-[9px] font-black text-amber-800 dark:text-amber-200 ${cardResetState.dirty && !cardResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${cardResetState.opacityClass} ${cardResetState.interactionClass}`}
               title="Reset saved Card & Segment audio overrides to Workspace/Global inheritance"
             >
               <RotateCcw className="w-3 h-3"/>
@@ -1349,10 +1359,15 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                     <div className="flex items-start gap-2">
                       <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded bg-slate-100 dark:bg-slate-800 px-1 text-[9px] font-black text-slate-600 dark:text-slate-300">#{index + 1}</span>
                       <p className="min-w-0 flex-1 text-[10px] font-semibold text-slate-700 dark:text-slate-200 truncate">{segment.speaker ? `${segment.speaker} • ` : ''}{clue(segment, 'text')}</p>
-                      {onResetSegmentAudioPreferences && (
+                      {onResetSegmentAudioPreferences && (() => {
+                        const segmentResetState = getTextResetButtonState({
+                          dirty: isTextSegmentAudioDirty(segment),
+                          busyBlocked: Boolean(disabled || resetDisabled || generationRunning)
+                        });
+                        return (
                         <button
                           type="button"
-                          disabled={disabled || resetDisabled || generationRunning}
+                          disabled={segmentResetState.disabled}
                           onClick={() => setConfirmResetTarget({
                             scope: 'segment',
                             id: segment.id,
@@ -1360,13 +1375,14 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                             message: 'Clears saved Segment Browser TTS and Edge download voice overrides back to Card/Workspace inheritance without deleting downloaded Staging MP3 binaries.'
                           })}
                           data-text-reset-segment-audio={segment.id}
-                          className="shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 hover:border-amber-300 disabled:opacity-40 transition-colors"
+                          className={`shrink-0 inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 ${segmentResetState.dirty && !segmentResetState.busyBlocked ? 'hover:border-amber-300' : ''} ${segmentResetState.opacityClass} ${segmentResetState.interactionClass}`}
                           title={`Reset Segment #${index + 1} audio overrides`}
                         >
                           <RotateCcw className="w-2.5 h-2.5"/>
                           <span>Reset</span>
                         </button>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* Generate vs Export MP3 per channel */}
@@ -1455,16 +1471,21 @@ export const TextStructuredCardAudioPanel = memoComponent(({
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {(() => {
+                const playerDraftResetState = getTextResetButtonState({ dirty: isPlayerDirty, busyBlocked: disabled });
+                return (
               <button
                 type="button"
-                disabled={disabled || !isPlayerDirty}
+                disabled={playerDraftResetState.disabled}
                 onClick={handleResetPlayerDraft}
                 data-text-card-player-reset="true"
-                className="min-h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-[9px] font-black text-slate-600 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-35 transition-colors inline-flex items-center gap-1"
+                className={`min-h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-[9px] font-black text-slate-600 dark:text-slate-300 ${playerDraftResetState.dirty && !playerDraftResetState.busyBlocked ? 'hover:bg-slate-50' : ''} ${playerDraftResetState.opacityClass} ${playerDraftResetState.interactionClass} inline-flex items-center gap-1`}
               >
                 <RotateCcw className="h-3.5 w-3.5"/>
                 <span>Reset</span>
               </button>
+                );
+              })()}
               <button
                 type="button"
                 disabled={disabled || !isPlayerDirty}

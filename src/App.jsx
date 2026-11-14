@@ -4809,18 +4809,32 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextDocumentRateChange = useCallback(async (rateValue, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
     forceStopAll();
+    const globalChannelRate = Number(
+      channel === 'meaning'
+        ? (textStructuredPreferences?.browserMeaningRate || textStructuredPreferences?.browserTtsRate || 1)
+        : (textStructuredPreferences?.browserTextRate || textStructuredPreferences?.browserTtsRate || 1)
+    ) || 1;
+    const numericRate = rateValue === null || rateValue === undefined || rateValue === '' ? null : Number(rateValue);
+    const rateOverride = numericRate === null || !Number.isFinite(numericRate) || Math.abs(numericRate - globalChannelRate) < 1e-6
+      ? null
+      : numericRate;
     const metadata = buildTextStructuredPlaybackRateProfileMetadata({
       metadata: activeTextDocumentTree.metadata,
       channel,
-      rate: rateValue
+      rate: rateOverride
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
       payload: { id: activeTextDocumentTree.id, metadata }
     });
-    if (result) addLog('Text Audio', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}×.`);
+    if (result) {
+      const rateLabel = rateOverride === null
+        ? `Inherit Global (${globalChannelRate.toFixed(1)}×)`
+        : `${Number(rateOverride).toFixed(1)}×`;
+      addLog('Text Audio', `${activeTextDocumentTree.documentType === 'paragraph' ? 'Paragraph narrator' : 'Document fallback'} • ${channel} speed → ${rateLabel}.`);
+    }
     return result;
-  }, [activeTextDocumentTree, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, textStructuredPreferences, forceStopAll, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextDocumentDownloadVoiceChange = useCallback(async (voiceId, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -5113,19 +5127,35 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     const identity = await ensureStructuredTextSpeakerIdentity(speakerLike);
     if (!identity) return null;
+    const globalChannelRate = Number(
+      channel === 'meaning'
+        ? (textStructuredPreferences?.browserMeaningRate || textStructuredPreferences?.browserTtsRate || 1)
+        : (textStructuredPreferences?.browserTextRate || textStructuredPreferences?.browserTtsRate || 1)
+    ) || 1;
+    const docRateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
+    const inheritedRate = Number(docRateProfile?.channels?.[channel] || globalChannelRate) || 1;
+    const numericRate = rateValue === null || rateValue === undefined || rateValue === '' ? null : Number(rateValue);
+    const rateOverride = numericRate === null || !Number.isFinite(numericRate) || Math.abs(numericRate - inheritedRate) < 1e-6
+      ? null
+      : numericRate;
     const metadata = buildTextStructuredPlaybackRateProfileMetadata({
       metadata: activeTextDocumentTree.metadata,
       speakerId: identity.id,
       channel,
-      rate: rateValue
+      rate: rateOverride
     });
     const result = await handleTextLibraryStructuredCommand({
       type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
       payload: { id: activeTextDocumentTree.id, metadata }
     });
-    if (result) addLog('Text Audio', `${identity.label} • ${channel} speed → ${Number(rateValue || 1).toFixed(1)}× • ${identity.id}.`);
+    if (result) {
+      const rateLabel = rateOverride === null
+        ? `Inherit Default (${inheritedRate.toFixed(1)}×)`
+        : `${Number(rateOverride).toFixed(1)}×`;
+      addLog('Text Audio', `${identity.label} • ${channel} speed → ${rateLabel} • ${identity.id}.`);
+    }
     return result;
-  }, [activeTextDocumentTree, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
+  }, [activeTextDocumentTree, textStructuredPreferences, forceStopAll, ensureStructuredTextSpeakerIdentity, handleTextLibraryStructuredCommand, addLog]);
 
   const handleStructuredTextSyncSpeakerVoice = useCallback(async (channel = 'text', enabled = null) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;

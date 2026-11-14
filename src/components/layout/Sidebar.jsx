@@ -9,6 +9,48 @@ import GroupedVoiceSelect from '../common/GroupedVoiceSelect';
 import { isEdgeVoiceUnavailable } from '../../constants/voiceConstants';
 import { formatEdgeVoiceLabel } from '../../domain/audio/voicePresentationDomain';
 import PlaybackSequenceBuilder from '../controls/PlaybackSequenceBuilder';
+import CommitOnReleaseRange from '../common/CommitOnReleaseRange';
+
+const SidebarSpeedRange = ({ rate, setRate }) => {
+  const [previewRate, setPreviewRate] = React.useState(null);
+  const shown = previewRate === null ? rate : previewRate;
+  return (
+    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded border border-slate-100 dark:border-slate-600 mt-2">
+      <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-8 text-center">{shown}x</span>
+      <CommitOnReleaseRange
+        min={0.5}
+        max={2}
+        step={0.1}
+        value={rate}
+        onPreview={setPreviewRate}
+        onCommit={next => setRate(String(next))}
+        className="flex-1 h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-indigo-600"
+        aria-label="Playback speed"
+      />
+    </div>
+  );
+};
+
+const SidebarEdgeParamRange = ({ labelPrefix, suffix, min, max, step, value, disabled, onCommit }) => {
+  const [previewValue, setPreviewValue] = React.useState(null);
+  const shown = previewValue === null ? value : previewValue;
+  return (
+    <div>
+      <label className="text-[9px] text-slate-500 font-bold block mb-1">{labelPrefix} ({shown > 0 ? '+' : ''}{shown}{suffix})</label>
+      <CommitOnReleaseRange
+        disabled={disabled}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onPreview={setPreviewValue}
+        onCommit={next => onCommit(parseInt(next, 10))}
+        className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        aria-label={labelPrefix}
+      />
+    </div>
+  );
+};
 
 export const Sidebar = ({
   isSidebarOpen,
@@ -212,10 +254,7 @@ export const Sidebar = ({
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded border border-slate-100 dark:border-slate-600 mt-2">
-                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 w-8 text-center">{rate}x</span>
-                    <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(e.target.value)} className="flex-1 h-1 bg-slate-200 dark:bg-slate-600 rounded-lg cursor-pointer accent-indigo-600" />
-                  </div>
+                  <SidebarSpeedRange rate={rate} setRate={setRate} />
                 </div>
               </>
             )}
@@ -275,14 +314,8 @@ export const Sidebar = ({
                       )}
 
                       <div className="grid grid-cols-2 gap-2 mt-2">
-                        <div>
-                          <label className="text-[9px] text-slate-500 font-bold block mb-1">Rate ({edgeRate > 0 ? '+' : ''}{edgeRate}%)</label>
-                          <input disabled={isSystemBusy} type="range" min="-50" max="50" step="10" value={edgeRate} onChange={e => setEdgeRate(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
-                        </div>
-                        <div>
-                          <label className="text-[9px] text-slate-500 font-bold block mb-1">Pitch ({edgePitch > 0 ? '+' : ''}{edgePitch}Hz)</label>
-                          <input disabled={isSystemBusy} type="range" min="-20" max="20" step="5" value={edgePitch} onChange={e => setEdgePitch(parseInt(e.target.value))} className={`w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg cursor-pointer accent-teal-600 ${isSystemBusy ? 'opacity-50 cursor-not-allowed' : ''}`} />
-                        </div>
+                        <SidebarEdgeParamRange labelPrefix="Rate" suffix="%" min={-50} max={50} step={10} value={edgeRate} disabled={isSystemBusy} onCommit={setEdgeRate} />
+                        <SidebarEdgeParamRange labelPrefix="Pitch" suffix="Hz" min={-20} max={20} step={5} value={edgePitch} disabled={isSystemBusy} onCommit={setEdgePitch} />
                       </div>
                       <div className={`rounded border px-2 py-2 text-[10px] ${edgeHealth.status === 'online' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-400' : edgeHealth.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400'}`}>
                         <div className="flex items-center justify-between gap-2">
