@@ -609,9 +609,9 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
 
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2.5" data-text-audio-global-edge-advanced="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">1. Global Edge Generation · Advanced</summary>
-        <p className="my-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
-        <div className="mb-2 flex justify-end">
-        <button type="button" disabled={disabled || resetDisabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural' && Number(generationPreferences?.edgeRate || 0) === 0 && Number(generationPreferences?.edgePitch || 0) === 0)}
+        <div className="my-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <p className="min-w-0 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">Shared EN/ID Edge voices, rate and pitch. Workspace DEFAULT inherits them. Browser TTS playback stays separate.</p>
+          <button type="button" disabled={disabled || resetDisabled || (generationPreferences?.edgeTextVoiceId === 'en-GB-SoniaNeural' && generationPreferences?.edgeMeaningVoiceId === 'id-ID-GadisNeural' && Number(generationPreferences?.edgeRate || 0) === 0 && Number(generationPreferences?.edgePitch || 0) === 0)}
           onClick={() => setResetConfirmTarget({
             kind: 'global-edge',
             title: 'Reset Global Edge Generation Defaults?',
@@ -651,14 +651,14 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           )}
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
-              <span>Download Rate</span>
+              <span>Rate</span>
               <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgeRate || 0) >= 0 ? '+' : ''}{generationPreferences?.edgeRate || 0}%</span>
             </span>
             <input disabled={disabled} type="range" min="-50" max="50" step="10" value={generationPreferences?.edgeRate || 0} onChange={event => onGenerationPreferencesChange?.({ edgeRate: Number(event.target.value) })} className="w-full accent-violet-600"/>
           </label>
           <label className="rounded-lg border border-slate-200/80 dark:border-slate-800 p-2 text-[9px] font-bold text-slate-600 dark:text-slate-300">
             <span className="flex items-center justify-between mb-1">
-              <span>Download Pitch</span>
+              <span>Pitch</span>
               <span className="font-black text-violet-700 dark:text-violet-300">{Number(generationPreferences?.edgePitch || 0) >= 0 ? '+' : ''}{generationPreferences?.edgePitch || 0}Hz</span>
             </span>
             <input disabled={disabled} type="range" min="-20" max="20" step="5" value={generationPreferences?.edgePitch || 0} onChange={event => onGenerationPreferencesChange?.({ edgePitch: Number(event.target.value) })} className="w-full accent-violet-600"/>
@@ -669,9 +669,9 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
 
       <details className="rounded-xl border border-violet-100 dark:border-violet-900/80 bg-white/90 dark:bg-slate-900/40 p-2.5 space-y-2" data-text-audio-workspace-edge-preset="true">
         <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">2. This Workspace · MP3 Voice Preset</summary>
-        <p className="text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">DEFAULT = Global Edge · FOLLOW PLAYER = map the effective Browser TTS voice (including Card/Segment overrides) · CUSTOM = this Workspace's own Edge voice.</p>
-        {onResetWorkspaceEdgePreset && (
-          <div className="flex justify-end">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <p className="min-w-0 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">DEFAULT = Global Edge · FOLLOW PLAYER = map the effective Browser TTS voice (including Card/Segment overrides) · CUSTOM = this Workspace's own Edge voice.</p>
+          {onResetWorkspaceEdgePreset && (
             <button type="button"
               disabled={disabled || resetDisabled}
               onClick={() => setResetConfirmTarget({
@@ -684,8 +684,8 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               aria-label="Reset Workspace MP3 voice presets to Global Edge"
               data-text-reset-workspace-edge-preset="true"
             ><RotateCcw className="h-3 w-3"/></button>
-          </div>
-        )}
+          )}
+        </div>
         <div className="grid gap-2 md:grid-cols-2">
           {['text', 'meaning'].map(channel => {
             const isMeaning = channel === 'meaning';
