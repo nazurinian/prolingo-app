@@ -243,13 +243,20 @@ run('2. TextStructuredAudioControls resets Global Browser TTS, Workspace, Speake
   const mixedDoc = {
     ...makeParagraphDocument(),
     documentType: 'mixed',
-    metadata: makeConversationDocument().metadata,
+    metadata: {
+      ...makeConversationDocument().metadata,
+      audioPlaybackRateProfileV1: {
+        channels: { text: 1.3, meaning: null },
+        speakerIds: { text: { SPK_ALICE: 1.4 }, meaning: {} },
+        speakers: { text: {}, meaning: {} }
+      }
+    },
     blocks: [...makeParagraphDocument().blocks, ...makeConversationDocument().blocks]
   };
   const called = [];
   const props = {
     documentTree: mixedDoc,
-    preferences: { audioSourceMode: 'local-first' },
+    preferences: { audioSourceMode: 'local-first', browserTextRate: 1.4 },
     generationPreferences: { edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural', edgeRate: 20, edgePitch: -10 },
     edgeGenerationVoices: initialEdgeVoices,
     onResetGlobalBrowserTts: () => called.push('global-browser-tts'),
@@ -287,6 +294,25 @@ run('2. TextStructuredAudioControls resets Global Browser TTS, Workspace, Speake
   clickAndConfirm(n => n.type === 'button' && n.props?.['data-text-reset-speaker'] === 'SPK_ALICE', 'Single Speaker Alice');
   assert.deepEqual(called.pop(), ['speakers', { speakerId: 'SPK_ALICE', speaker: 'Alice', includeSync: false }]);
 
+  // Under the new intent-based Reset contract, buttons are disabled when
+  // their persisted values already match canonical defaults; Busy itself
+  // must not change their opacity.
+  resetHooks();
+  const cleanTree = renderTree(mockReact.createElement(TextStructuredAudioControls, {
+    ...props,
+    documentTree: { ...mixedDoc, metadata: makeConversationDocument().metadata },
+    preferences: {},
+    generationPreferences: { edgeTextVoiceId: 'en-GB-SoniaNeural', edgeMeaningVoiceId: 'id-ID-GadisNeural', edgeRate: 0, edgePitch: 0 }
+  }));
+  for (const marker of ['data-text-reset-global-browser-tts', 'data-text-reset-workspace', 'data-text-reset-all-speakers']) {
+    const [button] = collectNodes(cleanTree, n => n.type === 'button' && n.props?.[marker] === 'true');
+    assert.equal(button?.props.disabled, true, `${marker} must be disabled at the canonical default`);
+    assert.match(button.props.className, /opacity-40/, `${marker} must dim only when clean`);
+  }
+
+  resetHooks();
+  tree = renderTree(mockReact.createElement(TextStructuredAudioControls, props));
+  
   // Switch to Generate Audio tab ('download') before checking Global Edge Restore button
   const [downloadTab] = collectNodes(tree, n => n.type === 'button' && n.props?.['data-text-audio-tab'] === 'download');
   assert.ok(downloadTab, 'Expected Generate Audio tab');
