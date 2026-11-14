@@ -1,4 +1,8 @@
-import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
+import {
+  getTextStructuredSegmentSpeakerId,
+  resolveTextStructuredConversationMasterSpeaker
+} from './textStructuredSpeakerIdentityDomain.js';
+import { getTextStructuredAudioSyncProfile } from './textStructuredAudioSyncProfileDomain.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 
 export const TEXT_STRUCTURED_PLAYBACK_RATE_PROFILE_KEY = 'audioPlaybackRateProfileV1';
@@ -57,10 +61,23 @@ export const buildTextStructuredPlaybackRateProfileMetadata = ({ metadata, chann
   return result;
 };
 
-export const resolveTextStructuredEffectivePlaybackRate = ({ documentTree, block = null, segment = null, channel = 'text', globalRate = 1 }) => {
+export const resolveTextStructuredEffectivePlaybackRate = ({
+  documentTree,
+  block = null,
+  segment = null,
+  channel = 'text',
+  globalRate = 1,
+  respectConversationSync = false,
+  conversationSpeakers = null
+}) => {
   const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
-  const speakerId = getTextStructuredSegmentSpeakerId(segment);
-  const speakerKey = normalizeTextStructuredSpeakerKey(segment?.speaker);
+  const syncProfile = respectConversationSync ? getTextStructuredAudioSyncProfile(documentTree) : null;
+  const syncMaster = syncProfile?.rate?.[normalizedChannel] === true
+    ? resolveTextStructuredConversationMasterSpeaker({ documentTree, block, conversationSpeakers })
+    : null;
+  const targetSegment = syncMaster ? syncMaster.segment : segment;
+  const speakerId = getTextStructuredSegmentSpeakerId(targetSegment);
+  const speakerKey = normalizeTextStructuredSpeakerKey(targetSegment?.speaker);
   const blockProfile = getTextStructuredPlaybackRateProfile(block);
   const documentProfile = getTextStructuredPlaybackRateProfile(documentTree);
   const candidates = [

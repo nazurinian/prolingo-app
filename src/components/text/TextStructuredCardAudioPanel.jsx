@@ -513,7 +513,8 @@ export const TextStructuredCardAudioPanel = memoComponent(({
       globalVoiceName: defaultTextVoiceName,
       availableBrowserVoices: englishVoices,
       ignoreSegmentOverride: true,
-      representationMode: 'full'
+      representationMode: 'full',
+      respectConversationSync: true
     }),
     meaning: resolveTextStructuredBrowserVoiceResolution({
       documentTree,
@@ -523,7 +524,8 @@ export const TextStructuredCardAudioPanel = memoComponent(({
       globalVoiceName: defaultMeaningVoiceName,
       availableBrowserVoices: indonesianVoices,
       ignoreSegmentOverride: true,
-      representationMode: 'full'
+      representationMode: 'full',
+      respectConversationSync: true
     })
   }), [documentTree, draftBlock, firstSegment, defaultTextVoiceName, defaultMeaningVoiceName, englishVoices, indonesianVoices]);
 

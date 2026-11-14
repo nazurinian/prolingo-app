@@ -3,7 +3,7 @@ import {
   resolveTextStructuredAudioVariant,
   resolveTextStructuredSpeakerVoice
 } from './textStructuredAudioIdentityDomain.js';
-import { resolveTextStructuredEffectiveVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
+import { resolveTextStructuredConversationSyncedVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
 import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
 import { doesTextStructuredVariantMatchPlaybackProfile, resolveTextStructuredEffectivePlaybackOrder } from './textStructuredAudioPlaybackOrderDomain.js';
 
@@ -218,7 +218,7 @@ export const buildTextStructuredRuntimeAudioStatusMap = ({
     (Array.isArray(block?.segments) ? block.segments : []).forEach(segment => {
       ['text', 'meaning'].forEach(channel => {
         const defaultVoiceId = channel === 'meaning' ? meaningVoiceId : textVoiceId;
-        const effective = resolveTextStructuredEffectiveVoiceProfile({
+        const effective = resolveTextStructuredConversationSyncedVoiceProfile({
           documentTree,
           block,
           segment,

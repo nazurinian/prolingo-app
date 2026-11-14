@@ -1,6 +1,12 @@
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextStructuredSpeakerVoiceMap } from './textStructuredSpeakerVoiceProfileDomain.js';
-import { deriveTextStructuredSpeakerId, getTextStructuredSegmentSpeakerId, getTextStructuredSpeakerVoiceProfileV2 } from './textStructuredSpeakerIdentityDomain.js';
+import { getTextStructuredAudioSyncProfile } from './textStructuredAudioSyncProfileDomain.js';
+import {
+  deriveTextStructuredSpeakerId,
+  getTextStructuredSegmentSpeakerId,
+  getTextStructuredSpeakerVoiceProfileV2,
+  resolveTextStructuredConversationMasterSpeaker
+} from './textStructuredSpeakerIdentityDomain.js';
 import { formatBrowserTtsVoiceLabel } from '../audio/browserTtsVoicePresentationDomain.js';
 import { resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
 
@@ -217,6 +223,64 @@ export const resolveTextStructuredFullCardVoiceProfile = ({
   representationMode: 'full'
 });
 
+/**
+ * Resolves effective playback voice while honoring Conversation Voice Sync:
+ * when enabled for the target channel, evaluates Speaker 1's full hierarchy
+ * (Card-1 Speaker -> Doc Speaker -> Card -> Workspace -> Global) rather than
+ * allowing Follower overrides or bypassing Card/Workspace/Global inheritance.
+ */
+export const resolveTextStructuredConversationSyncedVoiceProfile = ({
+  documentTree = null,
+  block = null,
+  segment = null,
+  channel = 'text',
+  defaultVoiceName = null,
+  ignoreSegmentOverride = false,
+  representationMode = 'split',
+  conversationSpeakers = null
+} = {}) => {
+  const normalizedChannel = normalizeChannel(channel);
+  const syncProfile = getTextStructuredAudioSyncProfile(documentTree);
+  const master = syncProfile?.voice?.[normalizedChannel] === true
+    ? resolveTextStructuredConversationMasterSpeaker({ documentTree, block, conversationSpeakers })
+    : null;
+  if (master) {
+    const firstProfile = resolveTextStructuredEffectiveVoiceProfile({
+      documentTree,
+      block,
+      segment: master.segment,
+      channel: normalizedChannel,
+      defaultVoiceName,
+      ignoreSegmentOverride: true,
+      representationMode
+    });
+    return {
+      ...firstProfile,
+      syncedToFirstSpeaker: true,
+      masterSpeaker: master.speaker,
+      masterSegment: master.segment,
+      underlyingSource: firstProfile.source,
+      source: firstProfile.voiceName ? 'sync-speaker-1' : firstProfile.source
+    };
+  }
+  const profile = resolveTextStructuredEffectiveVoiceProfile({
+    documentTree,
+    block,
+    segment,
+    channel: normalizedChannel,
+    defaultVoiceName,
+    ignoreSegmentOverride,
+    representationMode
+  });
+  return {
+    ...profile,
+    syncedToFirstSpeaker: false,
+    masterSpeaker: null,
+    masterSegment: null,
+    underlyingSource: profile.source
+  };
+};
+
 export const resolveTextStructuredEffectiveVoiceForItem = ({
   documentTree,
   item,
@@ -249,6 +313,7 @@ export const getTextStructuredVoiceOverrideLabel = source => ({
   'card-speaker-legacy': 'Card speaker override (legacy)',
   'document-speaker': 'Document speaker profile',
   'document-speaker-legacy': 'Document speaker profile (legacy)',
+  'sync-speaker-1': 'Synced to Speaker 1',
   card: 'Card override',
   document: 'Document default',
   global: 'Global default',
@@ -263,6 +328,7 @@ export const getTextStructuredVoiceSourceDisplayLabel = source => ({
   'card-speaker-legacy': 'Card speaker override',
   'document-speaker': 'Workspace speaker profile',
   'document-speaker-legacy': 'Workspace speaker profile',
+  'sync-speaker-1': 'Synced to Speaker 1',
   card: 'Card override',
   document: 'Workspace Narrator',
   global: 'Global Browser TTS',
@@ -288,16 +354,25 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
   requestedSource: explicitRequestedSource = null,
   availableBrowserVoices = null,
   ignoreSegmentOverride = false,
-  representationMode = 'split'
+  representationMode = 'split',
+  respectConversationSync = false,
+  conversationSpeakers = null
 } = {}) => {
   const globalBrowserVoiceName = clean(globalVoiceName || defaultVoiceName) || null;
+  const syncMaster = respectConversationSync
+    && !clean(explicitRequestedVoiceName)
+    && getTextStructuredAudioSyncProfile(documentTree)?.voice?.[normalizeChannel(channel)] === true
+    ? resolveTextStructuredConversationMasterSpeaker({ documentTree, block, conversationSpeakers })
+    : null;
+  const effectiveSegment = syncMaster ? syncMaster.segment : segment;
+  const effectiveIgnoreSegmentOverride = syncMaster ? true : ignoreSegmentOverride;
   const chainInfo = buildTextStructuredVoiceCandidateChain({
     documentTree,
     block,
-    segment,
+    segment: effectiveSegment,
     channel,
     defaultVoiceName: globalBrowserVoiceName,
-    ignoreSegmentOverride,
+    ignoreSegmentOverride: effectiveIgnoreSegmentOverride,
     representationMode
   });
   const {
@@ -318,7 +393,7 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
     : resolveTextStructuredEffectiveVoiceProfile({
         documentTree,
         block,
-        segment,
+        segment: effectiveSegment,
         channel: normalizedChannel,
         defaultVoiceName: globalBrowserVoiceName,
         ignoreSegmentOverride: skipSegmentOverride,
@@ -326,7 +401,8 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
       });
 
   const requestedVoiceName = requestedProfile.voiceName;
-  const requestedSource = requestedProfile.source;
+  const rawRequestedSource = requestedProfile.source;
+  const requestedSource = syncMaster && requestedVoiceName ? 'sync-speaker-1' : rawRequestedSource;
   const requestedSourceLabel = getTextStructuredVoiceSourceDisplayLabel(requestedSource);
 
   const hasBrowserVoiceList = Array.isArray(availableBrowserVoices);
@@ -376,7 +452,8 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
       availableInBrowser: available,
       requestedVoiceAvailable: available,
       fallbackUsed: false,
-      fallbackReason: null
+      fallbackReason: null,
+      syncedToFirstSpeaker: Boolean(syncMaster)
     };
   }
 
@@ -398,12 +475,13 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
       availableInBrowser: true,
       requestedVoiceAvailable: true,
       fallbackUsed: false,
-      fallbackReason: null
+      fallbackReason: null,
+      syncedToFirstSpeaker: Boolean(syncMaster)
     };
   }
 
   const tierOrder = candidates.map(candidate => candidate.source);
-  const requestedTierIndex = tierOrder.indexOf(requestedSource);
+  const requestedTierIndex = tierOrder.indexOf(rawRequestedSource);
   const hierarchyFallbacks = candidates
     .filter((candidate, index) => {
       if (requestedTierIndex >= 0) {
@@ -451,7 +529,8 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
     availableInBrowser: false,
     requestedVoiceAvailable: false,
     fallbackUsed: true,
-    fallbackReason: `Requested voice "${requestedVoiceName}" (${requestedSourceLabel}) is unavailable in this browser; falling back to ${fallbackTargetText}.`
+    fallbackReason: `Requested voice "${requestedVoiceName}" (${requestedSourceLabel}) is unavailable in this browser; falling back to ${fallbackTargetText}.`,
+    syncedToFirstSpeaker: Boolean(syncMaster)
   };
 };
 

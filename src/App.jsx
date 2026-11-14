@@ -113,7 +113,7 @@ import { buildTextStructuredAudioCoverageMap, summarizeTextStructuredAudioCovera
 import { buildTextStructuredAudioDownloadProfileMetadata, getTextStructuredTreeFollowPlayerUsage, getTextStructuredTreesFollowPlayerUsage, resolveTextStructuredEffectiveDownloadVoice } from './domain/text/textStructuredAudioDownloadProfileDomain.js';
 import { buildTextStructuredAudioPlaybackOrderMetadata, buildTextStructuredGlobalAudioPlaybackOrderPreference, getTextStructuredGlobalAudioPlaybackOrder, resolveTextStructuredEffectivePlaybackOrder, resolveTextStructuredEffectiveTtsOnly } from './domain/text/textStructuredAudioPlaybackOrderDomain.js';
 import { buildTextStructuredGeneratedFilename, buildTextStructuredGenerationJobs, normalizeTextStructuredAudioGenerationPreferences, resolveTextStructuredGenerationVoiceState } from './domain/text/textStructuredAudioGenerationDomain.js';
-import { getTextStructuredSpeakerAssignedVoiceName, getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
+import { getTextStructuredSpeakerVoiceMap } from './domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import { buildTextStructuredSpeakerVoiceProfileV2Metadata, collectTextStructuredConversationSpeakerIdentities } from './domain/text/textStructuredSpeakerIdentityDomain.js';
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './domain/text/textStructuredAudioRenderFingerprintDomain.js';
@@ -1014,41 +1014,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       .find(candidate => candidate?.id === (item?.segmentId || item?.id))
       || null;
 
-    let resolved;
-    if (syncVoice) {
-      const firstSpeaker = structuredTextConversationSpeakers[0];
-      const firstVoice = getTextStructuredSpeakerAssignedVoiceName({
-        documentTree: activeTextDocumentTree,
-        speaker: firstSpeaker.label,
-        speakerId: firstSpeaker.id,
-        channel: normalizedChannel
-      });
-      resolved = resolveTextStructuredBrowserVoiceResolution({
-        documentTree: activeTextDocumentTree,
-        block: targetBlock,
-        segment: targetSegment,
-        channel: normalizedChannel,
-        globalVoiceName,
-        defaultVoiceName: defaultVoice?.name || null,
-        requestedVoiceName: firstVoice || null,
-        requestedSource: firstVoice ? 'sync-speaker-1' : null,
-        availableBrowserVoices: pool,
-        ignoreSegmentOverride: true,
-        representationMode
-      });
-    } else {
-      resolved = resolveTextStructuredBrowserVoiceResolution({
-        documentTree: activeTextDocumentTree,
-        block: targetBlock,
-        segment: targetSegment,
-        channel: normalizedChannel,
-        globalVoiceName,
-        defaultVoiceName: defaultVoice?.name || null,
-        availableBrowserVoices: pool,
-        ignoreSegmentOverride,
-        representationMode
-      });
-    }
+    const resolved = resolveTextStructuredBrowserVoiceResolution({
+      documentTree: activeTextDocumentTree,
+      block: targetBlock,
+      segment: targetSegment,
+      channel: normalizedChannel,
+      globalVoiceName,
+      defaultVoiceName: defaultVoice?.name || null,
+      availableBrowserVoices: pool,
+      ignoreSegmentOverride,
+      representationMode,
+      respectConversationSync: syncVoice,
+      conversationSpeakers: structuredTextConversationSpeakers
+    });
 
     const effectiveVoice = resolved.effectiveVoiceName
       ? pool.find(voice => String(voice?.name || '').trim() === resolved.effectiveVoiceName) || null
@@ -1065,24 +1043,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       ttsVoice: effectiveVoice,
       mappedVoiceAvailable: resolved.requestedVoiceAvailable,
       assignmentSource: resolved.requestedSource,
-      syncedToFirstSpeaker: syncVoice,
+      syncedToFirstSpeaker: Boolean(resolved.syncedToFirstSpeaker ?? syncVoice),
       ignoreSegmentOverride,
       representationMode
     };
   }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, textStructuredPreferences.browserTextVoiceName, textStructuredPreferences.browserMeaningVoiceName, voices, indonesianVoices]);
   const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
-    const syncRate = item?.blockType === 'conversation'
-      && structuredTextAudioSyncProfile.rate?.[normalizedChannel] === true
+    const syncRate = structuredTextAudioSyncProfile?.rate?.[normalizedChannel] === true
       && structuredTextConversationSpeakers.length > 0;
-    if (syncRate) {
-      const firstSpeaker = structuredTextConversationSpeakers[0];
-      const rateProfile = getTextStructuredPlaybackRateProfile(activeTextDocumentTree);
-      return rateProfile?.speakerIds?.[normalizedChannel]?.[firstSpeaker.id]
-        || rateProfile?.speakers?.[normalizedChannel]?.[String(firstSpeaker.label || '').trim().toLowerCase()]
-        || rateProfile?.channels?.[normalizedChannel]
-        || resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel);
-    }
     const blockId = item?.blockId || item?.textId;
     const segmentId = item?.segmentId || item?.id;
     const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate?.id === blockId) || null;
@@ -1092,7 +1061,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       block,
       segment,
       channel: normalizedChannel,
-      globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel)
+      globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, normalizedChannel),
+      respectConversationSync: syncRate,
+      conversationSpeakers: structuredTextConversationSpeakers
     });
   }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, textStructuredPreferences]);
   const structuredTextAudioRuntimeStatusMap = useMemo(() => (

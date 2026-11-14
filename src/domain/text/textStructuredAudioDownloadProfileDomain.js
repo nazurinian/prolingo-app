@@ -1,9 +1,7 @@
 import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
-import { collectTextStructuredConversationSpeakerIdentities, getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
-import { getTextStructuredAudioSyncProfile } from './textStructuredAudioSyncProfileDomain.js';
-import { getTextStructuredSpeakerAssignedVoiceName } from './textStructuredSpeakerVoiceProfileDomain.js';
-import { resolveTextStructuredEffectiveVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
+import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
+import { resolveTextStructuredConversationSyncedVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
 
 export const TEXT_STRUCTURED_AUDIO_DOWNLOAD_PROFILE_KEY = 'audioDownloadProfileV1';
 export const TEXT_STRUCTURED_AUDIO_DOWNLOAD_MODES = Object.freeze({
@@ -170,27 +168,13 @@ export const resolveTextStructuredEffectiveDownloadVoice = ({
   const edgeVoices = Array.isArray(preferences?.edgeVoices) && preferences.edgeVoices.length ? preferences.edgeVoices : initialEdgeVoices;
 
   const followPlayer = source => {
-    let playback = resolveTextStructuredEffectiveVoiceProfile({
+    const playback = resolveTextStructuredConversationSyncedVoiceProfile({
       documentTree,
       block,
       segment,
       channel: normalizedChannel,
       defaultVoiceName: defaultPlaybackVoiceName
     });
-    const syncProfile = getTextStructuredAudioSyncProfile(documentTree);
-    if (block?.blockType === 'conversation' && syncProfile.voice?.[normalizedChannel] === true) {
-      const speakers = collectTextStructuredConversationSpeakerIdentities(documentTree);
-      const firstSpeaker = speakers[0] || null;
-      if (firstSpeaker) {
-        const syncedVoice = getTextStructuredSpeakerAssignedVoiceName({
-          documentTree,
-          speaker: firstSpeaker.label,
-          speakerId: firstSpeaker.id,
-          channel: normalizedChannel
-        }) || defaultPlaybackVoiceName;
-        playback = { ...playback, voiceName: syncedVoice || playback.voiceName, source: 'sync-speaker-1' };
-      }
-    }
     const mapped = mapPlaybackVoiceToEdge({ playbackVoiceName: playback.voiceName, defaultEdgeVoiceId: defaultVoiceId, edgeVoices });
     return {
       voiceId: mapped.voiceId || defaultVoiceId,

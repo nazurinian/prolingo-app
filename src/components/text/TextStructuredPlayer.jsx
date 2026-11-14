@@ -19,7 +19,7 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../domain/text/textStructuredAudioCoverageDomain.js';
-import { resolveTextStructuredEffectiveVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
+import { resolveTextStructuredConversationSyncedVoiceProfile } from '../../domain/text/textStructuredVoiceAssignmentDomain.js';
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
 import { collectTextStructuredConversationSpeakers } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx';
@@ -285,7 +285,7 @@ const StructuredPlayerCard = ({
           const textCoverage = segment.text ? (audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, 'text')] || { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING }) : null;
           const meaningCoverage = segment.meaning ? (audioCoverageMap?.[buildTextStructuredRuntimeAudioKey(segment.id, 'meaning')] || { status: TEXT_AUDIO_COVERAGE_STATUS.MISSING }) : null;
           const speakerVoiceName = block.blockType === 'conversation' && segment.speaker
-            ? resolveTextStructuredEffectiveVoiceProfile({
+            ? resolveTextStructuredConversationSyncedVoiceProfile({
                 documentTree,
                 block,
                 segment,

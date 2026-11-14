@@ -134,6 +134,7 @@ export const getTextStructuredSpeakerVoiceProfileV2 = documentLike => {
   const source = documentLike?.metadata?.[TEXT_STRUCTURED_SPEAKER_VOICE_PROFILE_V2_KEY] || {};
   return { text: normalizeChannelMap(source.text), meaning: normalizeChannelMap(source.meaning) };
 };
+
 export const buildTextStructuredSpeakerVoiceProfileV2Metadata = ({ metadata, speakerId, channel = 'text', voiceName = null }) => {
   const base = normalizeMetadataObject(metadata);
   const current = getTextStructuredSpeakerVoiceProfileV2({ metadata: base });
@@ -147,4 +148,35 @@ export const buildTextStructuredSpeakerVoiceProfileV2Metadata = ({ metadata, spe
   if (Object.keys(next.text).length || Object.keys(next.meaning).length) result[TEXT_STRUCTURED_SPEAKER_VOICE_PROFILE_V2_KEY] = next;
   else delete result[TEXT_STRUCTURED_SPEAKER_VOICE_PROFILE_V2_KEY];
   return result;
+};
+
+/**
+ * Resolves the Conversation master speaker (first speaker in segment order)
+ * and builds a synthetic segment carrying its identity so Card/Document/Global
+ * fallback resolution can evaluate Speaker 1 uniformly across all channels.
+ */
+export const resolveTextStructuredConversationMasterSpeaker = ({
+  documentTree = null,
+  block = null,
+  conversationSpeakers = null
+} = {}) => {
+  const isConversation = block?.blockType
+    ? block.blockType === 'conversation'
+    : documentTree?.documentType === 'conversation';
+  if (!isConversation) return null;
+  const speakers = Array.isArray(conversationSpeakers)
+    ? conversationSpeakers
+    : collectTextStructuredConversationSpeakerIdentities(documentTree);
+  const firstSpeaker = speakers[0] || null;
+  if (!firstSpeaker) return null;
+  const label = clean(firstSpeaker.label || firstSpeaker.speaker);
+  const id = clean(firstSpeaker.id || firstSpeaker.speakerId);
+  if (!label && !id) return null;
+  return {
+    speaker: { ...firstSpeaker, ...(id ? { id } : {}), ...(label ? { label } : {}) },
+    segment: {
+      ...(label ? { speaker: label } : {}),
+      ...(id ? { metadata: buildTextStructuredSegmentSpeakerIdentityMetadata({}, id) } : {})
+    }
+  };
 };
