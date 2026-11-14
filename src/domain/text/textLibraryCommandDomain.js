@@ -453,42 +453,91 @@ const reorderBlocks = (snapshot, payload, now) => {
   }, { entity: 'block', action: 'reorder', documentId: document.id, orderedIds: ids });
 };
 
-const resolveSegmentSpeakerIdForAuthoring = ({
+/**
+ * Resolves canonical speaker label, segment speakerIdentityV1 metadata, and updated
+ * document speakerRegistryV1 metadata for Conversation segment create/update authoring.
+ */
+const resolveConversationAuthoringSpeaker = ({
   document,
-  explicitSpeakerId = null,
-  speakerChanged = false,
-  currentSegment = null,
-  speakerLabel = ''
+  block,
+  rawSpeaker,
+  candidateMetadata,
+  hasExplicitMetadata = false,
+  speakerProvided = false,
+  currentSegment = null
 }) => {
-  const cleanLabel = String(speakerLabel || '').trim();
-  if (!cleanLabel) return null;
-  if (explicitSpeakerId) return explicitSpeakerId;
-  if (!speakerChanged) {
-    const existingSegmentSpeakerId = getTextStructuredSegmentSpeakerId(currentSegment);
-    if (existingSegmentSpeakerId) return existingSegmentSpeakerId;
+  if (block?.blockType !== 'conversation') {
+    return {
+      speaker: rawSpeaker,
+      segmentMetadata: candidateMetadata,
+      documentMetadata: document.metadata
+    };
   }
-  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
-  const existingRegistered = getTextStructuredSpeakerRegistry({ metadata: document?.metadata })
-    .find(entry => normalizeTextStructuredSpeakerKey(entry.label) === normalizedLabel);
-  if (existingRegistered?.id) return existingRegistered.id;
-  return deriveTextStructuredSpeakerId({ documentId: document.id, speaker: cleanLabel });
-};
 
-const resolveDocumentMetadataForAuthoringSpeaker = ({ document, speakerId, speakerLabel }) => {
-  if (!speakerId) return document.metadata;
-  const cleanLabel = String(speakerLabel || '').trim();
-  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
-  const existingRegistered = getTextStructuredSpeakerRegistry({ metadata: document.metadata })
-    .find(entry => entry.id === speakerId) || null;
-  if (existingRegistered && normalizeTextStructuredSpeakerKey(existingRegistered.label) === normalizedLabel) {
-    return document.metadata;
+  const cleanLabel = String(rawSpeaker || '').trim();
+  if (!cleanLabel) {
+    return {
+      speaker: rawSpeaker,
+      segmentMetadata: candidateMetadata,
+      documentMetadata: document.metadata
+    };
   }
-  return buildTextStructuredUpsertSpeakerRegistryMetadata({
-    metadata: document.metadata,
-    documentId: document.id,
-    speakerId,
-    label: cleanLabel
-  });
+
+  const registry = getTextStructuredSpeakerRegistry({ metadata: document?.metadata });
+  const normalizedLabel = normalizeTextStructuredSpeakerKey(cleanLabel);
+  const currentNormalized = normalizeTextStructuredSpeakerKey(currentSegment?.speaker || '');
+  const speakerChanged = Boolean(currentSegment) && speakerProvided && currentNormalized !== normalizedLabel;
+  const currentSegmentSpeakerId = getTextStructuredSegmentSpeakerId(currentSegment);
+  const rawExplicitSpeakerId = hasExplicitMetadata
+    ? (String(candidateMetadata?.speakerIdentityV1 || '').trim() || null)
+    : null;
+
+  // Discard inherited segment speakerIdentityV1 when UPDATE_SEGMENT changes the speaker label
+  // without selecting a new ID, so stale metadata cannot rename a previously bound speaker.
+  const effectiveExplicitSpeakerId = (
+    speakerChanged
+    && rawExplicitSpeakerId
+    && currentSegmentSpeakerId
+    && rawExplicitSpeakerId === currentSegmentSpeakerId
+  )
+    ? null
+    : rawExplicitSpeakerId;
+
+  if (effectiveExplicitSpeakerId) {
+    const explicitRegistered = registry.find(entry => entry.id === effectiveExplicitSpeakerId) || null;
+    if (explicitRegistered && normalizeTextStructuredSpeakerKey(explicitRegistered.label) !== normalizedLabel) {
+      throw new Error(
+        `Speaker ID "${effectiveExplicitSpeakerId}" belongs to registered speaker "${explicitRegistered.label}" and cannot be assigned to "${cleanLabel}".`
+      );
+    }
+  }
+
+  const registeredByLabel = registry.find(
+    entry => normalizeTextStructuredSpeakerKey(entry.label) === normalizedLabel
+  ) || null;
+  const speakerId = effectiveExplicitSpeakerId
+    || (!speakerChanged && currentSegmentSpeakerId ? currentSegmentSpeakerId : null)
+    || registeredByLabel?.id
+    || deriveTextStructuredSpeakerId({ documentId: document.id, speaker: cleanLabel });
+
+  const resolvedRegistered = registry.find(entry => entry.id === speakerId) || null;
+  const matchesExistingRegistered = Boolean(
+    resolvedRegistered && normalizeTextStructuredSpeakerKey(resolvedRegistered.label) === normalizedLabel
+  );
+  const canonicalSpeaker = matchesExistingRegistered ? resolvedRegistered.label : cleanLabel;
+
+  return {
+    speaker: canonicalSpeaker,
+    segmentMetadata: buildTextStructuredSegmentSpeakerIdentityMetadata(candidateMetadata, speakerId),
+    documentMetadata: matchesExistingRegistered
+      ? document.metadata
+      : buildTextStructuredUpsertSpeakerRegistryMetadata({
+          metadata: document.metadata,
+          documentId: document.id,
+          speakerId,
+          label: canonicalSpeaker
+        })
+  };
 };
 
 const createSegment = (snapshot, payload, now) => {
@@ -496,16 +545,19 @@ const createSegment = (snapshot, payload, now) => {
   const document = requireStructuredDocument(snapshot, block.documentId);
   const allocated = allocateIdentity(snapshot, 'SEGMENT');
   const siblings = snapshot.segments.filter(item => item.blockId === block.id);
-  const speakerLabel = block.blockType === 'conversation' ? String(payload?.speaker || '').trim() : '';
-  const speakerId = resolveSegmentSpeakerIdForAuthoring({
+  const {
+    speaker,
+    segmentMetadata,
+    documentMetadata
+  } = resolveConversationAuthoringSpeaker({
     document,
-    explicitSpeakerId: String(payload?.metadata?.speakerIdentityV1 || '').trim() || null,
-    speakerLabel
+    block,
+    rawSpeaker: payload?.speaker,
+    candidateMetadata: payload?.metadata,
+    hasExplicitMetadata: payload?.metadata !== undefined,
+    speakerProvided: true,
+    currentSegment: null
   });
-  const segmentMetadata = speakerId
-    ? buildTextStructuredSegmentSpeakerIdentityMetadata(payload?.metadata, speakerId)
-    : payload?.metadata;
-  const documentMetadata = resolveDocumentMetadataForAuthoringSpeaker({ document, speakerId, speakerLabel });
   const record = createTextSegmentRecord({
     id: allocated.id,
     uid: allocated.uid,
@@ -514,7 +566,7 @@ const createSegment = (snapshot, payload, now) => {
     order: maxOrder(siblings) + 1,
     text: payload?.text,
     meaning: payload?.meaning,
-    speaker: payload?.speaker,
+    speaker,
     joinAfter: payload?.joinAfter,
     createdAt: now,
     updatedAt: now,
@@ -534,27 +586,25 @@ const updateSegment = (snapshot, payload, now) => {
   const document = requireStructuredDocument(snapshot, current.documentId);
   const block = requireBlock(snapshot, current.blockId);
   const nextSpeaker = payload?.speaker === undefined ? current.speaker : payload.speaker;
-  const speakerLabel = block.blockType === 'conversation' ? String(nextSpeaker || '').trim() : '';
   const candidateMetadata = payload?.metadata === undefined ? current.metadata : payload.metadata;
-  const speakerChanged = payload?.speaker !== undefined
-    && String(current.speaker || '').trim().toLowerCase().replace(/\s+/g, ' ') !== speakerLabel.toLowerCase().replace(/\s+/g, ' ');
-  const explicitSpeakerId = payload?.metadata === undefined ? null : String(candidateMetadata?.speakerIdentityV1 || '').trim() || null;
-  const speakerId = resolveSegmentSpeakerIdForAuthoring({
+  const {
+    speaker,
+    segmentMetadata,
+    documentMetadata
+  } = resolveConversationAuthoringSpeaker({
     document,
-    explicitSpeakerId,
-    speakerChanged,
-    currentSegment: current,
-    speakerLabel
+    block,
+    rawSpeaker: nextSpeaker,
+    candidateMetadata,
+    hasExplicitMetadata: payload?.metadata !== undefined,
+    speakerProvided: payload?.speaker !== undefined,
+    currentSegment: current
   });
-  const segmentMetadata = speakerId
-    ? buildTextStructuredSegmentSpeakerIdentityMetadata(candidateMetadata, speakerId)
-    : candidateMetadata;
-  const documentMetadata = resolveDocumentMetadataForAuthoringSpeaker({ document, speakerId, speakerLabel });
   const record = createTextSegmentRecord({
     ...current,
     text: payload?.text === undefined ? current.text : payload.text,
     meaning: payload?.meaning === undefined ? current.meaning : payload.meaning,
-    speaker: nextSpeaker,
+    speaker,
     joinAfter: payload?.joinAfter === undefined ? current.joinAfter : payload.joinAfter,
     updatedAt: now,
     metadata: segmentMetadata

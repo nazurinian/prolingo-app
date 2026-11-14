@@ -1072,6 +1072,7 @@ test('B2.3 SPK-02 Atomic RENAME_SPEAKER: updates registry label and all bound Co
   }, 6004).snapshot;
   const createdSeg = afterNewSeg.segments[afterNewSeg.segments.length - 1];
   assert.equal(getTextStructuredSegmentSpeakerId(createdSeg), 'SPK_EXISTING', 'New segment authored for renamed speaker must reuse SPK_EXISTING ID');
+  assert.equal(createdSeg.speaker, 'Senior Moderator', 'New segment authored for renamed speaker must store canonical registered label');
 
   // Cannot remove used speaker via REMOVE_SPEAKER, can remove after unused
   assert.throws(() => applyTextLibraryCommand(afterNewSeg, {
@@ -1089,6 +1090,279 @@ test('B2.3 SPK-02 Atomic RENAME_SPEAKER: updates registry label and all bound Co
     payload: { documentId: 'DOC_000001', speakerId: 'SPK_EXISTING', label: '  ben  ' }
   }, 6007));
   assert.equal(getTextStructuredSpeakerRegistry(withBen.documents[0]).find(s => s.id === 'SPK_EXISTING')?.label, 'Senior Moderator');
+});
+
+test('B2.5 Canonical registered speaker label preservation across CREATE_SEGMENT and UPDATE_SEGMENT', () => {
+  let snapshot = createConversationBaselineSnapshot();
+  const docId = 'DOC_000001';
+  const originalReg = getTextStructuredSpeakerRegistry(snapshot.documents[0]).find(s => s.id === 'SPK_EXISTING');
+
+  // 1) CREATE_SEGMENT with lowercase/whitespace variant and omitted speakerIdentityV1
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: '  existing   host  ',
+      text: 'Canonical check line 1.',
+      meaning: 'Baris cek kanonis 1.'
+    }
+  }, 9000).snapshot;
+  const createdImplicit = snapshot.segments[snapshot.segments.length - 1];
+  assert.equal(getTextStructuredSegmentSpeakerId(createdImplicit), 'SPK_EXISTING');
+  assert.equal(createdImplicit.speaker, 'Existing Host', 'CREATE_SEGMENT must store canonical registered speaker label');
+
+  // 2) CREATE_SEGMENT with uppercase variant AND explicit matching speakerIdentityV1
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: 'EXISTING HOST',
+      text: 'Canonical check line 2.',
+      meaning: 'Baris cek kanonis 2.',
+      metadata: {
+        speakerIdentityV1: 'SPK_EXISTING',
+        sentenceAuthoringV1: { keepFlag: true }
+      }
+    }
+  }, 9001).snapshot;
+  const createdExplicit = snapshot.segments[snapshot.segments.length - 1];
+  assert.equal(getTextStructuredSegmentSpeakerId(createdExplicit), 'SPK_EXISTING');
+  assert.equal(createdExplicit.speaker, 'Existing Host', 'CREATE_SEGMENT with explicit ID must store canonical registered speaker label');
+  assert.deepEqual(createdExplicit.metadata?.sentenceAuthoringV1, { keepFlag: true });
+
+  // 3) UPDATE_SEGMENT with case/whitespace-only speaker changes (both omitted and forwarded metadata)
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: 'SEGMENT_000001',
+      speaker: '  existing   host '
+    }
+  }, 9002).snapshot;
+  let updatedSeg1 = snapshot.segments.find(s => s.id === 'SEGMENT_000001');
+  assert.equal(getTextStructuredSegmentSpeakerId(updatedSeg1), 'SPK_EXISTING');
+  assert.equal(updatedSeg1.speaker, 'Existing Host', 'UPDATE_SEGMENT case/whitespace variant (metadata omitted) must keep canonical label');
+
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: 'SEGMENT_000001',
+      speaker: 'EXISTING   HOST',
+      metadata: updatedSeg1.metadata
+    }
+  }, 9003).snapshot;
+  updatedSeg1 = snapshot.segments.find(s => s.id === 'SEGMENT_000001');
+  assert.equal(getTextStructuredSegmentSpeakerId(updatedSeg1), 'SPK_EXISTING');
+  assert.equal(updatedSeg1.speaker, 'Existing Host', 'UPDATE_SEGMENT case/whitespace variant (forwarded metadata) must keep canonical label');
+
+  // Registry metadata remains exact
+  const regAfter = getTextStructuredSpeakerRegistry(snapshot.documents[0]);
+  assert.equal(regAfter.length, 1);
+  assert.deepEqual(regAfter[0], originalReg);
+
+  // 4) Paragraph card segment remains untouched by Conversation speaker registry snapping
+  const paraUpdated = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: 'SEGMENT_000004',
+      speaker: 'existing host'
+    }
+  }, 9004).snapshot;
+  const paraSeg = paraUpdated.segments.find(s => s.id === 'SEGMENT_000004');
+  assert.equal(paraSeg.speaker, 'existing host', 'Paragraph segments must remain unaffected by Conversation speaker registry');
+  assert.equal(getTextStructuredSegmentSpeakerId(paraSeg), null);
+
+  // 5) RENAME_SPEAKER still intentionally renames registry + bound Conversation segments
+  const renamed = applyTextLibraryCommand(paraUpdated, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.RENAME_SPEAKER,
+    payload: { documentId: docId, speakerId: 'SPK_EXISTING', label: 'Moderator Chief' }
+  }, 9005).snapshot;
+  assert.equal(getTextStructuredSpeakerRegistry(renamed.documents[0])[0]?.label, 'Moderator Chief');
+  assert.equal(renamed.segments.find(s => s.id === 'SEGMENT_000001')?.speaker, 'Moderator Chief');
+  assert.equal(renamed.segments.find(s => s.id === createdImplicit.id)?.speaker, 'Moderator Chief');
+  assert.equal(renamed.segments.find(s => s.id === createdExplicit.id)?.speaker, 'Moderator Chief');
+  assert.equal(renamed.segments.find(s => s.id === 'SEGMENT_000004')?.speaker, 'existing host');
+});
+
+test('B2.6 Stale speakerIdentityV1 guard and mismatched explicit ID rejection on UPDATE_SEGMENT / CREATE_SEGMENT', () => {
+  let snapshot = createConversationBaselineSnapshot();
+  const docId = 'DOC_000001';
+
+  // Register Alice and Bob cleanly
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.REGISTER_SPEAKER,
+    payload: { documentId: docId, label: 'Alice' }
+  }, 9100).snapshot;
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.REGISTER_SPEAKER,
+    payload: { documentId: docId, label: 'Bob' }
+  }, 9101).snapshot;
+
+  const aliceId = getTextStructuredSpeakerRegistry(snapshot.documents[0]).find(s => s.label === 'Alice').id;
+  const bobId = getTextStructuredSpeakerRegistry(snapshot.documents[0]).find(s => s.label === 'Bob').id;
+  const aliceUidBefore = getTextStructuredSpeakerRegistry(snapshot.documents[0]).find(s => s.id === aliceId).uid;
+
+  let metaWithVoice = buildTextStructuredSpeakerVoiceProfileV2Metadata({
+    metadata: snapshot.documents[0].metadata,
+    speakerId: aliceId,
+    channel: 'text',
+    voiceName: 'Microsoft Sonia Online (Natural) - English (United Kingdom)'
+  });
+  metaWithVoice = buildTextStructuredSpeakerVoiceProfileV2Metadata({
+    metadata: metaWithVoice,
+    speakerId: bobId,
+    channel: 'text',
+    voiceName: 'Microsoft Libby Online (Natural) - English (United Kingdom)'
+  });
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_DOCUMENT,
+    payload: { id: docId, metadata: metaWithVoice }
+  }, 9102).snapshot;
+
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: 'Alice',
+      text: 'Alice line 1.',
+      meaning: 'Baris Alice 1.',
+      metadata: { speakerIdentityV1: aliceId }
+    }
+  }, 9103).snapshot;
+  const segA1Id = snapshot.segments[snapshot.segments.length - 1].id;
+
+  snapshot = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: 'Alice',
+      text: 'Alice line 2.',
+      meaning: 'Baris Alice 2.',
+      metadata: { speakerIdentityV1: aliceId }
+    }
+  }, 9104).snapshot;
+  const segA2Id = snapshot.segments[snapshot.segments.length - 1].id;
+
+  // Case 1: Caller updates segA1 speaker to unregistered 'Charlie' while forwarding stale segA1.metadata (speakerIdentityV1 === aliceId)
+  const segA1Before = snapshot.segments.find(s => s.id === segA1Id);
+  const afterCharlie = applyTextLibraryCommand(snapshot, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: segA1Id,
+      speaker: 'Charlie',
+      metadata: { ...segA1Before.metadata, authoredTag: 'keep-me' }
+    }
+  }, 9105).snapshot;
+
+  const regAfterCharlie = getTextStructuredSpeakerRegistry(afterCharlie.documents[0]);
+  const aliceAfterCharlie = regAfterCharlie.find(s => s.id === aliceId);
+  assert.equal(aliceAfterCharlie?.label, 'Alice', 'Stale speakerIdentityV1 on UPDATE_SEGMENT must never rename Alice in speakerRegistryV1');
+  assert.equal(aliceAfterCharlie?.uid, aliceUidBefore);
+
+  const segA1AfterCharlie = afterCharlie.segments.find(s => s.id === segA1Id);
+  const segA2AfterCharlie = afterCharlie.segments.find(s => s.id === segA2Id);
+  const charlieId = getTextStructuredSegmentSpeakerId(segA1AfterCharlie);
+  assert.ok(charlieId && charlieId !== aliceId, 'segA1 reassigned to Charlie must receive Charlie speaker ID, not stale aliceId');
+  assert.equal(segA1AfterCharlie.speaker, 'Charlie');
+  assert.equal(segA1AfterCharlie.metadata?.authoredTag, 'keep-me');
+  assert.equal(regAfterCharlie.find(s => s.id === charlieId)?.label, 'Charlie');
+  assert.equal(segA2AfterCharlie.speaker, 'Alice');
+  assert.equal(getTextStructuredSegmentSpeakerId(segA2AfterCharlie), aliceId);
+
+  // Case 2: Caller updates segA2 speaker to registered '  bob  ' while forwarding stale segA2.metadata (speakerIdentityV1 === aliceId)
+  const segA2Before = afterCharlie.segments.find(s => s.id === segA2Id);
+  const afterBobStale = applyTextLibraryCommand(afterCharlie, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: segA2Id,
+      speaker: '  bob  ',
+      metadata: { ...segA2Before.metadata }
+    }
+  }, 9106).snapshot;
+
+  const segA2AfterBob = afterBobStale.segments.find(s => s.id === segA2Id);
+  assert.equal(getTextStructuredSegmentSpeakerId(segA2AfterBob), bobId, 'Stale aliceId + target registered bob must bind to SPK_BOB');
+  assert.equal(segA2AfterBob.speaker, 'Bob', 'Must store canonical registered Bob label');
+  const regAfterBob = getTextStructuredSpeakerRegistry(afterBobStale.documents[0]);
+  assert.equal(regAfterBob.find(s => s.id === aliceId)?.label, 'Alice');
+  assert.equal(regAfterBob.find(s => s.id === bobId)?.label, 'Bob');
+  assert.equal(
+    getTextStructuredSpeakerVoiceProfileV2(afterBobStale.documents[0]).text?.[aliceId],
+    'Microsoft Sonia Online (Natural) - English (United Kingdom)'
+  );
+  assert.equal(
+    getTextStructuredSpeakerVoiceProfileV2(afterBobStale.documents[0]).text?.[bobId],
+    'Microsoft Libby Online (Natural) - English (United Kingdom)'
+  );
+
+  // Case 3: Direct mismatched explicit ID belonging to a DIFFERENT registered speaker must throw in CREATE_SEGMENT and UPDATE_SEGMENT
+  assert.throws(() => applyTextLibraryCommand(afterBobStale, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: 'Diana',
+      text: 'Mismatch create.',
+      meaning: 'Tidak cocok.',
+      metadata: { speakerIdentityV1: aliceId }
+    }
+  }, 9107), /speaker/i);
+
+  assert.throws(() => applyTextLibraryCommand(afterBobStale, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: segA1Id, // currently Charlie (charlieId)
+      speaker: 'Diana',
+      metadata: { ...segA1AfterCharlie.metadata, speakerIdentityV1: aliceId }
+    }
+  }, 9108), /speaker/i);
+
+  // Failed commands must not register Diana or rename Alice
+  assert.equal(
+    getTextStructuredSpeakerRegistry(afterBobStale.documents[0]).some(s => s.label === 'Diana'),
+    false
+  );
+
+  // Case 4: Valid explicit reassignments, explicit custom IDs, and text-only edits stay compatible
+  const explicitBob = applyTextLibraryCommand(afterBobStale, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: segA1Id,
+      speaker: 'Bob',
+      metadata: { ...segA1AfterCharlie.metadata, speakerIdentityV1: bobId }
+    }
+  }, 9109).snapshot;
+  assert.equal(getTextStructuredSegmentSpeakerId(explicitBob.segments.find(s => s.id === segA1Id)), bobId);
+  assert.equal(explicitBob.segments.find(s => s.id === segA1Id)?.speaker, 'Bob');
+
+  const textOnlyEdit = applyTextLibraryCommand(explicitBob, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
+    payload: {
+      id: segA1Id,
+      text: 'Edited text only.'
+    }
+  }, 9110).snapshot;
+  assert.equal(getTextStructuredSegmentSpeakerId(textOnlyEdit.segments.find(s => s.id === segA1Id)), bobId);
+  assert.equal(textOnlyEdit.segments.find(s => s.id === segA1Id)?.speaker, 'Bob');
+
+  const customZoe = applyTextLibraryCommand(textOnlyEdit, {
+    type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_SEGMENT,
+    payload: {
+      documentId: docId,
+      blockId: 'TEXT_000001',
+      speaker: 'Zoe',
+      text: 'Guest Zoe.',
+      meaning: 'Tamu Zoe.',
+      metadata: { speakerIdentityV1: 'SPK_CUSTOM_ZOE' }
+    }
+  }, 9111).snapshot;
+  const zoeSeg = customZoe.segments[customZoe.segments.length - 1];
+  assert.equal(getTextStructuredSegmentSpeakerId(zoeSeg), 'SPK_CUSTOM_ZOE');
+  assert.equal(zoeSeg.speaker, 'Zoe');
+  assert.equal(getTextStructuredSpeakerRegistry(customZoe.documents[0]).find(s => s.id === 'SPK_CUSTOM_ZOE')?.label, 'Zoe');
 });
 
 for (const { name, fn } of tests) {
