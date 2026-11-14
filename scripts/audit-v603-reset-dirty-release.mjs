@@ -46,6 +46,10 @@ check('Speaker reset is scoped separately from Workspace and can return to inher
   assert.equal(isTextSpeakerAudioDirty({ metadata: {} }, { speakerId }), false);
   assert.equal(isTextSpeakerAudioDirty({ metadata: saved }, { speakerId }), true);
   assert.equal(isTextWorkspaceAudioDirty({ metadata: saved }), false);
+  const cardOnly = { metadata: {}, blocks: [{ id: 'CARD_ONLY', metadata: saved }] };
+  assert.equal(isTextSpeakerAudioDirty(cardOnly, { speakerId }), true);
+  assert.equal(isTextSpeakerAudioDirty(cardOnly, { includeSync: true }), true);
+  assert.equal(isTextWorkspaceAudioDirty(cardOnly), false);
 });
 
 check('Range component has pointer, keyboard, blur final-commit; slider input never directly persists', () => {
