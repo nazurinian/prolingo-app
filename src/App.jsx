@@ -118,7 +118,7 @@ import { buildTextStructuredSegmentSpeakerIdentityMetadata, buildTextStructuredS
 import { buildTextStructuredAudioContentFingerprint } from './domain/text/textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './domain/text/textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredAudioRequirementsForSnapshot } from './domain/text/textStructuredAudioRequirementDomain.js';
-import { buildTextStructuredBatchSelection, buildTextStructuredBatchWorkspaceSelection, normalizeTextStructuredBatchScope, resolveTextStructuredBatchTargetWorkspaceIds } from './domain/text/textStructuredBatchDomain.js';
+import { buildTextStructuredBatchWorkspaceSelection, normalizeTextStructuredBatchScope, resolveTextStructuredBatchTargetWorkspaceIds } from './domain/text/textStructuredBatchDomain.js';
 import { buildTextStructuredBulkGenerationPlan, buildTextStructuredCardMissingFullRequirements, selectTextStructuredBulkGenerationRequirements, summarizeTextStructuredBulkPhysicalWork, TEXT_STRUCTURED_BULK_REPRESENTATIONS, TEXT_STRUCTURED_BULK_REQUIREMENT_STATUS } from './domain/text/textStructuredBulkGenerationDomain.js';
 import { buildTextStructuredBulkExportPlan, TEXT_STRUCTURED_BULK_EXPORT_FORMATS } from './domain/text/textStructuredBulkExportDomain.js';
 import { publishTextStructuredBatchTelemetry, publishTextStructuredBatchTelemetryThrottled, resetTextStructuredBatchTelemetry } from './services/audio/textStructuredBatchTelemetryService.js';
@@ -1620,9 +1620,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const activeBrowserTtsRate = structuredTextModeActive ? textStructuredPreferences.browserTextRate : rate;
   const activeBrowserTtsMeaningRate = structuredTextModeActive ? textStructuredPreferences.browserMeaningRate : rate;
   const activeBrowserTtsRatesLinked = structuredTextModeActive ? textStructuredPreferences.browserRatesLinked !== false : true;
+  const handleStructuredTextGlobalBrowserTtsVoiceChange = useCallback((voiceOrName, channel = 'text') => {
+    const voiceInput = typeof voiceOrName === 'string' ? { name: voiceOrName } : voiceOrName;
+    const patch = resolveTextStructuredVoicePreferencePatch({ channel, voice: voiceInput });
+    setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, ...patch }));
+  }, [setTextStructuredPreferences]);
   const handleActiveBrowserTtsVoiceChange = (voice) => {
     if (structuredTextModeActive) {
-      setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'text', voice }) }));
+      handleStructuredTextGlobalBrowserTtsVoiceChange(voice, 'text');
       return;
     }
     selectedVoiceExplicitRef.current = true;
@@ -1630,7 +1635,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
   const handleActiveBrowserTtsIndonesianVoiceChange = (voice) => {
     if (structuredTextModeActive) {
-      setTextStructuredPreferences(prev => ({ ...prev, ...resolveTextStructuredVoicePreferencePatch({ channel: 'meaning', voice }) }));
+      handleStructuredTextGlobalBrowserTtsVoiceChange(voice, 'meaning');
       return;
     }
     selectedIndonesianVoiceExplicitRef.current = true;
@@ -5042,6 +5047,27 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return result;
   }, [activeTextDocumentTree, structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, handleTextLibraryStructuredCommand, addLog]);
 
+  const handleStructuredTextResetGlobalBrowserTts = useCallback(
+    () => handleStructuredTextResetGlobalPlaybackPreferences('browser-tts'),
+    [handleStructuredTextResetGlobalPlaybackPreferences]
+  );
+  const handleStructuredTextResetGlobalPlaybackOnly = useCallback(
+    () => handleStructuredTextResetGlobalPlaybackPreferences('playback'),
+    [handleStructuredTextResetGlobalPlaybackPreferences]
+  );
+  const handleStructuredTextResetGlobalEdgeOnly = useCallback(
+    () => handleStructuredTextResetGlobalGenerationPreferences('edge'),
+    [handleStructuredTextResetGlobalGenerationPreferences]
+  );
+  const handleStructuredTextResetBulkOnly = useCallback(
+    () => handleStructuredTextResetGlobalGenerationPreferences('bulk'),
+    [handleStructuredTextResetGlobalGenerationPreferences]
+  );
+  const handleStructuredTextResetWorkspaceDefault = useCallback(
+    () => handleStructuredTextResetWorkspaceAudioPreferences({ includeSpeakers: false, includeCardsAndSegments: false }),
+    [handleStructuredTextResetWorkspaceAudioPreferences]
+  );
+
   const handleStructuredTextCardPlaybackOrderChange = useCallback(async (blockId, profiles, channel = 'text') => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1' || !blockId) return null;
     const block = (activeTextDocumentTree.blocks || []).find(item => item.id === blockId);
@@ -7253,7 +7279,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     cancel: handleStructuredTextCancelGeneration,
     retryFailed: handleStructuredTextRetryFailedGeneration,
     resetDisabled: !structuredTextResetGuard.allowed || Boolean(structuredTextAudioGenerationState.running),
-    resetPreferences: () => handleStructuredTextResetGlobalGenerationPreferences('bulk')
+    resetPreferences: handleStructuredTextResetBulkOnly
   } : null;
 
   const renderBatchPopup = (options = {}) => renderBatchPopupView({
@@ -7358,12 +7384,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     disabled: isSystemBusy || structuredTextAudioGenerationState.running,
     onAudioSourceModeChange: handleStructuredTextAudioSourceModeChange,
     onDocumentVoiceChange: handleStructuredTextDocumentVoiceChange,
-    onGlobalBrowserTtsVoiceChange: (voiceName, channel) => {
-      setTextStructuredPreferences(previous => ({
-        ...previous,
-        [channel === 'meaning' ? 'browserMeaningVoiceName' : 'browserTextVoiceName']: voiceName || null
-      }));
-    },
+    onGlobalBrowserTtsVoiceChange: handleStructuredTextGlobalBrowserTtsVoiceChange,
     onSpeakerVoiceChange: handleStructuredTextSpeakerVoiceChange,
     onDocumentRateChange: handleStructuredTextDocumentRateChange,
     onSpeakerRateChange: handleStructuredTextSpeakerRateChange,
@@ -7386,9 +7407,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     audioLibrary: structuredTextAudioLibraryControls,
     playbackSourceStatus: scopedStructuredTextPlaybackSourceStatus,
     resetDisabled: !structuredTextResetGuard.allowed || Boolean(structuredTextAudioGenerationState.running),
-    onResetGlobalBrowserTts: () => handleStructuredTextResetGlobalPlaybackPreferences('browser-tts'),
-    onResetGlobalEdge: () => handleStructuredTextResetGlobalGenerationPreferences('edge'),
-    onResetWorkspaceAudio: () => handleStructuredTextResetWorkspaceAudioPreferences({ includeSpeakers: false, includeCardsAndSegments: false }),
+    onResetGlobalBrowserTts: handleStructuredTextResetGlobalBrowserTts,
+    onResetGlobalEdge: handleStructuredTextResetGlobalEdgeOnly,
+    onResetWorkspaceAudio: handleStructuredTextResetWorkspaceDefault,
     onResetSpeakersAudio: handleStructuredTextResetSpeakerAudioPreferences
   };
 
@@ -7524,7 +7545,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onCloseControlsWorkspace={() => setTextPlayerWorkspaceOpen(false)}
         onStopPlayback={forceStopAll}
         resetDisabled={!structuredTextResetGuard.allowed || Boolean(structuredTextAudioGenerationState.running)}
-        onResetPlaybackPreferences={() => handleStructuredTextResetGlobalPlaybackPreferences('playback')}
+        onResetPlaybackPreferences={handleStructuredTextResetGlobalPlaybackOnly}
         onResetCardAudioPreferences={handleStructuredTextResetCardAudioPreferences}
         onResetSegmentAudioPreferences={handleStructuredTextResetSegmentAudioPreferences}
       />;

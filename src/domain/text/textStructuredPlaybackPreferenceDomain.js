@@ -95,6 +95,9 @@ const resumeModes = new Set(Object.values(TEXT_STRUCTURED_RESUME_MODES));
 const normalizeText = value => String(value ?? '').trim();
 const normalizeVoiceName = value => normalizeText(value) || null;
 const normalizeRate = value => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return DEFAULT_TEXT_STRUCTURED_PREFERENCES.browserTextRate;
+  }
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return DEFAULT_TEXT_STRUCTURED_PREFERENCES.browserTextRate;
   return Math.min(2, Math.max(0.5, Math.round(numeric * 10) / 10));

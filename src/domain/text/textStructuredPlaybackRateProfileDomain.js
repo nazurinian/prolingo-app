@@ -5,6 +5,7 @@ export const TEXT_STRUCTURED_PLAYBACK_RATE_PROFILE_KEY = 'audioPlaybackRateProfi
 
 const clean = value => String(value ?? '').trim();
 const normalizeRate = value => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
   return Math.min(2, Math.max(0.5, Math.round(number * 10) / 10));
