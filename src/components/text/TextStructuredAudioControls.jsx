@@ -420,7 +420,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                 message: 'Clears default Text Browser TTS EN/ID voice selections and resets Browser TTS speeds to default (1.0×). Workspace/Card/Speaker overrides, Staging MP3 files, and Table settings are preserved.'
               })}
               data-text-reset-global-browser-tts="true"
-              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-40 transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 disabled:opacity-100 transition-colors"
               title="Reset Global Browser TTS voices and speeds"
             >
               <RotateCcw className="w-2.5 h-2.5"/>
