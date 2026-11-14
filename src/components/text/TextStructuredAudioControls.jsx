@@ -439,7 +439,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               className={`inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-50 transition-colors ${globalBrowserDirty ? 'opacity-100' : 'opacity-40'}`}
               title="Reset Global Browser TTS voices and speeds"
             >
-              <RotateCcw className="w-2.5 h-2.5"/>
+              <RotateCcw className="w-3.5 h-3.5"/>
               
             </button>
           )}
@@ -473,7 +473,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                 className={`inline-flex items-center gap-1 rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/30 px-2 py-0.5 text-[8px] font-black text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors ${workspaceAudioDirty ? 'opacity-100' : 'opacity-40'}`}
                 title="Reset this Workspace's audio overrides to Global defaults"
               >
-                <RotateCcw className="w-2.5 h-2.5"/>
+                <RotateCcw className="w-3.5 h-3.5"/>
                 
               </button>
             )}
@@ -500,7 +500,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
               className={`inline-flex items-center gap-1 rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50/80 dark:bg-sky-950/30 px-2 py-0.5 text-[8px] font-black text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition-colors ${allSpeakersAudioDirty ? 'opacity-100' : 'opacity-40'}`}
               title="Reset all Speaker voice, speed, sync, and download overrides"
             >
-              <RotateCcw className="w-2.5 h-2.5"/>
+              <RotateCcw className="w-3.5 h-3.5"/>
               
             </button>
           )}
@@ -571,7 +571,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
                   className={`ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300 hover:border-sky-300 transition-colors ${speakerAudioDirty ? 'opacity-100' : 'opacity-40'}`}
                   title={`Reset audio preferences for ${label}`}
                 >
-                  <RotateCcw className="w-2.5 h-2.5"/>
+                  <RotateCcw className="w-3.5 h-3.5"/>
                   
                 </button>
               )}
@@ -631,7 +631,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
             message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
           })}
           className={`mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 hover:border-violet-400 ${globalEdgeDirty ? 'opacity-100' : 'opacity-40'}`}
-          data-text-global-edge-restore-default="true"><RotateCcw className="h-3.5 w-3.5"/></button>
+          data-text-global-edge-restore-default="true" title="Reset Global Edge generation settings to canonical defaults"><RotateCcw className="h-3.5 w-3.5"/></button>
         <div className="grid gap-2 md:grid-cols-2">
           <label className="text-[9px] font-bold text-slate-600 dark:text-slate-300">Global Edge EN Voice
             <select disabled={disabled} value={generationPreferences?.edgeTextVoiceId || ''} onChange={event => onGenerationPreferencesChange?.({ edgeTextVoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200">
