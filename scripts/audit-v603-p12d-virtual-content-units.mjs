@@ -912,23 +912,78 @@ runCheck('08. Flattened traversal & From-Here slice exact equivalence across mod
       `${label}: old vs virtual flat playable list`
     );
 
-    for (const seg of rawBlocksFlat) {
+    const nonFirstBlockId = tree.blocks.find((b, idx) => idx > 0 && b.segments.length > 0)?.id || null;
+    assert.ok(nonFirstBlockId, `${label}: expected non-first block with segments`);
+
+    const scopeCases = [
+      ...rawBlocksFlat.map(seg => ({ caseLabel: `valid:${seg.id}`, startSegmentId: seg.id })),
+      ...rawBlocksFlat.map(seg => ({ caseLabel: `valid+blockId:${seg.id}`, startSegmentId: seg.id, blockId: nonFirstBlockId })),
+      { caseLabel: 'missing:omitted' },
+      { caseLabel: 'missing:null+blockId', startSegmentId: null, blockId: nonFirstBlockId },
+      { caseLabel: 'invalid:missing-seg', startSegmentId: 'SEGMENT_DOES_NOT_EXIST' },
+      { caseLabel: 'invalid:missing-seg+blockId', startSegmentId: 'SEGMENT_DOES_NOT_EXIST', blockId: nonFirstBlockId },
+      { caseLabel: 'cursor+blockId', startSegmentId: null, cursorSegmentId: rawBlocksFlat[1]?.id || null, blockId: nonFirstBlockId }
+    ];
+
+    for (const scopeInput of scopeCases) {
       const oldFromHere = resolveStructuredTextPlaybackScopeList({
         documentTree: tree,
-        startSegmentId: seg.id,
+        startSegmentId: scopeInput.startSegmentId,
+        cursorSegmentId: scopeInput.cursorSegmentId,
+        blockId: scopeInput.blockId,
         scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
       });
-      const projFromHere = sliceVirtualContentUnitProjectionFromHere(proj, { startSegmentId: seg.id });
-      assert.equal(projFromHere.startIndex, oldFromHere.startIndex, `${label} start ${seg.id}`);
+      const projFromHere = sliceVirtualContentUnitProjectionFromHere(proj, {
+        startSegmentId: scopeInput.startSegmentId,
+        cursorSegmentId: scopeInput.cursorSegmentId,
+        blockId: scopeInput.blockId
+      });
+      assert.equal(projFromHere.startIndex, oldFromHere.startIndex, `${label} ${scopeInput.caseLabel} startIndex`);
       assert.deepEqual(
         projFromHere.playbackList.map(i => `${i.blockId}:${i.segmentId}:${i.speaker}:${i.normalizedText}:${i.normalizedMeaning}:${i.displayId}`),
         oldFromHere.playbackList.map(i => `${i.blockId}:${i.segmentId}:${i.speaker}:${i.text}:${i.meaning}:${i.displayId}`),
-        `${label} From-Here sequence from ${seg.id}`
+        `${label} From-Here sequence (${scopeInput.caseLabel})`
       );
+      if (scopeInput.caseLabel.startsWith('missing:') || scopeInput.caseLabel.startsWith('invalid:')) {
+        assert.equal(
+          projFromHere.playbackList[0]?.segmentId,
+          rawBlocksFlat[0]?.id,
+          `${label} ${scopeInput.caseLabel} must fall back to workspace start (not blockId)`
+        );
+      }
       checkedSlices += 1;
     }
   }
-  return `${checkedSlices} From-Here slices + flat traversals identical`;
+
+  // Empty structured document & legacy unsupported tree fallbacks
+  const emptyDocTree = {
+    id: 'DOC_EMPTY_FROM_HERE',
+    editorModel: 'structured-v1',
+    documentType: 'paragraph',
+    blocks: [
+      {
+        id: 'TEXT_EMPTY_01',
+        documentId: 'DOC_EMPTY_FROM_HERE',
+        blockType: 'paragraph',
+        order: 1,
+        segments: []
+      }
+    ]
+  };
+  const emptyProj = projectTextDocumentToVirtualContentUnits(emptyDocTree);
+  assert.deepEqual(
+    sliceVirtualContentUnitProjectionFromHere(emptyProj, { startSegmentId: null, blockId: 'TEXT_EMPTY_01' }),
+    resolveStructuredTextPlaybackScopeList({
+      documentTree: emptyDocTree,
+      startSegmentId: null,
+      blockId: 'TEXT_EMPTY_01',
+      scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+    }),
+    'empty structured FROM_HERE fallback'
+  );
+  checkedSlices += 1;
+
+  return `${checkedSlices} From-Here slices (including missing/invalid + blockId) + flat traversals identical`;
 });
 
 // Test 09: structuredClone snapshot equality, Object.freeze immutability, referential safety, repeatability

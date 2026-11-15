@@ -366,6 +366,7 @@ const projectParagraphUnits = ({ block, blockIndex, seenVirtualUnitKeys }) => {
   seenVirtualUnitKeys.add(virtualUnitKey);
 
   const paragraphRole = resolveTextParagraphCardRole(block);
+  // New array of shared read-only Segment references from documentTree; callers must never mutate Segment objects.
   const segments = [...block.segments];
   return [{
     virtualUnitKey,
@@ -428,6 +429,7 @@ const projectConversationUnits = ({ block, blockIndex, speakerById, seenVirtualU
       empty: false,
       segmentCount: 1,
       segmentIds: [segment.id],
+      // Shared read-only Segment reference from documentTree; callers must never mutate Segment objects.
       segments: [segment]
     };
   })
@@ -459,6 +461,11 @@ const buildUnsupportedProjection = ({ documentTree, inspection }) => ({
  * Pure, read-only compatibility adapter projecting a hydrated structured-v1 document tree
  * into ephemeral virtual Card -> Content Unit -> Segment containers without mutating inputs
  * or allocating persisted UNIT_/UNITUID_/SPK_ records.
+ *
+ * Read-only ownership note: container arrays and projection objects are freshly allocated, while
+ * projected `Segment` objects inside `cards[].units[].segments[]` (as well as `card.metadata` and
+ * `card.fullAudioArtifacts`) are shared references with the source `documentTree` and MUST be
+ * treated as strictly read-only by callers.
  */
 export const projectTextDocumentToVirtualContentUnits = documentTree => {
   const inspection = inspectDocumentTree(documentTree);
@@ -541,6 +548,7 @@ export const projectTextDocumentToVirtualContentUnits = documentTree => {
 /**
  * Flattens a supported virtual Content Unit projection back into an ordered Segment traversal
  * matching the hydrated documentTree.blocks[].segments[] order.
+ * Each emitted `item.segment` shares the read-only source reference and must not be mutated.
  */
 export const flattenVirtualContentUnitProjection = (projection, { playableOnly = false } = {}) => {
   if (!projection || !projection.supported || !Array.isArray(projection.cards)) {
@@ -608,10 +616,13 @@ export const flattenVirtualContentUnitProjection = (projection, { playableOnly =
 
 /**
  * Pure read-only From-Here slice helper over a virtual projection for D2 equivalence tests.
+ * Mirrors `resolveStructuredTextPlaybackScopeList(..., FROM_HERE)`: missing or unknown
+ * `startSegmentId` falls back to index 0 (workspace start); any supplied `blockId` is ignored
+ * in FROM_HERE scope. Returned `item.segment` references remain shared read-only source objects.
  */
 export const sliceVirtualContentUnitProjectionFromHere = (
   projection,
-  { startSegmentId = null, cursorSegmentId = null, blockId = null } = {}
+  { startSegmentId = null, cursorSegmentId = null } = {}
 ) => {
   const fullList = flattenVirtualContentUnitProjection(projection, { playableOnly: true });
   if (!fullList.length) {
@@ -619,14 +630,9 @@ export const sliceVirtualContentUnitProjectionFromHere = (
   }
 
   const cursorId = cursorSegmentId || startSegmentId || null;
-  let requestedIndex = -1;
-  if (startSegmentId) {
-    requestedIndex = fullList.findIndex(item => item.segmentId === startSegmentId);
-  }
-  if (requestedIndex < 0 && blockId) {
-    requestedIndex = fullList.findIndex(item => item.blockId === blockId);
-  }
-
+  const requestedIndex = startSegmentId
+    ? fullList.findIndex(item => item.segmentId === startSegmentId)
+    : 0;
   const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
   const playbackList = fullList.slice(safeIndex);
   const cursorIndex = cursorId ? playbackList.findIndex(item => item.segmentId === cursorId) : 0;
