@@ -4,6 +4,7 @@ export const TEXT_GLOBAL_UID_KINDS = Object.freeze({
   COLLECTION: 'COLLECTION',
   WORKSPACE: 'WORKSPACE',
   CARD: 'CARD',
+  CONTENT_UNIT: 'CONTENT_UNIT',
   SEGMENT: 'SEGMENT',
   SPEAKER: 'SPEAKER',
   AUDIO_VARIANT: 'AUDIO_VARIANT'
@@ -13,6 +14,7 @@ export const TEXT_GLOBAL_UID_PREFIXES = Object.freeze({
   [TEXT_GLOBAL_UID_KINDS.COLLECTION]: 'COLLUID_',
   [TEXT_GLOBAL_UID_KINDS.WORKSPACE]: 'WSUID_',
   [TEXT_GLOBAL_UID_KINDS.CARD]: 'CARDUID_',
+  [TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT]: 'UNITUID_',
   [TEXT_GLOBAL_UID_KINDS.SEGMENT]: 'SEGUID_',
   [TEXT_GLOBAL_UID_KINDS.SPEAKER]: 'SPKUID_',
   [TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT]: 'AUDUID_'
@@ -165,6 +167,15 @@ export const backfillTextGlobalUids = (snapshotCandidate = {}, options = {}) => 
     seen,
     uidFactory
   });
+  const hasContentUnits = Array.isArray(snapshotCandidate.contentUnits);
+  const contentUnitsResult = hasContentUnits
+    ? backfillRecordGroup({
+        records: snapshotCandidate.contentUnits,
+        kind: TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT,
+        seen,
+        uidFactory
+      })
+    : null;
   const segmentsResult = backfillRecordGroup({
     records: snapshotCandidate.segments,
     kind: TEXT_GLOBAL_UID_KINDS.SEGMENT,
@@ -187,6 +198,7 @@ export const backfillTextGlobalUids = (snapshotCandidate = {}, options = {}) => 
     collections: collectionsResult.changed,
     workspaces: documentsResult.changed,
     cards: blocksResult.changed,
+    ...(contentUnitsResult ? { contentUnits: contentUnitsResult.changed } : {}),
     segments: segmentsResult.changed,
     audioVariants: audioResult.changed,
     speakerRegistryEntries: speakerResult.changedSpeakers,
@@ -202,6 +214,7 @@ export const backfillTextGlobalUids = (snapshotCandidate = {}, options = {}) => 
       collections: collectionsResult.records,
       documents: speakerResult.documents,
       blocks: blocksResult.records,
+      ...(contentUnitsResult ? { contentUnits: contentUnitsResult.records } : {}),
       segments: segmentsResult.records,
       audioVariants: audioResult.records
     }
@@ -213,6 +226,9 @@ export const collectTextGlobalUidDiagnostics = (snapshot = {}) => {
     ['collections', TEXT_GLOBAL_UID_KINDS.COLLECTION, snapshot.collections || []],
     ['workspaces', TEXT_GLOBAL_UID_KINDS.WORKSPACE, snapshot.documents || []],
     ['cards', TEXT_GLOBAL_UID_KINDS.CARD, snapshot.blocks || []],
+    ...(Array.isArray(snapshot.contentUnits)
+      ? [['contentUnits', TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT, snapshot.contentUnits]]
+      : []),
     ['segments', TEXT_GLOBAL_UID_KINDS.SEGMENT, snapshot.segments || []],
     ['audioVariants', TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT, snapshot.audioVariants || []]
   ];

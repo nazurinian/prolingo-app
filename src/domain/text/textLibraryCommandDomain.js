@@ -3,6 +3,23 @@ import {
   TEXT_STRUCTURED_EDITOR_MODEL
 } from '../../constants/textDatabaseConstants.js';
 import {
+  createTextContentUnitRecord,
+  isContentUnitSnapshot
+} from './textContentUnitDomain.js';
+import {
+  TEXT_CONTENT_UNIT_COMMAND_TYPES,
+  applySpeakerIdToSegmentMetadata,
+  createContentUnitCommand,
+  deleteContentUnitCommand,
+  mergeContentUnitsCommand,
+  moveSegmentToUnitCommand,
+  reorderContentUnitsCommand,
+  splitContentUnitCommand,
+  syncCardUnitsAndSegmentsOrder,
+  updateContentUnitCommand,
+  updateMaterializedBlockIds
+} from './textContentUnitCommandDomain.js';
+import {
   createTextAudioVariantRecord,
   createTextBlockRecord,
   createTextCollectionRecord,
@@ -63,6 +80,13 @@ const COMMAND_TYPES = Object.freeze({
   UPDATE_SEGMENT: 'segment.update',
   DELETE_SEGMENT: 'segment.delete',
   REORDER_SEGMENTS: 'segment.reorder',
+  SEGMENT_MOVE: TEXT_CONTENT_UNIT_COMMAND_TYPES.SEGMENT_MOVE,
+  CONTENT_UNIT_CREATE: TEXT_CONTENT_UNIT_COMMAND_TYPES.CREATE,
+  CONTENT_UNIT_UPDATE: TEXT_CONTENT_UNIT_COMMAND_TYPES.UPDATE,
+  CONTENT_UNIT_REORDER: TEXT_CONTENT_UNIT_COMMAND_TYPES.REORDER,
+  CONTENT_UNIT_SPLIT: TEXT_CONTENT_UNIT_COMMAND_TYPES.SPLIT,
+  CONTENT_UNIT_MERGE: TEXT_CONTENT_UNIT_COMMAND_TYPES.MERGE,
+  CONTENT_UNIT_DELETE: TEXT_CONTENT_UNIT_COMMAND_TYPES.DELETE,
   SPLIT_PARAGRAPH_SEGMENT: 'paragraphSegment.split',
   MERGE_PARAGRAPH_SEGMENTS: 'paragraphSegments.merge',
   UPSERT_AUDIO_VARIANT: 'audioVariant.upsert',
@@ -81,6 +105,7 @@ const counterKeyByKind = Object.freeze({
   COLLECTION: 'collection',
   DOCUMENT: 'document',
   BLOCK: 'text',
+  CONTENT_UNIT: 'contentUnit',
   SEGMENT: 'segment',
   AUDIO_VARIANT: 'audioVariant'
 });
@@ -89,6 +114,7 @@ const globalUidKindByLocalKind = Object.freeze({
   COLLECTION: TEXT_GLOBAL_UID_KINDS.COLLECTION,
   DOCUMENT: TEXT_GLOBAL_UID_KINDS.WORKSPACE,
   BLOCK: TEXT_GLOBAL_UID_KINDS.CARD,
+  CONTENT_UNIT: TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT,
   SEGMENT: TEXT_GLOBAL_UID_KINDS.SEGMENT,
   AUDIO_VARIANT: TEXT_GLOBAL_UID_KINDS.AUDIO_VARIANT
 });
@@ -112,12 +138,20 @@ const maxOrder = records => records.reduce((max, record) => Math.max(max, Number
 
 const floorCountersFromSnapshot = snapshotCandidate => {
   const snapshot = normalizeTextLibraryRuntimeSnapshot(snapshotCandidate);
-  const counters = normalizeTextIdCounters(snapshot.counters);
+  const hasUnits = isContentUnitSnapshot(snapshot);
+  const counters = normalizeTextIdCounters(snapshot.counters, { includeContentUnit: hasUnits });
   return {
     collection: Math.max(counters.collection, ...snapshot.collections.map(item => getTextLibraryIdSequence('COLLECTION', item.id)), 0),
     document: Math.max(counters.document, ...snapshot.documents.map(item => getTextLibraryIdSequence('DOCUMENT', item.id)), 0),
     text: Math.max(counters.text, ...snapshot.blocks.map(item => getTextIdSequence(item.id)), 0),
     segment: Math.max(counters.segment, ...snapshot.segments.map(item => getTextLibraryIdSequence('SEGMENT', item.id)), 0),
+    ...(hasUnits ? {
+      contentUnit: Math.max(
+        counters.contentUnit ?? 0,
+        ...(snapshot.contentUnits || []).map(item => getTextLibraryIdSequence('CONTENT_UNIT', item.id)),
+        0
+      )
+    } : {}),
     audioVariant: Math.max(counters.audioVariant, ...snapshot.audioVariants.map(item => getTextLibraryIdSequence('AUDIO_VARIANT', item.id)), 0)
   };
 };
@@ -358,6 +392,10 @@ const deleteDocument = (snapshot, payload, now) => {
     activeDocumentId,
     documents: remainingDocuments,
     blocks: snapshot.blocks.filter(item => !removedBlockIds.has(item.id)),
+    ...(isContentUnitSnapshot(snapshot) ? {
+      contentUnits: (snapshot.contentUnits || []).filter(item => item.documentId !== current.id),
+      contentUnitMigration: updateMaterializedBlockIds(snapshot, { remove: [...removedBlockIds] })
+    } : {}),
     segments: snapshot.segments.filter(item => !removedSegmentIds.has(item.id)),
     audioVariants: snapshot.audioVariants.filter(item => !removedSegmentIds.has(item.segmentId))
   }, { entity: 'document', action: 'delete', id: current.id, activeDocumentId });
@@ -398,10 +436,32 @@ const createBlock = (snapshot, payload, now) => {
     updatedAt: now,
     metadata: payload?.metadata
   });
+  const hasUnitsMode = isContentUnitSnapshot(snapshot);
+  let nextCounters = allocated.counters;
+  let nextContentUnits = snapshot.contentUnits;
+  if (hasUnitsMode && blockType === 'paragraph') {
+    const unitAlloc = allocateIdentity({ ...snapshot, counters: allocated.counters }, 'CONTENT_UNIT');
+    nextCounters = unitAlloc.counters;
+    const initialUnit = createTextContentUnitRecord({
+      id: unitAlloc.id,
+      uid: unitAlloc.uid,
+      documentId: document.id,
+      blockId: record.id,
+      kind: 'paragraph',
+      order: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+    nextContentUnits = [...(snapshot.contentUnits || []), initialUnit];
+  }
   return finalize({
     ...snapshot,
-    counters: allocated.counters,
+    counters: nextCounters,
     blocks: [...snapshot.blocks, record],
+    ...(hasUnitsMode ? {
+      contentUnits: nextContentUnits,
+      contentUnitMigration: updateMaterializedBlockIds(snapshot, { add: [record.id] })
+    } : {}),
     documents: snapshot.documents.map(item => item.id === document.id ? { ...item, updatedAt: now } : item)
   }, { entity: 'block', action: 'create', id: record.id, documentId: document.id });
 };
@@ -436,6 +496,10 @@ const deleteBlock = (snapshot, payload, now) => {
       item => item.documentId === current.documentId,
       now
     ),
+    ...(isContentUnitSnapshot(snapshot) ? {
+      contentUnits: (snapshot.contentUnits || []).filter(item => item.blockId !== current.id),
+      contentUnitMigration: updateMaterializedBlockIds(snapshot, { remove: [current.id] })
+    } : {}),
     segments: snapshot.segments.filter(item => !removedSegments.has(item.id)),
     audioVariants: snapshot.audioVariants.filter(item => !removedSegments.has(item.segmentId)),
     documents: snapshot.documents.map(item => item.id === current.documentId ? { ...item, updatedAt: now } : item)
@@ -543,26 +607,141 @@ const resolveConversationAuthoringSpeaker = ({
 const createSegment = (snapshot, payload, now) => {
   const block = requireBlock(snapshot, payload?.blockId);
   const document = requireStructuredDocument(snapshot, block.documentId);
+  const hasUnitsMode = isContentUnitSnapshot(snapshot);
   const allocated = allocateIdentity(snapshot, 'SEGMENT');
   const siblings = snapshot.segments.filter(item => item.blockId === block.id);
-  const {
-    speaker,
-    segmentMetadata,
-    documentMetadata
-  } = resolveConversationAuthoringSpeaker({
-    document,
-    block,
-    rawSpeaker: payload?.speaker,
-    candidateMetadata: payload?.metadata,
-    hasExplicitMetadata: payload?.metadata !== undefined,
-    speakerProvided: true,
-    currentSegment: null
-  });
+
+  if (!hasUnitsMode) {
+    const {
+      speaker,
+      segmentMetadata,
+      documentMetadata
+    } = resolveConversationAuthoringSpeaker({
+      document,
+      block,
+      rawSpeaker: payload?.speaker,
+      candidateMetadata: payload?.metadata,
+      hasExplicitMetadata: payload?.metadata !== undefined,
+      speakerProvided: true,
+      currentSegment: null
+    });
+    const record = createTextSegmentRecord({
+      id: allocated.id,
+      uid: allocated.uid,
+      documentId: block.documentId,
+      blockId: block.id,
+      order: maxOrder(siblings) + 1,
+      text: payload?.text,
+      meaning: payload?.meaning,
+      speaker,
+      joinAfter: payload?.joinAfter,
+      createdAt: now,
+      updatedAt: now,
+      metadata: segmentMetadata
+    });
+    return finalize({
+      ...snapshot,
+      counters: allocated.counters,
+      segments: [...snapshot.segments, record],
+      blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
+      documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, metadata: documentMetadata, updatedAt: now } : item)
+    }, { entity: 'segment', action: 'create', id: record.id, blockId: block.id, documentId: block.documentId });
+  }
+
+  let nextCountersSnapshot = { ...snapshot, counters: allocated.counters };
+  let nextContentUnits = snapshot.contentUnits || [];
+  const blockUnits = sortByOrderThenId(nextContentUnits.filter(u => u.blockId === block.id));
+  const requestedUnitId = payload?.unitId ? String(payload.unitId).trim().toUpperCase() : null;
+  let targetUnit = null;
+  let speaker = payload?.speaker ?? null;
+  let segmentMetadata = payload?.metadata;
+  let documentMetadata = document.metadata;
+
+  if (block.blockType === 'paragraph') {
+    if (requestedUnitId) {
+      targetUnit = blockUnits.find(u => u.id === requestedUnitId) || null;
+      if (!targetUnit) throw new Error(`Content Unit ${requestedUnitId} does not belong to Card ${block.id}`);
+    } else if (blockUnits.length > 0) {
+      targetUnit = blockUnits[blockUnits.length - 1];
+    } else {
+      const unitAlloc = allocateIdentity(nextCountersSnapshot, 'CONTENT_UNIT');
+      nextCountersSnapshot = { ...nextCountersSnapshot, counters: unitAlloc.counters };
+      targetUnit = createTextContentUnitRecord({
+        id: unitAlloc.id,
+        uid: unitAlloc.uid,
+        documentId: block.documentId,
+        blockId: block.id,
+        kind: 'paragraph',
+        order: 1,
+        createdAt: now,
+        updatedAt: now
+      });
+      nextContentUnits = [...nextContentUnits, targetUnit];
+    }
+    const resolved = resolveConversationAuthoringSpeaker({
+      document,
+      block,
+      rawSpeaker: payload?.speaker,
+      candidateMetadata: payload?.metadata,
+      hasExplicitMetadata: payload?.metadata !== undefined,
+      speakerProvided: true,
+      currentSegment: null
+    });
+    speaker = resolved.speaker;
+    segmentMetadata = resolved.segmentMetadata;
+    documentMetadata = resolved.documentMetadata;
+  } else if (requestedUnitId) {
+    targetUnit = blockUnits.find(u => u.id === requestedUnitId) || null;
+    if (!targetUnit || targetUnit.kind !== 'turn') {
+      throw new Error(`Turn Content Unit ${requestedUnitId} not found on Card ${block.id}`);
+    }
+    if (
+      payload?.speaker !== undefined
+      && normalizeTextStructuredSpeakerKey(payload.speaker || '') !== normalizeTextStructuredSpeakerKey(targetUnit.speaker || '')
+    ) {
+      throw new Error(`Segment speaker "${payload.speaker}" disagrees with target Turn ${targetUnit.id} speaker "${targetUnit.speaker || ''}".`);
+    }
+    speaker = targetUnit.speaker;
+    segmentMetadata = applySpeakerIdToSegmentMetadata(payload?.metadata, targetUnit.speakerId);
+  } else {
+    const resolved = resolveConversationAuthoringSpeaker({
+      document,
+      block,
+      rawSpeaker: payload?.speaker,
+      candidateMetadata: payload?.metadata,
+      hasExplicitMetadata: payload?.metadata !== undefined,
+      speakerProvided: true,
+      currentSegment: null
+    });
+    speaker = resolved.speaker;
+    segmentMetadata = resolved.segmentMetadata;
+    documentMetadata = resolved.documentMetadata;
+    const unitAlloc = allocateIdentity(nextCountersSnapshot, 'CONTENT_UNIT');
+    nextCountersSnapshot = { ...nextCountersSnapshot, counters: unitAlloc.counters };
+    const resolvedSpeakerId = segmentMetadata?.speakerIdentityV1
+      ? String(segmentMetadata.speakerIdentityV1).trim() || null
+      : null;
+    targetUnit = createTextContentUnitRecord({
+      id: unitAlloc.id,
+      uid: unitAlloc.uid,
+      documentId: block.documentId,
+      blockId: block.id,
+      kind: 'turn',
+      order: maxOrder(blockUnits) + 1,
+      speakerId: resolvedSpeakerId,
+      speaker: speaker || null,
+      createdAt: now,
+      updatedAt: now
+    });
+    nextContentUnits = [...nextContentUnits, targetUnit];
+  }
+
   const record = createTextSegmentRecord({
     id: allocated.id,
     uid: allocated.uid,
     documentId: block.documentId,
     blockId: block.id,
+    unitId: targetUnit.id,
     order: maxOrder(siblings) + 1,
     text: payload?.text,
     meaning: payload?.meaning,
@@ -572,13 +751,23 @@ const createSegment = (snapshot, payload, now) => {
     updatedAt: now,
     metadata: segmentMetadata
   });
+
+  const synced = syncCardUnitsAndSegmentsOrder({
+    contentUnits: nextContentUnits,
+    segments: [...snapshot.segments, record],
+    blockId: block.id,
+    now
+  });
+
   return finalize({
     ...snapshot,
-    counters: allocated.counters,
-    segments: [...snapshot.segments, record],
+    counters: nextCountersSnapshot.counters,
+    contentUnits: synced.contentUnits,
+    segments: synced.segments,
+    contentUnitMigration: updateMaterializedBlockIds(snapshot, { add: [block.id] }),
     blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, metadata: documentMetadata, updatedAt: now } : item)
-  }, { entity: 'segment', action: 'create', id: record.id, blockId: block.id, documentId: block.documentId });
+  }, { entity: 'segment', action: 'create', id: record.id, unitId: targetUnit.id, blockId: block.id, documentId: block.documentId });
 };
 
 const updateSegment = (snapshot, payload, now) => {
@@ -609,6 +798,31 @@ const updateSegment = (snapshot, payload, now) => {
     updatedAt: now,
     metadata: segmentMetadata
   });
+
+  let nextContentUnits = snapshot.contentUnits;
+  if (isContentUnitSnapshot(snapshot) && current.unitId) {
+    const parentUnit = (snapshot.contentUnits || []).find(u => u.id === current.unitId) || null;
+    if (parentUnit?.kind === 'turn') {
+      const nextSpeakerId = getTextStructuredSegmentSpeakerId(record);
+      const nextSpeakerLabel = record.speaker || null;
+      const speakerChanged = nextSpeakerId !== (parentUnit.speakerId || null)
+        || normalizeTextStructuredSpeakerKey(nextSpeakerLabel || '') !== normalizeTextStructuredSpeakerKey(parentUnit.speaker || '');
+      if (speakerChanged) {
+        const turnSegmentCount = snapshot.segments.filter(s => s.unitId === parentUnit.id).length;
+        if (turnSegmentCount > 1) {
+          throw new Error(
+            `Cannot change speaker on single Segment ${current.id} inside multi-segment Turn ${parentUnit.id}; use contentUnit.update or segment.move.`
+          );
+        }
+        nextContentUnits = snapshot.contentUnits.map(u => (
+          u.id === parentUnit.id
+            ? { ...u, speakerId: nextSpeakerId, speaker: nextSpeakerLabel, updatedAt: now }
+            : u
+        ));
+      }
+    }
+  }
+
   const textChanged = payload?.text !== undefined && String(current.text || '') !== String(record.text || '');
   const meaningChanged = payload?.meaning !== undefined && String(current.meaning || '') !== String(record.meaning || '');
   const nextAudioVariants = snapshot.audioVariants.map(variant => {
@@ -627,6 +841,7 @@ const updateSegment = (snapshot, payload, now) => {
   });
   return finalize({
     ...snapshot,
+    ...(isContentUnitSnapshot(snapshot) ? { contentUnits: nextContentUnits } : {}),
     segments: snapshot.segments.map(item => item.id === record.id ? record : item),
     audioVariants: nextAudioVariants,
     blocks: snapshot.blocks.map(item => item.id === record.blockId ? { ...item, updatedAt: now } : item),
@@ -640,13 +855,24 @@ const updateSegment = (snapshot, payload, now) => {
 const deleteSegment = (snapshot, payload, now) => {
   const current = requireSegment(snapshot, payload?.id);
   requireStructuredDocument(snapshot, current.documentId);
+  const remainingSegments = compactOrderGroup(
+    snapshot.segments.filter(item => item.id !== current.id),
+    item => item.blockId === current.blockId,
+    now
+  );
+  let nextContentUnits = snapshot.contentUnits;
+  if (isContentUnitSnapshot(snapshot) && current.unitId) {
+    const parentUnit = (snapshot.contentUnits || []).find(u => u.id === current.unitId) || null;
+    const unitStillHasSegments = remainingSegments.some(s => s.unitId === current.unitId);
+    if (parentUnit?.kind === 'turn' && !unitStillHasSegments) {
+      const remainingUnits = snapshot.contentUnits.filter(u => u.id !== parentUnit.id);
+      nextContentUnits = compactOrderGroup(remainingUnits, u => u.blockId === current.blockId, now);
+    }
+  }
   return finalize({
     ...snapshot,
-    segments: compactOrderGroup(
-      snapshot.segments.filter(item => item.id !== current.id),
-      item => item.blockId === current.blockId,
-      now
-    ),
+    ...(isContentUnitSnapshot(snapshot) ? { contentUnits: nextContentUnits } : {}),
+    segments: remainingSegments,
     audioVariants: snapshot.audioVariants.filter(item => item.segmentId !== current.id),
     blocks: snapshot.blocks.map(item => item.id === current.blockId ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === current.documentId ? { ...item, updatedAt: now } : item)
@@ -658,8 +884,43 @@ const reorderSegments = (snapshot, payload, now) => {
   requireStructuredDocument(snapshot, block.documentId);
   const siblings = snapshot.segments.filter(item => item.blockId === block.id);
   const ids = normalizeExactOrderIds(siblings, payload?.orderedIds, 'Segment');
+
+  if (!isContentUnitSnapshot(snapshot)) {
+    return finalize({
+      ...snapshot,
+      segments: applyContiguousOrder(snapshot.segments, ids, now),
+      blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
+      documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, updatedAt: now } : item)
+    }, { entity: 'segment', action: 'reorder', blockId: block.id, documentId: block.documentId, orderedIds: ids });
+  }
+
+  const segById = new Map(siblings.map(item => [item.id, item]));
+  const orderedUnitIdsFromSegs = [];
+  const closedUnitIds = new Set();
+  let activeUnitId = null;
+
+  for (const id of ids) {
+    const unitId = segById.get(id)?.unitId || null;
+    if (!unitId) continue;
+    if (unitId !== activeUnitId) {
+      if (closedUnitIds.has(unitId)) {
+        throw new Error(`Segment reorder violates Content Unit contiguity on Card ${block.id}; use contentUnit.reorder or segment.move.`);
+      }
+      if (activeUnitId) closedUnitIds.add(activeUnitId);
+      activeUnitId = unitId;
+      orderedUnitIdsFromSegs.push(unitId);
+    }
+  }
+
+  const placedUnitSet = new Set(orderedUnitIdsFromSegs);
+  const trailingEmptyUnitIds = sortByOrderThenId((snapshot.contentUnits || []).filter(u => u.blockId === block.id))
+    .filter(u => !placedUnitSet.has(u.id))
+    .map(u => u.id);
+  const nextUnits = applyContiguousOrder(snapshot.contentUnits || [], [...orderedUnitIdsFromSegs, ...trailingEmptyUnitIds], now);
+
   return finalize({
     ...snapshot,
+    contentUnits: nextUnits,
     segments: applyContiguousOrder(snapshot.segments, ids, now),
     blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === block.documentId ? { ...item, updatedAt: now } : item)
@@ -700,6 +961,7 @@ const splitParagraphSegment = (snapshot, payload, now) => {
       uid: allocated.uid,
       documentId: current.documentId,
       blockId: current.blockId,
+      ...(current.unitId ? { unitId: current.unitId } : {}),
       text: parts[index].text,
       meaning: parts[index].meaning,
       speaker: null,
@@ -765,6 +1027,9 @@ const mergeParagraphSegments = (snapshot, payload, now) => {
   const positions = selected.map(item => siblings.findIndex(candidate => candidate.id === item.id));
   const contiguous = positions.every((position, index) => index === 0 || position === positions[index - 1] + 1);
   if (!contiguous) throw new Error('Paragraph sentence merge requires adjacent Segments');
+  if (isContentUnitSnapshot(snapshot) && new Set(selected.map(item => item.unitId)).size > 1) {
+    throw new Error('Paragraph sentence merge cannot cross Content Unit boundaries; use contentUnit.merge first.');
+  }
 
   const retainedSource = selected[0];
   const removedIds = selected.slice(1).map(item => item.id);
@@ -966,6 +1231,20 @@ const registerSpeaker = (snapshot, payload, now) => {
     return { ...item, metadata: nextSegMetadata, updatedAt: now };
   });
 
+  const changedSegmentSet = new Set(changedSegmentIds);
+  const nextContentUnits = isContentUnitSnapshot(snapshot)
+    ? (snapshot.contentUnits || []).map(unit => {
+        if (unit.documentId !== document.id || unit.kind !== 'turn') return unit;
+        const unitSegs = nextSegments.filter(s => s.unitId === unit.id);
+        const touched = unitSegs.some(s => changedSegmentSet.has(s.id))
+          || (!unit.speakerId && normalizeTextStructuredSpeakerKey(unit.speaker) === normalizedLabel);
+        if (!touched) return unit;
+        const nextSpeaker = unit.speaker || cleanLabel;
+        if (unit.speakerId === resolvedSpeakerId && unit.speaker === nextSpeaker) return unit;
+        return { ...unit, speakerId: resolvedSpeakerId, speaker: nextSpeaker, updatedAt: now };
+      })
+    : snapshot.contentUnits;
+
   const docMetadataChanged = metadataSignature(document.metadata) !== metadataSignature(nextDocMetadata);
   const hasChanges = docMetadataChanged || changedSegmentIds.length > 0;
   const nextDocuments = hasChanges
@@ -975,6 +1254,7 @@ const registerSpeaker = (snapshot, payload, now) => {
   return finalize({
     ...snapshot,
     documents: nextDocuments,
+    ...(isContentUnitSnapshot(snapshot) ? { contentUnits: nextContentUnits } : {}),
     segments: nextSegments
   }, {
     entity: 'speaker',
@@ -1039,6 +1319,21 @@ const renameSpeaker = (snapshot, payload, now) => {
     return { ...item, speaker: cleanLabel, metadata: nextSegMetadata, updatedAt: now };
   });
 
+  const changedSegmentSet = new Set(changedSegmentIds);
+  const nextContentUnits = isContentUnitSnapshot(snapshot)
+    ? (snapshot.contentUnits || []).map(unit => {
+        if (unit.documentId !== document.id || unit.kind !== 'turn') return unit;
+        const unitLabelMatch = !unit.speakerId && (
+          (existingEntry && normalizeTextStructuredSpeakerKey(unit.speaker) === normalizeTextStructuredSpeakerKey(existingEntry.label))
+          || (Boolean(unit.speaker) && deriveTextStructuredSpeakerId({ documentId: document.id, speaker: unit.speaker }) === speakerId)
+        );
+        const segLinkedMatch = snapshot.segments.some(s => s.unitId === unit.id && changedSegmentSet.has(s.id));
+        if (unit.speakerId !== speakerId && !unitLabelMatch && !segLinkedMatch) return unit;
+        if (unit.speaker === cleanLabel && unit.speakerId === speakerId) return unit;
+        return { ...unit, speaker: cleanLabel, speakerId, updatedAt: now };
+      })
+    : snapshot.contentUnits;
+
   const docMetadataChanged = metadataSignature(document.metadata) !== metadataSignature(nextDocMetadata);
   const hasChanges = docMetadataChanged || changedSegmentIds.length > 0;
   const nextDocuments = hasChanges
@@ -1048,6 +1343,7 @@ const renameSpeaker = (snapshot, payload, now) => {
   return finalize({
     ...snapshot,
     documents: nextDocuments,
+    ...(isContentUnitSnapshot(snapshot) ? { contentUnits: nextContentUnits } : {}),
     segments: nextSegments
   }, {
     entity: 'speaker',
@@ -1069,13 +1365,18 @@ const removeSpeaker = (snapshot, payload, now) => {
   }
   const conversationBlockIds = getDocumentConversationBlockIds(snapshot, document.id);
   const existingNormalizedLabel = normalizeTextStructuredSpeakerKey(existingEntry.label);
-  const isUsed = snapshot.segments.some(segment => {
+  const isUsedInSegments = snapshot.segments.some(segment => {
     if (segment.documentId !== document.id || !conversationBlockIds.has(segment.blockId)) return false;
     const segSpeakerId = getTextStructuredSegmentSpeakerId(segment);
     if (segSpeakerId) return segSpeakerId === speakerId;
     return Boolean(existingNormalizedLabel) && normalizeTextStructuredSpeakerKey(segment.speaker) === existingNormalizedLabel;
   });
-  if (isUsed) {
+  const isUsedInUnits = isContentUnitSnapshot(snapshot) && (snapshot.contentUnits || []).some(unit => {
+    if (unit.documentId !== document.id || unit.kind !== 'turn') return false;
+    if (unit.speakerId) return unit.speakerId === speakerId;
+    return Boolean(existingNormalizedLabel) && normalizeTextStructuredSpeakerKey(unit.speaker) === existingNormalizedLabel;
+  });
+  if (isUsedInSegments || isUsedInUnits) {
     throw new Error(`Speaker “${existingEntry.label}” is in use and cannot be removed`);
   }
   const nextDocMetadata = buildTextStructuredRemoveSpeakerRegistryMetadata({
@@ -1242,6 +1543,13 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.UPDATE_SEGMENT: return updateSegment(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_SEGMENT: return deleteSegment(snapshot, payload, now);
     case COMMAND_TYPES.REORDER_SEGMENTS: return reorderSegments(snapshot, payload, now);
+    case COMMAND_TYPES.SEGMENT_MOVE: return moveSegmentToUnitCommand({ snapshot, payload, now, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_CREATE: return createContentUnitCommand({ snapshot, payload, now, allocateIdentity, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_UPDATE: return updateContentUnitCommand({ snapshot, payload, now, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_REORDER: return reorderContentUnitsCommand({ snapshot, payload, now, normalizeExactOrderIds, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_SPLIT: return splitContentUnitCommand({ snapshot, payload, now, allocateIdentity, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_MERGE: return mergeContentUnitsCommand({ snapshot, payload, now, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_DELETE: return deleteContentUnitCommand({ snapshot, payload, now, finalize });
     case COMMAND_TYPES.SPLIT_PARAGRAPH_SEGMENT: return splitParagraphSegment(snapshot, payload, now);
     case COMMAND_TYPES.MERGE_PARAGRAPH_SEGMENTS: return mergeParagraphSegments(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_AUDIO_VARIANT: return upsertAudioVariant(snapshot, payload, now);

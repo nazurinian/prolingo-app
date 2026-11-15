@@ -2,6 +2,12 @@ export const TEXT_LIBRARY_DB_NAME = 'prolingo_text_library';
 export const TEXT_LIBRARY_DB_VERSION = 1;
 export const TEXT_LIBRARY_SCHEMA_VERSION = 1;
 
+// Dormant Gate D3-B/D3-C v2 contracts; never activate canonical DB upgrades without D3-D gate approval.
+export const TEXT_LIBRARY_V2_DB_VERSION = 2;
+export const TEXT_LIBRARY_V2_SCHEMA_VERSION = 2;
+export const TEXT_LIBRARY_CONTENT_UNIT_STORE = 'contentUnits';
+export const TEXT_DISPOSABLE_QA_DB_NAME = 'prolingo_text_library_d3b_qa_disposable';
+
 export const TEXT_LIBRARY_STORES = Object.freeze({
   META: 'meta',
   COLLECTIONS: 'collections',
@@ -9,6 +15,11 @@ export const TEXT_LIBRARY_STORES = Object.freeze({
   BLOCKS: 'blocks',
   SEGMENTS: 'segments',
   AUDIO_VARIANTS: 'audioVariants'
+});
+
+export const TEXT_LIBRARY_V2_STORES = Object.freeze({
+  ...TEXT_LIBRARY_STORES,
+  CONTENT_UNITS: TEXT_LIBRARY_CONTENT_UNIT_STORE
 });
 
 export const TEXT_LIBRARY_META_KEYS = Object.freeze({
@@ -21,17 +32,24 @@ export const TEXT_LIBRARY_META_KEYS = Object.freeze({
   EXTERNAL_SOURCE_IMPORTS: 'externalSourceImports'
 });
 
+export const TEXT_LIBRARY_V2_META_KEYS = Object.freeze({
+  ...TEXT_LIBRARY_META_KEYS,
+  CONTENT_UNIT_MIGRATION: 'contentUnitMigration'
+});
+
 export const TEXT_ID_PREFIXES = Object.freeze({
   COLLECTION: 'COLL_',
   DOCUMENT: 'DOC_',
   BLOCK: 'TEXT_',
   SEGMENT: 'SEGMENT_',
+  CONTENT_UNIT: 'UNIT_',
   AUDIO_VARIANT: 'TXTAUDIO_'
 });
 
 export const TEXT_DOCUMENT_TYPES = Object.freeze(['paragraph', 'conversation', 'mixed']);
 export const TEXT_USER_MODES = Object.freeze(['legacy', 'paragraph', 'conversation']);
 export const TEXT_BLOCK_TYPES = Object.freeze(['paragraph', 'conversation']);
+export const TEXT_CONTENT_UNIT_KINDS = Object.freeze(['paragraph', 'turn']);
 export const TEXT_AUDIO_CHANNELS = Object.freeze(['text', 'meaning']);
 
 export const TEXT_LEGACY_EDITOR_MODEL = 'legacy-line-v1';

@@ -17,6 +17,12 @@ import {
 } from './textIdentityDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { createTextGlobalUid, normalizeTextGlobalUid, TEXT_GLOBAL_UID_KINDS } from './textGlobalIdentityDomain.js';
+import {
+  getTextContentUnitIdSequence,
+  isContentUnitSnapshot,
+  normalizeTextContentUnitMigrationState,
+  validateTextContentUnitsState
+} from './textContentUnitDomain.js';
 
 const normalizePositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(value, 10);
@@ -35,21 +41,28 @@ const withOptionalGlobalUid = (record, uid, kind) => {
   return normalized ? { ...record, uid: normalized } : record;
 };
 
-export const createDefaultTextIdCounters = () => ({
+export const createDefaultTextIdCounters = ({ includeContentUnit = false } = {}) => ({
   collection: 0,
   document: 0,
   text: 0,
   segment: 0,
+  ...(includeContentUnit ? { contentUnit: 0 } : {}),
   audioVariant: 0
 });
 
-export const normalizeTextIdCounters = (candidate = {}) => ({
-  collection: normalizePositiveInt(candidate.collection),
-  document: normalizePositiveInt(candidate.document),
-  text: normalizePositiveInt(candidate.text),
-  segment: normalizePositiveInt(candidate.segment),
-  audioVariant: normalizePositiveInt(candidate.audioVariant)
-});
+export const normalizeTextIdCounters = (candidate = {}, options = {}) => {
+  const includeContentUnit = options.includeContentUnit ?? (
+    candidate?.contentUnit !== undefined && candidate?.contentUnit !== null
+  );
+  return {
+    collection: normalizePositiveInt(candidate?.collection),
+    document: normalizePositiveInt(candidate?.document),
+    text: normalizePositiveInt(candidate?.text),
+    segment: normalizePositiveInt(candidate?.segment),
+    ...(includeContentUnit ? { contentUnit: normalizePositiveInt(candidate?.contentUnit) } : {}),
+    audioVariant: normalizePositiveInt(candidate?.audioVariant)
+  };
+};
 
 export const formatTextLibraryId = (kind, sequence) => {
   const prefix = TEXT_ID_PREFIXES[kind];
@@ -149,6 +162,7 @@ export const createTextSegmentRecord = ({
   uid = null,
   documentId,
   blockId,
+  unitId = null,
   order = 1,
   text = '',
   meaning = '',
@@ -161,12 +175,19 @@ export const createTextSegmentRecord = ({
   if (!getTextLibraryIdSequence('SEGMENT', id)) throw new Error(`Invalid SEGMENT_ID: ${id}`);
   if (!getTextLibraryIdSequence('DOCUMENT', documentId)) throw new Error(`Invalid segment DOC_ID: ${documentId}`);
   if (!getTextIdSequence(blockId)) throw new Error(`Invalid segment TEXT_ID: ${blockId}`);
+  const normalizedUnitId = unitId !== undefined && unitId !== null && String(unitId).trim() !== ''
+    ? String(unitId).trim().toUpperCase()
+    : null;
+  if (normalizedUnitId && !getTextContentUnitIdSequence(normalizedUnitId)) {
+    throw new Error(`Invalid segment CONTENT_UNIT_ID: ${unitId}`);
+  }
   const normalizedText = normalizeText(text);
   if (!normalizedText) throw new Error(`SEGMENT_ID ${id} requires non-empty text`);
   return withOptionalGlobalUid({
     id,
     documentId,
     blockId: String(blockId).toUpperCase(),
+    ...(normalizedUnitId ? { unitId: normalizedUnitId } : {}),
     order: normalizeOrder(order),
     text: normalizedText,
     meaning: normalizeText(meaning),
@@ -319,7 +340,7 @@ export const resolveLegacyTextIdentityProjection = ({ document, blocks = [], seg
   };
 };
 
-export const validateTextLibrarySnapshot = (snapshot) => {
+export const validateTextLibrarySnapshot = (snapshot, options = {}) => {
   const errors = [];
   const collections = Array.isArray(snapshot?.collections) ? snapshot.collections : [];
   const documents = Array.isArray(snapshot?.documents) ? snapshot.documents : [];
@@ -407,6 +428,17 @@ export const validateTextLibrarySnapshot = (snapshot) => {
     values.add(segment.order);
     orderGroups.set(key, values);
   });
+
+  if (isContentUnitSnapshot(snapshot)) {
+    const unitValidation = validateTextContentUnitsState(snapshot, options);
+    unitValidation.errors.forEach(msg => errors.push(msg));
+  } else {
+    segments.forEach(segment => {
+      if (segment?.unitId != null && String(segment.unitId).trim() !== '') {
+        errors.push(`Segment ${segment.id} references Content Unit ${segment.unitId} without initialized contentUnits`);
+      }
+    });
+  }
 
   return { valid: errors.length === 0, errors };
 };
@@ -539,16 +571,22 @@ const sortLibraryRecords = records => [...records].sort((a, b) => {
 });
 
 export const normalizeTextLibraryRuntimeSnapshot = (candidate = {}) => {
+  const hasContentUnitsMode = isContentUnitSnapshot(candidate);
+  const normalizedMigration = normalizeTextContentUnitMigrationState(candidate.contentUnitMigration);
   const snapshot = {
     schemaVersion: normalizePositiveInt(candidate.schemaVersion, TEXT_LIBRARY_SCHEMA_VERSION),
     activeDocumentId: candidate.activeDocumentId || null,
     initialized: Boolean(candidate.initialized),
-    counters: normalizeTextIdCounters(candidate.counters),
+    counters: normalizeTextIdCounters(candidate.counters, { includeContentUnit: hasContentUnitsMode }),
     collections: sortLibraryRecords(Array.isArray(candidate.collections) ? candidate.collections : []),
     documents: sortLibraryRecords(Array.isArray(candidate.documents) ? candidate.documents : []),
     blocks: sortLibraryRecords(Array.isArray(candidate.blocks) ? candidate.blocks : []),
+    ...(hasContentUnitsMode
+      ? { contentUnits: sortLibraryRecords(Array.isArray(candidate.contentUnits) ? candidate.contentUnits : []) }
+      : {}),
     segments: sortLibraryRecords(Array.isArray(candidate.segments) ? candidate.segments : []),
-    audioVariants: Array.isArray(candidate.audioVariants) ? [...candidate.audioVariants] : []
+    audioVariants: Array.isArray(candidate.audioVariants) ? [...candidate.audioVariants] : [],
+    ...(normalizedMigration ? { contentUnitMigration: normalizedMigration } : {})
   };
   const validation = validateTextLibrarySnapshot(snapshot);
   if (!validation.valid) {
@@ -573,19 +611,37 @@ export const resolveTextLibraryDocumentTree = (snapshotCandidate, documentId = n
     audioBySegment.set(variant.segmentId, variants);
   });
 
+  const hasContentUnits = Array.isArray(snapshot.contentUnits);
   const blocks = snapshot.blocks
     .filter(block => block.documentId === document.id)
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-    .map(block => ({
-      ...block,
-      segments: snapshot.segments
+    .map(block => {
+      const hydratedSegments = snapshot.segments
         .filter(segment => segment.blockId === block.id)
         .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
         .map(segment => ({
           ...segment,
           audioVariants: (audioBySegment.get(segment.id) || []).sort((a, b) => a.id.localeCompare(b.id))
-        }))
-    }));
+        }));
+      if (!hasContentUnits) {
+        return {
+          ...block,
+          segments: hydratedSegments
+        };
+      }
+      const hydratedUnits = snapshot.contentUnits
+        .filter(unit => unit.blockId === block.id)
+        .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+        .map(unit => ({
+          ...unit,
+          segments: hydratedSegments.filter(segment => segment.unitId === unit.id)
+        }));
+      return {
+        ...block,
+        units: hydratedUnits,
+        segments: hydratedSegments
+      };
+    });
 
   return { ...document, blocks };
 };
