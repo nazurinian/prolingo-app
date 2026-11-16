@@ -39,11 +39,17 @@ const test = async (name, fn) => {
 };
 
 /**
- * Isolated in-memory IndexedDB harness supporting v1 -> v2 onupgradeneeded,
- * transaction.objectStore during upgrades, index creation/inspection, and deleteDatabase.
+ * Isolated in-memory transactional IndexedDB harness for Gate D3-B QA testing.
+ * Supports v1 -> v2 onupgradeneeded, store/index metadata inspection, single-TX
+ * readwrite shadow rollback on tx.abort() or request error, ReadOnlyError checks,
+ * transaction history logging, and deleteDatabase.
+ * NOTE: Simulates single-process transactional semantics only; does not emulate
+ * multi-tab browser IndexedDB locking or persistence across browser restarts.
  */
 const createMemoryIndexedDb = () => {
   const dbs = new Map();
+  const txHistory = [];
+  let failNextPutOnStore = null;
 
   const extractKeyValue = (row, keyPath) => (
     Array.isArray(keyPath)
@@ -58,16 +64,38 @@ const createMemoryIndexedDb = () => {
     return candidate === query;
   };
 
+  const restoreStoreShadows = (db, shadowRowsByStore) => {
+    if (!shadowRowsByStore) return;
+    for (const [storeName, snapshotRows] of shadowRowsByStore.entries()) {
+      const store = db.stores.get(storeName);
+      if (store) {
+        store.rows = new Map([...snapshotRows.entries()].map(([k, v]) => [k, structuredClone(v)]));
+      }
+    }
+  };
+
   const makeRequest = (executor, txState = null) => {
     const req = { result: undefined, error: null, onsuccess: null, onerror: null };
     if (txState) txState.pending += 1;
     queueMicrotask(() => {
       try {
+        if (txState?.aborted) {
+          req.error = txState.error || new Error('Transaction aborted');
+          req.onerror?.({ target: req });
+          return;
+        }
         req.result = executor();
         req.onsuccess?.({ target: req });
       } catch (error) {
         req.error = error;
-        if (txState) txState.error = error;
+        if (txState) {
+          txState.error = txState.error || error;
+          if (!txState.aborted) {
+            txState.aborted = true;
+            restoreStoreShadows(txState.db, txState.shadowRowsByStore);
+            if (txState.historyEntry) txState.historyEntry.aborted = true;
+          }
+        }
         req.onerror?.({ target: req });
       } finally {
         if (txState) {
@@ -76,8 +104,13 @@ const createMemoryIndexedDb = () => {
             queueMicrotask(() => {
               if (txState.pending === 0 && !txState.finished) {
                 txState.finished = true;
-                if (txState.error) txState.onerror?.({ target: txState });
-                else txState.oncomplete?.({ target: txState });
+                if (txState.aborted) {
+                  txState.onabort?.({ target: txState });
+                } else if (txState.error) {
+                  txState.onerror?.({ target: txState });
+                } else {
+                  txState.oncomplete?.({ target: txState });
+                }
               }
             });
           }
@@ -88,8 +121,12 @@ const createMemoryIndexedDb = () => {
   };
 
   const buildStoreHandle = (store, txState) => ({
-    indexNames: {
-      contains: idxName => store.indexes.has(idxName)
+    get indexNames() {
+      const names = [...store.indexes.keys()];
+      return {
+        contains: idxName => store.indexes.has(idxName),
+        [Symbol.iterator]: () => names[Symbol.iterator]()
+      };
     },
     createIndex: (idxName, idxKeyPath, opts = {}) => {
       store.indexes.set(idxName, { keyPath: idxKeyPath, unique: Boolean(opts?.unique) });
@@ -115,23 +152,73 @@ const createMemoryIndexedDb = () => {
     getAll: () => makeRequest(() => [...store.rows.values()].map(row => structuredClone(row)), txState),
     count: () => makeRequest(() => store.rows.size, txState),
     put: row => makeRequest(() => {
+      if (txState?.mode === 'readonly') {
+        throw new Error(`ReadOnlyError: cannot put on readonly store ${store.name}`);
+      }
+      if (failNextPutOnStore === store.name) {
+        failNextPutOnStore = null;
+        throw new Error(`Injected mid-transaction write failure on store ${store.name}`);
+      }
       const key = row?.[store.keyPath];
       store.rows.set(key, structuredClone(row));
       return key;
     }, txState),
-    delete: key => makeRequest(() => { store.rows.delete(key); }, txState),
-    clear: () => makeRequest(() => { store.rows.clear(); }, txState)
+    delete: key => makeRequest(() => {
+      if (txState?.mode === 'readonly') {
+        throw new Error(`ReadOnlyError: cannot delete on readonly store ${store.name}`);
+      }
+      store.rows.delete(key);
+    }, txState),
+    clear: () => makeRequest(() => {
+      if (txState?.mode === 'readonly') {
+        throw new Error(`ReadOnlyError: cannot clear readonly store ${store.name}`);
+      }
+      store.rows.clear();
+    }, txState)
   });
 
-  const buildTransaction = (db, storeNames) => {
+  const buildTransaction = (db, storeNames, mode = 'readonly') => {
     const names = Array.isArray(storeNames) ? storeNames : [storeNames];
+    const shadowRowsByStore = mode === 'readwrite'
+      ? new Map(
+          names.map(storeName => {
+            const store = db.stores.get(storeName);
+            const cloned = store
+              ? new Map([...store.rows.entries()].map(([k, v]) => [k, structuredClone(v)]))
+              : new Map();
+            return [storeName, cloned];
+          })
+        )
+      : null;
+
+    const historyEntry = { dbName: db.name, storeNames: [...names], mode, aborted: false };
+    txHistory.push(historyEntry);
+
     const txState = {
+      db,
+      mode,
+      shadowRowsByStore,
+      historyEntry,
       pending: 0,
       finished: false,
+      aborted: false,
       error: null,
       oncomplete: null,
       onerror: null,
       onabort: null,
+      abort: () => {
+        if (txState.finished || txState.aborted) return;
+        txState.aborted = true;
+        txState.error = txState.error || new Error('Transaction aborted');
+        historyEntry.aborted = true;
+        restoreStoreShadows(db, shadowRowsByStore);
+        queueMicrotask(() => {
+          if (!txState.finished) {
+            txState.finished = true;
+            txState.onabort?.({ target: txState });
+          }
+        });
+      },
       objectStore: storeName => {
         assert.ok(names.includes(storeName), `Store ${storeName} not in transaction scope`);
         const store = db.stores.get(storeName);
@@ -144,6 +231,8 @@ const createMemoryIndexedDb = () => {
 
   return {
     _dbs: dbs,
+    _txHistory: txHistory,
+    setFailNextPutOnStore: storeName => { failNextPutOnStore = storeName; },
     open: (name, version = 1) => {
       const existingDb = dbs.get(name) || null;
       const oldVersion = existingDb ? existingDb.version : 0;
@@ -162,7 +251,7 @@ const createMemoryIndexedDb = () => {
         db.stores.set(storeName, store);
         return buildStoreHandle(store, null);
       };
-      db.transaction = storeNames => buildTransaction(db, storeNames);
+      db.transaction = (storeNames, mode = 'readonly') => buildTransaction(db, storeNames, mode);
 
       const openReq = {
         result: db,
@@ -200,6 +289,18 @@ const createMemoryIndexedDb = () => {
       return req;
     }
   };
+};
+
+const inspectDbSchema = db => {
+  const schema = {};
+  for (const [storeName, store] of [...db.stores.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const indexes = {};
+    for (const [idxName, idx] of [...store.indexes.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      indexes[idxName] = { keyPath: idx.keyPath, unique: idx.unique };
+    }
+    schema[storeName] = { keyPath: store.keyPath, indexes };
+  }
+  return schema;
 };
 
 const createRealisticV1Snapshot = () => {
@@ -848,6 +949,84 @@ await test('D3B-02: Normalized ContentUnit factories, UIDs, counters, and corrup
     contentUnits: migrated.contentUnits.map((u, idx) => idx === 0 ? { ...u, segmentIds: ['SEGMENT_000001'] } : u)
   };
   assert.equal(contentUnitDomain.validateTextContentUnitsState(cachedSegIdsSnap).valid, false);
+
+  // H1-04: Enforce migrated v2 contiguous per-Card Segment ordering (1..S)
+  // Gap in Segment orders (e.g., 1, 3 on Paragraph Body Card) -> MUST fail validation
+  const gapSegOrderSnap = {
+    ...migrated,
+    segments: migrated.segments.map(s => (
+      s.blockId === ids.blockParaBodyId && s.order === 2 ? { ...s, order: 3 } : s
+    ))
+  };
+  const gapRes = contentUnitDomain.validateTextContentUnitsState(gapSegOrderSnap);
+  assert.equal(gapRes.valid, false, 'H1-04: segment order gap (1, 3) must fail migrated validation');
+
+  // Duplicate Segment order (1, 1) -> MUST fail
+  const dupSegOrderSnap = {
+    ...migrated,
+    segments: migrated.segments.map(s => (
+      s.blockId === ids.blockParaBodyId && s.order === 2 ? { ...s, order: 1 } : s
+    ))
+  };
+  assert.equal(
+    contentUnitDomain.validateTextContentUnitsState(dupSegOrderSnap).valid,
+    false,
+    'H1-04: duplicate segment order (1, 1) must fail'
+  );
+
+  // Non-integer / zero / negative / NaN Segment orders -> MUST fail
+  for (const invalidOrder of [0, -1, 1.5, Number.NaN]) {
+    const invalidOrderSnap = {
+      ...migrated,
+      segments: migrated.segments.map(s => (
+        s.blockId === ids.blockParaBodyId && s.order === 1 ? { ...s, order: invalidOrder } : s
+      ))
+    };
+    assert.equal(
+      contentUnitDomain.validateTextContentUnitsState(invalidOrderSnap).valid,
+      false,
+      `H1-04: invalid segment order (${String(invalidOrder)}) must fail`
+    );
+  }
+
+  // Intentionally emptied v2 Card (0 Units, 0 Segments, materializedBlockIds contains Card) -> VALID
+  const emptiedCardSnap = {
+    ...migrated,
+    contentUnits: migrated.contentUnits.filter(u => u.blockId !== ids.blockParaTitleId),
+    segments: migrated.segments.filter(s => s.blockId !== ids.blockParaTitleId),
+    audioVariants: migrated.audioVariants.filter(v => v.segmentId !== 'SEGMENT_000001')
+  };
+  assert.equal(
+    contentUnitDomain.validateTextContentUnitsState(emptiedCardSnap).valid,
+    true,
+    'H1-04: intentionally empty v2 Card (0 Units, 0 Segments) must remain valid'
+  );
+
+  // Stray/orphaned Segment on an empty-Unit Card (0 Units, >=1 Segment) -> MUST fail
+  const emptyCardWithOrphanSeg = {
+    ...migrated,
+    contentUnits: migrated.contentUnits.filter(u => u.blockId !== ids.blockParaTitleId)
+  };
+  assert.equal(
+    contentUnitDomain.validateTextContentUnitsState(emptyCardWithOrphanSeg).valid,
+    false,
+    'H1-04: Card with 0 Units cannot hold Segments'
+  );
+
+  // Preserve v1 permissiveness: valid v1 gap (1, 3) still passes v1 validation and compacts to 1..2 on backfill
+  const v1WithGap = {
+    ...v1Snap,
+    segments: v1Snap.segments.map(s => (
+      s.blockId === ids.blockParaBodyId && s.order === 2 ? { ...s, order: 3 } : s
+    ))
+  };
+  assert.equal(libraryDomain.validateTextLibrarySnapshot(v1WithGap).valid, true);
+  const backfilledFromGap = contentUnitDomain.backfillTextContentUnits(v1WithGap, { now: 5050 }).snapshot;
+  assert.deepEqual(
+    backfilledFromGap.segments.filter(s => s.blockId === ids.blockParaBodyId).map(s => s.order),
+    [1, 2]
+  );
+  assert.equal(contentUnitDomain.validateTextContentUnitsState(backfilledFromGap).valid, true);
 });
 
 // ---------------------------------------------------------------------------
@@ -1310,7 +1489,18 @@ await test('D3B-05b: ContentUnit create, update, split, merge, reorder, delete, 
     payload: { documentId: ids.docConvId, speakerId: claraUnit.speakerId }
   }, 6110).snapshot;
 
-  // Tree hydration includes ordered units in v2 mode
+  // Tree hydration includes ordered units in v2 mode + every Card keeps contiguous 1..S segments
+  const segsByCard = new Map();
+  state.segments.forEach(s => {
+    const list = segsByCard.get(s.blockId) || [];
+    list.push(s);
+    segsByCard.set(s.blockId, list);
+  });
+  for (const [, cardSegs] of segsByCard.entries()) {
+    const orders = [...cardSegs].sort((a, b) => a.order - b.order).map(s => s.order);
+    assert.deepEqual(orders, cardSegs.map((_, idx) => idx + 1));
+  }
+
   const docTree = libraryDomain.resolveTextLibraryDocumentTree(state, ids.docParaId);
   const bodyBlockNode = docTree.blocks.find(b => b.id === ids.blockParaBodyId);
   assert.equal(Array.isArray(bodyBlockNode.units), true);
@@ -1318,9 +1508,9 @@ await test('D3B-05b: ContentUnit create, update, split, merge, reorder, delete, 
 });
 
 // ---------------------------------------------------------------------------
-// D3B-06: Isolated Disposable QA IndexedDB Two-Phase Upgrade & Crash Recovery
+// D3B-06: Isolated Transactional QA Harness (Single-TX Upgrade & Crash Recovery)
 // ---------------------------------------------------------------------------
-await test('D3B-06: Disposable QA IndexedDB executes v1->v2 upgrade, crash recovery, atomic commands, and blocks canonical DB', async () => {
+await test('D3B-06: Disposable QA IDB executes v1->v2 upgrade, single-TX recovery, single-TX commands, and harness rollback checks', async () => {
   const persistenceService = await import('../src/services/persistence/textContentUnitPersistenceService.js');
   const contentUnitDomain = await import('../src/domain/text/textContentUnitDomain.js');
 
@@ -1329,15 +1519,6 @@ await test('D3B-06: Disposable QA IndexedDB executes v1->v2 upgrade, crash recov
   globalThis.indexedDB = mockIdb;
 
   try {
-    // Safety guard: canonical 'prolingo_text_library' MUST be rejected
-    await assert.rejects(() => persistenceService.openDisposableTextLibraryV2Database({
-      dbName: constants.TEXT_LIBRARY_DB_NAME
-    }), /dormant|disposable|canonical/i);
-
-    await assert.rejects(() => persistenceService.runDisposableContentUnitMigration({
-      dbName: constants.TEXT_LIBRARY_DB_NAME
-    }), /dormant|disposable|canonical/i);
-
     // Seed v1 snapshot into disposable DB
     const { snapshot: v1Snap, ids } = createRealisticV1Snapshot();
     await persistenceService.writeTextLibrarySnapshotToDisposableDb({
@@ -1361,22 +1542,28 @@ await test('D3B-06: Disposable QA IndexedDB executes v1->v2 upgrade, crash recov
       contentUnitDomain.TEXT_CONTENT_UNIT_MIGRATION_STATUS.PARTIAL_UPGRADE
     );
 
-    // Phase 2 recovery migration
+    // H1-01/H1-05: Phase 2 recovery runs read + backfill + validation + write inside 1 single readwrite tx
+    const txIdxBeforeMigration = mockIdb._txHistory.length;
     const migrationRes = await persistenceService.runDisposableContentUnitMigration({
       dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
       now: 8000
     });
+    const migrationTxs = mockIdb._txHistory.slice(txIdxBeforeMigration);
     assert.equal(migrationRes.changed, true);
     assert.equal(migrationRes.statusAfter, contentUnitDomain.TEXT_CONTENT_UNIT_MIGRATION_STATUS.MIGRATED_V2);
+    assert.equal(migrationTxs.length, 1, 'H1-01: migration Phase 2 must use exactly 1 transaction');
+    assert.equal(migrationTxs[0].mode, 'readwrite');
+    assert.equal(migrationTxs[0].aborted, false);
 
-    // Idempotent second run
+    // Idempotent second run (still 1 single tx)
     const repeatMigration = await persistenceService.runDisposableContentUnitMigration({
       dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
       now: 8500
     });
     assert.equal(repeatMigration.changed, false);
 
-    // Atomic v2 command execution in single IDB readwrite tx
+    // H1-01/H1-05: Single readwrite tx command execution (read + command + validate + write)
+    const txIdxBeforeCmd = mockIdb._txHistory.length;
     const cmdRes = await persistenceService.executeDisposableTextLibraryV2Command({
       dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
       command: {
@@ -1389,6 +1576,10 @@ await test('D3B-06: Disposable QA IndexedDB executes v1->v2 upgrade, crash recov
       },
       now: 8600
     });
+    const cmdTxs = mockIdb._txHistory.slice(txIdxBeforeCmd);
+    assert.equal(cmdTxs.length, 1, 'H1-01: disposable command must execute read+modify+write in 1 transaction');
+    assert.equal(cmdTxs[0].mode, 'readwrite');
+    assert.equal(cmdTxs[0].aborted, false);
     assert.equal(cmdRes.result.entity, 'contentUnit');
     assert.equal(cmdRes.snapshot.contentUnits.some(u => u.id === cmdRes.result.id), true);
 
@@ -1403,6 +1594,230 @@ await test('D3B-06: Disposable QA IndexedDB executes v1->v2 upgrade, crash recov
     });
     assert.equal(mockIdb._dbs.has(constants.TEXT_DISPOSABLE_QA_DB_NAME), false);
     assert.equal(mockIdb._dbs.has(constants.TEXT_LIBRARY_DB_NAME), false);
+  } finally {
+    globalThis.indexedDB = prevIndexedDb;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// D3B-07: H1-03 Canonical v1 Schema Parity & Exact v1 -> v2 Index Diff
+// ---------------------------------------------------------------------------
+await test('D3B-07: Disposable QA v1 schema mirrors canonical v1 schema (byUpdatedAt, byDocumentOrder, byBlockOrder)', async () => {
+  const persistenceService = await import('../src/services/persistence/textContentUnitPersistenceService.js');
+
+  const prevIndexedDb = globalThis.indexedDB;
+  const mockIdb = createMemoryIndexedDb();
+  globalThis.indexedDB = mockIdb;
+
+  try {
+    const canonicalDb = await indexedDbService.openTextLibraryDatabase();
+    const canonicalSchema = inspectDbSchema(canonicalDb);
+    canonicalDb.close();
+
+    const qaV1Db = await persistenceService.openDisposableTextLibraryV2Database({
+      dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+      version: 1
+    });
+    const qaV1Schema = inspectDbSchema(qaV1Db);
+    qaV1Db.close();
+
+    assert.deepEqual(
+      qaV1Schema,
+      canonicalSchema,
+      'H1-03: disposable v1 store names, keyPaths, and indexes must match canonical v1 schema exactly'
+    );
+    assert.ok(qaV1Schema.documents.indexes.byUpdatedAt, 'canonical documents.byUpdatedAt must exist');
+    assert.deepEqual(qaV1Schema.blocks.indexes.byDocumentOrder?.keyPath, ['documentId', 'order']);
+    assert.deepEqual(qaV1Schema.segments.indexes.byBlockOrder?.keyPath, ['blockId', 'order']);
+    assert.equal(qaV1Schema.blocks.indexes.byOrder, undefined);
+    assert.equal(qaV1Schema.segments.indexes.byOrder, undefined);
+
+    const qaV2Db = await persistenceService.openDisposableTextLibraryV2Database({
+      dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+      version: constants.TEXT_LIBRARY_V2_DB_VERSION
+    });
+    const qaV2Schema = inspectDbSchema(qaV2Db);
+    qaV2Db.close();
+
+    assert.deepEqual(qaV2Schema.documents, canonicalSchema.documents);
+    assert.deepEqual(qaV2Schema.blocks, canonicalSchema.blocks);
+    assert.deepEqual(qaV2Schema.segments.indexes.byBlockOrder, canonicalSchema.segments.indexes.byBlockOrder);
+    assert.equal(qaV2Schema.segments.indexes.byUnitId?.keyPath, 'unitId');
+    assert.ok(qaV2Schema.contentUnits);
+    assert.deepEqual(qaV2Schema.contentUnits.indexes.byBlockOrder?.keyPath, ['blockId', 'order']);
+  } finally {
+    globalThis.indexedDB = prevIndexedDb;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// D3B-08: H1-02 Non-Bypassable Canonical DB Block & Scoped QA Name Allowlist
+// ---------------------------------------------------------------------------
+await test('D3B-08: Hard-blocks canonical DB even with allowCanonicalDatabase:true and rejects arbitrary DB names', async () => {
+  const persistenceService = await import('../src/services/persistence/textContentUnitPersistenceService.js');
+
+  const prevIndexedDb = globalThis.indexedDB;
+  const mockIdb = createMemoryIndexedDb();
+  globalThis.indexedDB = mockIdb;
+
+  try {
+    assert.equal(
+      persistenceService.assertDisposableQaDatabaseName(constants.TEXT_DISPOSABLE_QA_DB_NAME),
+      constants.TEXT_DISPOSABLE_QA_DB_NAME
+    );
+    assert.equal(
+      persistenceService.assertDisposableQaDatabaseName('prolingo_text_library_d3b_qa_isolated_1'),
+      'prolingo_text_library_d3b_qa_isolated_1'
+    );
+
+    const forbiddenInputs = [
+      { dbName: constants.TEXT_LIBRARY_DB_NAME },
+      { dbName: constants.TEXT_LIBRARY_DB_NAME, allowCanonicalDatabase: true },
+      { dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME, allowCanonicalDatabase: true },
+      { dbName: 'unrelated_app_database' },
+      { dbName: 'prolingo_audio_staging' },
+      { dbName: 'prolingo_text_library_d3b_qa_' },
+      { dbName: '' }
+    ];
+
+    const { snapshot: v1Snap } = createRealisticV1Snapshot();
+
+    for (const badOpts of forbiddenInputs) {
+      assert.throws(() => persistenceService.assertDisposableQaDatabaseName(badOpts.dbName, badOpts));
+      await assert.rejects(() => persistenceService.openDisposableTextLibraryV2Database(badOpts));
+      await assert.rejects(() => persistenceService.writeTextLibrarySnapshotToDisposableDb({ ...badOpts, snapshot: v1Snap }));
+      await assert.rejects(() => persistenceService.runDisposableContentUnitMigration(badOpts));
+      await assert.rejects(() => persistenceService.executeDisposableTextLibraryV2Command({
+        ...badOpts,
+        command: { type: 'collection.create', payload: { title: 'Blocked' } }
+      }));
+      await assert.rejects(() => persistenceService.deleteDisposableTextLibraryDatabase(badOpts));
+    }
+
+    assert.equal(mockIdb._dbs.size, 0, 'Forbidden calls must not open or create any IndexedDB instance');
+  } finally {
+    globalThis.indexedDB = prevIndexedDb;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// D3B-09: H1-01/H1-05 Single-TX Abort Rollback & Fail-Closed Concurrent Writes
+// ---------------------------------------------------------------------------
+await test('D3B-09: Single-TX command/migration aborts roll back completely and overlapping QA writes fail closed', async () => {
+  const persistenceService = await import('../src/services/persistence/textContentUnitPersistenceService.js');
+
+  const prevIndexedDb = globalThis.indexedDB;
+  const mockIdb = createMemoryIndexedDb();
+  globalThis.indexedDB = mockIdb;
+
+  try {
+    const { snapshot: v1Snap, ids } = createRealisticV1Snapshot();
+    const qaDbName = 'prolingo_text_library_d3b_qa_tx_safety';
+    await persistenceService.writeTextLibrarySnapshotToDisposableDb({
+      dbName: qaDbName,
+      snapshot: v1Snap,
+      version: 1
+    });
+
+    // Abort/failpoint during migration Phase 2 rolls back partial writes cleanly
+    await assert.rejects(
+      () => persistenceService.runDisposableContentUnitMigration({
+        dbName: qaDbName,
+        now: 9000,
+        onBeforeCommit: ({ tx }) => {
+          tx.abort();
+          throw new Error('Injected failpoint abort during migration commit');
+        }
+      }),
+      /abort|failpoint/i
+    );
+    const dbAfterFailedMig = await persistenceService.openDisposableTextLibraryV2Database({ dbName: qaDbName });
+    const postAbortMigSnap = await persistenceService.readTextLibraryV2SnapshotFromDb(dbAfterFailedMig);
+    dbAfterFailedMig.close();
+    assert.equal(postAbortMigSnap.contentUnits.length, 0, 'Aborted migration must roll back all contentUnits writes');
+    assert.equal(postAbortMigSnap.schemaVersion, 1, 'Aborted migration must roll back schemaVersion meta');
+
+    // Now complete migration cleanly
+    const cleanMig = await persistenceService.runDisposableContentUnitMigration({ dbName: qaDbName, now: 9050 });
+    assert.equal(cleanMig.changed, true);
+
+    // Abort/failpoint during command commit rolls back ALL stores cleanly
+    const preAbortUnits = cleanMig.snapshot.contentUnits.map(u => u.id);
+    const preAbortCounters = { ...cleanMig.snapshot.counters };
+    await assert.rejects(
+      () => persistenceService.executeDisposableTextLibraryV2Command({
+        dbName: qaDbName,
+        command: {
+          type: 'contentUnit.create',
+          payload: { blockId: ids.blockConvMainId, speaker: 'Ben', text: 'Should roll back completely.' }
+        },
+        now: 9100,
+        onBeforeCommit: ({ tx }) => {
+          tx.abort();
+          throw new Error('Injected failpoint abort during command commit');
+        }
+      }),
+      /abort|failpoint/i
+    );
+
+    const dbAfterAbortCmd = await persistenceService.openDisposableTextLibraryV2Database({ dbName: qaDbName });
+    const postAbortCmdSnap = await persistenceService.readTextLibraryV2SnapshotFromDb(dbAfterAbortCmd);
+    dbAfterAbortCmd.close();
+    assert.deepEqual(postAbortCmdSnap.contentUnits.map(u => u.id), preAbortUnits, 'Aborted command must roll back new Unit');
+    assert.deepEqual(postAbortCmdSnap.counters, preAbortCounters, 'Aborted command must roll back counter increment');
+
+    // Mid-transaction IDB put() failure on 'segments' AFTER earlier stores already wrote must roll back ALL stores
+    mockIdb.setFailNextPutOnStore('segments');
+    await assert.rejects(
+      () => persistenceService.executeDisposableTextLibraryV2Command({
+        dbName: qaDbName,
+        command: {
+          type: 'contentUnit.create',
+          payload: { blockId: ids.blockConvMainId, speaker: 'Ben', text: 'Mid-write put error must roll back.' }
+        },
+        now: 9150
+      }),
+      /Injected mid-transaction write failure/i
+    );
+    const dbAfterPutErr = await persistenceService.openDisposableTextLibraryV2Database({ dbName: qaDbName });
+    const postPutErrSnap = await persistenceService.readTextLibraryV2SnapshotFromDb(dbAfterPutErr);
+    dbAfterPutErr.close();
+    assert.deepEqual(postPutErrSnap.contentUnits.map(u => u.id), preAbortUnits, 'Mid-TX put failure must roll back contentUnits store');
+    assert.deepEqual(postPutErrSnap.counters, preAbortCounters, 'Mid-TX put failure must roll back meta counters');
+
+    // Concurrent overlapping QA writes on the same DB MUST fail closed instead of clobbering
+    const p1 = persistenceService.executeDisposableTextLibraryV2Command({
+      dbName: qaDbName,
+      command: {
+        type: 'contentUnit.create',
+        payload: { blockId: ids.blockConvMainId, speaker: 'Amelia', text: 'First overlapping writer wins.' }
+      },
+      now: 9200
+    });
+    const p2 = persistenceService.executeDisposableTextLibraryV2Command({
+      dbName: qaDbName,
+      command: {
+        type: 'contentUnit.create',
+        payload: { blockId: ids.blockConvMainId, speaker: 'Ben', text: 'Second overlapping writer fails closed.' }
+      },
+      now: 9201
+    });
+    const [r1, r2] = await Promise.allSettled([p1, p2]);
+    assert.equal(r1.status, 'fulfilled', 'First in-flight writer should commit cleanly');
+    assert.equal(r2.status, 'rejected', 'Concurrent overlapping writer must fail closed');
+    assert.match(String(r2.reason?.message || r2.reason), /concurrent|in-flight|busy/i);
+
+    // Lock must be released cleanly so subsequent sequential command succeeds
+    const seqAfter = await persistenceService.executeDisposableTextLibraryV2Command({
+      dbName: qaDbName,
+      command: {
+        type: 'contentUnit.create',
+        payload: { blockId: ids.blockConvMainId, speaker: 'Ben', text: 'Sequential follow-up after lock release.' }
+      },
+      now: 9300
+    });
+    assert.equal(seqAfter.snapshot.contentUnits.some(u => u.id === r1.value.result.id), true);
+    assert.equal(seqAfter.snapshot.segments.some(s => s.text === 'Second overlapping writer fails closed.'), false);
   } finally {
     globalThis.indexedDB = prevIndexedDb;
   }

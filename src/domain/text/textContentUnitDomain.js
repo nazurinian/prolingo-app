@@ -246,9 +246,23 @@ const validateSegmentUnitLinksAndOrder = ({
     const sortedSegs = [...blockSegments].sort((a, b) => (
       Number(a.order || 0) - Number(b.order || 0) || String(a.id).localeCompare(String(b.id))
     ));
+    const hasLinkedSegment = sortedSegs.some(seg => seg?.unitId != null && String(seg.unitId).trim() !== '');
+    const enforceContiguousSegOrder = !isLegacyDoc && (requireMigrated || hasLinkedSegment);
+    const seenSegOrders = new Set();
     let lastUnitOrder = 0;
 
-    sortedSegs.forEach(segment => {
+    sortedSegs.forEach((segment, segIndex) => {
+      if (enforceContiguousSegOrder) {
+        if (!Number.isInteger(segment.order) || segment.order < 1) {
+          errors.push(`Segment ${segment.id} has invalid order ${segment.order} in Card ${blockId} (expected positive integer)`);
+        } else if (seenSegOrders.has(segment.order)) {
+          errors.push(`Duplicate Segment order ${segment.order} in Card ${blockId}`);
+        } else if (segment.order !== segIndex + 1) {
+          errors.push(`Non-contiguous Segment order ${segment.order} in Card ${blockId} (expected ${segIndex + 1})`);
+        }
+        seenSegOrders.add(segment.order);
+      }
+
       const unitId = segment?.unitId ? String(segment.unitId).trim().toUpperCase() : null;
       if (isLegacyDoc) {
         if (unitId) {
@@ -695,11 +709,18 @@ export const backfillTextContentUnits = (snapshotCandidate, options = {}) => {
   sortedStructuredBlocks.forEach(block => {
     const existingBlockUnits = [...(unitsByBlock.get(block.id) || [])]
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.id).localeCompare(String(b.id)));
-    const blockSegments = segmentsByBlock.get(block.id) || [];
+    const blockSegments = [...(segmentsByBlock.get(block.id) || [])]
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.id).localeCompare(String(b.id)));
+    const normalizedBlockSegments = blockSegments.map((seg, idx) => {
+      if (seg.order === idx + 1) return seg;
+      const compacted = { ...seg, order: idx + 1 };
+      updatedSegmentMap.set(seg.id, compacted);
+      return compacted;
+    });
     const counts = block.blockType === 'conversation'
       ? backfillUnitsForConversationBlock({
           block,
-          blockSegments,
+          blockSegments: normalizedBlockSegments,
           existingBlockUnits,
           materializedSet,
           allocateUnit,
@@ -709,7 +730,7 @@ export const backfillTextContentUnits = (snapshotCandidate, options = {}) => {
         })
       : backfillUnitsForParagraphBlock({
           block,
-          blockSegments,
+          blockSegments: normalizedBlockSegments,
           existingBlockUnits,
           materializedSet,
           allocateUnit,
@@ -721,7 +742,7 @@ export const backfillTextContentUnits = (snapshotCandidate, options = {}) => {
     linkedSegmentCount += counts.linkedCount;
   });
 
-  const nextSegments = linkedSegmentCount > 0
+  const nextSegments = updatedSegmentMap.size > 0
     ? segments.map(segment => updatedSegmentMap.get(segment.id) || segment)
     : segments;
 
