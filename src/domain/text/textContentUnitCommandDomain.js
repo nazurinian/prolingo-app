@@ -19,6 +19,7 @@ export const TEXT_CONTENT_UNIT_COMMAND_TYPES = Object.freeze({
   CREATE: 'contentUnit.create',
   UPDATE: 'contentUnit.update',
   REORDER: 'contentUnit.reorder',
+  REORDER_SEGMENTS: 'contentUnit.reorderSegments',
   SPLIT: 'contentUnit.split',
   MERGE: 'contentUnit.merge',
   DELETE: 'contentUnit.delete',
@@ -403,6 +404,27 @@ export const reorderContentUnitsCommand = ({ snapshot, payload, now, normalizeEx
     blocks: snapshot.blocks.map(b => b.id === block.id ? { ...b, updatedAt: now } : b),
     documents: snapshot.documents.map(d => d.id === document.id ? { ...d, updatedAt: now } : d)
   }, { entity: 'contentUnit', action: 'reorder', blockId: block.id, documentId: document.id, orderedIds: ids });
+};
+
+export const reorderContentUnitSegmentsCommand = ({ snapshot, payload, now, normalizeExactOrderIds, finalize }) => {
+  requireContentUnitSnapshotEnabled(snapshot, TEXT_CONTENT_UNIT_COMMAND_TYPES.REORDER_SEGMENTS);
+  const unit = requireContentUnit(snapshot, payload?.id);
+  const { block, document } = requireStructuredCardAndDoc(snapshot, unit.blockId);
+  const children = snapshot.segments.filter(segment => segment.unitId === unit.id);
+  const ids = normalizeExactOrderIds(children, payload?.orderedIds, 'Content Unit Segment');
+  const synced = syncCardUnitsAndSegmentsOrder({
+    contentUnits: snapshot.contentUnits,
+    segments: snapshot.segments,
+    blockId: block.id,
+    segmentOrderOverrideByUnitId: new Map([[unit.id, ids]]),
+    now
+  });
+  return finalize({
+    ...snapshot,
+    segments: synced.segments,
+    blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
+    documents: snapshot.documents.map(item => item.id === document.id ? { ...item, updatedAt: now } : item)
+  }, { entity: 'contentUnit', action: 'reorderSegments', id: unit.id, blockId: block.id, documentId: document.id, orderedIds: ids });
 };
 
 export const splitContentUnitCommand = ({ snapshot, payload, now, allocateIdentity, finalize }) => {

@@ -147,7 +147,7 @@ export const buildTextParagraphManualSplitProposal = ({ segment, textOffset, mea
   };
 };
 
-export const normalizeTextParagraphSentenceMutationParts = (parts, finalJoinAfter = 'space') => {
+export const normalizeTextParagraphSentenceMutationParts = (parts, finalJoinAfter = 'space', label = 'Paragraph sentence') => {
   const source = Array.isArray(parts) ? parts : [];
   const normalized = source.map((part, index) => ({
     text: clean(part?.text),
@@ -157,7 +157,7 @@ export const normalizeTextParagraphSentenceMutationParts = (parts, finalJoinAfte
       : (index === source.length - 1 ? finalJoinAfter : 'space')
   }));
   if (normalized.length < 2 || normalized.some(part => !part.text)) {
-    throw new Error('Paragraph sentence split requires at least two non-empty text parts');
+    throw new Error(`${label} split requires at least two non-empty text parts`);
   }
   normalized[normalized.length - 1].joinAfter = ['space', 'line', 'none'].includes(finalJoinAfter) ? finalJoinAfter : 'space';
   return normalized;
@@ -165,9 +165,9 @@ export const normalizeTextParagraphSentenceMutationParts = (parts, finalJoinAfte
 
 const separatorFor = joinAfter => joinAfter === 'none' ? '' : (joinAfter === 'line' ? '\n' : ' ');
 
-export const joinTextParagraphSentenceSegments = segments => {
+export const joinTextParagraphSentenceSegments = (segments, label = 'Paragraph sentence') => {
   const ordered = Array.isArray(segments) ? segments : [];
-  if (ordered.length < 2) throw new Error('Paragraph sentence merge requires at least two Segments');
+  if (ordered.length < 2) throw new Error(`${label} merge requires at least two Segments`);
   const joinField = field => ordered.reduce((output, segment, index) => {
     const value = clean(segment?.[field]);
     if (!value) return output;

@@ -14,6 +14,7 @@ import {
   mergeContentUnitsCommand,
   moveSegmentToUnitCommand,
   reorderContentUnitsCommand,
+  reorderContentUnitSegmentsCommand,
   splitContentUnitCommand,
   syncCardUnitsAndSegmentsOrder,
   updateContentUnitCommand,
@@ -84,11 +85,14 @@ const COMMAND_TYPES = Object.freeze({
   CONTENT_UNIT_CREATE: TEXT_CONTENT_UNIT_COMMAND_TYPES.CREATE,
   CONTENT_UNIT_UPDATE: TEXT_CONTENT_UNIT_COMMAND_TYPES.UPDATE,
   CONTENT_UNIT_REORDER: TEXT_CONTENT_UNIT_COMMAND_TYPES.REORDER,
+  CONTENT_UNIT_REORDER_SEGMENTS: TEXT_CONTENT_UNIT_COMMAND_TYPES.REORDER_SEGMENTS,
   CONTENT_UNIT_SPLIT: TEXT_CONTENT_UNIT_COMMAND_TYPES.SPLIT,
   CONTENT_UNIT_MERGE: TEXT_CONTENT_UNIT_COMMAND_TYPES.MERGE,
   CONTENT_UNIT_DELETE: TEXT_CONTENT_UNIT_COMMAND_TYPES.DELETE,
   SPLIT_PARAGRAPH_SEGMENT: 'paragraphSegment.split',
   MERGE_PARAGRAPH_SEGMENTS: 'paragraphSegments.merge',
+  SPLIT_CONVERSATION_SEGMENT: 'conversationSegment.split',
+  MERGE_CONVERSATION_SEGMENTS: 'conversationSegments.merge',
   UPSERT_AUDIO_VARIANT: 'audioVariant.upsert',
   DELETE_AUDIO_VARIANT: 'audioVariant.delete',
   UPSERT_FULL_AUDIO_ARTIFACT: 'fullAudioArtifact.upsert',
@@ -864,7 +868,7 @@ const deleteSegment = (snapshot, payload, now) => {
   if (isContentUnitSnapshot(snapshot) && current.unitId) {
     const parentUnit = (snapshot.contentUnits || []).find(u => u.id === current.unitId) || null;
     const unitStillHasSegments = remainingSegments.some(s => s.unitId === current.unitId);
-    if (parentUnit?.kind === 'turn' && !unitStillHasSegments) {
+    if (parentUnit?.kind === 'turn' && !unitStillHasSegments && payload?.preserveEmptyUnit !== true) {
       const remainingUnits = snapshot.contentUnits.filter(u => u.id !== parentUnit.id);
       nextContentUnits = compactOrderGroup(remainingUnits, u => u.blockId === current.blockId, now);
     }
@@ -928,12 +932,16 @@ const reorderSegments = (snapshot, payload, now) => {
 };
 
 
-const requireParagraphSegment = (snapshot, segmentId) => {
+const requireSentenceSegment = (snapshot, segmentId, blockType) => {
   const segment = requireSegment(snapshot, segmentId);
   requireStructuredDocument(snapshot, segment.documentId);
   const block = requireBlock(snapshot, segment.blockId);
-  if (block.blockType !== 'paragraph') {
-    throw new Error(`Paragraph sentence mutation refused for ${block.blockType} Card ${block.id}`);
+  const label = blockType === 'conversation' ? 'Conversation sentence' : 'Paragraph sentence';
+  if (block.blockType !== blockType) {
+    throw new Error(`${label} mutation refused for ${block.blockType} Card ${block.id}`);
+  }
+  if (blockType === 'conversation' && !(snapshot.contentUnits || []).some(unit => unit.id === segment.unitId && unit.kind === 'turn')) {
+    throw new Error('Conversation sentence mutation requires a persistent Turn Content Unit');
   }
   return { segment, block };
 };
@@ -948,9 +956,19 @@ const invalidateSegmentAudioVariants = (audioVariants, segmentId, reason, now) =
     : variant
 );
 
-const splitParagraphSegment = (snapshot, payload, now) => {
-  const { segment: current, block } = requireParagraphSegment(snapshot, payload?.id);
-  const parts = normalizeTextParagraphSentenceMutationParts(payload?.parts, current.joinAfter);
+const splitSentenceSegment = (snapshot, payload, now, blockType) => {
+  const { segment: current, block } = requireSentenceSegment(snapshot, payload?.id, blockType);
+  const label = blockType === 'conversation' ? 'Conversation sentence' : 'Paragraph sentence';
+  const parts = normalizeTextParagraphSentenceMutationParts(payload?.parts, current.joinAfter, label);
+  const createdMetadata = { ...current.metadata };
+  if (blockType === 'conversation') {
+    // Only the retained Sentence owns the original external key. Copying it causes
+    // reconciliation's source-key map to overwrite one of the split Sentences.
+    delete createdMetadata.externalEntityV1;
+    if (createdMetadata.prolingoTextPackSource) {
+      createdMetadata.prolingoTextPackSource = { ...createdMetadata.prolingoTextPackSource, attachmentId: null, ownership: 'detached-local' };
+    }
+  }
   let countersSnapshot = snapshot;
   const created = [];
   for (let index = 1; index < parts.length; index += 1) {
@@ -964,12 +982,12 @@ const splitParagraphSegment = (snapshot, payload, now) => {
       ...(current.unitId ? { unitId: current.unitId } : {}),
       text: parts[index].text,
       meaning: parts[index].meaning,
-      speaker: null,
+      speaker: blockType === 'conversation' ? current.speaker : null,
       joinAfter: parts[index].joinAfter,
       createdAt: now,
       updatedAt: now,
       metadata: buildTextParagraphSentenceMutationMetadata({
-        metadata: current.metadata,
+        metadata: createdMetadata,
         operation: 'split-created',
         sourceSegmentIds: [current.id],
         at: now
@@ -981,7 +999,7 @@ const splitParagraphSegment = (snapshot, payload, now) => {
     ...current,
     text: parts[0].text,
     meaning: parts[0].meaning,
-    speaker: null,
+    speaker: blockType === 'conversation' ? current.speaker : null,
     joinAfter: parts[0].joinAfter,
     updatedAt: now,
     metadata: buildTextParagraphSentenceMutationMetadata({
@@ -996,7 +1014,7 @@ const splitParagraphSegment = (snapshot, payload, now) => {
   const orderedIds = siblings.flatMap(item => item.id === current.id ? [retained.id, ...created.map(record => record.id)] : [item.id]);
   const withoutCurrent = snapshot.segments.filter(item => item.id !== current.id);
   const nextSegments = applyContiguousOrder([...withoutCurrent, retained, ...created], orderedIds, now);
-  const invalidatedAudio = invalidateSegmentAudioVariants(snapshot.audioVariants, current.id, 'paragraph-sentence-split', now);
+  const invalidatedAudio = invalidateSegmentAudioVariants(snapshot.audioVariants, current.id, `${blockType}-sentence-split`, now);
   return finalize({
     ...snapshot,
     counters: countersSnapshot.counters,
@@ -1005,7 +1023,7 @@ const splitParagraphSegment = (snapshot, payload, now) => {
     blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === current.documentId ? { ...item, updatedAt: now } : item)
   }, {
-    entity: 'paragraphSegment',
+    entity: blockType === 'conversation' ? 'conversationSegment' : 'paragraphSegment',
     action: 'split',
     retainedId: retained.id,
     createdIds: created.map(record => record.id),
@@ -1015,30 +1033,31 @@ const splitParagraphSegment = (snapshot, payload, now) => {
   });
 };
 
-const mergeParagraphSegments = (snapshot, payload, now) => {
+const mergeSentenceSegments = (snapshot, payload, now, blockType) => {
+  const label = blockType === 'conversation' ? 'Conversation sentence' : 'Paragraph sentence';
   const requestedIds = [...new Set((Array.isArray(payload?.ids) ? payload.ids : []).map(value => String(value || '').toUpperCase()).filter(Boolean))];
-  if (requestedIds.length < 2) throw new Error('Paragraph sentence merge requires at least two unique Segment IDs');
-  const first = requireParagraphSegment(snapshot, requestedIds[0]);
+  if (requestedIds.length < 2) throw new Error(`${label} merge requires at least two unique Segment IDs`);
+  const first = requireSentenceSegment(snapshot, requestedIds[0], blockType);
   const block = first.block;
   const siblings = sortByOrderThenId(snapshot.segments.filter(item => item.blockId === block.id));
   const selected = siblings.filter(item => requestedIds.includes(item.id));
-  if (selected.length !== requestedIds.length) throw new Error('Paragraph sentence merge contains a Segment outside the target Card');
-  if (selected.some(item => item.documentId !== first.segment.documentId)) throw new Error('Paragraph sentence merge cannot cross Workspaces');
+  if (selected.length !== requestedIds.length) throw new Error(`${label} merge contains a Segment outside the target Card`);
+  if (selected.some(item => item.documentId !== first.segment.documentId)) throw new Error(`${label} merge cannot cross Workspaces`);
   const positions = selected.map(item => siblings.findIndex(candidate => candidate.id === item.id));
   const contiguous = positions.every((position, index) => index === 0 || position === positions[index - 1] + 1);
-  if (!contiguous) throw new Error('Paragraph sentence merge requires adjacent Segments');
+  if (!contiguous) throw new Error(`${label} merge requires adjacent Segments`);
   if (isContentUnitSnapshot(snapshot) && new Set(selected.map(item => item.unitId)).size > 1) {
-    throw new Error('Paragraph sentence merge cannot cross Content Unit boundaries; use contentUnit.merge first.');
+    throw new Error(`${label} merge cannot cross Content Unit boundaries; use contentUnit.merge first.`);
   }
 
   const retainedSource = selected[0];
   const removedIds = selected.slice(1).map(item => item.id);
-  const merged = joinTextParagraphSentenceSegments(selected);
+  const merged = joinTextParagraphSentenceSegments(selected, label);
   const retained = createTextSegmentRecord({
     ...retainedSource,
     text: merged.text,
     meaning: merged.meaning,
-    speaker: null,
+    speaker: blockType === 'conversation' ? retainedSource.speaker : null,
     joinAfter: merged.joinAfter,
     updatedAt: now,
     metadata: buildTextParagraphSentenceMutationMetadata({
@@ -1053,7 +1072,7 @@ const mergeParagraphSegments = (snapshot, payload, now) => {
   const selectedSet = new Set(selected.map(item => item.id));
   const baseSegments = snapshot.segments.filter(item => !selectedSet.has(item.id));
   const nextSegments = applyContiguousOrder([...baseSegments, retained], orderedIds, now);
-  const retainedInvalidated = invalidateSegmentAudioVariants(snapshot.audioVariants, retained.id, 'paragraph-sentence-merge', now);
+  const retainedInvalidated = invalidateSegmentAudioVariants(snapshot.audioVariants, retained.id, `${blockType}-sentence-merge`, now);
   const nextAudioVariants = retainedInvalidated.filter(variant => !removedIds.includes(variant.segmentId));
   return finalize({
     ...snapshot,
@@ -1062,7 +1081,7 @@ const mergeParagraphSegments = (snapshot, payload, now) => {
     blocks: snapshot.blocks.map(item => item.id === block.id ? { ...item, updatedAt: now } : item),
     documents: snapshot.documents.map(item => item.id === retained.documentId ? { ...item, updatedAt: now } : item)
   }, {
-    entity: 'paragraphSegments',
+    entity: blockType === 'conversation' ? 'conversationSegments' : 'paragraphSegments',
     action: 'merge',
     retainedId: retained.id,
     removedIds,
@@ -1547,11 +1566,14 @@ export const applyTextLibraryCommand = (snapshotCandidate, command, now = Date.n
     case COMMAND_TYPES.CONTENT_UNIT_CREATE: return createContentUnitCommand({ snapshot, payload, now, allocateIdentity, finalize });
     case COMMAND_TYPES.CONTENT_UNIT_UPDATE: return updateContentUnitCommand({ snapshot, payload, now, finalize });
     case COMMAND_TYPES.CONTENT_UNIT_REORDER: return reorderContentUnitsCommand({ snapshot, payload, now, normalizeExactOrderIds, finalize });
+    case COMMAND_TYPES.CONTENT_UNIT_REORDER_SEGMENTS: return reorderContentUnitSegmentsCommand({ snapshot, payload, now, normalizeExactOrderIds, finalize });
     case COMMAND_TYPES.CONTENT_UNIT_SPLIT: return splitContentUnitCommand({ snapshot, payload, now, allocateIdentity, finalize });
     case COMMAND_TYPES.CONTENT_UNIT_MERGE: return mergeContentUnitsCommand({ snapshot, payload, now, finalize });
     case COMMAND_TYPES.CONTENT_UNIT_DELETE: return deleteContentUnitCommand({ snapshot, payload, now, finalize });
-    case COMMAND_TYPES.SPLIT_PARAGRAPH_SEGMENT: return splitParagraphSegment(snapshot, payload, now);
-    case COMMAND_TYPES.MERGE_PARAGRAPH_SEGMENTS: return mergeParagraphSegments(snapshot, payload, now);
+    case COMMAND_TYPES.SPLIT_PARAGRAPH_SEGMENT: return splitSentenceSegment(snapshot, payload, now, 'paragraph');
+    case COMMAND_TYPES.MERGE_PARAGRAPH_SEGMENTS: return mergeSentenceSegments(snapshot, payload, now, 'paragraph');
+    case COMMAND_TYPES.SPLIT_CONVERSATION_SEGMENT: return splitSentenceSegment(snapshot, payload, now, 'conversation');
+    case COMMAND_TYPES.MERGE_CONVERSATION_SEGMENTS: return mergeSentenceSegments(snapshot, payload, now, 'conversation');
     case COMMAND_TYPES.UPSERT_AUDIO_VARIANT: return upsertAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.DELETE_AUDIO_VARIANT: return deleteAudioVariant(snapshot, payload, now);
     case COMMAND_TYPES.UPSERT_FULL_AUDIO_ARTIFACT: return upsertFullAudioArtifact(snapshot, payload, now);
