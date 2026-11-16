@@ -23,8 +23,14 @@ import { resolveTextStructuredConversationSyncedVoiceProfile } from '../../domai
 import { TextStructuredCardAudioPanel } from './TextStructuredCardAudioPanel.jsx';
 import { collectTextStructuredConversationSpeakers } from '../../domain/text/textStructuredSpeakerVoiceProfileDomain.js';
 import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx';
-import { TEXT_PARAGRAPH_CARD_ROLES, getTextParagraphCardRoleLabel, resolveTextParagraphCardRole } from '../../domain/text/textParagraphRoleDomain.js';
+import { getTextParagraphCardRoleLabel, resolveTextParagraphCardRole, TEXT_PARAGRAPH_CARD_ROLES } from '../../domain/text/textParagraphRoleDomain.js';
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
+import { SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
+import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
+import {
+  normalizeTextCardPresentationState,
+  updateTextCardPresentationState
+} from '../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
 import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
 
@@ -131,7 +137,12 @@ const StructuredPlayerCard = ({
   onResetSegmentAudioPreferences = null,
   focusTarget = null,
   onFocusConsumed,
-  userNavigationRef = null
+  userNavigationRef = null,
+  useSharedCardReader = false,
+  sharedCard = null,
+  sharedWorkspace = null,
+  sharedBilingualLayout = 'interlinear',
+  sharedPlaybackCursor = null
 }) => {
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
   const [segmentToolsId, setSegmentToolsId] = useState(null);
@@ -192,6 +203,18 @@ const StructuredPlayerCard = ({
   );
   const isCardSpeaking = Boolean(isActiveCard && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && (isPlaying || isPaused));
   const activeChannelBadgeLabel = speakingPart === 'meaning' ? 'ID' : speakingPart === 'text' ? 'EN' : null;
+  const effectiveSharedCursor = sharedPlaybackCursor || {
+    workspaceId: documentTree?.id ?? null,
+    workspaceUid: documentTree?.uid ?? null,
+    sessionId: isCardSpeaking ? 'host' : null,
+    state: isCardSpeaking ? (isPaused ? 'paused' : 'playing') : 'idle',
+    cardId: isCardSpeaking ? block.id : null,
+    unitId: null,
+    segmentId: isCardSpeaking && !isFullRepresentation && playingIndex ? playingIndex : null,
+    channel: speakingPart === 'meaning' ? 'meaning' : speakingPart === 'text' ? 'text' : null,
+    precision: !isCardSpeaking ? 'none' : (isFullRepresentation || !playingIndex) ? 'card' : 'segment'
+  };
+  const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && isParagraphCard && sharedCard);
 
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
@@ -248,8 +271,36 @@ const StructuredPlayerCard = ({
       </div>
 
       {expanded && <div className="p-3 sm:p-4 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
-        {segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No segments in this card.</div>}
-        {isParagraphCard && segments.length > 0 && <>
+        {!useEmbeddedSharedParagraph && segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No segments in this card.</div>}
+        {useEmbeddedSharedParagraph && (
+          <>
+            <SharedCardReadingSurface
+              variant="embedded"
+              card={sharedCard}
+              index={index}
+              workspace={sharedWorkspace}
+              bilingualLayout={sharedBilingualLayout}
+              playbackCursor={effectiveSharedCursor}
+              focusSegmentId={isFocusCard ? focusTarget?.segmentId : null}
+              isFocusCard={isFocusCard}
+              playableSegmentIds={paragraphPlayableSegmentIds}
+              audioCoverageMap={audioCoverageMap}
+              cardPlayable={cardHasPlayableSegment}
+              disabled={generationBusy}
+              onPlayCard={onPlayCard}
+              onPlaySegment={onPlaySegment}
+            />
+            {segments.length > 0 && (
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <button type="button" onClick={() => setParagraphSentenceDetailsOpen(value => !value)} className={`shrink-0 min-h-8 px-2.5 py-1 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 transition-colors ${paragraphSentenceDetailsOpen ? 'border-violet-400 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-slate-600 dark:text-slate-300 hover:border-slate-300'}`} aria-expanded={paragraphSentenceDetailsOpen}>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${paragraphSentenceDetailsOpen ? 'rotate-180' : ''}`} />
+                  {paragraphSentenceDetailsOpen ? 'Hide Sentence List' : `Sentence List (${segments.length})`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {!useEmbeddedSharedParagraph && isParagraphCard && segments.length > 0 && <>
           <TextParagraphUnifiedReading
             segments={segments}
             splitMode={!isFullRepresentation}
@@ -496,10 +547,24 @@ export const TextStructuredPlayer = ({
   resetDisabled = false,
   onResetPlaybackPreferences = null,
   onResetCardAudioPreferences = null,
-  onResetSegmentAudioPreferences = null
+  onResetSegmentAudioPreferences = null,
+  useSharedCardReader = false,
+  sharedPresentation = null,
+  sharedPresentationState = null,
+  onSharedPresentationStateChange = null,
+  sharedPlaybackCursor = null
 }) => {
   const [customExpandedIds, setCustomExpandedIds] = useState(() => new Set());
   const [lastActiveBlockId, setLastActiveBlockId] = useState(null);
+  const [uncontrolledSharedView, setUncontrolledSharedView] = useState(() => normalizeTextCardPresentationState());
+  const activeSharedView = sharedPresentationState
+    ? normalizeTextCardPresentationState(sharedPresentationState)
+    : uncontrolledSharedView;
+  const handleSharedLayoutChange = useCallback(bilingualLayout => {
+    const next = updateTextCardPresentationState(activeSharedView, { bilingualLayout });
+    if (onSharedPresentationStateChange) onSharedPresentationStateChange(next);
+    else setUncontrolledSharedView(next);
+  }, [activeSharedView, onSharedPresentationStateChange]);
   const lastProcessedActiveBlockIdRef = useRef(null);
   const playerRef = useRef(null);
   const userNavigationRef = useRef(0);
@@ -653,6 +718,12 @@ export const TextStructuredPlayer = ({
       </div>
 
       <div className="space-y-3 animate-in fade-in duration-200">
+        {useSharedCardReader && sharedPresentation && blocks.some(block => block.blockType === 'paragraph') && (
+          <SharedBilingualLayoutToolbar
+            bilingualLayout={activeSharedView.bilingualLayout}
+            onChangeLayout={handleSharedLayoutChange}
+          />
+        )}
         {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Workspace belum memiliki Card. Buka DATA → CREATE untuk membuat Card pertama.</div>}
         {blocks.map((block, index) => <StructuredPlayerCard
           key={block.id}
@@ -716,6 +787,11 @@ export const TextStructuredPlayer = ({
           focusTarget={focusTarget}
           onFocusConsumed={onFocusConsumed}
           userNavigationRef={userNavigationRef}
+          useSharedCardReader={useSharedCardReader}
+          sharedCard={useSharedCardReader ? (sharedPresentation?.cardById?.[block.id] || null) : null}
+          sharedWorkspace={useSharedCardReader ? (sharedPresentation?.workspace || null) : null}
+          sharedBilingualLayout={activeSharedView.bilingualLayout}
+          sharedPlaybackCursor={sharedPlaybackCursor}
         />)}
       </div>
     </section>
