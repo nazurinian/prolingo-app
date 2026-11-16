@@ -5,8 +5,11 @@ import {
   ArrowUp,
   Edit3,
   GitMerge,
+  Play,
   Scissors,
+  SkipForward,
   Split,
+  Square,
   Trash2,
   X
 } from 'lucide-react';
@@ -17,6 +20,10 @@ import {
   normalizeConversationEditorError,
   swapArrayIds
 } from './conversationEditorErrorUtils.js';
+import {
+  compactConversationVoiceName,
+  getConversationEntryUiStatus
+} from './conversationAudioUiUtils.js';
 import ConversationSentenceSplitPanel from './ConversationSentenceSplitPanel.jsx';
 
 const clean = value => String(value ?? '').trim();
@@ -274,6 +281,44 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
   );
 };
 
+const statusToneClass = tone => ({
+  emerald: 'bg-emerald-50 dark:bg-emerald-950/35 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+  amber: 'bg-amber-50 dark:bg-amber-950/35 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+  rose: 'bg-rose-50 dark:bg-rose-950/35 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800',
+  violet: 'bg-violet-50 dark:bg-violet-950/35 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800',
+  slate: 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+}[tone] || 'bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700');
+
+const SentenceD5AudioStatusBadges = ({ sentenceId, audioEntries, failedVariantIds, text, meaning }) => {
+  if (!audioEntries?.text && !audioEntries?.meaning) return null;
+  const rows = [
+    ...(clean(text) && audioEntries?.text ? [{ key: 'EN', entry: audioEntries.text }] : []),
+    ...(clean(meaning) && audioEntries?.meaning ? [{ key: 'ID', entry: audioEntries.meaning }] : [])
+  ];
+  if (!rows.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-conversation-sentence-readiness={sentenceId}>
+      {rows.map(({ key, entry }) => {
+        const uiStatus = getConversationEntryUiStatus(entry, failedVariantIds);
+        const voiceLabel = compactConversationVoiceName(
+          entry.runtimeAudio?.variant?.voiceId || entry.ttsVoiceName || entry.voiceProfile?.voiceName
+        );
+        const rateLabel = `${(Number(entry.playbackRate) || 1).toFixed(1)}x`;
+        return (
+          <span
+            key={key}
+            className={`px-1.5 py-0.5 rounded border text-[7px] font-black inline-flex items-center gap-1 ${statusToneClass(uiStatus.tone)}`}
+            title={uiStatus.detail}
+          >
+            <span>{key} • {uiStatus.label}</span>
+            <span className="font-normal opacity-80">({voiceLabel} • {rateLabel})</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 /**
  * Renders one persistent Sentence inside a Speaker Turn with edit, reorder, move, split, merge, Turn split, and delete controls.
  */
@@ -283,6 +328,14 @@ export const ConversationSentenceItem = ({
   turn,
   sceneTurns = [],
   nextSentence = null,
+  audioEntries = null,
+  failedVariantIds = null,
+  isPlayingSentence = false,
+  isPausedSentence = false,
+  isCursorSentence = false,
+  speakingPart = null,
+  onPlaySentence = null,
+  onPlayFromSentence = null,
   isBusy = false,
   onCommand,
   compact = false
@@ -343,14 +396,56 @@ export const ConversationSentenceItem = ({
     );
   }
 
+  const cardHighlightClass = isPlayingSentence
+    ? (speakingPart === 'meaning'
+        ? 'border-emerald-400 dark:border-emerald-600 ring-1 ring-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-950/20'
+        : 'border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-500/25 bg-indigo-50/40 dark:bg-indigo-950/20')
+    : isCursorSentence
+      ? 'border-sky-300 dark:border-sky-700 bg-sky-50/25 dark:bg-slate-800/90'
+      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90';
+
   return (
     <div
-      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/90 p-2.5"
+      className={`rounded-xl border p-2.5 transition ${cardHighlightClass}`}
       data-conversation-sentence-id={sentence.id}
+      data-conversation-sentence-active={isPlayingSentence ? 'true' : undefined}
     >
       <div className={compact ? 'space-y-2' : 'flex items-start gap-2'}>
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
+            {typeof onPlaySentence === 'function' && (
+              <button
+                type="button"
+                disabled={isBusy || !clean(sentence.text)}
+                onClick={() => onPlaySentence(sentence.id)}
+                className={`h-7 w-7 shrink-0 rounded-full inline-flex items-center justify-center border transition disabled:opacity-35 ${
+                  isPlayingSentence
+                    ? 'bg-red-600 border-red-600 text-white'
+                    : 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-600 hover:text-white'
+                }`}
+                title={isPlayingSentence ? 'Stop sentence playback' : 'Play this sentence'}
+                aria-label={isPlayingSentence ? `Stop sentence ${sentence.id}` : `Play sentence ${sentence.id}`}
+              >
+                {isPlayingSentence ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-3 h-3 fill-current ml-0.5" />}
+              </button>
+            )}
+            {typeof onPlayFromSentence === 'function' && (
+              <button
+                type="button"
+                disabled={isBusy || !clean(sentence.text)}
+                onClick={() => onPlayFromSentence(sentence.id)}
+                className="px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-indigo-600 text-[8px] font-bold inline-flex items-center gap-0.5 disabled:opacity-35"
+                title="Play from this sentence onward"
+                aria-label={`Play from sentence ${sentence.id}`}
+              >
+                <SkipForward className="w-2.5 h-2.5" />From here
+              </button>
+            )}
+            {isPlayingSentence && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase text-white ${isPausedSentence ? 'bg-amber-500' : speakingPart === 'meaning' ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+                {isPausedSentence ? 'PAUSED' : `PLAYING ${speakingPart === 'meaning' ? 'ID' : 'EN'}`}
+              </span>
+            )}
             <span className="text-[8px] font-black text-slate-400">
               Sentence {sentenceIndex + 1}
               {Number.isInteger(sentence.order) ? ` (Card #${sentence.order})` : ''}
@@ -385,6 +480,13 @@ export const ConversationSentenceItem = ({
             </div>
           )}
 
+          <SentenceD5AudioStatusBadges
+            sentenceId={sentence.id}
+            audioEntries={audioEntries}
+            failedVariantIds={failedVariantIds}
+            text={sentence.text}
+            meaning={sentence.meaning}
+          />
           <SentenceAudioMetaBadges audioVariants={sentence.audioVariants} text={sentence.text} meaning={sentence.meaning} />
         </div>
 

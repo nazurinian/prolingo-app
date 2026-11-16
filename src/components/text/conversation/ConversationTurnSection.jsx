@@ -247,6 +247,8 @@ export const ConversationTurnSection = ({
   speakerOptions = [],
   selectedForMerge = false,
   onToggleMergeSelect,
+  audioEntriesBySegmentChannel = null,
+  audioPlayback = null,
   isBusy = false,
   onCommand,
   compact = false
@@ -402,19 +404,38 @@ export const ConversationTurnSection = ({
           </div>
         ) : (
           <div className="space-y-2">
-            {turn.sentences.map((sentence, sentenceIndex) => (
-              <ConversationSentenceItem
-                key={sentence.id}
-                sentence={sentence}
-                sentenceIndex={sentenceIndex}
-                turn={turn}
-                sceneTurns={turns}
-                nextSentence={turn.sentences[sentenceIndex + 1] || null}
-                isBusy={isBusy}
-                onCommand={onCommand}
-                compact={compact}
-              />
-            ))}
+            {turn.sentences.map((sentence, sentenceIndex) => {
+              const audioEntries = audioEntriesBySegmentChannel
+                ? {
+                    text: audioEntriesBySegmentChannel[`${sentence.id}::text`] || null,
+                    meaning: audioEntriesBySegmentChannel[`${sentence.id}::meaning`] || null
+                  }
+                : null;
+              const isSessionActive = Boolean(audioPlayback && (audioPlayback.isPlaying || audioPlayback.isPaused));
+              const isPlayingSentence = isSessionActive && audioPlayback?.playingIndex === sentence.id;
+              const isCursorSentence = Boolean(audioPlayback?.currentIndex === sentence.id && !isPlayingSentence);
+              return (
+                <ConversationSentenceItem
+                  key={sentence.id}
+                  sentence={sentence}
+                  sentenceIndex={sentenceIndex}
+                  turn={turn}
+                  sceneTurns={turns}
+                  nextSentence={turn.sentences[sentenceIndex + 1] || null}
+                  audioEntries={audioEntries}
+                  failedVariantIds={audioPlayback?.failedVariantIds || null}
+                  isPlayingSentence={isPlayingSentence}
+                  isPausedSentence={isPlayingSentence && Boolean(audioPlayback?.isPaused)}
+                  isCursorSentence={isCursorSentence}
+                  speakingPart={isPlayingSentence ? audioPlayback?.speakingPart : null}
+                  onPlaySentence={audioPlayback?.playSentence || null}
+                  onPlayFromSentence={audioPlayback?.playFromSentence || null}
+                  isBusy={isBusy}
+                  onCommand={onCommand}
+                  compact={compact}
+                />
+              );
+            })}
           </div>
         )}
 

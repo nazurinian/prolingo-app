@@ -13,12 +13,31 @@ import {
   selectTextConversationEditorState,
   TextConversationEditorError
 } from '../../../domain/text/textConversationEditorDomain.js';
+import { resolveTextLibraryDocumentTree } from '../../../domain/text/textLibraryDomain.js';
+import { resolveStructuredTextPlaybackList } from '../../../domain/text/textStructuredPlaybackDomain.js';
 import {
   collectConversationEditorSpeakers,
   normalizeConversationEditorError
 } from './conversationEditorErrorUtils.js';
+import { buildConversationSceneAudioPlansMap } from './conversationAudioUiUtils.js';
+import { useConversationAudioPlayback } from './useConversationAudioPlayback.js';
 import ConversationSpeakerPanel from './ConversationSpeakerPanel.jsx';
 import ConversationSceneCard from './ConversationSceneCard.jsx';
+import ConversationAudioTransportBar from './ConversationAudioTransportBar.jsx';
+
+const EMPTY_MAP = Object.freeze({});
+
+const DEFAULT_AUDIO_CONFIG = Object.freeze({
+  playbackChannelMode: 'text-only',
+  playbackRepresentationMode: 'split',
+  audioSourceMode: 'local-first',
+  globalPlaybackRate: 1,
+  playbackOrderMode: 'sequential',
+  repeatMode: 'once',
+  preferences: null,
+  globalPlaybackOrder: null,
+  customLocalVoiceId: null
+});
 
 const clean = value => String(value ?? '').trim();
 
@@ -138,7 +157,16 @@ const ConversationEditorSession = ({
   onSelectWorkspace = null,
   error = null,
   onClearError = null,
-  lastReceipt = null
+  lastReceipt = null,
+  enableAudio = true,
+  runtimeAudioUrls = EMPTY_MAP,
+  runtimeFullAudio = EMPTY_MAP,
+  audioConfig = null,
+  onAudioConfigChange = null,
+  availableBrowserVoices = null,
+  onAssembleFullWav = null,
+  audioRuntimeHooks = null,
+  onAudioStateReport = null
 }) => {
   const [localError, setLocalError] = useState(null);
   const [pending, setPending] = useState(false);
@@ -151,6 +179,21 @@ const ConversationEditorSession = ({
   }, []);
   const [addingSceneWorkspaceId, setAddingSceneWorkspaceId] = useState(null);
   const [focusedSceneState, setFocusedSceneState] = useState({ workspaceId: null, sceneId: null });
+  const [localAudioConfig, setLocalAudioConfig] = useState(DEFAULT_AUDIO_CONFIG);
+
+  const mergedAudioConfig = useMemo(() => ({
+    ...DEFAULT_AUDIO_CONFIG,
+    ...localAudioConfig,
+    ...(audioConfig || {})
+  }), [localAudioConfig, audioConfig]);
+
+  const handleAudioConfigChange = patch => {
+    if (!patch || typeof patch !== 'object') return;
+    if (audioConfig === null) {
+      setLocalAudioConfig(prev => ({ ...prev, ...patch }));
+    }
+    onAudioConfigChange?.(patch);
+  };
 
   const eligibleWorkspaces = useMemo(() => {
     if (Array.isArray(workspaceOptions)) return workspaceOptions;
@@ -179,6 +222,64 @@ const ConversationEditorSession = ({
   const state = selection.state;
   const workspaceId = state?.workspace?.id || null;
   const speakerOptions = useMemo(() => (state ? collectConversationEditorSpeakers(state) : []), [state]);
+
+  const documentTree = useMemo(() => {
+    if (!enableAudio || !snapshot || !workspaceId || selection.fatalError) return null;
+    try {
+      return resolveTextLibraryDocumentTree(snapshot, workspaceId);
+    } catch {
+      return null;
+    }
+  }, [enableAudio, snapshot, workspaceId, selection.fatalError]);
+
+  const audioPlans = useMemo(() => (
+    enableAudio && documentTree
+      ? buildConversationSceneAudioPlansMap({
+          documentTree,
+          audioVariants: snapshot?.audioVariants || [],
+          runtimeAudioUrls,
+          runtimeFullAudio,
+          audioConfig: mergedAudioConfig
+        })
+      : { bySceneId: {}, bySegmentChannel: {}, workspaceTotals: { entries: 0, ready: 0, metadataOnly: 0, stale: 0, otherProfile: 0, missing: 0 }, planError: null }
+  ), [enableAudio, documentTree, snapshot?.audioVariants, runtimeAudioUrls, runtimeFullAudio, mergedAudioConfig]);
+
+  const playableCount = useMemo(
+    () => (documentTree ? resolveStructuredTextPlaybackList(documentTree).length : 0),
+    [documentTree]
+  );
+
+  const audioPlayback = useConversationAudioPlayback({
+    snapshot: enableAudio ? snapshot : null,
+    documentTree: enableAudio ? documentTree : null,
+    runtimeAudioUrls,
+    runtimeFullAudio,
+    audioConfig: mergedAudioConfig,
+    availableBrowserVoices,
+    audioRuntimeHooks,
+    isMobile: compact
+  });
+
+  useEffect(() => {
+    onAudioStateReport?.({
+      audioPlans,
+      playbackSourceStatus: audioPlayback.playbackSourceStatus,
+      isPlaying: audioPlayback.isPlaying,
+      isPaused: audioPlayback.isPaused,
+      playingIndex: audioPlayback.playingIndex,
+      resumeCursorSegmentId: audioPlayback.resumeCursorSegmentId,
+      playbackLogs: audioPlayback.playbackLogs
+    });
+  }, [
+    onAudioStateReport,
+    audioPlans,
+    audioPlayback.playbackSourceStatus,
+    audioPlayback.isPlaying,
+    audioPlayback.isPaused,
+    audioPlayback.playingIndex,
+    audioPlayback.resumeCursorSegmentId,
+    audioPlayback.playbackLogs
+  ]);
 
   const activeError = ensureNormalizedError(error) || localError;
   const addingScene = Boolean(workspaceId && addingSceneWorkspaceId === workspaceId);
@@ -475,6 +576,19 @@ const ConversationEditorSession = ({
         />
       )}
 
+      {enableAudio && documentTree && (
+        <ConversationAudioTransportBar
+          audioConfig={mergedAudioConfig}
+          onAudioConfigChange={handleAudioConfigChange}
+          playback={audioPlayback}
+          workspaceTotals={audioPlans.workspaceTotals}
+          playableCount={playableCount}
+          isMixed={isMixed}
+          isBusy={isBusy}
+          compact={compact}
+        />
+      )}
+
       <ConversationSpeakerPanel
         state={state}
         isBusy={isBusy}
@@ -505,18 +619,28 @@ const ConversationEditorSession = ({
         </div>
       ) : (
         <div className="space-y-3">
-          {visibleScenes.map(scene => (
-            <ConversationSceneCard
-              key={scene.id}
-              scene={scene}
-              sceneIndex={sceneIndexById.get(scene.id) ?? 0}
-              state={state}
-              speakerOptions={speakerOptions}
-              isBusy={isBusy}
-              onCommand={handleCommand}
-              compact={compact}
-            />
-          ))}
+          {visibleScenes.map(scene => {
+            const hydratedBlock = documentTree?.blocks?.find(block => block.id === scene.id) || null;
+            const scenePlans = enableAudio ? (audioPlans.bySceneId?.[scene.id] || null) : null;
+            return (
+              <ConversationSceneCard
+                key={scene.id}
+                scene={scene}
+                sceneIndex={sceneIndexById.get(scene.id) ?? 0}
+                state={state}
+                speakerOptions={speakerOptions}
+                hydratedBlock={hydratedBlock}
+                scenePlans={scenePlans}
+                audioEntriesBySegmentChannel={enableAudio ? audioPlans.bySegmentChannel : null}
+                audioPlayback={enableAudio ? audioPlayback : null}
+                runtimeAudioUrls={runtimeAudioUrls}
+                onAssembleFullWav={onAssembleFullWav}
+                isBusy={isBusy}
+                onCommand={handleCommand}
+                compact={compact}
+              />
+            );
+          })}
         </div>
       )}
     </div>

@@ -8,12 +8,18 @@ import {
   RotateCcw,
   ShieldCheck,
   Smartphone,
-  Sun
+  Sun,
+  Volume2
 } from 'lucide-react';
 import { createD4aConversationFixture } from '../../../../scripts/fixtures/d4a/conversation-editor-fixture.js';
+import { createD5AudioFixture } from '../../../../scripts/fixtures/d5/conversation-audio-fixture.js';
 import { applyTextConversationEditorCommand } from '../../../domain/text/textConversationEditorDomain.js';
 import { applyTextLibraryCommand } from '../../../domain/text/textLibraryCommandDomain.js';
+import { resolveTextLibraryDocumentTree } from '../../../domain/text/textLibraryDomain.js';
+import { buildTextStructuredBlockRuntimePlaybackPlan } from '../../../domain/text/textStructuredRuntimePlaybackPlanDomain.js';
+import { buildTextStructuredFullArtifactRecord } from '../../../domain/text/textStructuredSplitFullDomain.js';
 import { normalizeConversationEditorError } from './conversationEditorErrorUtils.js';
+import { assembleConversationSceneFullWavPreview } from './conversationAudioUiUtils.js';
 import TextConversationEditor from './TextConversationEditor.jsx';
 
 const QA_MODES = Object.freeze([
@@ -24,6 +30,176 @@ const QA_MODES = Object.freeze([
   { id: 'v1-blocked', label: 'Test: v1 Migration Guard' },
   { id: 'corrupt', label: 'Test: Corrupt Integrity Guard' }
 ]);
+
+const QA_AUDIO_PRESETS = Object.freeze([
+  { id: 'd4a-default', label: 'D4-A Baseline' },
+  { id: 'd5-ready', label: 'D5 Audio: Ready WAVs' },
+  { id: 'd5-mixed-states', label: 'D5 Audio: Mixed Readiness' },
+  { id: 'd5-cached-full', label: 'D5 Audio: Cached Full (1.0x)' },
+  { id: 'd5-non-unit-rate', label: 'D5 Audio: Non-Unit Rate (1.2x)' },
+  { id: 'd5-unavailable-binary', label: 'D5 Audio: Unavailable Binary' }
+]);
+
+const buildSyntheticQaWavBlob = (amplitude = 6000, frames = 240) => {
+  const buffer = new ArrayBuffer(44 + frames * 2);
+  const view = new DataView(buffer);
+  for (const [offset, label] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt '], [36, 'data']]) {
+    for (let i = 0; i < label.length; i += 1) view.setUint8(offset + i, label.charCodeAt(i));
+  }
+  view.setUint32(4, buffer.byteLength - 8, true);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 48000, true);
+  view.setUint32(28, 96000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  view.setUint32(40, frames * 2, true);
+  for (let i = 0; i < frames; i += 1) {
+    const wave = Math.round(amplitude * Math.sin((i / frames) * Math.PI * 8));
+    view.setInt16(44 + i * 2, wave, true);
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+};
+
+const revokeObjectUrls = urls => {
+  (urls || []).forEach(url => {
+    try {
+      if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+    } catch { /* noop */ }
+  });
+};
+
+const createD5PresetState = presetId => {
+  const createdObjectUrls = [];
+  const trackUrl = blob => {
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' && blob instanceof Blob) {
+      const url = URL.createObjectURL(blob);
+      createdObjectUrls.push(url);
+      return url;
+    }
+    return null;
+  };
+  if (presetId === 'd4a-default') {
+    const initial = createD4aConversationFixture();
+    return {
+      fixture: initial,
+      snapshot: initial.snapshot,
+      selectedDocumentId: initial.ids.documentId,
+      runtimeAudioUrls: {},
+      runtimeFullAudio: {},
+      createdObjectUrls,
+      audioConfig: {
+        playbackChannelMode: 'text-only',
+        playbackRepresentationMode: 'split',
+        audioSourceMode: 'local-first',
+        globalPlaybackRate: 1,
+        preferences: null
+      }
+    };
+  }
+
+  const d5 = createD5AudioFixture();
+  let snapshot = d5.snapshot;
+  const runtimeAudioUrls = {};
+  const entries = Object.entries(d5.runtimeAudioUrls);
+  entries.forEach(([variantId, binding], index) => {
+    const variant = snapshot.audioVariants.find(item => item.id === variantId);
+    const amplitude = variant?.voiceId === 'en-GB-SoniaNeural' ? -6000 : 4500 + index * 400;
+    const blob = buildSyntheticQaWavBlob(amplitude);
+    const url = trackUrl(blob) || binding.url;
+    runtimeAudioUrls[variantId] = { blob, url, renderFingerprint: binding.renderFingerprint };
+  });
+
+  let runtimeFullAudio = {};
+  let playbackRepresentationMode = 'split';
+  let globalPlaybackRate = 1;
+
+  if (presetId === 'd5-mixed-states') {
+    snapshot.audioVariants
+      .filter(v => v.segmentId === d5.ids.secondSentenceId && v.channel === 'text')
+      .forEach(v => { delete runtimeAudioUrls[v.id]; });
+    const thirdSeg = snapshot.segments.find(s => s.unitId === d5.ids.nextAliceTurnId);
+    if (thirdSeg) {
+      snapshot = applyTextLibraryCommand(snapshot, {
+        type: 'segment.update',
+        payload: { id: thirdSeg.id, text: 'Stale edited Sentence text.' }
+      }, 450).snapshot;
+    }
+    snapshot = {
+      ...snapshot,
+      audioVariants: snapshot.audioVariants.filter(
+        v => !(v.segmentId === d5.ids.bobSentenceId && v.channel === 'text')
+      )
+    };
+    Object.keys(runtimeAudioUrls).forEach(variantId => {
+      if (!snapshot.audioVariants.some(v => v.id === variantId)) delete runtimeAudioUrls[variantId];
+    });
+  } else if (presetId === 'd5-cached-full') {
+    playbackRepresentationMode = 'full';
+    const tree = resolveTextLibraryDocumentTree(snapshot, d5.ids.documentId);
+    const block = tree.blocks.find(b => b.id === d5.ids.sceneId);
+    const plan = buildTextStructuredBlockRuntimePlaybackPlan({
+      documentTree: tree,
+      block,
+      channel: 'text',
+      representationMode: 'full',
+      audioVariants: snapshot.audioVariants,
+      runtimeAudioUrls,
+      preferences: d5.preferences
+    });
+    const artifact = buildTextStructuredFullArtifactRecord({
+      block,
+      channel: 'text',
+      composition: plan.composition,
+      source: 'derived',
+      mimeType: 'audio/wav',
+      filename: 'qa-cached-full.wav'
+    });
+    snapshot = applyTextLibraryCommand(snapshot, {
+      type: 'fullAudioArtifact.upsert',
+      payload: { blockId: d5.ids.sceneId, artifact }
+    }, 450).snapshot;
+    const fullBlob = buildSyntheticQaWavBlob(5500, 720);
+    runtimeFullAudio = {
+      [artifact.fullArtifactFingerprint]: {
+        blob: fullBlob,
+        url: trackUrl(fullBlob),
+        fullArtifactFingerprint: artifact.fullArtifactFingerprint
+      }
+    };
+  } else if (presetId === 'd5-non-unit-rate') {
+    playbackRepresentationMode = 'full';
+    globalPlaybackRate = 1.2;
+  } else if (presetId === 'd5-unavailable-binary') {
+    snapshot.audioVariants
+      .filter(v => v.segmentId === d5.ids.firstSentenceId && v.channel === 'text')
+      .forEach(v => {
+        if (runtimeAudioUrls[v.id]) {
+          runtimeAudioUrls[v.id] = {
+            url: 'blob:qa-unavailable-binary-invalid',
+            renderFingerprint: runtimeAudioUrls[v.id].renderFingerprint
+          };
+        }
+      });
+  }
+
+  return {
+    fixture: d5,
+    snapshot,
+    selectedDocumentId: d5.ids.documentId,
+    runtimeAudioUrls,
+    runtimeFullAudio,
+    createdObjectUrls,
+    audioConfig: {
+      playbackChannelMode: 'text-only',
+      playbackRepresentationMode,
+      audioSourceMode: 'local-first',
+      globalPlaybackRate,
+      preferences: d5.preferences
+    }
+  };
+};
 
 const toList = value => (Array.isArray(value) ? value : Object.values(value || {}));
 
@@ -110,20 +286,20 @@ const useAutoCompactBreakpoint = () => {
  * Developer-only isolated QA sandbox rendering TextConversationEditor purely from an in-memory D4-A v2 fixture.
  */
 export const TextConversationEditorQaPreview = () => {
-  const [fixtureState, setFixtureState] = useState(() => {
-    const initial = createD4aConversationFixture();
-    return {
-      fixture: initial,
-      snapshot: initial.snapshot,
-      selectedDocumentId: initial.ids.documentId
-    };
-  });
+  const [audioPreset, setAudioPreset] = useState('d4a-default');
+  const [fixtureState, setFixtureState] = useState(() => createD5PresetState('d4a-default'));
   const [qaMode, setQaMode] = useState('live');
   const [viewportMode, setViewportMode] = useState('auto');
   const [theme, setTheme] = useState('light');
   const [commandError, setCommandError] = useState(null);
   const [lastReceipt, setLastReceipt] = useState(null);
   const [showInspector, setShowInspector] = useState(true);
+  const [audioReport, setAudioReport] = useState(null);
+
+  useEffect(() => {
+    const urls = fixtureState.createdObjectUrls || [];
+    return () => revokeObjectUrls(urls);
+  }, [fixtureState.createdObjectUrls]);
 
   const isAutoCompact = useAutoCompactBreakpoint();
   const compact = viewportMode === 'mobile' || (viewportMode === 'auto' && isAutoCompact);
@@ -135,16 +311,54 @@ export const TextConversationEditorQaPreview = () => {
     qaMode
   }), [fixtureState, qaMode]);
 
-  const handleResetFixture = () => {
-    const fresh = createD4aConversationFixture();
-    setFixtureState({
-      fixture: fresh,
-      snapshot: fresh.snapshot,
-      selectedDocumentId: fresh.ids.documentId
-    });
+  const applyAudioPreset = presetId => {
+    const nextState = createD5PresetState(presetId);
+    setAudioPreset(presetId);
+    setFixtureState(nextState);
     setQaMode('live');
     setCommandError(null);
     setLastReceipt(null);
+  };
+
+  const handleResetFixture = () => {
+    applyAudioPreset(audioPreset);
+  };
+
+  const handleAudioConfigChange = patch => {
+    setFixtureState(prev => ({
+      ...prev,
+      audioConfig: { ...(prev.audioConfig || {}), ...patch }
+    }));
+  };
+
+  const handleQaAssembleFullWav = async ({ block, plan }) => {
+    const res = await assembleConversationSceneFullWavPreview({
+      documentTitle: fixtureState.snapshot.documents?.find(d => d.id === scenario.documentId)?.title || 'Conversation',
+      block,
+      plan,
+      runtimeAudioUrls: fixtureState.runtimeAudioUrls
+    });
+    const fullUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(res.composed.blob)
+      : null;
+    const updated = applyTextLibraryCommand(scenario.snapshot, {
+      type: 'fullAudioArtifact.upsert',
+      payload: { blockId: block.id, artifact: res.artifact }
+    });
+    setFixtureState(prev => ({
+      ...prev,
+      snapshot: updated.snapshot,
+      createdObjectUrls: fullUrl ? [...(prev.createdObjectUrls || []), fullUrl] : (prev.createdObjectUrls || []),
+      runtimeFullAudio: {
+        ...prev.runtimeFullAudio,
+        [res.artifact.fullArtifactFingerprint]: {
+          blob: res.composed.blob,
+          url: fullUrl,
+          fullArtifactFingerprint: res.artifact.fullArtifactFingerprint
+        }
+      }
+    }));
+    return res;
   };
 
   const handleSelectWorkspace = nextDocId => {
@@ -293,6 +507,26 @@ export const TextConversationEditorQaPreview = () => {
               </button>
             ))}
           </div>
+
+          <div className="max-w-5xl mx-auto px-3 sm:px-6 pb-2 flex items-center gap-1.5 overflow-x-auto border-t border-slate-100 dark:border-slate-800 pt-1.5">
+            <span className="shrink-0 inline-flex items-center gap-1 text-[9px] font-black text-violet-700 dark:text-violet-300">
+              <Volume2 className="w-3 h-3" />Audio Fixtures:
+            </span>
+            {QA_AUDIO_PRESETS.map(preset => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyAudioPreset(preset.id)}
+                className={`shrink-0 px-2.5 py-0.5 rounded-full text-[9px] font-bold border transition ${
+                  audioPreset === preset.id
+                    ? 'bg-violet-600 text-white border-violet-600'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <main className={`mx-auto px-3 sm:px-6 pt-4 space-y-4 ${viewportMode === 'mobile' ? 'max-w-md' : 'max-w-5xl'}`}>
@@ -301,7 +535,7 @@ export const TextConversationEditorQaPreview = () => {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 font-black text-slate-700 dark:text-slate-200">
                   <Database className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>D4-B Authoritative In-Memory Snapshot State</span>
+                  <span>D4-B / D5 Authoritative In-Memory Snapshot State</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 font-mono text-[9px]">
                   <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">schemaVersion={snapshot?.schemaVersion}</span>
@@ -320,6 +554,18 @@ export const TextConversationEditorQaPreview = () => {
                   </span>
                 )}
               </div>
+              {audioReport && (
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-[9px] font-mono text-violet-700 dark:text-violet-300">
+                  <span>audioReady={audioReport.audioPlans?.workspaceTotals?.ready || 0}/{audioReport.audioPlans?.workspaceTotals?.entries || 0}</span>
+                  <span>resumeCursor={audioReport.resumeCursorSegmentId || 'null'}</span>
+                  <span>active={audioReport.isPlaying ? (audioReport.isPaused ? 'paused' : 'playing') : 'idle'}</span>
+                  {audioReport.playbackLogs?.[0] && (
+                    <span className="truncate max-w-md text-slate-500 dark:text-slate-400">
+                      log: [{audioReport.playbackLogs[0].tag}] {audioReport.playbackLogs[0].message}
+                    </span>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
@@ -332,6 +578,12 @@ export const TextConversationEditorQaPreview = () => {
             error={commandError}
             onClearError={() => setCommandError(null)}
             lastReceipt={lastReceipt}
+            runtimeAudioUrls={fixtureState.runtimeAudioUrls}
+            runtimeFullAudio={fixtureState.runtimeFullAudio}
+            audioConfig={fixtureState.audioConfig}
+            onAudioConfigChange={handleAudioConfigChange}
+            onAssembleFullWav={handleQaAssembleFullWav}
+            onAudioStateReport={setAudioReport}
           />
         </main>
       </div>

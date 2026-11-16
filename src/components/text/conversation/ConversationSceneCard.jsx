@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -8,8 +8,10 @@ import {
   GitMerge,
   MessageSquare,
   MoreHorizontal,
+  Play,
   Plus,
   Save,
+  Square,
   Trash2,
   X
 } from 'lucide-react';
@@ -20,7 +22,9 @@ import {
   swapConversationSceneInCardOrder
 } from './conversationEditorErrorUtils.js';
 import ConversationTurnSection from './ConversationTurnSection.jsx';
+import ConversationSceneAudioPanel from './ConversationSceneAudioPanel.jsx';
 
+const EMPTY_MAP = Object.freeze({});
 const clean = value => String(value ?? '').trim();
 
 const EditSceneForm = ({ scene, isBusy, onCommand, onClose }) => {
@@ -253,6 +257,12 @@ export const ConversationSceneCard = ({
   sceneIndex,
   state,
   speakerOptions = [],
+  hydratedBlock = null,
+  scenePlans = null,
+  audioEntriesBySegmentChannel = null,
+  audioPlayback = null,
+  runtimeAudioUrls = EMPTY_MAP,
+  onAssembleFullWav = null,
   isBusy = false,
   onCommand,
   compact = false
@@ -268,6 +278,12 @@ export const ConversationSceneCard = ({
   const turns = scene?.turns || [];
   const preservedEntries = listPreservedMetadataEntries(scene?.metadata);
   const activeSelectedIds = selectedTurnIds.filter(id => turns.some(t => t.id === id));
+  const isScenePlaying = Boolean(audioPlayback && (audioPlayback.isPlaying || audioPlayback.isPaused) && audioPlayback.activeBlockId === scene.id);
+  const scenePlayable = !scene.empty && Number(scene.sentenceCount) > 0;
+  const playSceneFn = audioPlayback?.playScene || null;
+  const handlePlaySceneChannel = useCallback((sceneId, ch) => {
+    playSceneFn?.(sceneId, { playbackChannelMode: ch === 'meaning' ? 'meaning-only' : 'text-only' });
+  }, [playSceneFn]);
 
   const toggleSelectTurn = turnId => {
     setMergeError(null);
@@ -338,6 +354,11 @@ export const ConversationSceneCard = ({
             {scene.empty && (
               <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">ZERO UNITS</span>
             )}
+            {isScenePlaying && (
+              <span className={`text-[8px] font-black px-2 py-0.5 rounded-full text-white ${audioPlayback?.isPaused ? 'bg-amber-500' : 'bg-indigo-600'}`}>
+                {audioPlayback?.isPaused ? 'PAUSED' : `PLAYING ${audioPlayback?.speakingPart === 'meaning' ? 'ID' : 'EN'} • ${audioPlayback?.config?.playbackRepresentationMode === 'full' ? 'FULL' : 'SPLIT'}`}
+              </span>
+            )}
           </div>
           <div className="mt-0.5 flex gap-2 flex-wrap text-[8px] text-slate-400">
             {!compact && <span className="font-mono">{scene.id}</span>}
@@ -350,24 +371,42 @@ export const ConversationSceneCard = ({
           </div>
         </div>
 
-        {compact ? (
-          <button
-            type="button"
-            onClick={() => setShowCompactActions(value => !value)}
-            className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-lg transition active:scale-95 ${showCompactActions ? 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300' : 'text-slate-400 hover:text-indigo-600'}`}
-            aria-expanded={showCompactActions}
-            aria-label="Scene actions"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
-        ) : (
-          <div className="flex gap-0.5">
-            <button type="button" disabled={isBusy || sceneIndex === 0} onClick={() => handleReorderScene(-1)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25" title="Move Scene up" aria-label={`Move Scene ${scene.id} up`}><ArrowUp className="w-3.5 h-3.5" /></button>
-            <button type="button" disabled={isBusy || sceneIndex === scenes.length - 1} onClick={() => handleReorderScene(1)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25" title="Move Scene down" aria-label={`Move Scene ${scene.id} down`}><ArrowDown className="w-3.5 h-3.5" /></button>
-            <button type="button" disabled={isBusy} onClick={() => { setEditingScene(v => !v); setExpanded(true); }} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-40" title="Edit Scene title or metadata" aria-label={`Edit Scene ${scene.id}`}><Edit3 className="w-3.5 h-3.5" /></button>
-            <button type="button" disabled={isBusy} onClick={handleDeleteScene} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 disabled:opacity-40" title="Delete Scene" aria-label={`Delete Scene ${scene.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
-          </div>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {typeof audioPlayback?.playScene === 'function' && (
+            <button
+              type="button"
+              disabled={isBusy || (!isScenePlaying && !scenePlayable)}
+              onClick={() => audioPlayback.playScene(scene.id)}
+              className={`${compact ? 'w-9 h-9' : 'w-8 h-8'} flex items-center justify-center rounded-full border transition disabled:opacity-30 ${
+                isScenePlaying
+                  ? 'border-red-600 bg-red-600 text-white'
+                  : 'border-indigo-200 dark:border-indigo-800 bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+              title={isScenePlaying ? 'Stop Scene playback' : 'Play this Scene Card'}
+              aria-label={isScenePlaying ? `Stop Scene ${scene.id}` : `Play Scene ${scene.id}`}
+            >
+              {isScenePlaying ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+            </button>
+          )}
+          {compact ? (
+            <button
+              type="button"
+              onClick={() => setShowCompactActions(value => !value)}
+              className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-lg transition active:scale-95 ${showCompactActions ? 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300' : 'text-slate-400 hover:text-indigo-600'}`}
+              aria-expanded={showCompactActions}
+              aria-label="Scene actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          ) : (
+            <div className="flex gap-0.5">
+              <button type="button" disabled={isBusy || sceneIndex === 0} onClick={() => handleReorderScene(-1)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25" title="Move Scene up" aria-label={`Move Scene ${scene.id} up`}><ArrowUp className="w-3.5 h-3.5" /></button>
+              <button type="button" disabled={isBusy || sceneIndex === scenes.length - 1} onClick={() => handleReorderScene(1)} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-25" title="Move Scene down" aria-label={`Move Scene ${scene.id} down`}><ArrowDown className="w-3.5 h-3.5" /></button>
+              <button type="button" disabled={isBusy} onClick={() => { setEditingScene(v => !v); setExpanded(true); }} className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 disabled:opacity-40" title="Edit Scene title or metadata" aria-label={`Edit Scene ${scene.id}`}><Edit3 className="w-3.5 h-3.5" /></button>
+              <button type="button" disabled={isBusy} onClick={handleDeleteScene} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 disabled:opacity-40" title="Delete Scene" aria-label={`Delete Scene ${scene.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          )}
+        </div>
       </div>
 
       {compact && showCompactActions && (
@@ -381,6 +420,21 @@ export const ConversationSceneCard = ({
 
       {expanded && (
         <div className="p-3 space-y-3">
+          {scenePlans && (
+            <ConversationSceneAudioPanel
+              scene={scene}
+              hydratedBlock={hydratedBlock}
+              documentTitle={state?.workspace?.title || 'Conversation'}
+              scenePlans={scenePlans}
+              playbackChannelMode={audioPlayback?.config?.playbackChannelMode}
+              globalPlaybackRate={audioPlayback?.config?.globalPlaybackRate}
+              runtimeAudioUrls={runtimeAudioUrls}
+              isBusy={isBusy}
+              onAssembleFullWav={onAssembleFullWav}
+              onPlaySceneChannel={playSceneFn ? handlePlaySceneChannel : null}
+            />
+          )}
+
           {editingScene && (
             <EditSceneForm
               key={`${scene.id}-${scene.updatedAt}`}
@@ -440,6 +494,8 @@ export const ConversationSceneCard = ({
                   speakerOptions={speakerOptions}
                   selectedForMerge={activeSelectedIds.includes(turn.id)}
                   onToggleMergeSelect={toggleSelectTurn}
+                  audioEntriesBySegmentChannel={audioEntriesBySegmentChannel}
+                  audioPlayback={audioPlayback}
                   isBusy={isBusy}
                   onCommand={onCommand}
                   compact={compact}
