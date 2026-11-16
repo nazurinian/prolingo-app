@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import TextConversationEditor from '../../../src/components/text/conversation/TextConversationEditor.jsx';
 import TextConversationEditorQaPreview from '../../../src/components/text/conversation/TextConversationEditorQaPreview.jsx';
 import { createD5AudioFixture } from './conversation-audio-fixture.js';
+import { runD5FullRecoveryBrowserCases } from './full-recovery-browser-cases.jsx';
 
 const root = createRoot(document.getElementById('root'));
 const tick = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
@@ -137,6 +138,8 @@ export const runD5UiBrowserInteractions = async () => {
       'Edited Sentence must show EN • STALE immediately'
     );
   });
+
+  await runD5FullRecoveryBrowserCases({ root, test });
 
   return {
     browser: navigator.userAgent,

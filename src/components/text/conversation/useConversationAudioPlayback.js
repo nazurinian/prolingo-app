@@ -51,6 +51,7 @@ const resolveSafeSynth = injected => {
     cancel: () => candidate.cancel?.(),
     pause: () => candidate.pause?.(),
     resume: () => candidate.resume?.(),
+    ...(typeof candidate.speak === 'function' ? { speak: utterance => candidate.speak(utterance) } : {}),
     getVoices: () => (typeof candidate.getVoices === 'function' ? candidate.getVoices() : [])
   };
 };
@@ -121,6 +122,14 @@ export const useConversationAudioPlayback = ({
   const [playbackSourceStatus, setPlaybackSourceStatus] = useState(null);
   const [playbackLogs, setPlaybackLogs] = useState([]);
   const [failedVariantIds, setFailedVariantIds] = useState({});
+  // The active executor retains callbacks across renders. Share the same failure
+  // telemetry synchronously so later steps/repeat passes cannot retry failed bytes.
+  const failedVariantIdsRef = useRef(EMPTY_MAP);
+  const markFailedVariant = useCallback(id => {
+    if (!id || failedVariantIdsRef.current[id]) return;
+    failedVariantIdsRef.current = { ...failedVariantIdsRef.current, [id]: true };
+    setFailedVariantIds(failedVariantIdsRef.current);
+  }, []);
 
   const setIsPlaying = useCallback(next => {
     const bool = Boolean(next);
@@ -251,13 +260,14 @@ export const useConversationAudioPlayback = ({
     prevSnapshotRef.current = snapshot;
     prevBindingsKeyRef.current = { runtimeAudioUrls, runtimeFullAudio, normalizedConfig };
 
-    if (isPlayingRef.current || isPausedRef.current) {
-      forceStopAll();
+    const wasActive = isPlayingRef.current || isPausedRef.current;
+    // Invalidate the session token even during the 120 ms safe-Play transition.
+    forceStopAll();
+    if (wasActive) {
       addLog('Session', workspaceChanged ? 'Stopped playback on Workspace/fixture change.' : 'Cancelled stale playback plan after snapshot or audio settings change.');
     }
-    if (workspaceChanged || snapshotChanged || bindingsChanged) {
-      setFailedVariantIds(prev => (Object.keys(prev).length ? EMPTY_MAP : prev));
-    }
+    failedVariantIdsRef.current = EMPTY_MAP;
+    setFailedVariantIds(prev => (Object.keys(prev).length ? EMPTY_MAP : prev));
     if (workspaceChanged) {
       setResumeCursorSegmentId(prev => (prev === null ? prev : null));
       setCurrentIndex(prev => (prev === null ? prev : null));
@@ -472,11 +482,11 @@ export const useConversationAudioPlayback = ({
     const playbackRate = Number(step?.playbackRate) || 1;
     const representation = step?.representation || options?.representationMode || normalizedConfig.playbackRepresentationMode;
     const runtimeVariantId = step?.runtimeAudio?.variant?.id || null;
-    const url = step?.runtimeAudio && !failedVariantIds[runtimeVariantId]
+    const url = step?.runtimeAudio && !failedVariantIdsRef.current[runtimeVariantId]
       ? resolveBlobObjectUrl(step.runtimeAudio.runtime || runtimeAudioUrls[runtimeVariantId])
       : null;
 
-    let unavailableBinaryFallback = Boolean(step?.runtimeAudio && (!url || failedVariantIds[runtimeVariantId]));
+    let unavailableBinaryFallback = Boolean(step?.runtimeAudio && (!url || failedVariantIdsRef.current[runtimeVariantId]));
     if (url && !unavailableBinaryFallback) {
       const statusMeta = {
         sessionId: playbackSessionId,
@@ -504,13 +514,13 @@ export const useConversationAudioPlayback = ({
         item,
         statusMeta
       });
-      if (result.status === 'played' || result.status === 'stopped' || stopSignalRef.current) return;
-      if (runtimeVariantId) {
-        setFailedVariantIds(prev => ({ ...prev, [runtimeVariantId]: true }));
-      }
+      if (!playbackStillCurrent() || result.status === 'played' || result.status === 'stopped') return;
+      markFailedVariant(runtimeVariantId);
       unavailableBinaryFallback = true;
     }
 
+    if (!playbackStillCurrent()) return;
+    await waitWhilePaused();
     if (!playbackStillCurrent()) return;
     await speakWithResolvedBrowserTts({
       textToRead,
@@ -530,7 +540,8 @@ export const useConversationAudioPlayback = ({
     documentTree,
     buildBlockPlan,
     normalizedConfig.playbackRepresentationMode,
-    failedVariantIds,
+    markFailedVariant,
+    waitWhilePaused,
     resolveBlobObjectUrl,
     runtimeAudioUrls,
     playRuntimeUrl,
@@ -546,7 +557,7 @@ export const useConversationAudioPlayback = ({
     const runtimeFull = step?.runtimeFull || null;
     const artifactId = runtimeFull?.artifact?.fullArtifactFingerprint || runtimeFull?.artifact?.id || null;
     const runtime = runtimeFull?.runtime || (artifactId ? runtimeFullAudio[artifactId] : null) || null;
-    const url = runtime && (!artifactId || !failedVariantIds[artifactId])
+    const url = runtime && (!artifactId || !failedVariantIdsRef.current[artifactId])
       ? resolveBlobObjectUrl(runtime)
       : null;
 
@@ -577,29 +588,38 @@ export const useConversationAudioPlayback = ({
         item,
         statusMeta
       });
-      if (result.status === 'played' || result.status === 'stopped' || stopSignalRef.current) return;
-      if (artifactId) {
-        setFailedVariantIds(prev => ({ ...prev, [artifactId]: true }));
-      }
+      if (!playbackStillCurrent() || result.status === 'played' || result.status === 'stopped') return;
     }
 
     if (!playbackStillCurrent()) return;
-    addLog('Warn', `Cached Full artifact unavailable for ${block?.id || 'Scene'}; falling back to Browser TTS.`);
-    await speakWithResolvedBrowserTts({
-      textToRead: step?.content || '',
+    markFailedVariant(artifactId);
+    addLog('Warn', `Cached Full artifact unavailable for ${block?.id || 'Scene'}; recovering per Sentence.`);
+    // Reuse the authoritative D5 plan and existing Sentence callback. In particular,
+    // keep local RF matches, speaker voice/rate/channel and persistent identities.
+    const recoveryPlan = buildBlockPlan({
       block,
-      segment: block?.segments?.[0] || item || null,
-      item,
       channel: normalizedChannel,
-      requestedVoiceName: null,
-      requestedSource: null,
-      playbackRate: 1,
-      representation: 'full',
-      playbackSessionId,
-      unavailableBinaryFallback: true,
-      step
+      representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
+      allowFullArtifact: false
     });
-  }, [documentTree, runtimeFullAudio, failedVariantIds, resolveBlobObjectUrl, playRuntimeUrl, speakWithResolvedBrowserTts, addLog]);
+    const items = new Map(resolveStructuredTextPlaybackList(documentTree).map(candidate => [candidate.id, candidate]));
+    for (const sentenceStep of recoveryPlan?.steps || []) {
+      if (!playbackStillCurrent()) return;
+      await waitWhilePaused();
+      if (!playbackStillCurrent()) return;
+      const sentenceItem = items.get(sentenceStep.segmentId);
+      if (!sentenceItem) return;
+      setResumeCursorSegmentId(sentenceItem.id);
+      if (playbackContextRef.current?.sessionId === playbackSessionId) {
+        playbackContextRef.current.cursorSegmentId = sentenceItem.id;
+      }
+      await playStructuredChannel(sentenceStep.content, sentenceItem, normalizedChannel, {
+        block,
+        representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
+        step: sentenceStep
+      });
+    }
+  }, [documentTree, runtimeFullAudio, markFailedVariant, resolveBlobObjectUrl, playRuntimeUrl, buildBlockPlan, waitWhilePaused, playStructuredChannel, addLog]);
 
   const startSession = useCallback(({
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,

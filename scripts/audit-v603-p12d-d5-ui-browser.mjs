@@ -3,10 +3,16 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const baseline = process.argv.includes('--baseline');
+const baselineSources = new Set([
+  'src/components/text/conversation/useConversationAudioPlayback.js',
+  'src/components/text/conversation/ConversationSceneAudioPanel.jsx',
+  'src/components/text/conversation/ConversationSceneCard.jsx'
+]);
 const bundleText = (await build({
   absWorkingDir: root,
   entryPoints: ['scripts/fixtures/d5/ui-browser-cases.jsx'],
@@ -15,7 +21,16 @@ const bundleText = (await build({
   format: 'esm',
   jsx: 'automatic',
   loader: { '.css': 'empty' },
-  define: { 'import.meta.env.DEV': 'true', 'process.env.NODE_ENV': '"development"' }
+  define: { 'import.meta.env.DEV': 'true', 'process.env.NODE_ENV': '"development"' },
+  plugins: baseline ? [{ name: 'd5-approved-baseline', setup(builder) {
+    builder.onLoad({ filter: /\.(jsx|js)$/ }, args => {
+      const relative = path.relative(root, args.path).replaceAll('\\', '/');
+      if (baselineSources.has(relative)) return {
+        contents: execFileSync('git', ['show', `81221073637e176bc12ef23b538835a6e0886b2c:${relative}`], { cwd: root, encoding: 'utf8' }),
+        loader: relative.endsWith('.jsx') ? 'jsx' : 'js'
+      };
+    });
+  } }] : []
 })).outputFiles[0].text;
 
 const server = http.createServer((req, res) => {
@@ -37,7 +52,7 @@ const edge = process.env.D5_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Ed
 await fs.access(edge);
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-d5-ui-edge-'));
 const browser = spawn(edge, [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--autoplay-policy=no-user-gesture-required',
   '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 
@@ -80,7 +95,7 @@ try {
     evaluate('window.runD5Ui()'),
     new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('D5 UI browser timeout')), 45000); timer.unref(); })
   ]);
-  console.log(JSON.stringify(report, null, 2));
+  console.log(JSON.stringify({ baseline, ...report }, null, 2));
   if (report.failed || report.indexedDbCalls) process.exitCode = 1;
   await call('Browser.close').catch(() => {});
 } finally {

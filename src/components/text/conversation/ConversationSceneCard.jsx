@@ -426,6 +426,7 @@ export const ConversationSceneCard = ({
               hydratedBlock={hydratedBlock}
               documentTitle={state?.workspace?.title || 'Conversation'}
               scenePlans={scenePlans}
+              failedVariantIds={audioPlayback?.failedVariantIds}
               playbackChannelMode={audioPlayback?.config?.playbackChannelMode}
               globalPlaybackRate={audioPlayback?.config?.globalPlaybackRate}
               runtimeAudioUrls={runtimeAudioUrls}

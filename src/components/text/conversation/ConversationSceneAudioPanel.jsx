@@ -15,8 +15,9 @@ import {
   getConversationFullCompositionStatus
 } from './conversationAudioUiUtils.js';
 
-const routeBadgeLabel = plan => {
+const routeBadgeLabel = (plan, fullFailed) => {
   if (!plan) return 'no-plan';
+  if (plan.route === 'full-local' && fullFailed) return 'full fallback (Per-Sentence)';
   if (plan.route === 'full-local') return 'full-local (Cached WAV)';
   if (plan.route === 'conversation-composition') return 'full fallback (Per-Sentence)';
   return plan.route || 'split';
@@ -41,6 +42,7 @@ export const ConversationSceneAudioPanel = ({
   playbackChannelMode = TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
   globalPlaybackRate = 1,
   runtimeAudioUrls = {},
+  failedVariantIds = null,
   isBusy = false,
   onAssembleFullWav = null,
   onPlaySceneChannel = null
@@ -147,6 +149,9 @@ export const ConversationSceneAudioPanel = ({
         const sampleRates = entries.map(e => Number(e.playbackRate) || 1);
         const nonUnitRate = sampleRates.find(r => r !== 1) ?? (globalPlaybackRate !== 1 ? globalPlaybackRate : 1);
         const compStatus = getConversationFullCompositionStatus(plan, { channel, playbackRate: nonUnitRate });
+        const artifact = plan.fullReadiness?.artifact;
+        const fullFailed = Boolean(failedVariantIds?.[artifact?.fullArtifactFingerprint || artifact?.id]);
+        const fullStatus = fullFailed ? 'unavailable-binary' : compStatus.fullStatus;
         const previewKey = `${scene.id}:${channel}`;
         const activePreview = assembledPreviews[previewKey];
         const previewCurrent = Boolean(
@@ -167,7 +172,7 @@ export const ConversationSceneAudioPanel = ({
                   <Volume2 className="w-3 h-3 text-indigo-500" />{chLabel}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-mono text-[8px] font-bold">
-                  route: {routeBadgeLabel(plan)}
+                  route: {routeBadgeLabel(plan, fullFailed)}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/35 text-emerald-700 dark:text-emerald-300 font-black text-[8px]">
                   READY {readyCount}/{entries.length}
@@ -187,8 +192,8 @@ export const ConversationSceneAudioPanel = ({
                     MISSING {missingCount}
                   </span>
                 )}
-                <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${fullStatusTone(compStatus.fullStatus)}`}>
-                  Full Cache: {compStatus.fullStatus}
+                <span className={`px-1.5 py-0.5 rounded border text-[8px] font-black uppercase ${fullStatusTone(fullStatus)}`}>
+                  Full Cache: {fullStatus}
                 </span>
               </div>
 
