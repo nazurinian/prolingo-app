@@ -466,10 +466,10 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     collection: collectionAssignment.highWater,
     document: documentAssignment.highWater,
     text: blockAssignment.highWater,
-    contentUnit: localIsV2 ? contentUnitAssignment.highWater : (local.counters?.contentUnit || 0),
+    ...(localIsV2 ? { contentUnit: contentUnitAssignment.highWater } : {}),
     segment: segmentAssignment.highWater,
     audioVariant: audioAssignment.highWater
-  });
+  }, { includeContentUnit: localIsV2 });
 
   const nextMaterializedBlockIds = localIsV2
     ? [...new Set([

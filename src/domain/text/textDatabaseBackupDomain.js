@@ -29,8 +29,18 @@ export const PROLINGO_TEXT_DB_BACKUP_TYPE = 'prolingo-text-database-backup';
 export const PROLINGO_TEXT_DB_BACKUP_VERSION = 1;
 export const PROLINGO_TEXT_DB_RESTORE_POLICY = 'replace';
 
+const cloneMetaValue = value => (value === undefined ? undefined : structuredClone(value));
 const cloneRecord = record => ({ ...record, metadata: record?.metadata && typeof record.metadata === 'object' && !Array.isArray(record.metadata) ? { ...record.metadata } : {} });
-const cloneMetaRecord = record => ({ key: String(record?.key || ''), value: record?.value, updatedAt: record?.updatedAt ?? null });
+const cloneMetaRecord = record => {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('Text Database Backup meta record must be an object');
+  }
+  return {
+    key: String(record?.key || ''),
+    value: cloneMetaValue(record?.value),
+    updatedAt: record?.updatedAt ?? null
+  };
+};
 
 const getMetaValue = (metaRecords, key) => metaRecords.find(record => record.key === key)?.value;
 
@@ -45,23 +55,25 @@ const assertUniqueMetaKeys = metaRecords => {
   if (new Set(keys).size !== keys.length) throw new Error('Text Database Backup contains duplicate meta keys');
 };
 
-const computeCounterFloor = snapshot => ({
+const computeCounterFloor = (snapshot, { includeContentUnit = false } = {}) => ({
   collection: snapshot.collections.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('COLLECTION', record.id)), 0),
   document: snapshot.documents.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('DOCUMENT', record.id)), 0),
   text: snapshot.blocks.reduce((max, record) => Math.max(max, getTextIdSequence(record.id)), 0),
-  contentUnit: (snapshot.contentUnits || []).reduce((max, record) => Math.max(max, getTextContentUnitIdSequence(record.id)), 0),
+  ...(includeContentUnit
+    ? { contentUnit: (snapshot.contentUnits || []).reduce((max, record) => Math.max(max, getTextContentUnitIdSequence(record.id)), 0) }
+    : {}),
   segment: snapshot.segments.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('SEGMENT', record.id)), 0),
   audioVariant: snapshot.audioVariants.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('AUDIO_VARIANT', record.id)), 0)
 });
 
-const migrateSnapshotCounters = snapshot => {
-  const current = normalizeTextIdCounters(snapshot.counters);
-  const floor = computeCounterFloor(snapshot);
+const migrateSnapshotCounters = (snapshot, { includeContentUnit = false } = {}) => {
+  const current = normalizeTextIdCounters(snapshot.counters, { includeContentUnit });
+  const floor = computeCounterFloor(snapshot, { includeContentUnit });
   const counters = {
     collection: Math.max(current.collection, floor.collection),
     document: Math.max(current.document, floor.document),
     text: Math.max(current.text, floor.text),
-    contentUnit: Math.max(current.contentUnit, floor.contentUnit),
+    ...(includeContentUnit ? { contentUnit: Math.max(current.contentUnit ?? 0, floor.contentUnit ?? 0) } : {}),
     segment: Math.max(current.segment, floor.segment),
     audioVariant: Math.max(current.audioVariant, floor.audioVariant)
   };
@@ -163,12 +175,15 @@ const normalizeBackupPayload = (candidate, options = {}) => {
   });
   if (snapshot.documents.length && !snapshot.activeDocumentId) throw new Error('Text Database Backup has Documents but no active Document');
 
-  const migration = migrateSnapshotCounters(snapshot);
+  const migration = migrateSnapshotCounters(snapshot, { includeContentUnit: hasV2Signals });
   snapshot = normalizeTextLibraryRuntimeSnapshot({
     ...snapshot,
     counters: migration.counters,
     schemaVersion: targetSchemaVersion
   });
+
+  let finalCountersChanged = migration.changed;
+  let finalFloor = migration.floor;
 
   if (hasV2Signals) {
     const uidDiagnostics = collectTextGlobalUidDiagnostics(snapshot);
@@ -184,12 +199,14 @@ const normalizeBackupPayload = (candidate, options = {}) => {
   } else if (options.upgradeToV2 === true) {
     const uidBackfilled = backfillTextGlobalUids(snapshot).snapshot;
     const upgraded = backfillTextContentUnits(uidBackfilled, { now: options.now || Date.now() }).snapshot;
-    const upgradedCounters = migrateSnapshotCounters(upgraded);
+    const upgradedCounters = migrateSnapshotCounters(upgraded, { includeContentUnit: true });
     snapshot = normalizeTextLibraryRuntimeSnapshot({
       ...upgraded,
       counters: upgradedCounters.counters,
       schemaVersion: TEXT_LIBRARY_V2_SCHEMA_VERSION
     });
+    finalCountersChanged = migration.changed || upgradedCounters.changed;
+    finalFloor = upgradedCounters.floor;
   }
 
   const finalIsV2 = hasV2Signals || options.upgradeToV2 === true;
@@ -245,8 +262,8 @@ const normalizeBackupPayload = (candidate, options = {}) => {
       fromSchemaVersion: schemaVersion,
       toSchemaVersion: finalSchemaVersion,
       upgradedFromV1ToV2: !hasV2Signals && options.upgradeToV2 === true,
-      countersRaisedToIdentityFloor: migration.changed,
-      identityFloor: migration.floor
+      countersRaisedToIdentityFloor: finalCountersChanged,
+      identityFloor: finalFloor
     }
   };
 };

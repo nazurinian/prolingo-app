@@ -303,6 +303,34 @@ export const planTextExternalUpdateExisting = ({
   const nextBlocks = snapshot.blocks.filter(item => item.documentId !== document.id);
   const nextSegments = snapshot.segments.filter(item => item.documentId !== document.id);
 
+  const localIsV2 = isContentUnitSnapshot(snapshot);
+  const localDocUnits = localIsV2
+    ? (snapshot.contentUnits || []).filter(unit => unit.documentId === document.id).sort(byOrder)
+    : [];
+  const otherDocUnits = localIsV2
+    ? (snapshot.contentUnits || []).filter(unit => unit.documentId !== document.id)
+    : [];
+  const origSegCountByUnitId = new Map();
+  if (localIsV2) {
+    localSegments.forEach(seg => {
+      if (seg.unitId) {
+        origSegCountByUnitId.set(seg.unitId, (origSegCountByUnitId.get(seg.unitId) || 0) + 1);
+      }
+    });
+  }
+  const initiallyEmptyUnitIds = new Set(
+    localDocUnits.filter(u => (origSegCountByUnitId.get(u.id) || 0) === 0).map(u => u.id)
+  );
+  const initiallyEmptyUnitsByBlock = new Map();
+  if (localIsV2) {
+    localDocUnits.forEach(unit => {
+      if (!initiallyEmptyUnitIds.has(unit.id)) return;
+      const list = initiallyEmptyUnitsByBlock.get(unit.blockId) || [];
+      list.push(unit);
+      initiallyEmptyUnitsByBlock.set(unit.blockId, list);
+    });
+  }
+
   const localSegmentsByBlock = new Map();
   localSegments.forEach(segment => {
     const list = localSegmentsByBlock.get(segment.blockId) || [];
@@ -462,12 +490,14 @@ export const planTextExternalUpdateExisting = ({
         const d = revisionDecision({ baseline: baselineFingerprints.segments?.[key], local: localFingerprints.segments?.[key], incoming: null, conflictPolicy });
         return { segment, key, keep: d.action === 'local', localOnly: false, conflict: d.conflict };
       });
-      const hasKeptChild = childPlans.some(item => item.keep);
+      const emptyLocalUnits = localIsV2 ? (initiallyEmptyUnitsByBlock.get(block.id) || []) : [];
+      const hasKeptEmptyUnit = emptyLocalUnits.length > 0;
+      const hasKeptChild = childPlans.some(item => item.keep) || hasKeptEmptyUnit;
       if (decision.conflict) { conflicts.push({ kind: 'cards', key: cardKey }); stats.conflicts += 1; }
       childPlans.filter(item => item.conflict).forEach(item => { conflicts.push({ kind: 'segments', key: item.key }); stats.conflicts += 1; });
       if (decision.action === 'local' || hasKeptChild) {
         nextBlocks.push(withoutExternalMeta(block));
-        stats.preservedLocal += 1;
+        stats.preservedLocal += 1 + emptyLocalUnits.length;
         childPlans.forEach(({ segment, key, keep, localOnly }) => {
           if (key) localSegmentsByKey.delete(key);
           if (localOnly || keep || decision.action === 'local') {
@@ -529,32 +559,16 @@ export const planTextExternalUpdateExisting = ({
     : nextSegments;
 
   // Preserve & detach externally removed speakers still referenced by surviving workspace segments or Turn ContentUnits.
-  const localIsV2 = isContentUnitSnapshot(snapshot);
-  const localDocUnits = localIsV2
-    ? (snapshot.contentUnits || []).filter(unit => unit.documentId === document.id).sort(byOrder)
-    : [];
-  const otherDocUnits = localIsV2
-    ? (snapshot.contentUnits || []).filter(unit => unit.documentId !== document.id)
-    : [];
-  const origSegCountByUnitId = new Map();
-  if (localIsV2) {
-    localSegments.forEach(seg => {
-      if (seg.unitId) {
-        origSegCountByUnitId.set(seg.unitId, (origSegCountByUnitId.get(seg.unitId) || 0) + 1);
-      }
-    });
-  }
-  const initiallyEmptyUnitIds = new Set(
-    localDocUnits.filter(u => (origSegCountByUnitId.get(u.id) || 0) === 0).map(u => u.id)
+  const survivingDocBlockIds = new Set(
+    nextBlocks.filter(block => block.documentId === document.id).map(block => block.id)
   );
-
   const survivingSpeakerIds = new Set([
     ...syncedSegments
       .filter(segment => segment.documentId === document.id)
       .map(segment => clean(segment?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]))
       .filter(Boolean),
     ...localDocUnits
-      .filter(unit => initiallyEmptyUnitIds.has(unit.id))
+      .filter(unit => initiallyEmptyUnitIds.has(unit.id) && survivingDocBlockIds.has(unit.blockId))
       .map(unit => clean(unit?.speakerId))
       .filter(Boolean)
   ]);

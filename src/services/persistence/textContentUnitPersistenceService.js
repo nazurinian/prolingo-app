@@ -229,18 +229,45 @@ const buildSnapshotFromStoreRows = ({
   };
 };
 
-const stageSnapshotWritesOnTx = ({ tx, hasUnitsStore, snapshot, now }) => {
+const cloneMetaValue = value => (value === undefined ? undefined : structuredClone(value));
+
+const stageSnapshotWritesOnTx = ({
+  tx,
+  hasUnitsStore,
+  snapshot,
+  metaRecords = null,
+  replaceMetaStore = false,
+  now
+}) => {
   const metaStore = tx.objectStore(TEXT_LIBRARY_STORES.META);
-  metaStore.put({ key: TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION, value: snapshot.schemaVersion, updatedAt: now });
-  metaStore.put({ key: TEXT_LIBRARY_META_KEYS.INITIALIZED, value: Boolean(snapshot.initialized), updatedAt: now });
-  metaStore.put({ key: TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID, value: snapshot.activeDocumentId || null, updatedAt: now });
-  metaStore.put({ key: TEXT_LIBRARY_META_KEYS.ID_COUNTERS, value: snapshot.counters || {}, updatedAt: now });
-  if (snapshot.contentUnitMigration) {
-    metaStore.put({
-      key: TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION,
-      value: snapshot.contentUnitMigration,
-      updatedAt: now
+  if (replaceMetaStore) {
+    if (!Array.isArray(metaRecords)) {
+      throw new Error('Replace-policy metadata restoration requires a validated metaRecords array.');
+    }
+    metaStore.clear();
+    metaRecords.forEach(record => {
+      const key = String(record?.key || '').trim();
+      if (!key) {
+        throw new Error('Cannot restore metadata record without a valid key.');
+      }
+      metaStore.put({
+        key,
+        value: cloneMetaValue(record.value),
+        updatedAt: record.updatedAt ?? now
+      });
     });
+  } else {
+    metaStore.put({ key: TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION, value: snapshot.schemaVersion, updatedAt: now });
+    metaStore.put({ key: TEXT_LIBRARY_META_KEYS.INITIALIZED, value: Boolean(snapshot.initialized), updatedAt: now });
+    metaStore.put({ key: TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID, value: snapshot.activeDocumentId || null, updatedAt: now });
+    metaStore.put({ key: TEXT_LIBRARY_META_KEYS.ID_COUNTERS, value: snapshot.counters || {}, updatedAt: now });
+    if (snapshot.contentUnitMigration) {
+      metaStore.put({
+        key: TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION,
+        value: snapshot.contentUnitMigration,
+        updatedAt: now
+      });
+    }
   }
 
   const replaceStore = (storeName, rows) => {
@@ -380,8 +407,20 @@ const runSingleReadWriteSnapshotTransaction = ({
         const step = transform(currentSnapshot);
         outcome = step.output;
         if (step.shouldWrite) {
-          stageSnapshotWritesOnTx({ tx, hasUnitsStore, snapshot: step.nextSnapshot, now });
-          onBeforeCommit?.({ tx, snapshot: step.nextSnapshot, output: step.output });
+          stageSnapshotWritesOnTx({
+            tx,
+            hasUnitsStore,
+            snapshot: step.nextSnapshot,
+            metaRecords: step.metaRecords ?? null,
+            replaceMetaStore: Boolean(step.replaceMetaStore),
+            now
+          });
+          onBeforeCommit?.({
+            tx,
+            snapshot: step.nextSnapshot,
+            metaRecords: step.metaRecords ?? null,
+            output: step.output
+          });
         }
       } catch (error) {
         transformError = error;
@@ -528,6 +567,7 @@ export const exportDisposableTextLibraryV2Backup = async ({
     const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
     const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
     const tx = db.transaction(storeNames, 'readonly');
+    const done = txDonePromise(tx);
     const [
       metaRecords,
       collections,
@@ -547,6 +587,7 @@ export const exportDisposableTextLibraryV2Backup = async ({
       requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.SEGMENTS).getAll()),
       requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.AUDIO_VARIANTS).getAll())
     ]);
+    await done;
     return createProLingoTextDatabaseBackup({
       metaRecords,
       stores: {
@@ -594,6 +635,8 @@ export const restoreDisposableTextLibraryV2Backup = async ({
         onBeforeCommit,
         transform: () => ({
           shouldWrite: true,
+          replaceMetaStore: true,
+          metaRecords: validated.backup.metaRecords,
           nextSnapshot: validated.snapshot,
           output: {
             backup: validated.backup,

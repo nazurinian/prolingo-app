@@ -265,11 +265,13 @@ export const createTextSourceAttachmentFromMerge = ({ pack: packCandidate, merge
 const maxSequence = (records, kind) => records.reduce((max, record) => Math.max(max, getTextLibraryIdSequence(kind, record?.id)), 0);
 const maxTextSequence = records => records.reduce((max, record) => Math.max(max, getTextIdSequence(record?.id)), 0);
 const maxUnitSequence = records => (records || []).reduce((max, record) => Math.max(max, getTextContentUnitIdSequence(record?.id)), 0);
-const counterFloor = snapshot => ({
+const counterFloor = (snapshot, { includeContentUnit = false } = {}) => ({
   collection: Math.max(snapshot.counters.collection, maxSequence(snapshot.collections, 'COLLECTION')),
   document: Math.max(snapshot.counters.document, maxSequence(snapshot.documents, 'DOCUMENT')),
   text: Math.max(snapshot.counters.text, maxTextSequence(snapshot.blocks)),
-  contentUnit: Math.max(snapshot.counters.contentUnit || 0, maxUnitSequence(snapshot.contentUnits)),
+  ...(includeContentUnit
+    ? { contentUnit: Math.max(snapshot.counters.contentUnit || 0, maxUnitSequence(snapshot.contentUnits)) }
+    : {}),
   segment: Math.max(snapshot.counters.segment, maxSequence(snapshot.segments, 'SEGMENT')),
   audioVariant: Math.max(snapshot.counters.audioVariant, maxSequence(snapshot.audioVariants, 'AUDIO_VARIANT'))
 });
@@ -298,7 +300,8 @@ const buildWorkingIdMap = ({ local, pack, attachment, includeUnits = false }) =>
     segments: { ...(attachment.idMap?.segments || {}) },
     audioVariants: { ...(attachment.idMap?.audioVariants || {}) }
   };
-  const floor = counterFloor(local);
+  const includeCountersContentUnit = isContentUnitSnapshot(local) || includeUnits;
+  const floor = counterFloor(local, { includeContentUnit: includeCountersContentUnit });
   const occupied = {
     collections: new Set(local.collections.map(record => record.id)),
     documents: new Set(local.documents.map(record => record.id)),
@@ -326,7 +329,7 @@ const buildWorkingIdMap = ({ local, pack, attachment, includeUnits = false }) =>
   }
   ensure('segments', pack.segments, 'SEGMENT', 'segment');
   ensure('audioVariants', pack.audioVariants, 'AUDIO_VARIANT', 'audioVariant');
-  return { idMap, counters: normalizeTextIdCounters(counters) };
+  return { idMap, counters: normalizeTextIdCounters(counters, { includeContentUnit: includeCountersContentUnit }) };
 };
 
 const mappedRecord = ({ group, sourceRecord, localId, idMap, pack, attachmentId, existing, now }) => {
@@ -384,6 +387,20 @@ const foreignChildConflicts = ({ local, attachment, removedLocalIds }) => {
     segments: new Set(Object.values(attachment.idMap?.segments || {})),
     audioVariants: new Set(Object.values(attachment.idMap?.audioVariants || {}))
   };
+  const blocksById = recordMap(local.blocks);
+  const segsByUnitId = new Map();
+  const mappedSegCountByBlockId = new Map();
+  (local.segments || []).forEach(seg => {
+    if (seg.unitId) {
+      const list = segsByUnitId.get(seg.unitId) || [];
+      list.push(seg);
+      segsByUnitId.set(seg.unitId, list);
+    }
+    if (mapped.segments.has(seg.id)) {
+      mappedSegCountByBlockId.set(seg.blockId, (mappedSegCountByBlockId.get(seg.blockId) || 0) + 1);
+    }
+  });
+
   const issues = [];
   for (const collectionId of removedLocalIds.collections || []) {
     const foreign = local.documents.filter(record => record.collectionId === collectionId && !mapped.documents.has(record.id));
@@ -394,8 +411,29 @@ const foreignChildConflicts = ({ local, attachment, removedLocalIds }) => {
     if (foreign.length) issues.push(`Document ${documentId} has ${foreign.length} local-only Card(s)`);
   }
   for (const blockId of removedLocalIds.blocks || []) {
-    if (Array.isArray(local.contentUnits) && mapped.contentUnits.size > 0) {
-      const foreignUnits = local.contentUnits.filter(record => record.blockId === blockId && !mapped.contentUnits.has(record.id));
+    if (Array.isArray(local.contentUnits)) {
+      const unitsInBlock = local.contentUnits.filter(record => record.blockId === blockId);
+      let foreignUnits;
+      if (mapped.contentUnits.size > 0) {
+        foreignUnits = unitsInBlock.filter(record => !mapped.contentUnits.has(record.id));
+      } else {
+        // Migrated v1 attachments have no contentUnits ID map: protect any unit containing
+        // local-only segments OR any intentionally empty local Content Unit not solely
+        // produced by migration backfill of an unedited empty v1 Paragraph Card.
+        const block = blocksById.get(blockId) || null;
+        const blockHasMappedSegments = (mappedSegCountByBlockId.get(blockId) || 0) > 0;
+        foreignUnits = unitsInBlock.filter(unit => {
+          const childSegs = segsByUnitId.get(unit.id) || [];
+          if (childSegs.some(seg => !mapped.segments.has(seg.id))) return true;
+          if (childSegs.length === 0) {
+            if (block?.blockType !== 'paragraph') return true;
+            if (blockHasMappedSegments) return true;
+            if (unitsInBlock.length > 1) return true;
+            if (unit.createdAt !== block?.createdAt || unit.updatedAt !== block?.updatedAt) return true;
+          }
+          return false;
+        });
+      }
       if (foreignUnits.length) issues.push(`Card ${blockId} has ${foreignUnits.length} local-only Content Unit(s)`);
     }
     const foreign = local.segments.filter(record => record.blockId === blockId && !mapped.segments.has(record.id));

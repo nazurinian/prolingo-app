@@ -703,11 +703,21 @@ await test('D3C-01: Database Backup & Restore supports v1 backward compatibility
   const v1Validated = backupDomain.validateProLingoTextDatabaseBackup(v1Backup);
   assert.equal(v1Validated.snapshot.schemaVersion, 1);
   assert.equal('contentUnits' in v1Validated.snapshot, false);
+  // Minor Check: absent counters.contentUnit in v1 never introduces NaN or false counter floor bump
+  assert.equal(v1Validated.snapshot.counters.contentUnit, undefined);
+  assert.equal('contentUnit' in v1Validated.migration.identityFloor, false);
+  assert.equal(v1Validated.migration.countersRaisedToIdentityFloor, false);
+  assert.equal(
+    Object.values(v1Validated.snapshot.counters).every(value => Number.isInteger(value) && !Number.isNaN(value)),
+    true
+  );
 
   // 2. v1 Backup upgraded to v2 on restore preserves all IDs/UIDs and backfills Content Units
   const v1Upgraded = backupDomain.validateProLingoTextDatabaseBackup(v1Backup, { upgradeToV2: true, now: 3100 });
   assert.equal(v1Upgraded.snapshot.schemaVersion, 2);
   assert.equal(Array.isArray(v1Upgraded.snapshot.contentUnits), true);
+  assert.equal(Number.isInteger(v1Upgraded.snapshot.counters.contentUnit), true);
+  assert.equal(Number.isInteger(v1Upgraded.migration.identityFloor.contentUnit), true);
   assert.equal(
     contentUnitDomain.inspectTextContentUnitMigrationState(v1Upgraded.snapshot, { idbVersion: 2 }).status,
     contentUnitDomain.TEXT_CONTENT_UNIT_MIGRATION_STATUS.MIGRATED_V2
@@ -717,6 +727,21 @@ await test('D3C-01: Database Backup & Restore supports v1 backward compatibility
   const prevIndexedDb = globalThis.indexedDB;
   const mockIdb = createMemoryIndexedDb();
   globalThis.indexedDB = mockIdb;
+
+  const readRawMetaMap = async dbName => {
+    const db = await persistenceService.openDisposableTextLibraryV2Database({ dbName });
+    try {
+      const tx = db.transaction(constants.TEXT_LIBRARY_STORES.META, 'readonly');
+      const rows = await new Promise((resolve, reject) => {
+        const req = tx.objectStore(constants.TEXT_LIBRARY_STORES.META).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error || new Error('Meta read failed'));
+      });
+      return new Map(rows.map(r => [r.key, r]));
+    } finally {
+      db.close();
+    }
+  };
 
   try {
     const qaDbName = 'prolingo_text_library_d3b_qa_backup_rt';
@@ -755,6 +780,144 @@ await test('D3C-01: Database Backup & Restore supports v1 backward compatibility
       now: 3300
     });
     assert.deepEqual(exportedV2Backup2, exportedV2Backup1);
+
+    // 3b. Finding A: True replace-policy restoration of ALL validated metadata records (sourceAttachments,
+    // externalSourceImports, legacyMigration, additional supported meta records) + stale metadata clearing + abort rollback
+    const preservedAttachment = {
+      version: 1,
+      attachmentId: 'TXTSOURCE_KEEP01',
+      packageId: 'PTP_document_DOC_000001_ABCDEF01',
+      scopeType: 'document',
+      sourceRootId: 'DOC_000001',
+      fileName: 'attached.json',
+      attachedAt: '2026-11-16T00:00:00.000Z',
+      lastSyncedAt: '2026-11-16T00:00:00.000Z',
+      status: 'attached',
+      idMap: { collections: {}, documents: { DOC_000001: 'DOC_000001' }, blocks: {}, contentUnits: {}, segments: {}, audioVariants: {} },
+      baseline: { collections: {}, documents: {}, blocks: {}, contentUnits: {}, segments: {}, audioVariants: {} },
+      counts: { documents: 1 }
+    };
+    const preservedExternalImport = {
+      externalSourceKey: 'ext-kept-source',
+      workspaceKey: 'main',
+      documentId: 'DOC_000002',
+      revision: 3,
+      importedAt: 2800,
+      lastImportedAt: 2900
+    };
+    const preservedLegacyMigration = {
+      migratedAt: 1500,
+      sourceKey: 'prolingo_text_v1',
+      itemCount: 4
+    };
+    const preservedCustomMeta = {
+      key: 'customBackupAuditMetaV1',
+      value: { note: 'must survive replace restore', tags: ['alpha', 'beta'] },
+      updatedAt: 2999
+    };
+
+    const richMetaV2Backup = backupDomain.createProLingoTextDatabaseBackup({
+      metaRecords: [
+        ...exportedV2Backup1.metaRecords,
+        { key: constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS, value: [preservedAttachment], updatedAt: 2950 },
+        { key: constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS, value: [preservedExternalImport], updatedAt: 2960 },
+        { key: constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION, value: preservedLegacyMigration, updatedAt: 2970 },
+        preservedCustomMeta
+      ],
+      stores: exportedV2Backup1.stores,
+      source: { appVersion: '6.0.3-d3c-h1', checkpoint: 'finding-a' },
+      now: 3450
+    });
+
+    // Seed destination DB with stale data + stale metadata (including stale attachment, external import, legacyMigration, and extra key)
+    const qaStaleDbName = 'prolingo_text_library_d3b_qa_stale_meta';
+    await persistenceService.writeTextLibrarySnapshotToDisposableDb({
+      dbName: qaStaleDbName,
+      snapshot: v2Snapshot,
+      version: 2,
+      now: 3460
+    });
+    {
+      const db = await persistenceService.openDisposableTextLibraryV2Database({ dbName: qaStaleDbName });
+      try {
+        const tx = db.transaction(constants.TEXT_LIBRARY_STORES.META, 'readwrite');
+        const metaStore = tx.objectStore(constants.TEXT_LIBRARY_STORES.META);
+        metaStore.put({ key: constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS, value: [{ attachmentId: 'STALE_ATT' }], updatedAt: 111 });
+        metaStore.put({ key: constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS, value: [{ externalSourceKey: 'stale-ext' }], updatedAt: 112 });
+        metaStore.put({ key: constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION, value: { staleLegacy: true }, updatedAt: 113 });
+        metaStore.put({ key: 'staleOrphanMetaKey', value: { shouldBeCleared: true }, updatedAt: 114 });
+        await new Promise((resolve, reject) => {
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    }
+
+    // Attempt an aborted restore over qaStaleDbName: BOTH stale meta & stale data must remain untouched!
+    await assert.rejects(() => persistenceService.restoreDisposableTextLibraryV2Backup({
+      dbName: qaStaleDbName,
+      backup: richMetaV2Backup,
+      now: 3470,
+      onBeforeCommit: ({ tx }) => {
+        tx.abort();
+        throw new Error('Injected abort on rich meta restore');
+      }
+    }), /abort/i);
+    const rawMetaAfterAbort = await readRawMetaMap(qaStaleDbName);
+    assert.deepEqual(rawMetaAfterAbort.get('staleOrphanMetaKey')?.value, { shouldBeCleared: true });
+    assert.deepEqual(rawMetaAfterAbort.get(constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS)?.value, [{ attachmentId: 'STALE_ATT' }]);
+    assert.deepEqual(rawMetaAfterAbort.get(constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS)?.value, [{ externalSourceKey: 'stale-ext' }]);
+    assert.deepEqual(rawMetaAfterAbort.get(constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION)?.value, { staleLegacy: true });
+    assert.equal(rawMetaAfterAbort.has('customBackupAuditMetaV1'), false);
+
+    // Execute successful atomic replace restore over qaStaleDbName
+    await persistenceService.restoreDisposableTextLibraryV2Backup({
+      dbName: qaStaleDbName,
+      backup: richMetaV2Backup,
+      now: 3480
+    });
+    const rawMetaAfterRestore = await readRawMetaMap(qaStaleDbName);
+    assert.equal(rawMetaAfterRestore.has('staleOrphanMetaKey'), false, 'Stale metadata key must be cleared by replace restore');
+    assert.deepEqual(rawMetaAfterRestore.get(constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS)?.value, [preservedAttachment]);
+    assert.deepEqual(rawMetaAfterRestore.get(constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS)?.value, [preservedExternalImport]);
+    assert.deepEqual(rawMetaAfterRestore.get(constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION)?.value, preservedLegacyMigration);
+    assert.deepEqual(rawMetaAfterRestore.get('customBackupAuditMetaV1')?.value, preservedCustomMeta.value);
+    assert.equal(rawMetaAfterRestore.get('customBackupAuditMetaV1')?.updatedAt, 2999);
+
+    const reExportRichV2 = await persistenceService.exportDisposableTextLibraryV2Backup({
+      dbName: qaStaleDbName,
+      source: { appVersion: '6.0.3-d3c-h1', checkpoint: 'finding-a' },
+      now: 3450
+    });
+    assert.deepEqual(reExportRichV2, richMetaV2Backup);
+
+    // Also test v1 backup with full metadata upgraded to v2 via replace restore over existing metadata
+    const richV1Backup = backupDomain.createProLingoTextDatabaseBackup({
+      metaRecords: [
+        ...v1Meta,
+        { key: constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS, value: [preservedAttachment], updatedAt: 2100 },
+        { key: constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS, value: [preservedExternalImport], updatedAt: 2101 },
+        { key: constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION, value: preservedLegacyMigration, updatedAt: 2102 },
+        preservedCustomMeta
+      ],
+      stores: v1Backup.stores,
+      now: 3490
+    });
+    await persistenceService.restoreDisposableTextLibraryV2Backup({
+      dbName: qaStaleDbName,
+      backup: richV1Backup,
+      upgradeV1Backup: true,
+      now: 3495
+    });
+    const rawMetaAfterV1UpgradeRestore = await readRawMetaMap(qaStaleDbName);
+    assert.equal(rawMetaAfterV1UpgradeRestore.get(constants.TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION)?.value, 2);
+    assert.deepEqual(rawMetaAfterV1UpgradeRestore.get(constants.TEXT_LIBRARY_META_KEYS.SOURCE_ATTACHMENTS)?.value, [preservedAttachment]);
+    assert.deepEqual(rawMetaAfterV1UpgradeRestore.get(constants.TEXT_LIBRARY_META_KEYS.EXTERNAL_SOURCE_IMPORTS)?.value, [preservedExternalImport]);
+    assert.deepEqual(rawMetaAfterV1UpgradeRestore.get(constants.TEXT_LIBRARY_META_KEYS.LEGACY_MIGRATION)?.value, preservedLegacyMigration);
+    assert.deepEqual(rawMetaAfterV1UpgradeRestore.get('customBackupAuditMetaV1')?.value, preservedCustomMeta.value);
 
     // 4. Negative corruption guards on v2 backups
     // Missing stores.contentUnits on v2 backup
@@ -1128,6 +1291,107 @@ await test('D3C-03: Source Attachment & Sync preserves v2 ContentUnit IDs/UIDs, 
     v1IntoV2Sync.snapshot.segments.find(s => s.id === v1Attached.idMap.segments.SEGMENT_000002).text,
     'The express train arrived early.'
   );
+
+  // 5. Clean control after v1->v2 migration: upstream removes unmodified empty v1 Card TEXT_000003, and clean Detach(removeData:true) succeeds
+  const v1UpstreamTrimEmptyCard = {
+    ...v1PackRev2,
+    blocks: v1PackRev2.blocks.filter(b => b.id !== 'TEXT_000003')
+  };
+  const v1TrimEmptySync = attachmentDomain.planTextSourceSync({
+    localSnapshot: v1IntoV2Sync.snapshot,
+    pack: v1UpstreamTrimEmptyCard,
+    attachment: v1IntoV2Sync.attachment,
+    now: 5285
+  });
+  assert.equal(v1TrimEmptySync.ok, true, `Clean empty v1 Card removal after v2 migration should succeed, got: ${(v1TrimEmptySync.conflicts || []).join('; ')}`);
+  assert.equal(v1TrimEmptySync.snapshot.blocks.some(b => b.id === 'TEXT_000003'), false);
+
+  const cleanDetachMigratedV1 = attachmentDomain.planTextSourceDetach({
+    localSnapshot: v1TrimEmptySync.snapshot,
+    attachment: v1TrimEmptySync.attachment,
+    removeData: true,
+    now: 5288
+  });
+  assert.equal(cleanDetachMigratedV1.ok, true);
+  assert.equal(cleanDetachMigratedV1.snapshot.blocks.length, 0);
+  assert.equal(cleanDetachMigratedV1.snapshot.contentUnits.length, 0);
+
+  // 6. Finding B: v1 attachment migrated to v2 + intentionally empty local Content Unit inside an attached Card
+  //    MUST protect the local-only empty Content Unit when upstream removes the Card OR on detach(removeData=true)
+  // Test both Conversation attached Card (DOC_000002) and Paragraph attached Card (DOC_000001):
+  for (const [docId, cardToRemoveId] of [['DOC_000002', 'TEXT_000004'], ['DOC_000001', 'TEXT_000002']]) {
+    const v1DocPack = packDomain.createProLingoTextPack({
+      snapshot: v1Snapshot,
+      scopeType: 'document',
+      rootId: docId,
+      now: 5300
+    });
+    const docMergedV1 = packDomain.mergeProLingoTextPack({
+      localSnapshot: emptyV1,
+      pack: v1DocPack,
+      now: 5310,
+      uidMode: packDomain.PROLINGO_TEXT_PACK_UID_MODE_PRESERVE
+    });
+    const docAttachedV1 = attachmentDomain.createTextSourceAttachmentFromMerge({
+      pack: v1DocPack,
+      merged: docMergedV1,
+      fileName: `${docId}-v1.json`,
+      now: 5310
+    });
+    // Step 2: migrate local v1 snapshot to v2
+    const docMigratedV2 = contentUnitDomain.backfillTextContentUnits(docAttachedV1.snapshot, { now: 5320 }).snapshot;
+
+    // Step 3: create intentionally empty local Content Unit inside attached Card (keep Card/Segments otherwise untouched!)
+    const localCardId = docAttachedV1.idMap.blocks[cardToRemoveId];
+    const localCard = docMigratedV2.blocks.find(b => b.id === localCardId);
+    const withEmptyLocalUnitRes = commandDomain.applyTextLibraryCommand(docMigratedV2, {
+      type: 'contentUnit.create',
+      payload: {
+        blockId: localCardId,
+        ...(localCard.blockType === 'conversation' ? { speaker: 'Amelia' } : {})
+      }
+    }, 5330);
+    const snapWithEmptyLocalUnit = withEmptyLocalUnitRes.snapshot;
+    const emptyLocalUnitId = withEmptyLocalUnitRes.result.id;
+
+    // Step 4: remove that Card from upstream v1 Pack
+    const upstreamWithoutCardSnap = {
+      ...v1Snapshot,
+      blocks: v1Snapshot.blocks.filter(b => b.id !== cardToRemoveId),
+      segments: v1Snapshot.segments.filter(s => s.blockId !== cardToRemoveId),
+      audioVariants: []
+    };
+    const upstreamV1WithoutCard = packDomain.createProLingoTextPack({
+      snapshot: upstreamWithoutCardSnap,
+      scopeType: 'document',
+      rootId: docId,
+      packageId: v1DocPack.packageId,
+      now: 5340
+    });
+
+    // Step 5: execute Sync -> must block with explicit conflict rather than silently destroying empty local Unit!
+    const syncConflict = attachmentDomain.planTextSourceSync({
+      localSnapshot: snapWithEmptyLocalUnit,
+      pack: upstreamV1WithoutCard,
+      attachment: docAttachedV1.attachment,
+      now: 5350
+    });
+    assert.equal(syncConflict.ok, false, `Expected Sync to block removal of Card ${cardToRemoveId} holding empty local Content Unit`);
+    assert.equal(syncConflict.conflict, true);
+    assert.equal(syncConflict.conflicts.some(c => /local-only Content Unit/i.test(c)), true);
+    assert.equal(snapWithEmptyLocalUnit.contentUnits.some(u => u.id === emptyLocalUnitId), true);
+
+    // Step 6: execute planTextSourceDetach({ removeData: true }) -> must ALSO block with explicit conflict!
+    const detachConflict = attachmentDomain.planTextSourceDetach({
+      localSnapshot: snapWithEmptyLocalUnit,
+      attachment: docAttachedV1.attachment,
+      removeData: true,
+      now: 5360
+    });
+    assert.equal(detachConflict.ok, false, `Expected detach(removeData=true) to block removal of Card ${cardToRemoveId} holding empty local Content Unit`);
+    assert.equal(detachConflict.conflict, true);
+    assert.equal(detachConflict.conflicts.some(c => /local-only Content Unit/i.test(c)), true);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1253,6 +1517,61 @@ await test('D3C-04: External JSON v1 initial import and reconciliation preserve 
     'Legacy external import must allocate 0 ContentUnits'
   );
   assert.equal(contentUnitDomain.validateTextContentUnitsState(legacyInitial.snapshot).valid, true);
+
+  // 5. Finding B External JSON review: removing an external Card that holds an intentionally empty local Content Unit
+  //    MUST preserve & detach the parent Card and keep the empty local Unit (and rescue its speaker if removed externally).
+  const extEmptyTestInit = externalDomain.planProLingoTextExternalInitialImport({
+    localSnapshot: emptyV2,
+    package: rev1Raw,
+    existingImports: [],
+    now: 6500
+  });
+  let extEmptyState = extEmptyTestInit.snapshot;
+  const extDocId = extEmptyTestInit.importRecord.documentId;
+  const closingBlock = extEmptyState.blocks.find(b => b.documentId === extDocId && b.metadata?.externalEntityV1?.cardKey === 'closing');
+  assert.ok(closingBlock);
+
+  // Add an intentionally empty local Turn Unit inside unmodified external Card "closing" for speaker Farah
+  const emptyLocalTurnInClosing = commandDomain.applyTextLibraryCommand(extEmptyState, {
+    type: 'contentUnit.create',
+    payload: { blockId: closingBlock.id, speaker: 'Farah' }
+  }, 6510);
+  extEmptyState = emptyLocalTurnInClosing.snapshot;
+  const emptyTurnInClosingId = emptyLocalTurnInClosing.result.id;
+
+  // Incoming package deletes Card "closing" AND deletes external speaker "farah"
+  const rev2ClosingRemoved = structuredClone(rev1Raw);
+  rev2ClosingRemoved.workspace.cards = rev2ClosingRemoved.workspace.cards
+    .filter(c => c.cardKey !== 'closing')
+    .map(c => ({
+      ...c,
+      segments: c.segments.map(seg => seg.speakerKey === 'farah' ? { ...seg, speakerKey: 'amelia' } : seg)
+    }));
+  rev2ClosingRemoved.workspace.speakers = rev2ClosingRemoved.workspace.speakers.filter(s => s.speakerKey !== 'farah');
+
+  const extEmptyReconcile = reconcileDomain.planTextExternalUpdateExisting({
+    localSnapshot: extEmptyState,
+    package: rev2ClosingRemoved,
+    existingImport: extEmptyTestInit.importRecord,
+    conflictPolicy: 'use-incoming',
+    now: 6520
+  });
+  const preservedClosingBlock = extEmptyReconcile.snapshot.blocks.find(b => b.id === closingBlock.id);
+  assert.ok(preservedClosingBlock, 'Parent external Card holding an intentionally empty local Content Unit must be preserved when removed externally');
+  assert.equal(preservedClosingBlock.metadata?.externalEntityV1, undefined, 'Preserved parent Card must be detached from removed external source');
+
+  const preservedEmptyUnit = extEmptyReconcile.snapshot.contentUnits.find(u => u.id === emptyTurnInClosingId);
+  assert.ok(preservedEmptyUnit, 'Intentionally empty local Content Unit must survive external parent Card removal');
+  assert.equal(preservedEmptyUnit.order, 1);
+  assert.equal(preservedEmptyUnit.speaker, 'Farah');
+  assert.equal(extEmptyReconcile.snapshot.segments.filter(s => s.blockId === closingBlock.id).length, 0);
+
+  // Rescued speaker Farah must still exist cleanly in speakerRegistryV1 (detached from externalKey)
+  const docAfterExtEmpty = extEmptyReconcile.snapshot.documents.find(d => d.id === extDocId);
+  const farahAfter = docAfterExtEmpty.metadata?.speakerRegistryV1?.find(s => s.label === 'Farah');
+  assert.ok(farahAfter, 'Externally removed speaker referenced by surviving empty Turn Unit must be rescued');
+  assert.equal(farahAfter.externalKey, undefined);
+  assert.equal(contentUnitDomain.validateTextContentUnitsState(extEmptyReconcile.snapshot, { checkCounterFloor: true }).valid, true);
 });
 
 // ---------------------------------------------------------------------------
