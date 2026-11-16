@@ -18,6 +18,11 @@ import {
   TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY,
   TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY
 } from './textStructuredSpeakerIdentityDomain.js';
+import {
+  createTextContentUnitRecord,
+  formatTextContentUnitId,
+  isContentUnitSnapshot
+} from './textContentUnitDomain.js';
 
 export const PROLINGO_TEXT_EXTERNAL_PACKAGE_TYPE = 'prolingo-text-external';
 export const PROLINGO_TEXT_EXTERNAL_PACKAGE_VERSION = 1;
@@ -258,10 +263,21 @@ const hashString = value => {
 const maxOrder = records => (records || []).reduce((max, record) => Math.max(max, Number(record?.order) || 0), 0);
 
 const allocateLocalId = (state, kind) => {
-  const counterKey = kind === 'COLLECTION' ? 'collection' : kind === 'DOCUMENT' ? 'document' : kind === 'BLOCK' ? 'text' : 'segment';
+  const counterKey =
+    kind === 'COLLECTION'
+      ? 'collection'
+      : kind === 'DOCUMENT'
+        ? 'document'
+        : kind === 'BLOCK'
+          ? 'text'
+          : kind === 'CONTENT_UNIT'
+            ? 'contentUnit'
+            : 'segment';
   const next = Number(state.counters[counterKey] || 0) + 1;
   state.counters = { ...state.counters, [counterKey]: next };
-  return formatTextLibraryId(kind, next);
+  return kind === 'CONTENT_UNIT'
+    ? formatTextContentUnitId(next)
+    : formatTextLibraryId(kind, next);
 };
 
 const sourceIdentityMetadata = ({ packageValue, importedAt, fileName }) => ({
@@ -390,7 +406,9 @@ export const planProLingoTextExternalInitialImport = ({
     metadata: documentMetadata
   });
 
+  const localIsV2 = isContentUnitSnapshot(snapshot);
   const blocks = [];
+  const contentUnits = [];
   const segments = [];
   if (workspace.workspaceType === 'legacy') {
     workspace.entries.forEach(entry => {
@@ -444,14 +462,47 @@ export const planProLingoTextExternalInitialImport = ({
         }
       });
       blocks.push(block);
-      card.segments.forEach(item => {
+
+      let paragraphUnitId = null;
+      if (localIsV2 && card.type === 'paragraph') {
+        paragraphUnitId = allocateLocalId(state, 'CONTENT_UNIT');
+        contentUnits.push(createTextContentUnitRecord({
+          id: paragraphUnitId,
+          uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT),
+          documentId,
+          blockId,
+          kind: 'paragraph',
+          order: 1,
+          createdAt: now,
+          updatedAt: now
+        }));
+      }
+
+      card.segments.forEach((item, index) => {
         const speakerEntry = item.speakerKey ? speakerMap.get(item.speakerKey) : null;
+        let segmentUnitId = paragraphUnitId;
+        if (localIsV2 && card.type === 'conversation') {
+          segmentUnitId = allocateLocalId(state, 'CONTENT_UNIT');
+          contentUnits.push(createTextContentUnitRecord({
+            id: segmentUnitId,
+            uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT),
+            documentId,
+            blockId,
+            kind: 'turn',
+            order: index + 1,
+            speakerId: speakerEntry?.id || null,
+            speaker: speakerEntry?.label || null,
+            createdAt: now,
+            updatedAt: now
+          }));
+        }
         const segmentId = allocateLocalId(state, 'SEGMENT');
         segments.push(createTextSegmentRecord({
           id: segmentId,
           uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.SEGMENT),
           documentId,
           blockId,
+          unitId: segmentUnitId,
           order: item.order,
           text: item.text,
           meaning: item.meaning,
@@ -472,6 +523,13 @@ export const planProLingoTextExternalInitialImport = ({
     });
   }
 
+  const nextMaterializedBlockIds = localIsV2
+    ? [...new Set([
+        ...(snapshot.contentUnitMigration?.materializedBlockIds || []),
+        ...(workspace.workspaceType !== 'legacy' ? blocks.map(block => block.id) : [])
+      ])].sort()
+    : [];
+
   const nextSnapshot = normalizeTextLibraryRuntimeSnapshot({
     ...snapshot,
     activeDocumentId: document.id,
@@ -479,6 +537,17 @@ export const planProLingoTextExternalInitialImport = ({
     collections: collection ? [...snapshot.collections, collection] : snapshot.collections,
     documents: [...snapshot.documents, document],
     blocks: [...snapshot.blocks, ...blocks],
+    ...(localIsV2
+      ? {
+          contentUnits: [...(snapshot.contentUnits || []), ...contentUnits],
+          contentUnitMigration: {
+            version: 1,
+            phase: 'complete',
+            materializedBlockIds: nextMaterializedBlockIds,
+            completedAt: snapshot.contentUnitMigration?.completedAt ?? now
+          }
+        }
+      : {}),
     segments: [...snapshot.segments, ...segments]
   });
   const importRecord = {
@@ -506,12 +575,14 @@ export const planProLingoTextExternalInitialImport = ({
       collectionIds: collection ? [collection.id] : [],
       documentIds: [document.id],
       blockIds: blocks.map(item => item.id),
+      ...(localIsV2 ? { contentUnitIds: contentUnits.map(item => item.id) } : {}),
       segmentIds: segments.map(item => item.id)
     },
     counts: {
       collections: collection ? 1 : 0,
       documents: 1,
       blocks: blocks.length,
+      ...(localIsV2 ? { contentUnits: contentUnits.length } : {}),
       segments: segments.length,
       speakers: speakerRegistry.length
     }

@@ -3,6 +3,9 @@ import {
   TEXT_LIBRARY_DB_VERSION,
   TEXT_LIBRARY_META_KEYS,
   TEXT_LIBRARY_SCHEMA_VERSION,
+  TEXT_LIBRARY_V2_DB_VERSION,
+  TEXT_LIBRARY_V2_META_KEYS,
+  TEXT_LIBRARY_V2_SCHEMA_VERSION,
   TEXT_LEGACY_EDITOR_MODEL,
   TEXT_STRUCTURED_EDITOR_MODEL
 } from '../../constants/textDatabaseConstants.js';
@@ -12,6 +15,15 @@ import {
   normalizeTextLibraryRuntimeSnapshot
 } from './textLibraryDomain.js';
 import { getTextIdSequence } from './textIdentityDomain.js';
+import {
+  backfillTextGlobalUids,
+  collectTextGlobalUidDiagnostics
+} from './textGlobalIdentityDomain.js';
+import {
+  backfillTextContentUnits,
+  getTextContentUnitIdSequence,
+  inspectTextContentUnitMigrationState
+} from './textContentUnitDomain.js';
 
 export const PROLINGO_TEXT_DB_BACKUP_TYPE = 'prolingo-text-database-backup';
 export const PROLINGO_TEXT_DB_BACKUP_VERSION = 1;
@@ -37,6 +49,7 @@ const computeCounterFloor = snapshot => ({
   collection: snapshot.collections.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('COLLECTION', record.id)), 0),
   document: snapshot.documents.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('DOCUMENT', record.id)), 0),
   text: snapshot.blocks.reduce((max, record) => Math.max(max, getTextIdSequence(record.id)), 0),
+  contentUnit: (snapshot.contentUnits || []).reduce((max, record) => Math.max(max, getTextContentUnitIdSequence(record.id)), 0),
   segment: snapshot.segments.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('SEGMENT', record.id)), 0),
   audioVariant: snapshot.audioVariants.reduce((max, record) => Math.max(max, getTextLibraryIdSequence('AUDIO_VARIANT', record.id)), 0)
 });
@@ -48,6 +61,7 @@ const migrateSnapshotCounters = snapshot => {
     collection: Math.max(current.collection, floor.collection),
     document: Math.max(current.document, floor.document),
     text: Math.max(current.text, floor.text),
+    contentUnit: Math.max(current.contentUnit, floor.contentUnit),
     segment: Math.max(current.segment, floor.segment),
     audioVariant: Math.max(current.audioVariant, floor.audioVariant)
   };
@@ -55,7 +69,7 @@ const migrateSnapshotCounters = snapshot => {
   return { counters, floor, changed };
 };
 
-const normalizeBackupPayload = candidate => {
+const normalizeBackupPayload = (candidate, options = {}) => {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) throw new Error('Text Database Backup must be a JSON object');
   if (candidate.backupType !== PROLINGO_TEXT_DB_BACKUP_TYPE) throw new Error('This is not a ProLingo Text Database Backup');
   if (candidate.backupVersion !== PROLINGO_TEXT_DB_BACKUP_VERSION) throw new Error(`Unsupported Text Database Backup version: ${candidate.backupVersion}`);
@@ -67,9 +81,9 @@ const normalizeBackupPayload = candidate => {
   const dbVersion = Number.parseInt(database.dbVersion, 10);
   const schemaVersion = Number.parseInt(database.schemaVersion, 10);
   if (!Number.isFinite(dbVersion) || dbVersion < 1) throw new Error('Text Database Backup has an invalid IndexedDB version');
-  if (dbVersion > TEXT_LIBRARY_DB_VERSION) throw new Error(`Text Database Backup requires newer IndexedDB version ${dbVersion}`);
+  if (dbVersion > TEXT_LIBRARY_V2_DB_VERSION) throw new Error(`Text Database Backup requires newer IndexedDB version ${dbVersion}`);
   if (!Number.isFinite(schemaVersion) || schemaVersion < 1) throw new Error('Text Database Backup has an invalid Text schema version');
-  if (schemaVersion > TEXT_LIBRARY_SCHEMA_VERSION) throw new Error(`Text Database Backup requires newer Text schema version ${schemaVersion}`);
+  if (schemaVersion > TEXT_LIBRARY_V2_SCHEMA_VERSION) throw new Error(`Text Database Backup requires newer Text schema version ${schemaVersion}`);
 
   const metaRecords = assertArray(candidate.metaRecords, 'metaRecords').map(cloneMetaRecord);
   assertUniqueMetaKeys(metaRecords);
@@ -79,6 +93,40 @@ const normalizeBackupPayload = candidate => {
   const blocks = assertArray(stores.blocks, 'blocks').map(cloneRecord);
   const segments = assertArray(stores.segments, 'segments').map(cloneRecord);
   const audioVariants = assertArray(stores.audioVariants, 'audioVariants').map(cloneRecord);
+
+  const initialized = Boolean(getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.INITIALIZED));
+  if (!initialized) throw new Error('Text Database Backup is not an initialized Text Library snapshot');
+  const activeDocumentId = getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID) || null;
+  const countersCandidate = getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.ID_COUNTERS) || {};
+  const metaSchemaVersion = Number.parseInt(getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION), 10) || schemaVersion;
+  if (metaSchemaVersion > TEXT_LIBRARY_V2_SCHEMA_VERSION) throw new Error(`Text Database Backup meta requires newer Text schema version ${metaSchemaVersion}`);
+
+  const rawContentUnitMigration = getMetaValue(metaRecords, TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION) || null;
+  const hasV2Signals =
+    dbVersion === TEXT_LIBRARY_V2_DB_VERSION ||
+    schemaVersion === TEXT_LIBRARY_V2_SCHEMA_VERSION ||
+    metaSchemaVersion === TEXT_LIBRARY_V2_SCHEMA_VERSION ||
+    stores.contentUnits !== undefined ||
+    rawContentUnitMigration !== null;
+
+  let contentUnits = null;
+  if (hasV2Signals) {
+    if (
+      dbVersion !== TEXT_LIBRARY_V2_DB_VERSION ||
+      schemaVersion !== TEXT_LIBRARY_V2_SCHEMA_VERSION ||
+      metaSchemaVersion !== TEXT_LIBRARY_V2_SCHEMA_VERSION
+    ) {
+      throw new Error(
+        `Text Database Backup v2 has mismatched version headers (dbVersion=${dbVersion}, schemaVersion=${schemaVersion}, metaSchemaVersion=${metaSchemaVersion})`
+      );
+    }
+    contentUnits = assertArray(stores.contentUnits, 'contentUnits').map(cloneRecord);
+    contentUnits.forEach(record => {
+      if (!getTextContentUnitIdSequence(record.id)) {
+        throw new Error(`Text Database Backup has invalid UNIT_ID: ${record.id}`);
+      }
+    });
+  }
 
   collections.forEach(record => {
     if (!getTextLibraryIdSequence('COLLECTION', record.id)) throw new Error(`Text Database Backup has invalid COLLECTION_ID: ${record.id}`);
@@ -98,41 +146,74 @@ const normalizeBackupPayload = candidate => {
     if (!getTextLibraryIdSequence('AUDIO_VARIANT', record.id)) throw new Error(`Text Database Backup has invalid TXTAUDIO_ID: ${record.id}`);
   });
 
-  const initialized = Boolean(getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.INITIALIZED));
-  if (!initialized) throw new Error('Text Database Backup is not an initialized Text Library snapshot');
-  const activeDocumentId = getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID) || null;
-  const countersCandidate = getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.ID_COUNTERS) || {};
-  const metaSchemaVersion = Number.parseInt(getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION), 10) || schemaVersion;
-  if (metaSchemaVersion > TEXT_LIBRARY_SCHEMA_VERSION) throw new Error(`Text Database Backup meta requires newer Text schema version ${metaSchemaVersion}`);
+  const targetSchemaVersion = hasV2Signals ? TEXT_LIBRARY_V2_SCHEMA_VERSION : TEXT_LIBRARY_SCHEMA_VERSION;
+  const targetDbVersion = hasV2Signals ? TEXT_LIBRARY_V2_DB_VERSION : TEXT_LIBRARY_DB_VERSION;
 
   let snapshot = normalizeTextLibraryRuntimeSnapshot({
-    schemaVersion: Math.min(metaSchemaVersion, TEXT_LIBRARY_SCHEMA_VERSION),
+    schemaVersion: targetSchemaVersion,
     initialized: true,
     activeDocumentId,
     counters: countersCandidate,
     collections,
     documents,
     blocks,
+    ...(hasV2Signals ? { contentUnits, contentUnitMigration: rawContentUnitMigration } : {}),
     segments,
     audioVariants
   });
   if (snapshot.documents.length && !snapshot.activeDocumentId) throw new Error('Text Database Backup has Documents but no active Document');
 
   const migration = migrateSnapshotCounters(snapshot);
-  snapshot = normalizeTextLibraryRuntimeSnapshot({ ...snapshot, counters: migration.counters, schemaVersion: TEXT_LIBRARY_SCHEMA_VERSION });
+  snapshot = normalizeTextLibraryRuntimeSnapshot({
+    ...snapshot,
+    counters: migration.counters,
+    schemaVersion: targetSchemaVersion
+  });
+
+  if (hasV2Signals) {
+    const uidDiagnostics = collectTextGlobalUidDiagnostics(snapshot);
+    if (!uidDiagnostics.valid) {
+      throw new Error(`Text Database Backup v2 failed global UID integrity check: ${JSON.stringify(uidDiagnostics)}`);
+    }
+    const migrationInspection = inspectTextContentUnitMigrationState(snapshot, { idbVersion: TEXT_LIBRARY_V2_DB_VERSION });
+    if (migrationInspection.status !== 'migrated-v2') {
+      throw new Error(
+        `Text Database Backup v2 is not in a complete migrated-v2 state (status=${migrationInspection.status}): ${migrationInspection.errors.join('; ')}`
+      );
+    }
+  } else if (options.upgradeToV2 === true) {
+    const uidBackfilled = backfillTextGlobalUids(snapshot).snapshot;
+    const upgraded = backfillTextContentUnits(uidBackfilled, { now: options.now || Date.now() }).snapshot;
+    const upgradedCounters = migrateSnapshotCounters(upgraded);
+    snapshot = normalizeTextLibraryRuntimeSnapshot({
+      ...upgraded,
+      counters: upgradedCounters.counters,
+      schemaVersion: TEXT_LIBRARY_V2_SCHEMA_VERSION
+    });
+  }
+
+  const finalIsV2 = hasV2Signals || options.upgradeToV2 === true;
+  const finalDbVersion = finalIsV2 ? TEXT_LIBRARY_V2_DB_VERSION : targetDbVersion;
+  const finalSchemaVersion = finalIsV2 ? TEXT_LIBRARY_V2_SCHEMA_VERSION : targetSchemaVersion;
+
+  const reservedMetaKeys = [
+    TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION,
+    TEXT_LIBRARY_META_KEYS.INITIALIZED,
+    TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID,
+    TEXT_LIBRARY_META_KEYS.ID_COUNTERS,
+    ...(finalIsV2 ? [TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION] : [])
+  ];
 
   const canonicalMetaRecords = metaRecords
-    .filter(record => ![
-      TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION,
-      TEXT_LIBRARY_META_KEYS.INITIALIZED,
-      TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID,
-      TEXT_LIBRARY_META_KEYS.ID_COUNTERS
-    ].includes(record.key))
+    .filter(record => !reservedMetaKeys.includes(record.key))
     .concat([
-      { key: TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION, value: TEXT_LIBRARY_SCHEMA_VERSION, updatedAt: null },
+      { key: TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION, value: finalSchemaVersion, updatedAt: null },
       { key: TEXT_LIBRARY_META_KEYS.INITIALIZED, value: true, updatedAt: null },
       { key: TEXT_LIBRARY_META_KEYS.ACTIVE_DOCUMENT_ID, value: snapshot.activeDocumentId, updatedAt: null },
-      { key: TEXT_LIBRARY_META_KEYS.ID_COUNTERS, value: snapshot.counters, updatedAt: null }
+      { key: TEXT_LIBRARY_META_KEYS.ID_COUNTERS, value: snapshot.counters, updatedAt: null },
+      ...(finalIsV2 && snapshot.contentUnitMigration
+        ? [{ key: TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION, value: snapshot.contentUnitMigration, updatedAt: null }]
+        : [])
     ]);
 
   return {
@@ -144,14 +225,15 @@ const normalizeBackupPayload = candidate => {
       audioBinaryIncluded: false,
       database: {
         name: TEXT_LIBRARY_DB_NAME,
-        dbVersion: TEXT_LIBRARY_DB_VERSION,
-        schemaVersion: TEXT_LIBRARY_SCHEMA_VERSION
+        dbVersion: finalDbVersion,
+        schemaVersion: finalSchemaVersion
       },
       metaRecords: canonicalMetaRecords,
       stores: {
         collections: snapshot.collections.map(cloneRecord),
         documents: snapshot.documents.map(cloneRecord),
         blocks: snapshot.blocks.map(cloneRecord),
+        ...(finalIsV2 ? { contentUnits: (snapshot.contentUnits || []).map(cloneRecord) } : {}),
         segments: snapshot.segments.map(cloneRecord),
         audioVariants: snapshot.audioVariants.map(cloneRecord)
       }
@@ -159,9 +241,10 @@ const normalizeBackupPayload = candidate => {
     snapshot,
     migration: {
       fromDbVersion: dbVersion,
-      toDbVersion: TEXT_LIBRARY_DB_VERSION,
+      toDbVersion: finalDbVersion,
       fromSchemaVersion: schemaVersion,
-      toSchemaVersion: TEXT_LIBRARY_SCHEMA_VERSION,
+      toSchemaVersion: finalSchemaVersion,
+      upgradedFromV1ToV2: !hasV2Signals && options.upgradeToV2 === true,
       countersRaisedToIdentityFloor: migration.changed,
       identityFloor: migration.floor
     }
@@ -170,6 +253,11 @@ const normalizeBackupPayload = candidate => {
 
 export const createProLingoTextDatabaseBackup = ({ metaRecords = [], stores = {}, source = {}, now = Date.now() }) => {
   const createdAt = new Date(now).toISOString();
+  const metaSchemaVersion = Number.parseInt(getMetaValue(metaRecords, TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION), 10);
+  const isV2 =
+    Array.isArray(stores.contentUnits) ||
+    metaSchemaVersion === TEXT_LIBRARY_V2_SCHEMA_VERSION ||
+    Boolean(getMetaValue(metaRecords, TEXT_LIBRARY_V2_META_KEYS.CONTENT_UNIT_MIGRATION));
   const backup = {
     backupType: PROLINGO_TEXT_DB_BACKUP_TYPE,
     backupVersion: PROLINGO_TEXT_DB_BACKUP_VERSION,
@@ -183,14 +271,15 @@ export const createProLingoTextDatabaseBackup = ({ metaRecords = [], stores = {}
     },
     database: {
       name: TEXT_LIBRARY_DB_NAME,
-      dbVersion: TEXT_LIBRARY_DB_VERSION,
-      schemaVersion: TEXT_LIBRARY_SCHEMA_VERSION
+      dbVersion: isV2 ? TEXT_LIBRARY_V2_DB_VERSION : TEXT_LIBRARY_DB_VERSION,
+      schemaVersion: isV2 ? TEXT_LIBRARY_V2_SCHEMA_VERSION : TEXT_LIBRARY_SCHEMA_VERSION
     },
     metaRecords: metaRecords.map(cloneMetaRecord),
     stores: {
       collections: (stores.collections || []).map(cloneRecord),
       documents: (stores.documents || []).map(cloneRecord),
       blocks: (stores.blocks || []).map(cloneRecord),
+      ...(isV2 ? { contentUnits: (stores.contentUnits || []).map(cloneRecord) } : {}),
       segments: (stores.segments || []).map(cloneRecord),
       audioVariants: (stores.audioVariants || []).map(cloneRecord)
     }
@@ -198,10 +287,10 @@ export const createProLingoTextDatabaseBackup = ({ metaRecords = [], stores = {}
   return normalizeBackupPayload(backup).backup;
 };
 
-export const validateProLingoTextDatabaseBackup = candidate => normalizeBackupPayload(candidate);
+export const validateProLingoTextDatabaseBackup = (candidate, options = {}) => normalizeBackupPayload(candidate, options);
 
-export const resolveProLingoTextDatabaseBackupDiagnostics = candidate => {
-  const { backup, snapshot, migration } = normalizeBackupPayload(candidate);
+export const resolveProLingoTextDatabaseBackupDiagnostics = (candidate, options = {}) => {
+  const { backup, snapshot, migration } = normalizeBackupPayload(candidate, options);
   return {
     createdAt: backup.createdAt || null,
     source: backup.source || {},
@@ -211,6 +300,7 @@ export const resolveProLingoTextDatabaseBackupDiagnostics = candidate => {
       collections: snapshot.collections.length,
       documents: snapshot.documents.length,
       blocks: snapshot.blocks.length,
+      contentUnits: (snapshot.contentUnits || []).length,
       segments: snapshot.segments.length,
       audioVariants: snapshot.audioVariants.length,
       metaRecords: backup.metaRecords.length

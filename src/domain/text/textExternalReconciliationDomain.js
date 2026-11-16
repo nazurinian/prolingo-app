@@ -24,17 +24,31 @@ import {
   TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY,
   TEXT_STRUCTURED_SPEAKER_REGISTRY_METADATA_KEY
 } from './textStructuredSpeakerIdentityDomain.js';
+import {
+  createTextContentUnitRecord,
+  formatTextContentUnitId,
+  isContentUnitSnapshot
+} from './textContentUnitDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const clone = value => JSON.parse(JSON.stringify(value));
 const byOrder = (a, b) => Number(a?.order || 0) - Number(b?.order || 0) || String(a?.id || '').localeCompare(String(b?.id || ''));
 
 const allocateLocalId = (state, kind) => {
-  const counterKey = kind === 'BLOCK' ? 'text' : kind === 'SEGMENT' ? 'segment' : null;
+  const counterKey =
+    kind === 'BLOCK'
+      ? 'text'
+      : kind === 'CONTENT_UNIT'
+        ? 'contentUnit'
+        : kind === 'SEGMENT'
+          ? 'segment'
+          : null;
   if (!counterKey) throw new Error(`Unsupported reconciliation allocation kind: ${kind}`);
   const next = Number(state.counters[counterKey] || 0) + 1;
   state.counters = { ...state.counters, [counterKey]: next };
-  return formatTextLibraryId(kind, next);
+  return kind === 'CONTENT_UNIT'
+    ? formatTextContentUnitId(next)
+    : formatTextLibraryId(kind, next);
 };
 
 const externalMeta = record => record?.metadata?.[TEXT_EXTERNAL_ENTITY_METADATA_KEY] || null;
@@ -514,13 +528,36 @@ export const planTextExternalUpdateExisting = ({
     })
     : nextSegments;
 
-  // Preserve & detach externally removed speakers still referenced by surviving workspace segments.
-  const survivingSpeakerIds = new Set(
-    syncedSegments
+  // Preserve & detach externally removed speakers still referenced by surviving workspace segments or Turn ContentUnits.
+  const localIsV2 = isContentUnitSnapshot(snapshot);
+  const localDocUnits = localIsV2
+    ? (snapshot.contentUnits || []).filter(unit => unit.documentId === document.id).sort(byOrder)
+    : [];
+  const otherDocUnits = localIsV2
+    ? (snapshot.contentUnits || []).filter(unit => unit.documentId !== document.id)
+    : [];
+  const origSegCountByUnitId = new Map();
+  if (localIsV2) {
+    localSegments.forEach(seg => {
+      if (seg.unitId) {
+        origSegCountByUnitId.set(seg.unitId, (origSegCountByUnitId.get(seg.unitId) || 0) + 1);
+      }
+    });
+  }
+  const initiallyEmptyUnitIds = new Set(
+    localDocUnits.filter(u => (origSegCountByUnitId.get(u.id) || 0) === 0).map(u => u.id)
+  );
+
+  const survivingSpeakerIds = new Set([
+    ...syncedSegments
       .filter(segment => segment.documentId === document.id)
       .map(segment => clean(segment?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]))
+      .filter(Boolean),
+    ...localDocUnits
+      .filter(unit => initiallyEmptyUnitIds.has(unit.id))
+      .map(unit => clean(unit?.speakerId))
       .filter(Boolean)
-  );
+  ]);
   const seenRegistryIds = new Set(speakerPlan.registry.map(item => item.id));
   const rescuedSpeakers = [];
   speakerPlan.decisions.forEach(item => {
@@ -541,6 +578,213 @@ export const planTextExternalUpdateExisting = ({
     };
   }
 
+  let finalSegments = syncedSegments;
+  let nextContentUnits = null;
+  let nextContentUnitMigration = null;
+
+  if (localIsV2) {
+    if (packageValue.workspace.workspaceType === 'legacy') {
+      nextContentUnits = otherDocUnits;
+      nextContentUnitMigration = snapshot.contentUnitMigration;
+    } else {
+      const unitsById = new Map(localDocUnits.map(unit => [unit.id, unit]));
+      const docBlocks = nextBlocks.filter(block => block.documentId === document.id).sort(byOrder);
+      const docBlockById = new Map(docBlocks.map(block => [block.id, block]));
+      const docSegments = syncedSegments.filter(seg => seg.documentId === document.id).sort(byOrder);
+      const otherSegments = syncedSegments.filter(seg => seg.documentId !== document.id);
+
+      // Sync renamed speaker labels onto existing local Turn Units first.
+      if (updatedSpeakersById.size > 0) {
+        for (const [unitId, unit] of unitsById.entries()) {
+          if (unit.kind !== 'turn' || !unit.speakerId) continue;
+          const renamed = updatedSpeakersById.get(unit.speakerId);
+          if (renamed && clean(renamed.label) && clean(unit.speaker) !== clean(renamed.label)) {
+            unitsById.set(unitId, {
+              ...unit,
+              speaker: clean(renamed.label),
+              updatedAt: now
+            });
+          }
+        }
+      }
+
+      // Group surviving segments by blockId
+      const segsByBlockId = new Map();
+      docSegments.forEach(seg => {
+        const list = segsByBlockId.get(seg.blockId) || [];
+        list.push(seg);
+        segsByBlockId.set(seg.blockId, list);
+      });
+
+      const reconciledDocSegments = [];
+      for (const block of docBlocks) {
+        const blockSegs = (segsByBlockId.get(block.id) || []).sort(byOrder);
+        if (block.blockType === 'paragraph') {
+          let defaultParaUnit = [...unitsById.values()]
+            .filter(u => u.blockId === block.id && u.kind === 'paragraph')
+            .sort(byOrder)[0] || null;
+
+          for (const seg of blockSegs) {
+            const existingUnit = seg.unitId ? unitsById.get(seg.unitId) || null : null;
+            if (existingUnit && existingUnit.blockId === block.id && existingUnit.kind === 'paragraph') {
+              reconciledDocSegments.push(seg);
+              continue;
+            }
+            if (!defaultParaUnit) {
+              const newUnitId = allocateLocalId(state, 'CONTENT_UNIT');
+              defaultParaUnit = createTextContentUnitRecord({
+                id: newUnitId,
+                uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT),
+                documentId: document.id,
+                blockId: block.id,
+                kind: 'paragraph',
+                order: 1,
+                createdAt: now,
+                updatedAt: now
+              });
+              unitsById.set(newUnitId, defaultParaUnit);
+            }
+            reconciledDocSegments.push({
+              ...seg,
+              unitId: defaultParaUnit.id
+            });
+          }
+        } else {
+          // Conversation Card: preserve existing Turn Units and multi-segment Turns,
+          // updating Turn speaker attribution or splitting only on multi-segment speaker divergence.
+          const blockSegsByUnit = new Map();
+          blockSegs.forEach(seg => {
+            const existingUnit = seg.unitId ? unitsById.get(seg.unitId) || null : null;
+            if (existingUnit && existingUnit.blockId === block.id && existingUnit.kind === 'turn') {
+              const list = blockSegsByUnit.get(existingUnit.id) || [];
+              list.push(seg);
+              blockSegsByUnit.set(existingUnit.id, list);
+            }
+          });
+
+          const assignedUnitIdBySegId = new Map();
+          for (const [unitId, unitSegs] of blockSegsByUnit.entries()) {
+            const unit = unitsById.get(unitId);
+            const primarySeg = unitSegs[0];
+            const primarySpeakerId = clean(primarySeg?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]) || null;
+            const primarySpeaker = clean(primarySeg?.speaker) || null;
+            if (unit.speakerId !== primarySpeakerId || clean(unit.speaker) !== clean(primarySpeaker)) {
+              unitsById.set(unitId, {
+                ...unit,
+                speakerId: primarySpeakerId,
+                speaker: primarySpeaker,
+                updatedAt: now
+              });
+            }
+            assignedUnitIdBySegId.set(primarySeg.id, unitId);
+            for (let i = 1; i < unitSegs.length; i += 1) {
+              const seg = unitSegs[i];
+              const segSpeakerId = clean(seg?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]) || null;
+              const segSpeaker = clean(seg?.speaker) || null;
+              if (segSpeakerId === primarySpeakerId && clean(segSpeaker) === clean(primarySpeaker)) {
+                assignedUnitIdBySegId.set(seg.id, unitId);
+              }
+            }
+          }
+
+          for (const seg of blockSegs) {
+            let targetUnitId = assignedUnitIdBySegId.get(seg.id) || null;
+            if (!targetUnitId) {
+              const segSpeakerId = clean(seg?.metadata?.[TEXT_STRUCTURED_SPEAKER_ID_METADATA_KEY]) || null;
+              const segSpeaker = clean(seg?.speaker) || null;
+              targetUnitId = allocateLocalId(state, 'CONTENT_UNIT');
+              const newTurn = createTextContentUnitRecord({
+                id: targetUnitId,
+                uid: createTextGlobalUid(TEXT_GLOBAL_UID_KINDS.CONTENT_UNIT),
+                documentId: document.id,
+                blockId: block.id,
+                kind: 'turn',
+                order: seg.order || 1,
+                speakerId: segSpeakerId,
+                speaker: segSpeaker,
+                createdAt: now,
+                updatedAt: now
+              });
+              unitsById.set(targetUnitId, newTurn);
+            }
+            reconciledDocSegments.push(seg.unitId === targetUnitId ? seg : { ...seg, unitId: targetUnitId });
+          }
+        }
+      }
+
+      // Determine surviving ContentUnits for this document (units with >=1 segment OR initially empty units in surviving blocks)
+      const activeUnitIds = new Set(reconciledDocSegments.map(seg => seg.unitId).filter(Boolean));
+      const minSegOrderByUnitId = new Map();
+      reconciledDocSegments.forEach(seg => {
+        if (!seg.unitId) return;
+        const prev = minSegOrderByUnitId.get(seg.unitId);
+        if (prev === undefined || seg.order < prev) {
+          minSegOrderByUnitId.set(seg.unitId, seg.order);
+        }
+      });
+
+      const keptDocUnits = [...unitsById.values()].filter(
+        unit => docBlockById.has(unit.blockId) && (activeUnitIds.has(unit.id) || initiallyEmptyUnitIds.has(unit.id))
+      );
+
+      const unitsByBlockId = new Map();
+      keptDocUnits.forEach(unit => {
+        const list = unitsByBlockId.get(unit.blockId) || [];
+        list.push(unit);
+        unitsByBlockId.set(unit.blockId, list);
+      });
+
+      const finalDocUnits = [];
+      const unitOrderById = new Map();
+      for (const block of docBlocks) {
+        const blockUnits = (unitsByBlockId.get(block.id) || []).sort((a, b) => {
+          const orderA = minSegOrderByUnitId.has(a.id) ? minSegOrderByUnitId.get(a.id) : (a.order || 0);
+          const orderB = minSegOrderByUnitId.has(b.id) ? minSegOrderByUnitId.get(b.id) : (b.order || 0);
+          return (orderA - orderB) || (a.order - b.order) || String(a.id).localeCompare(String(b.id));
+        });
+        blockUnits.forEach((unit, idx) => {
+          const nextOrder = idx + 1;
+          unitOrderById.set(unit.id, nextOrder);
+          finalDocUnits.push(unit.order === nextOrder ? unit : { ...unit, order: nextOrder });
+        });
+      }
+
+      const finalDocSegments = [];
+      const reconciledByBlock = new Map();
+      reconciledDocSegments.forEach(seg => {
+        const list = reconciledByBlock.get(seg.blockId) || [];
+        list.push(seg);
+        reconciledByBlock.set(seg.blockId, list);
+      });
+      for (const block of docBlocks) {
+        const blockSegs = (reconciledByBlock.get(block.id) || []).sort((a, b) => {
+          const uA = unitOrderById.get(a.unitId) ?? 0;
+          const uB = unitOrderById.get(b.unitId) ?? 0;
+          if (uA !== uB) return uA - uB;
+          return (a.order - b.order) || String(a.id).localeCompare(String(b.id));
+        });
+        blockSegs.forEach((seg, idx) => {
+          const nextOrder = idx + 1;
+          finalDocSegments.push(seg.order === nextOrder ? seg : { ...seg, order: nextOrder });
+        });
+      }
+
+      finalSegments = [...otherSegments, ...finalDocSegments];
+      nextContentUnits = [...otherDocUnits, ...finalDocUnits];
+      const survivingBlockIds = new Set(nextBlocks.map(block => block.id));
+      const nextMaterializedBlockIds = [...new Set([
+        ...((snapshot.contentUnitMigration?.materializedBlockIds || []).filter(id => survivingBlockIds.has(id))),
+        ...docBlocks.map(block => block.id)
+      ])].sort();
+      nextContentUnitMigration = {
+        version: 1,
+        phase: 'complete',
+        materializedBlockIds: nextMaterializedBlockIds,
+        completedAt: snapshot.contentUnitMigration?.completedAt ?? now
+      };
+    }
+  }
+
   let nextAudioVariants = snapshot.audioVariants.filter(variant => !removedSegmentIds.has(variant.segmentId));
   nextAudioVariants = invalidateVariantsForSegments(nextAudioVariants, changedSegmentIds, 'external-json-reconcile', now);
   const nextSnapshot = normalizeTextLibraryRuntimeSnapshot({
@@ -549,7 +793,8 @@ export const planTextExternalUpdateExisting = ({
     activeDocumentId: document.id,
     documents: snapshot.documents.map(item => item.id === document.id ? nextDocument : item),
     blocks: nextBlocks,
-    segments: syncedSegments,
+    ...(localIsV2 ? { contentUnits: nextContentUnits, contentUnitMigration: nextContentUnitMigration } : {}),
+    segments: finalSegments,
     audioVariants: nextAudioVariants
   });
   const nextImportRecord = {

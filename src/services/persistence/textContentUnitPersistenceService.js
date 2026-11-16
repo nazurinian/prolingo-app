@@ -14,6 +14,10 @@ import {
   TEXT_CONTENT_UNIT_MIGRATION_STATUS
 } from '../../domain/text/textContentUnitDomain.js';
 import { applyTextLibraryCommand } from '../../domain/text/textLibraryCommandDomain.js';
+import {
+  createProLingoTextDatabaseBackup,
+  validateProLingoTextDatabaseBackup
+} from '../../domain/text/textDatabaseBackupDomain.js';
 import { normalizeTextLibraryRuntimeSnapshot } from '../../domain/text/textLibraryDomain.js';
 
 export const TEXT_DISPOSABLE_QA_DB_PREFIX = 'prolingo_text_library_d3b_qa_';
@@ -499,6 +503,104 @@ export const executeDisposableTextLibraryV2Command = async ({
             output: { snapshot, result }
           };
         }
+      });
+    } finally {
+      db.close?.();
+    }
+  } finally {
+    activeQaWriteDbNames.delete(safeName);
+  }
+};
+
+export const exportDisposableTextLibraryV2Backup = async ({
+  dbName = TEXT_DISPOSABLE_QA_DB_NAME,
+  source = {},
+  now = Date.now(),
+  ...restOptions
+} = {}) => {
+  const safeName = resolveQaEntrypointDbName(dbName, restOptions);
+  const db = await openDisposableTextLibraryV2Database({
+    dbName: safeName,
+    version: TEXT_LIBRARY_V2_DB_VERSION
+  });
+  try {
+    assertDisposableQaDatabaseHandle(db);
+    const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
+    const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
+    const tx = db.transaction(storeNames, 'readonly');
+    const [
+      metaRecords,
+      collections,
+      documents,
+      blocks,
+      contentUnits,
+      segments,
+      audioVariants
+    ] = await Promise.all([
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.META).getAll()),
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.COLLECTIONS).getAll()),
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.DOCUMENTS).getAll()),
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.BLOCKS).getAll()),
+      hasUnitsStore
+        ? requestToPromise(tx.objectStore(TEXT_LIBRARY_CONTENT_UNIT_STORE).getAll())
+        : Promise.resolve([]),
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.SEGMENTS).getAll()),
+      requestToPromise(tx.objectStore(TEXT_LIBRARY_STORES.AUDIO_VARIANTS).getAll())
+    ]);
+    return createProLingoTextDatabaseBackup({
+      metaRecords,
+      stores: {
+        collections,
+        documents,
+        blocks,
+        contentUnits,
+        segments,
+        audioVariants
+      },
+      source,
+      now
+    });
+  } finally {
+    db.close?.();
+  }
+};
+
+export const restoreDisposableTextLibraryV2Backup = async ({
+  dbName = TEXT_DISPOSABLE_QA_DB_NAME,
+  backup,
+  now = Date.now(),
+  upgradeV1Backup = true,
+  onBeforeCommit = null,
+  ...restOptions
+} = {}) => {
+  const safeName = resolveQaEntrypointDbName(dbName, restOptions);
+  const validated = validateProLingoTextDatabaseBackup(backup, {
+    upgradeToV2: upgradeV1Backup,
+    now
+  });
+  if (validated.backup.database.dbVersion !== TEXT_LIBRARY_V2_DB_VERSION) {
+    throw new Error('Disposable v2 database restore requires a v2 backup or upgradeV1Backup=true');
+  }
+  acquireQaWriteLock(safeName);
+  try {
+    const db = await openDisposableTextLibraryV2Database({
+      dbName: safeName,
+      version: TEXT_LIBRARY_V2_DB_VERSION
+    });
+    try {
+      return await runSingleReadWriteSnapshotTransaction({
+        db,
+        now,
+        onBeforeCommit,
+        transform: () => ({
+          shouldWrite: true,
+          nextSnapshot: validated.snapshot,
+          output: {
+            backup: validated.backup,
+            snapshot: validated.snapshot,
+            migration: validated.migration
+          }
+        })
       });
     } finally {
       db.close?.();
