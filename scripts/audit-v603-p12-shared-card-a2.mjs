@@ -10,6 +10,9 @@ import {
 } from '../src/domain/text/textCardPresentationStateDomain.js';
 import { resolveTextCardPresentationCursor } from '../src/domain/text/textCardPresentationCursorDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT } from '../src/domain/text/textStructuredPlaybackDomain.js';
+import { TEXT_AUDIO_COVERAGE_STATUS } from '../src/domain/text/textStructuredAudioCoverageDomain.js';
+import { buildTextStructuredRuntimeAudioKey } from '../src/domain/text/textStructuredAudioRuntimeDomain.js';
+import { resolveTextLibraryDocumentTree } from '../src/domain/text/textLibraryDomain.js';
 import {
   TEXT_LIBRARY_DB_VERSION,
   TEXT_LIBRARY_SCHEMA_VERSION
@@ -315,6 +318,60 @@ test('Canonical DB and schema versions remain 1 and zero IndexedDB access occurr
   assert.equal(TEXT_LIBRARY_DB_VERSION, 1);
   assert.equal(TEXT_LIBRARY_SCHEMA_VERSION, 1);
   assert.equal(dbCalls, 0);
+});
+
+test('HF1: only exact Ready counts as Ready; all other host coverage categories remain distinct and visible', () => {
+  const statuses = [...Object.values(TEXT_AUDIO_COVERAGE_STATUS), 'unknown', null];
+  const orderedSegments = statuses.map((status, index) => ({ id: `coverage-${index}`, text: 'Text', meaning: '' }));
+  const audioCoverageMap = Object.fromEntries(statuses.filter(Boolean).map((status, index) => [
+    buildTextStructuredRuntimeAudioKey(orderedSegments[index].id, 'text'), Object.freeze({ status })
+  ]));
+  const before = JSON.stringify(audioCoverageMap);
+  const summary = utils.summarizeCardPresentationCoverage({ orderedSegments, audioCoverageMap });
+  assert.deepEqual(summary, { total: 10, ready: 1, downloaded: 1, metadataOnly: 1, legacyUnverified: 1,
+    otherVoice: 1, otherProfile: 1, stale: 1, missing: 3, needDownload: 9, covered: 1 });
+  assert.equal(utils.summarizeCardPresentationCoverage({ orderedSegments, audioCoverageMap: null }), null);
+  assert.equal(JSON.stringify(audioCoverageMap), before);
+  assert.equal(utils.coverageLabelFor(TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED), 'HISTORY');
+  assert.equal(utils.coverageLabelFor(TEXT_AUDIO_COVERAGE_STATUS.METADATA_ONLY), 'META-ONLY');
+  assert.equal(utils.coverageLabelFor(TEXT_AUDIO_COVERAGE_STATUS.LEGACY_UNVERIFIED), 'UNVERIFIED');
+  assert.equal(utils.coverageLabelFor(TEXT_AUDIO_COVERAGE_STATUS.OTHER_PROFILE), 'OTHER PROFILE');
+  resetHooks();
+  const card = { ...v2Pres.cards[1], units: [{ ...v2Pres.cards[1].units[0], segments: orderedSegments }] };
+  const rendered = renderTree(mockReact.createElement(SharedCardReadingSurface, { card, audioCoverageMap }));
+  const label = collectNodes(rendered, node => node.props?.['data-shared-card-readiness'] === 'true')[0];
+  assert.equal(extractText(label).trim(), 'Audio 1/10 ready');
+});
+
+test('HF1: opt-in reader requires a scoped authoritative cursor; missing cursor never fabricates Split/Full precision', () => {
+  const { TextStructuredPlayer } = loadModule(path.join(root, 'src/components/text/TextStructuredPlayer.jsx'));
+  const documentTree = resolveTextLibraryDocumentTree(v2.snapshot, v2.ids.documentId);
+  const input = { documentTree, useSharedCardReader: true, sharedPresentation: v2Pres,
+    displayMode: 'text-meaning', playbackChannelMode: 'text-only', playbackPreferences: { cardExpansionMode: 'all' },
+    isPlaying: true, playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT, playingIndex: v2.ids.longSegId,
+    activeCursorSegmentId: v2.ids.longSegId, speakingPart: 'text' };
+  for (const mode of ['split', 'full']) {
+    const authoritative = resolveTextCardPresentationCursor({ presentation: v2Pres, playback: {
+      workspaceId: v2Pres.workspace.id, workspaceUid: v2Pres.workspace.uid, sessionId: 41,
+      playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT, isPlaying: true, playbackRepresentationMode: mode,
+      playingIndex: v2.ids.longSegId, currentIndex: v2.ids.longSegId, speakingPart: 'text'
+    } });
+    const fullSentence = resolveTextCardPresentationCursor({ presentation: v2Pres, playback: {
+      workspaceId: v2Pres.workspace.id, workspaceUid: v2Pres.workspace.uid, sessionId: 41,
+      playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT, isPlaying: true, playbackRepresentationMode: 'full',
+      playbackSourceStatus: { sessionId: 41, documentId: v2Pres.workspace.id, blockId: v2.ids.storyCardId,
+        segmentId: v2.ids.longSegId, channel: 'text', representation: 'full', mode: 'tts' }
+    } });
+    const valid = [authoritative, fullSentence];
+    for (const supplied of [undefined, {}, { ...authoritative, sessionId: null }, { ...authoritative, workspaceUid: 'old-workspace' },
+      { ...authoritative, workspaceId: 'DOC_999999' }, { ...fullSentence, segmentId: 'SEGMENT_999999' }, ...valid]) {
+      resetHooks();
+      const rendered = renderTree(mockReact.createElement(TextStructuredPlayer, { ...input,
+        playbackRepresentationMode: mode, activeSessionRepresentationMode: mode, sharedPlaybackCursor: supplied }));
+      const body = collectNodes(rendered, node => node.props?.['data-shared-card-id'] === v2.ids.storyCardId)[0];
+      assert.equal(body.props['data-shared-card-precision'], valid.includes(supplied) ? supplied.precision : 'none');
+    }
+  }
 });
 
 console.log(`A2 NODE SUMMARY: ${passed} PASS, 0 FAIL; IndexedDB calls: ${dbCalls}`);

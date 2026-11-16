@@ -203,17 +203,21 @@ const StructuredPlayerCard = ({
   );
   const isCardSpeaking = Boolean(isActiveCard && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && (isPlaying || isPaused));
   const activeChannelBadgeLabel = speakingPart === 'meaning' ? 'ID' : speakingPart === 'text' ? 'EN' : null;
-  const effectiveSharedCursor = sharedPlaybackCursor || {
-    workspaceId: documentTree?.id ?? null,
-    workspaceUid: documentTree?.uid ?? null,
-    sessionId: isCardSpeaking ? 'host' : null,
-    state: isCardSpeaking ? (isPaused ? 'paused' : 'playing') : 'idle',
-    cardId: isCardSpeaking ? block.id : null,
-    unitId: null,
-    segmentId: isCardSpeaking && !isFullRepresentation && playingIndex ? playingIndex : null,
-    channel: speakingPart === 'meaning' ? 'meaning' : speakingPart === 'text' ? 'text' : null,
-    precision: !isCardSpeaking ? 'none' : (isFullRepresentation || !playingIndex) ? 'card' : 'segment'
-  };
+  const sharedCursorHasSession = typeof sharedPlaybackCursor?.sessionId === 'number' && Number.isFinite(sharedPlaybackCursor.sessionId)
+    || typeof sharedPlaybackCursor?.sessionId === 'string' && Boolean(sharedPlaybackCursor.sessionId.trim());
+  const sharedCursorSegment = sharedPlaybackCursor?.precision === 'segment'
+    ? sharedCard?.units?.flatMap(unit => unit.segments || []).find(segment => segment.id === sharedPlaybackCursor.segmentId)
+    : null;
+  // Only consume the host's scoped cursor. The legacy highlight index cannot
+  // prove session freshness and must not become a synthetic audible position.
+  const effectiveSharedCursor = sharedCursorHasSession
+    && sharedPlaybackCursor.workspaceId === documentTree?.id
+    && sharedPlaybackCursor.workspaceUid === (documentTree?.uid ?? null)
+    && ['playing', 'paused'].includes(sharedPlaybackCursor.state)
+    && sharedPlaybackCursor.cardId === block.id
+    && (sharedPlaybackCursor.precision === 'card' && sharedPlaybackCursor.segmentId === null && sharedPlaybackCursor.unitId === null
+      || sharedCursorSegment && sharedPlaybackCursor.unitId === (sharedCursorSegment.unitId ?? null))
+    ? sharedPlaybackCursor : null;
   const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && isParagraphCard && sharedCard);
 
   return (<>

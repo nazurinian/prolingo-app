@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import SharedParagraphWorkspaceReader from '../../../src/components/text/presentation/SharedParagraphCardReader.jsx';
+import SharedParagraphWorkspaceReader, { SharedCardReadingSurface } from '../../../src/components/text/presentation/SharedParagraphCardReader.jsx';
 import TextStructuredPlayer from '../../../src/components/text/TextStructuredPlayer.jsx';
 import { useConversationAudioPlayback } from '../../../src/components/text/conversation/useConversationAudioPlayback.js';
 import { selectTextCardPresentation } from '../../../src/domain/text/textCardPresentationDomain.js';
@@ -8,6 +8,8 @@ import { normalizeTextCardPresentationState, updateTextCardPresentationState } f
 import { resolveTextCardPresentationCursor } from '../../../src/domain/text/textCardPresentationCursorDomain.js';
 import { resolveTextLibraryDocumentTree } from '../../../src/domain/text/textLibraryDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT } from '../../../src/domain/text/textStructuredPlaybackDomain.js';
+import { TEXT_AUDIO_COVERAGE_STATUS } from '../../../src/domain/text/textStructuredAudioCoverageDomain.js';
+import { buildTextStructuredRuntimeAudioKey } from '../../../src/domain/text/textStructuredAudioRuntimeDomain.js';
 import {
   createA2ParagraphReaderFixture,
   createA2V1CompatibilityParagraphFixture
@@ -450,6 +452,58 @@ export const runA2BrowserCases = async () => {
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;
     }
+  });
+
+  await runCase('HF1: Card visible Ready label excludes historical, metadata-only, other profiles, stale and missing audio', async () => {
+    const f = createA2ParagraphReaderFixture();
+    const pres = selectTextCardPresentation(f.snapshot, { documentId: f.ids.documentId });
+    const card = pres.cardById[f.ids.storyCardId];
+    const slots = card.units.flatMap(unit => unit.segments).flatMap(segment => ['text', 'meaning']
+      .filter(channel => String(segment[channel] || '').trim()).map(channel => buildTextStructuredRuntimeAudioKey(segment.id, channel)));
+    for (const status of [...Object.values(TEXT_AUDIO_COVERAGE_STATUS), 'unknown', null]) {
+      const audioCoverageMap = status ? Object.fromEntries(slots.map(key => [key, { status }])) : {};
+      await render(<SharedCardReadingSurface card={card} workspace={pres.workspace} audioCoverageMap={audioCoverageMap} />);
+      const expectedReady = status === TEXT_AUDIO_COVERAGE_STATUS.READY ? slots.length : 0;
+      equal(document.querySelector('[data-shared-card-readiness]').textContent.trim(), `Audio ${expectedReady}/${slots.length} ready`, `Visible readiness for ${status}`);
+    }
+  });
+
+  await runCase('HF1: opt-in host preserves provided Split/Full cursor and fails closed without authoritative cursor scope', async () => {
+    const f = createA2ParagraphReaderFixture(); const before = JSON.stringify(f.snapshot);
+    const pres = selectTextCardPresentation(f.snapshot, { documentId: f.ids.documentId });
+    const tree = resolveTextLibraryDocumentTree(f.snapshot, f.ids.documentId);
+    const calls = [];
+    const options = { documentTree: tree, sharedPresentation: pres, displayMode: 'text-meaning', playbackChannelMode: 'text-only',
+      playbackPreferences: { cardExpansionMode: 'all' }, isPlaying: true, playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT,
+      playingIndex: f.ids.longSegId, activeCursorSegmentId: f.ids.longSegId, speakingPart: 'text',
+      onPlaySegment: id => calls.push(id), onStopPlayback: () => calls.push('stop') };
+    for (const mode of ['split', 'full']) {
+      const cursor = resolveTextCardPresentationCursor({ presentation: pres, playback: {
+        workspaceId: pres.workspace.id, workspaceUid: pres.workspace.uid, sessionId: 41,
+        playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT, isPlaying: true, playbackRepresentationMode: mode,
+        playingIndex: f.ids.longSegId, currentIndex: f.ids.longSegId, speakingPart: 'text'
+      } });
+      const fullSentence = resolveTextCardPresentationCursor({ presentation: pres, playback: {
+        workspaceId: pres.workspace.id, workspaceUid: pres.workspace.uid, sessionId: 41,
+        playingContext: TEXT_STRUCTURED_PLAYBACK_CONTEXT, isPlaying: true, playbackRepresentationMode: 'full',
+        playbackSourceStatus: { sessionId: 41, documentId: pres.workspace.id, blockId: f.ids.storyCardId,
+          segmentId: f.ids.longSegId, channel: 'text', representation: 'full', mode: 'tts' }
+      } });
+      const valid = [cursor, fullSentence];
+      for (const supplied of [undefined, {}, { ...cursor, sessionId: null }, { ...cursor, workspaceUid: 'old-workspace' },
+        { ...cursor, workspaceId: 'DOC_999999' }, { ...fullSentence, segmentId: 'SEGMENT_999999' }, ...valid]) {
+        await render(<TextStructuredPlayer {...options} useSharedCardReader playbackRepresentationMode={mode}
+          activeSessionRepresentationMode={mode} sharedPlaybackCursor={supplied} />);
+        const body = document.querySelector(`[data-shared-card-embedded][data-shared-card-id="${f.ids.storyCardId}"]`);
+        equal(body.dataset.sharedCardPrecision, valid.includes(supplied) ? supplied.precision : 'none', 'Truthful display precision');
+        const active = body.querySelectorAll('[data-text-player-segment-active="true"]');
+        assert(active.length === (valid.includes(supplied) && supplied.precision === 'segment' ? 2 : 0), 'No invented exact audible Sentence');
+      }
+      await render(<TextStructuredPlayer {...options} playbackRepresentationMode={mode} activeSessionRepresentationMode={mode} />);
+      assert(document.querySelector('[data-text-paragraph-unified]') && !document.querySelector('[data-shared-card-embedded]'), 'Opt-out keeps the existing Paragraph reader');
+    }
+    equal(calls, [], 'Renders must not request stop/play or reset a session');
+    equal(JSON.stringify(f.snapshot), before, 'Coverage/cursor presentation must never write content');
   });
 
   return {

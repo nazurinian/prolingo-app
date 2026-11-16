@@ -1,5 +1,5 @@
 import { buildTextStructuredRuntimeAudioKey } from '../../../domain/text/textStructuredAudioRuntimeDomain.js';
-import { TEXT_AUDIO_COVERAGE_STATUS } from '../../../domain/text/textStructuredAudioCoverageDomain.js';
+import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../../domain/text/textStructuredAudioCoverageDomain.js';
 
 export const SHARED_BILINGUAL_LAYOUT_OPTIONS = Object.freeze([
   Object.freeze({
@@ -61,32 +61,12 @@ export const resolveCardChannelAvailability = card => {
 
 export const summarizeCardPresentationCoverage = ({ orderedSegments = [], audioCoverageMap = null }) => {
   if (!audioCoverageMap || typeof audioCoverageMap !== 'object') return null;
-  let total = 0;
-  let ready = 0;
-  let stale = 0;
-  let otherVoice = 0;
-  let missing = 0;
-  for (const segment of orderedSegments) {
-    for (const channel of ['text', 'meaning']) {
-      const content = channel === 'meaning'
-        ? normalizeSegmentDisplayText(segment?.meaning)
-        : normalizeSegmentDisplayText(segment?.text);
-      if (!content) continue;
-      total += 1;
-      const entry = audioCoverageMap[buildTextStructuredRuntimeAudioKey(segment.id, channel)];
-      const status = entry?.status || TEXT_AUDIO_COVERAGE_STATUS.MISSING;
-      if (status === TEXT_AUDIO_COVERAGE_STATUS.READY || status === TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED) {
-        ready += 1;
-      } else if (status === TEXT_AUDIO_COVERAGE_STATUS.STALE) {
-        stale += 1;
-      } else if (status === TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE) {
-        otherVoice += 1;
-      } else {
-        missing += 1;
-      }
-    }
-  }
-  return { total, ready, stale, otherVoice, missing };
+  // Consume host statuses using the existing authoritative summary. History,
+  // metadata-only and unverified entries never become current Ready audio.
+  return summarizeTextStructuredAudioCoverage({
+    documentTree: { blocks: [{ segments: orderedSegments }] },
+    coverageMap: audioCoverageMap
+  });
 };
 
 export const coverageLabelFor = status => ({
@@ -94,6 +74,9 @@ export const coverageLabelFor = status => ({
   [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'STALE',
   [TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE]: 'OTHER',
   [TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED]: 'HISTORY',
+  [TEXT_AUDIO_COVERAGE_STATUS.METADATA_ONLY]: 'META-ONLY',
+  [TEXT_AUDIO_COVERAGE_STATUS.LEGACY_UNVERIFIED]: 'UNVERIFIED',
+  [TEXT_AUDIO_COVERAGE_STATUS.OTHER_PROFILE]: 'OTHER PROFILE',
   [TEXT_AUDIO_COVERAGE_STATUS.MISSING]: 'MISSING'
 }[status] || 'MISSING');
 
