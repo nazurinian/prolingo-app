@@ -1,0 +1,656 @@
+diff --git a/src/components/text/conversation/ConversationSentenceItem.jsx b/src/components/text/conversation/ConversationSentenceItem.jsx
+index ec9f9ec..2632b8c 100644
+--- a/src/components/text/conversation/ConversationSentenceItem.jsx
++++ b/src/components/text/conversation/ConversationSentenceItem.jsx
+@@ -312,11 +312,11 @@ export const ConversationSentenceItem = ({
+ 
+   const handleMergeWithNext = async () => {
+     if (!nextSentence || isBusy) return;
+-    await onCommand?.({
++    const outcome = await onCommand?.({
+       type: 'conversationSegments.merge',
+       payload: { ids: [sentence.id, nextSentence.id] }
+     });
+-    setSubMode(null);
++    if (outcome?.ok) setSubMode(null);
+   };
+ 
+   const handleSplitTurnBeforeHere = async () => {
+diff --git a/src/components/text/conversation/TextConversationEditor.jsx b/src/components/text/conversation/TextConversationEditor.jsx
+index 09c1044..e3ead1f 100644
+--- a/src/components/text/conversation/TextConversationEditor.jsx
++++ b/src/components/text/conversation/TextConversationEditor.jsx
+@@ -1,4 +1,4 @@
+-import React, { useMemo, useState } from 'react';
++import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import {
+   AlertTriangle,
+   BookOpen,
+@@ -10,7 +10,8 @@ import {
+ } from 'lucide-react';
+ import {
+   applyTextConversationEditorCommand,
+-  selectTextConversationEditorState
++  selectTextConversationEditorState,
++  TextConversationEditorError
+ } from '../../../domain/text/textConversationEditorDomain.js';
+ import {
+   collectConversationEditorSpeakers,
+@@ -126,13 +127,13 @@ const AddSceneForm = ({ workspaceId, isBusy, onCommand, onClose }) => {
+ /**
+  * Controlled Conversation Scene -> Speaker Turn -> Sentence Editor UI backed purely by D4-A selectors and commands.
+  */
+-export const TextConversationEditor = ({
++const ConversationEditorSession = ({
+   snapshot,
+   documentId = null,
+   onCommand = null,
+   onStateChange = null,
+   compact = false,
+-  isBusy = false,
++  isBusy: externalBusy = false,
+   workspaceOptions = null,
+   onSelectWorkspace = null,
+   error = null,
+@@ -140,6 +141,14 @@ export const TextConversationEditor = ({
+   lastReceipt = null
+ }) => {
+   const [localError, setLocalError] = useState(null);
++  const [pending, setPending] = useState(false);
++  const pendingRef = useRef(false);
++  const activeRef = useRef(true);
++  const isBusy = externalBusy || pending;
++  useEffect(() => {
++    activeRef.current = true;
++    return () => { activeRef.current = false; };
++  }, []);
+   const [addingSceneWorkspaceId, setAddingSceneWorkspaceId] = useState(null);
+   const [focusedSceneState, setFocusedSceneState] = useState({ workspaceId: null, sceneId: null });
+ 
+@@ -185,19 +194,21 @@ export const TextConversationEditor = ({
+   };
+ 
+   const handleCommand = async command => {
+-    if (isBusy) {
++    if (isBusy || pendingRef.current) {
+       const busyError = normalizeConversationEditorError({
+         code: 'INVALID_COMMAND',
+         message: 'Conversation editor is currently processing another command.'
+       });
+-      setLocalError(busyError);
+       return { ok: false, error: busyError };
+     }
+-    dismissBannerError();
++    pendingRef.current = true;
++    setPending(true);
+     try {
++      dismissBannerError();
+       if (typeof onCommand === 'function') {
+         const outcome = await onCommand({ ...command, documentId: workspaceId || documentId || null });
+-        if (outcome && outcome.ok === false) {
++        if (!activeRef.current) return { ok: false };
++        if (outcome?.ok === false) {
+           const norm = ensureNormalizedError(outcome.error) || normalizeConversationEditorError({
+             code: 'COMMAND_REJECTED',
+             message: 'Conversation edit command was rejected.'
+@@ -205,22 +216,37 @@ export const TextConversationEditor = ({
+           setLocalError(norm);
+           return { ok: false, error: norm };
+         }
+-        if (outcome && outcome.snapshot) {
+-          onStateChange?.(outcome);
++        if (!outcome || typeof outcome !== 'object' || (outcome.ok !== undefined && outcome.ok !== true)
++          || outcome.error || !outcome.snapshot || !outcome.result || typeof outcome.result !== 'object'
++          || Array.isArray(outcome.result) || outcome.result.documentId !== workspaceId
++          || typeof outcome.result.action !== 'string' || typeof outcome.result.entity !== 'string') {
++          throw new TextConversationEditorError('COMMAND_REJECTED', 'Command callback must return a valid D4-A outcome or an explicit failure.');
+         }
+-        return outcome && typeof outcome === 'object' ? { ok: true, ...outcome } : { ok: true };
++        const nextState = selectTextConversationEditorState(outcome.snapshot, { documentId: workspaceId });
++        if (nextState.workspace.uid !== state.workspace.uid) {
++          throw new TextConversationEditorError('COMMAND_REJECTED', 'Command callback returned a different Workspace identity.');
++        }
++        const validated = { ...outcome, state: nextState, ok: true };
++        await onStateChange?.(validated);
++        return activeRef.current ? validated : { ok: false };
++      }
++      if (typeof onStateChange !== 'function') {
++        throw new TextConversationEditorError('COMMAND_REJECTED', 'An isolated state receiver is required to apply editor commands.');
+       }
+       const outcome = applyTextConversationEditorCommand(
+         snapshot,
+         command,
+         workspaceId ? { documentId: workspaceId } : undefined
+       );
+-      onStateChange?.(outcome);
+-      return { ok: true, ...outcome };
++      await onStateChange(outcome);
++      return activeRef.current ? { ok: true, ...outcome } : { ok: false };
+     } catch (caught) {
+       const norm = normalizeConversationEditorError(caught);
+-      setLocalError(norm);
++      if (activeRef.current) setLocalError(norm);
+       return { ok: false, error: norm };
++    } finally {
++      pendingRef.current = false;
++      if (activeRef.current) setPending(false);
+     }
+   };
+ 
+@@ -497,4 +523,12 @@ export const TextConversationEditor = ({
+   );
+ };
+ 
++// UID scopes local React state to this fixture/Workspace incarnation, not reused local IDs.
++export const TextConversationEditor = props => {
++  const id = props.documentId || props.snapshot?.activeDocumentId || '';
++  const documents = Array.isArray(props.snapshot?.documents) ? props.snapshot.documents : [];
++  const document = documents.find(item => item?.id === id);
++  return <ConversationEditorSession key={`${id}:${document?.uid || ''}`} {...props} />;
++};
++
+ export default TextConversationEditor;
+diff --git a/src/main.jsx b/src/main.jsx
+index d9cba6b..7cce61a 100644
+--- a/src/main.jsx
++++ b/src/main.jsx
+@@ -3,12 +3,12 @@ import { createRoot } from 'react-dom/client'
+ import './index.css'
+ import App from './App.jsx'
+ 
+-const LazyConversationEditorQaPreview = lazy(() => (
++const LazyConversationEditorQaPreview = import.meta.env.DEV ? lazy(() => (
+   import('./components/text/conversation/TextConversationEditorQaPreview.jsx')
+-))
++)) : null
+ 
+ const isConversationEditorQaRoute = () => {
+-  if (typeof window === 'undefined') return false
++  if (!import.meta.env.DEV || typeof window === 'undefined') return false
+   const search = new URLSearchParams(window.location.search || '')
+   return search.get('qa') === 'conversation-editor' || window.location.hash === '#qa-conversation-editor'
+ }
+diff --git a/scripts/audit-v603-p12d-d4c-browser.mjs b/scripts/audit-v603-p12d-d4c-browser.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/audit-v603-p12d-d4c-browser.mjs
+@@ -0,0 +1,83 @@
++import { build } from 'esbuild';
++import http from 'node:http';
++import fs from 'node:fs/promises';
++import path from 'node:path';
++import os from 'node:os';
++import { spawn, execFileSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const baseline = process.argv.includes('--baseline');
++const changedSources = new Set(['src/main.jsx', 'src/components/text/conversation/TextConversationEditor.jsx', 'src/components/text/conversation/ConversationSentenceItem.jsx']);
++const compile = async (entry, dev) => (await build({ absWorkingDir: root, entryPoints: [entry], bundle: true, write: false,
++  format: 'esm', jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'import.meta.env.DEV': String(dev), 'process.env.NODE_ENV': '"development"' },
++  plugins: [{ name: 'd4c-safety', setup(builder) {
++    builder.onResolve({ filter: /^\.\/App\.jsx$/ }, () => ({ path: 'app-stub', namespace: 'd4c' }));
++    builder.onLoad({ filter: /.*/, namespace: 'd4c' }, () => ({ contents: 'export default function App(){ return "D4C safe App stub"; }', loader: 'js' }));
++    if (baseline) builder.onLoad({ filter: /\.(jsx|js)$/ }, args => {
++      const relative = path.relative(root, args.path).replaceAll('\\', '/');
++      if (changedSources.has(relative)) return { contents: execFileSync('git', ['show', `2fbee534d62bc861ed33906ec99e929eef887d64:${relative}`], { cwd: root, encoding: 'utf8' }), loader: relative.endsWith('jsx') ? 'jsx' : 'js' };
++    });
++  } }]
++})).outputFiles[0].text;
++const bundles = { '/interactive.js': await compile('scripts/fixtures/d4c/browser-interactions.jsx', true),
++  '/gate-prod.js': await compile('src/main.jsx', false), '/gate-dev.js': await compile('src/main.jsx', true) };
++const server = http.createServer((req, res) => {
++  const pathname = new URL(req.url, 'http://localhost').pathname;
++  res.setHeader('Content-Type', pathname.endsWith('.js') ? 'text/javascript' : 'text/html');
++  if (bundles[pathname]) { res.end(bundles[pathname]); return; }
++  const entry = pathname.startsWith('/gate-prod') ? '/gate-prod.js' : pathname.startsWith('/gate-dev') ? '/gate-dev.js' : '/interactive.js';
++  res.end(`<!doctype html><div id="root"></div><script>
++    window.__d4cDbCalls=0; window.confirm=()=>true;
++    Object.defineProperty(window,'indexedDB',{value:new Proxy({},{get(){window.__d4cDbCalls++;throw Error('D4C forbids IndexedDB');}})});
++    </script><script type="module">import * as suite from '${entry}'; window.runD4c=suite.runD4cBrowserInteractions;</script>`);
++});
++await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
++const origin = `http://127.0.0.1:${server.address().port}`;
++const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-d4c-edge-'));
++const browser = spawn(process.env.D4C_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
++  ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
++let socket;
++try {
++  let port;
++  for (let attempt = 0; attempt < 200; attempt++) {
++    try { port = Number((await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]); break; }
++    catch { await new Promise(resolve => setTimeout(resolve, 100)); }
++  }
++  if (!port) throw Error('Browser did not start');
++  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
++  socket = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl);
++  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
++  const pending = new Map(); let nextId = 0;
++  socket.onmessage = event => { const msg = JSON.parse(event.data); const target = pending.get(msg.id); if (target) { pending.delete(msg.id); msg.error ? target.reject(Error(JSON.stringify(msg.error))) : target.resolve(msg.result); } };
++  const call = (method, params = {}) => new Promise((resolve, reject) => { const id = ++nextId; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
++  const evaluate = async expression => { const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (result.exceptionDetails) throw Error(JSON.stringify(result.exceptionDetails)); return result.result.value; };
++  const navigate = async url => { await call('Page.navigate', { url: origin + url }); await new Promise(resolve => setTimeout(resolve, 400)); };
++  const gates = [];
++  for (const [route, visible] of [['/gate-prod?qa=conversation-editor', false], ['/gate-prod#qa-conversation-editor', false], ['/gate-dev?qa=conversation-editor', true], ['/gate-dev#qa-conversation-editor', true]]) {
++    await navigate(route);
++    for (let attempt = 0; attempt < 50; attempt++) {
++      if (await evaluate('Boolean(document.querySelector("[data-conversation-qa-preview]")) || document.body.textContent.includes("D4C safe App stub")')) break;
++      await new Promise(resolve => setTimeout(resolve, 100));
++    }
++    const actual = await evaluate('Boolean(document.querySelector("[data-conversation-qa-preview]"))');
++    const calls = await evaluate('window.__d4cDbCalls');
++    gates.push({ route, expectedVisible: visible, actualVisible: actual, indexedDbCalls: calls, ok: actual === visible && calls === 0 });
++  }
++  await navigate('/interactive');
++  await call('Page.bringToFront');
++  await call('Emulation.setFocusEmulationEnabled', { enabled: true });
++  const result = await Promise.race([evaluate('window.runD4c()'), new Promise((_, reject) => { const timer = setTimeout(() => reject(Error('D4C browser timeout')), 45000); timer.unref(); })]);
++  let productionArtifacts = null;
++  if (process.argv.includes('--check-production')) {
++    const assets = await fs.readdir(path.join(root, 'dist/assets'));
++    const js = assets.filter(file => file.endsWith('.js'));
++    const sources = await Promise.all(js.map(file => fs.readFile(path.join(root, 'dist/assets', file), 'utf8')));
++    productionArtifacts = { files: js, qaPreviewAbsent: !assets.some(file => file.includes('TextConversationEditorQaPreview'))
++      && sources.every(source => !source.includes('data-conversation-qa-preview')) };
++  }
++  const report = { baseline, ...result, gates, productionArtifacts };
++  console.log(JSON.stringify(report, null, 2));
++  if (result.failed || result.indexedDbCalls || gates.some(g => !g.ok) || productionArtifacts?.qaPreviewAbsent === false) process.exitCode = 1;
++  await call('Browser.close').catch(() => {});
++} finally { socket?.close(); browser.kill(); server.closeAllConnections(); server.close(); console.log(`Disposable profile: ${profile}`); }
+diff --git a/scripts/fixtures/d4c/browser-interactions.jsx b/scripts/fixtures/d4c/browser-interactions.jsx
+new file mode 100644
+--- /dev/null
++++ b/scripts/fixtures/d4c/browser-interactions.jsx
+@@ -0,0 +1,263 @@
++/* eslint-disable react-refresh/only-export-components -- Standalone browser audit entry, never a production/HMR module. */
++import React, { useEffect, useState } from 'react';
++import { createRoot } from 'react-dom/client';
++import TextConversationEditor from '../../../src/components/text/conversation/TextConversationEditor.jsx';
++import TextConversationEditorQaPreview from '../../../src/components/text/conversation/TextConversationEditorQaPreview.jsx';
++import { createD4aConversationFixture } from '../d4a/conversation-editor-fixture.js';
++import { applyTextConversationEditorCommand, TEXT_CONVERSATION_EDITOR_COMMAND_FIELDS } from '../../../src/domain/text/textConversationEditorDomain.js';
++
++const root = createRoot(document.getElementById('root'));
++const tick = () => new Promise(resolve => setTimeout(resolve, 20));
++let control;
++const createBrowserFixture = () => {
++  const fixture = createD4aConversationFixture();
++  const first = fixture.snapshot.segments.find(s => s.id === fixture.ids.firstSentenceId);
++  first.metadata = { ...first.metadata, externalEntityV1: { segmentKey: 'd4c-original' },
++    prolingoTextPackSource: { sourceId: first.id, attachmentId: 'd4c-source', ownership: 'attached' } };
++  return fixture;
++};
++function Harness() {
++  const [fixture, setFixture] = useState(createBrowserFixture);
++  const [snapshot, setSnapshot] = useState(fixture.snapshot);
++  const [documentId, setDocumentId] = useState(fixture.ids.documentId);
++  const [mode, setMode] = useState('normal');
++  const [revision, setRevision] = useState(0);
++  useEffect(() => { control = { ...control, snapshot, ids: fixture.ids, documentId, setDocumentId,
++    setMode: value => { setMode(value); setRevision(n => n + 1); },
++    reset: () => { const fresh = createBrowserFixture(); setFixture(fresh); setSnapshot(fresh.snapshot); setDocumentId(fresh.ids.documentId); },
++    commits: control?.commits || [], commands: control?.commands || [] }; }, [snapshot, fixture.ids, documentId]);
++  const onCommand = async command => {
++    control.commands.push(command);
++    const outcome = applyTextConversationEditorCommand(snapshot, { type: command.type, payload: command.payload }, { documentId });
++    if (mode === 'defer') return new Promise(resolve => { control.resolve = () => resolve({ ok: true, ...outcome, qaCommandType: command.type }); });
++    if (mode === 'throw') throw new Error('D4C async rejection');
++    if (mode === 'reject') return { ok: false, error: { code: 'COMMAND_REJECTED', message: 'D4C rejected' } };
++    if (mode === 'undefined') return undefined;
++    if (mode === 'false') return false;
++    if (mode === 'error-only') return { error: { code: 'COMMAND_REJECTED', message: 'D4C error without success' } };
++    if (mode === 'ack-only') return { ok: true };
++    if (mode === 'invalid-snapshot') return { ok: true, ...outcome, snapshot: { schemaVersion: 1 } };
++    if (mode === 'invalid-receipt') return { ok: true, ...outcome, result: { documentId } };
++    if (mode === 'wrong-identity') return { ok: true, ...outcome, snapshot: { ...outcome.snapshot,
++      documents: outcome.snapshot.documents.map(d => d.id === documentId ? { ...d, uid: d.uid.replace(/.$/, c => c === 'a' ? 'b' : 'a') } : d) } };
++    if (mode === 'merge-reject' && command.type === 'conversationSegments.merge') return { ok: false, error: { code: 'COMMAND_REJECTED', message: 'D4C merge rejected' } };
++    return { ok: true, ...outcome, qaCommandType: command.type };
++  };
++  return <div data-revision={revision}><TextConversationEditor snapshot={snapshot} documentId={documentId}
++    onCommand={onCommand} onSelectWorkspace={setDocumentId} onStateChange={outcome => {
++      if (mode === 'receiver-reject') return Promise.reject(new Error('D4C receiver rejection'));
++      control.commits.push(outcome); setSnapshot(outcome.snapshot);
++    }} /></div>;
++}
++
++const assert = (condition, message) => { if (!condition) throw new Error(message); };
++const query = (selector, scope = document) => { const el = scope.querySelector(selector); assert(el, `Missing ${selector}`); return el; };
++const button = (text, scope = document) => {
++  const el = [...scope.querySelectorAll('button')].find(item => item.textContent.trim() === text);
++  assert(el, `Missing button "${text}"`); return el;
++};
++const starts = (text, scope = document) => {
++  const found = [...scope.querySelectorAll('button')].find(el => el.textContent.trim().startsWith(text));
++  assert(found, `Missing button starting ${text}`); return found;
++};
++const click = async el => { el.click(); await tick(); };
++const input = async (el, value) => {
++  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
++  Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
++  el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
++  await tick();
++};
++const label = (text, scope = document) => query(`[aria-label="${text}"]`, scope);
++const scene = id => query(`[data-conversation-scene-id="${id}"]`);
++const turn = id => query(`[data-conversation-turn-id="${id}"]`);
++const sentence = id => query(`[data-conversation-sentence-id="${id}"]`);
++let generation = 0;
++const mount = async () => { control = null; root.render(<React.StrictMode><Harness key={++generation} /></React.StrictMode>); await tick(); };
++const addSceneDraft = async title => {
++  await click(button('Scene Card')); await input(label('New Scene Card Title'), title);
++};
++
++export const runD4cBrowserInteractions = async () => {
++  const results = [];
++  const commandsCovered = new Set();
++  const successfulCommands = new Set();
++  const test = async (name, fn) => {
++    try { await mount(); await fn(); control?.commands.forEach(c => commandsCovered.add(c.type)); control?.commits.forEach(c => { if (c.qaCommandType) successfulCommands.add(c.qaCommandType); }); results.push({ name, ok: true }); }
++    catch (error) { results.push({ name, ok: false, error: error.stack }); }
++  };
++  await test('malformed async responses preserve drafts and do not publish state', async () => {
++    for (const mode of ['undefined', 'false', 'error-only', 'ack-only', 'invalid-snapshot', 'invalid-receipt', 'wrong-identity', 'reject', 'throw', 'receiver-reject']) {
++      await mount(); control.setMode(mode); await tick(); await addSceneDraft(`Keep ${mode}`);
++      await click(button('Create Scene Card'));
++      assert(document.querySelector('[data-conversation-add-scene]'), `${mode} closed the draft`);
++      assert(label('New Scene Card Title').value === `Keep ${mode}`, `${mode} lost draft text`);
++      assert(control.commits.length === 0, `${mode} published invalid response`);
++      assert(document.querySelector('[role="alert"]'), `${mode} lacks visible failure`);
++    }
++  });
++  await test('pending lock rejects repeated same-tick clicks and disables controls', async () => {
++    control.setMode('defer'); await tick(); await addSceneDraft('Only once');
++    const submit = button('Create Scene Card'); submit.click(); submit.click(); await tick();
++    assert(control.commands.length === 1, 'Repeated click invoked two commands');
++    assert(submit.disabled && label('New Scene Card Title').disabled, 'Pending controls remain active');
++    control.resolve(); await tick();
++    assert(control.snapshot.blocks.filter(b => b.title === 'Only once').length === 1, 'Creation was lost/duplicated');
++    assert(!document.querySelector('[data-conversation-add-scene]'), 'Successful deferred command did not close');
++  });
++  await test('Workspace switching resets drafts and ignores stale completions', async () => {
++    const ids = control.ids; control.setMode('defer'); await tick(); await addSceneDraft('Old Workspace');
++    await click(button('Create Scene Card')); const resolve = control.resolve;
++    control.setDocumentId(ids.mixedDocumentId); await tick(); resolve(); await tick();
++    assert(control.commits.length === 0, 'Old Workspace response was published');
++    control.setDocumentId(ids.documentId); await tick();
++    assert(!document.querySelector('[data-conversation-add-scene]'), 'Old draft resurfaced after Workspace switch');
++  });
++  await test('fixture identity reset ignores stale responses and resets local forms', async () => {
++    control.setMode('defer'); await tick(); await addSceneDraft('Old fixture');
++    await click(button('Create Scene Card')); const resolve = control.resolve;
++    control.reset(); await tick(); resolve(); await tick();
++    assert(control.commits.length === 0, 'Old fixture response overwrote reset');
++    assert(!document.querySelector('[data-conversation-add-scene]'), 'Old fixture draft remained open');
++    assert(!control.snapshot.blocks.some(b => b.title === 'Old fixture'), 'Old fixture data returned');
++  });
++  await test('real QA preview reset discards same-ID drafts', async () => {
++    root.render(<TextConversationEditorQaPreview />); await tick();
++    await addSceneDraft('Discard after Reset Fixture'); await click(button('Reset Fixture'));
++    assert(!document.querySelector('[data-conversation-add-scene]'), 'Reset Fixture kept stale form');
++    await click(label('Mobile layout preview')); await click(label('Toggle QA dark theme'));
++    assert(document.querySelector('[data-conversation-editor]'), 'Compact/dark transition lost editor');
++    for (const [mode, code] of [['Test: v1 Migration Guard', 'MIGRATION_REQUIRED'], ['Test: Corrupt Integrity Guard', 'INVALID_SNAPSHOT'], ['Test: Unsupported Workspace', 'UNSUPPORTED_WORKSPACE'], ['Test: Missing Workspace', 'WORKSPACE_NOT_FOUND']]) {
++      await click(button(mode)); assert(document.querySelector(`[data-conversation-editor-fatal-error="${code}"]`), `Missing recovery ${code}`);
++    }
++    await click(button('Live Fixture (v2)')); assert(document.querySelector('[data-conversation-editor]'), 'Recovery lost valid editor');
++  });
++  await test('failed Sentence merge keeps its correction panel', async () => {
++    control.setMode('merge-reject'); await tick();
++    await click(button('Merge Next', sentence(control.ids.firstSentenceId)));
++    const panel = query('[data-conversation-sentence-merge]');
++    await click(button('Confirm Merge (1 + 2)', panel));
++    assert(document.querySelector('[data-conversation-sentence-merge]'), 'Rejected merge closed correction panel');
++  });
++  await test('missing state receiver cannot pretend a local edit was saved', async () => {
++    const fixture = createBrowserFixture(); root.render(<TextConversationEditor snapshot={fixture.snapshot} documentId={fixture.ids.documentId} />); await tick();
++    await addSceneDraft('No receiver'); await click(button('Create Scene Card'));
++    assert(document.querySelector('[data-conversation-add-scene]') && document.querySelector('[role="alert"]'), 'Discarded edit reported success');
++  });
++  await test('Scene CRUD and Mixed reordering preserve Paragraph boundaries and zero-Scene states', async () => {
++    const ids = control.ids; const paragraph = control.snapshot.blocks.find(b => b.id === ids.paragraphId);
++    control.setDocumentId(ids.mixedDocumentId); await tick(); await addSceneDraft('Browser Scene');
++    await click(button('Create Scene Card')); const created = control.commits.at(-1).result.id;
++    assert(scene(created).textContent.includes('Zero Turns persisted'), 'New Scene contains implicit Turns');
++    await click(label(`Edit Scene ${created}`)); await input(label('Scene Card Title'), 'Renamed Scene');
++    await input(label('Scene metadata note'), 'Browser note'); await click(button('Save Scene'));
++    assert(control.snapshot.blocks.find(b => b.id === created).metadata.note === 'Browser note', 'Scene metadata lost');
++    await click(label(`Move Scene ${created} up`));
++    const afterParagraph = control.snapshot.blocks.find(b => b.id === ids.paragraphId);
++    assert(JSON.stringify({ ...afterParagraph, updatedAt: paragraph.updatedAt }) === JSON.stringify(paragraph), 'Mixed reorder changed Paragraph identity/content/slot');
++    await click(label(`Delete Scene ${created}`)); assert(!document.querySelector(`[data-conversation-scene-id="${created}"]`), 'Deleted Scene remains');
++    await click(label(`Delete Scene ${ids.mixedSceneId}`)); assert(document.querySelector('[data-conversation-empty-workspace]'), 'Empty Workspace missing');
++  });
++  await test('Turn and Sentence operations preserve identity, empty Units, ordering and logical audio', async () => {
++    const ids = control.ids;
++    const audio = JSON.stringify(control.snapshot.audioVariants);
++    const empty = control.snapshot.contentUnits.find(u => u.id === ids.emptyTurnId);
++    await click(label(`Move sentence ${ids.firstSentenceId} down`));
++    assert(control.snapshot.contentUnits.find(u => u.id === empty.id).order === empty.order, 'Sentence reorder displaced empty Turn');
++    await click(label(`Move sentence ${ids.firstSentenceId} up`));
++    await click(starts('Split Turn Here', sentence(ids.secondSentenceId)));
++    const splitTurn = control.commits.at(-1).result.createdId;
++    await click(button('Merge Next', turn(ids.aliceTurnId)));
++    assert(!control.snapshot.contentUnits.some(u => u.id === splitTurn), 'Turn merge failed');
++    await click(label(`Move Turn ${ids.bobTurnId} up`));
++    const bobSpeaker = control.snapshot.contentUnits.find(u => u.id === ids.bobTurnId).speakerId;
++    await click(label(`Edit Turn ${ids.aliceTurnId}`)); await input(label('Turn Speaker Choice'), bobSpeaker); await click(button('Save Turn'));
++    assert(control.snapshot.segments.filter(s => s.unitId === ids.aliceTurnId).every(s => s.speaker === 'Bob'), 'Speaker reassignment did not synchronize children');
++    await click(label(`Edit Turn ${ids.aliceTurnId}`)); await input(label('Turn Speaker Choice'), '__none__'); await click(button('Save Turn'));
++    assert(control.snapshot.segments.filter(s => s.unitId === ids.aliceTurnId).every(s => s.speaker === null), 'Speaker reset failed');
++    await click(button('Move Turn', sentence(ids.firstSentenceId))); await input(label('Destination Turn'), ids.emptyTurnId);
++    await click(button('Move Sentence')); assert(control.snapshot.segments.find(s => s.id === ids.firstSentenceId).unitId === ids.emptyTurnId, 'Sentence move failed');
++    assert(JSON.stringify(control.snapshot.audioVariants) === audio, 'Structural edit changed Split metadata/RF');
++    const bobUid = control.snapshot.contentUnits.find(u => u.id === ids.bobTurnId).uid;
++    await click(label(`Delete sentence ${ids.bobSentenceId}`));
++    assert(control.snapshot.contentUnits.find(u => u.id === ids.bobTurnId)?.uid === bobUid, 'Audio-backed last Sentence deletion lost Turn identity');
++    assert(!control.snapshot.audioVariants.some(v => v.segmentId === ids.bobSentenceId), 'Deleted Sentence retained logical audio references');
++    await click(button('Add Speaker Turn', scene(ids.zeroSceneId))); await click(button('Create Empty Turn'));
++    const newTurn = control.commits.at(-1).result.id; const uid = control.snapshot.contentUnits.find(u => u.id === newTurn).uid;
++    for (const text of ['One sentence.', 'Second sentence.']) {
++      await click(button('Add Sentence', turn(newTurn))); await input(label('New Sentence Text'), text); await click(button('Add Sentence', query('[data-conversation-add-sentence]')));
++    }
++    const children = control.snapshot.segments.filter(s => s.unitId === newTurn);
++    assert(children.length === 2, 'Multi-Sentence Turn not preserved');
++    await click(label(`Edit sentence ${children[0].id}`)); await input(label('Edit Sentence Text'), 'Changed sentence.'); await click(button('Save Sentence'));
++    for (const child of children) await click(label(`Delete sentence ${child.id}`));
++    assert(control.snapshot.contentUnits.find(u => u.id === newTurn)?.uid === uid && turn(newTurn).textContent.includes('Empty Turn preserved'), 'Last deletion lost empty Turn identity');
++    await click(label(`Delete Turn ${newTurn}`)); assert(!document.querySelector(`[data-conversation-turn-id="${newTurn}"]`), 'Deleted Turn remains');
++    // Empty child/card boundaries remain intact despite selections and deletions.
++    assert(control.snapshot.blocks.some(b => b.id === ids.zeroSceneId), 'Explicit Turn deletion removed its Scene');
++  });
++  await test('real bilingual split/merge retains source identity and retires only selected logical references', async () => {
++    const ids = control.ids; const before = control.snapshot.segments.find(s => s.id === ids.firstSentenceId);
++    const audioBefore = structuredClone(control.snapshot.audioVariants);
++    await click(button('Split', sentence(before.id))); await click(starts('Apply Auto Split'));
++    const created = control.commits.at(-1).result.createdIds[0];
++    const retained = control.snapshot.segments.find(s => s.id === before.id); const child = control.snapshot.segments.find(s => s.id === created);
++    assert(retained.uid === before.uid && child.unitId === before.unitId && child.speaker === before.speaker, 'Split changed identity/speaker');
++    assert(retained.metadata.externalEntityV1.segmentKey === 'd4c-original' && !child.metadata.externalEntityV1, 'Split duplicated/lost external identity');
++    assert(child.metadata.prolingoTextPackSource.ownership === 'detached-local', 'Split child retained attached ownership');
++    assert(!control.snapshot.audioVariants.some(v => v.segmentId === child.id), 'New child copied audio');
++    for (const original of audioBefore) {
++      const after = control.snapshot.audioVariants.find(v => v.id === original.id);
++      assert(after.uid === original.uid && after.metadata.audioRenderFingerprintV1 === original.metadata.audioRenderFingerprintV1, 'Split changed existing audio RF');
++      if (original.segmentId === before.id) assert(after.metadata.contentInvalidatedV1, 'Retained audio not invalidated');
++    }
++    await click(button('Merge Next', sentence(before.id))); await click(starts('Confirm Merge', query('[data-conversation-sentence-merge]')));
++    assert(!control.snapshot.segments.some(s => s.id === created), 'Merge left explicitly retired child');
++    assert(control.snapshot.segments.find(s => s.id === before.id).text === before.text, 'Merge did not restore joined text');
++    // Mismatch must block Auto Split; explicit blank meanings need confirmation.
++    await click(label(`Edit sentence ${before.id}`)); await input(label('Edit Sentence Meaning'), 'Single translation.'); await click(button('Save Sentence'));
++    await click(button('Split', sentence(before.id)));
++    assert(document.body.textContent.includes('Translation alignment warning'), 'Missing translation mismatch warning');
++    assert(![...document.querySelectorAll('button')].some(b => b.textContent.includes('Apply Auto Split')), 'Mismatch allowed auto apply');
++    await click(button('Review & Align Bilingual Parts Manually'));
++    const count = control.commands.length; await click(starts('Apply Split'));
++    assert(control.commands.length === count, 'Blank meaning bypassed confirmation');
++    await click(query('[data-conversation-sentence-split] input[type="checkbox"]')); await click(starts('Apply Split'));
++    assert(control.commands.length === count + 1, 'Confirmed explicit blank split did not dispatch');
++  });
++  await test('speaker registry rename preserves speaker UID across populated and empty Turns', async () => {
++    const ids = control.ids; const original = control.snapshot.contentUnits.find(u => u.id === ids.emptyTurnId);
++    const originalSpeaker = control.snapshot.documents.find(d => d.id === ids.documentId).metadata.speakerRegistryV1.find(s => s.id === original.speakerId);
++    await click(query('[data-conversation-speaker-registry] > button'));
++    await input(label('New speaker label'), 'Disposable speaker'); await click(button('Register'));
++    const speakerId = control.commits.at(-1).result.id;
++    await click(label('Edit speaker Alice')); await input(label('Rename Alice'), 'Dr Alice'); await click(label('Save speaker name'));
++    assert(control.snapshot.contentUnits.find(u => u.id === original.id).speakerId === original.speakerId, 'Rename changed speaker identity');
++    assert(control.snapshot.documents.find(d => d.id === ids.documentId).metadata.speakerRegistryV1.find(s => s.id === original.speakerId).uid === originalSpeaker.uid, 'Rename changed speaker UID');
++    assert(turn(original.id).textContent.includes('Dr Alice'), 'Rename missed empty Turn');
++    await click(label('Remove speaker Dr Alice'));
++    assert(document.querySelector('[role="alert"]') && control.snapshot.documents.find(d => d.id === ids.documentId).metadata.speakerRegistryV1.some(s => s.id === original.speakerId), 'In-use speaker removal bypassed core guard');
++    await click(label('Remove speaker Disposable speaker'));
++    assert(!control.snapshot.documents.find(d => d.id === ids.documentId).metadata.speakerRegistryV1.some(s => s.id === speakerId), 'Unused speaker not removed');
++  });
++  await test('browser cursor selections require both translated split boundaries', async () => {
++    const ids = control.ids;
++    await click(button('Split', sentence(ids.firstSentenceId))); await click(button('Split Here'));
++    const selectCursor = async (el, offset) => {
++      el.focus(); el.setSelectionRange(offset, offset);
++      document.dispatchEvent(new Event('selectionchange'));
++      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
++      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true })); await tick();
++    };
++    await selectCursor(label('Select EN split cursor'), 6);
++    assert(![...document.querySelectorAll('button')].some(b => b.textContent.trim().startsWith('Apply Split Here')), 'Manual split applied without Meaning cursor');
++    await selectCursor(label('Select Meaning split cursor'), 5);
++    assert([...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Apply Split Here'), query('[data-conversation-sentence-split]').textContent);
++    await click(starts('Apply Split Here'));
++    const childId = control.commits.at(-1).result.createdIds[0];
++    assert(control.snapshot.segments.find(s => s.id === childId).meaning === 'Selamat datang.', 'Browser meaning cursor misaligned the split');
++  });
++  const missingCommands = Object.keys(TEXT_CONVERSATION_EDITOR_COMMAND_FIELDS).filter(type => !successfulCommands.has(type));
++  results.push({ name: 'all 20 D4-A commands committed through browser UI', ok: missingCommands.length === 0, missingCommands });
++  return { browser: navigator.userAgent, results, commandsCovered: [...commandsCovered], successfulCommands: [...successfulCommands], supportedCommands: Object.keys(TEXT_CONVERSATION_EDITOR_COMMAND_FIELDS),
++    passed: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, indexedDbCalls: window.__d4cDbCalls || 0 };
++};
+diff --git a/P12D_D4C_Integration_Acceptance_Report.md b/P12D_D4C_Integration_Acceptance_Report.md
+new file mode 100644
+--- /dev/null
++++ b/P12D_D4C_Integration_Acceptance_Report.md
+@@ -0,0 +1,123 @@
++# P12-D4-C integration and acceptance
++
++Baseline/initial HEAD: `2fbee534d62bc861ed33906ec99e929eef887d64`. Branch: `feature/p12-conversation-only`; initial working tree clean.
++
++## Initial integration findings (before fixes)
++
++1. `src/main.jsx:10`: query/hash QA route has no environment gate and includes the isolated preview in a production build.
++2. `TextConversationEditor.jsx:185`: external `onCommand` results such as `undefined`, `false`, `{error}` and `{ok:true}` are treated as successful commits. Draft forms close without a valid D4-A outcome.
++3. Same handler has no internal pending lock. Overlapping callbacks can run when the parent does not synchronously supply `isBusy`, risking stale snapshot replacement/lost edits.
++4. Editor local state is keyed by reusable local IDs. Fixture reset generates new UIDs but can reuse existing Scene/Turn/Sentence component state. Workspace-level draft/error state can also survive switching back to a prior Workspace.
++5. Async completions have no session/unmount guard; an old response can reach `onStateChange` after switching/resetting.
++6. `ConversationSentenceItem.jsx:311`: failed Sentence merge unconditionally closes its merge panel. The fallback reducer also reports success with no `onStateChange` receiver.
++
++These are focused functional findings; styling/polish and domain redesign are outside this change. Initial D4-B 9, D4-A 22, D3-D 12, D3-C 5, D3-B 11 and D2 12 all pass. D0/D1 hash and P9 voice-label failures reproduce at baseline and will remain unchanged.
++
++## Verified fixes and integration contract
++
++**GO for completing D4 within its accepted isolated-development scope.** No D4 acceptance blocker remains in the tested scope. Canonical v2 activation remains **NO-GO**, as required by D3-D; this change does not expand that authorization.
++
++| Finding | Evidence / minimal correction |
++| --- | --- |
++| Production QA route | Both query/hash URLs expose QA at baseline. `src/main.jsx:6,11` now gates the lazy import and route predicate on Vite's compile-time `import.meta.env.DEV`. Development servers (including `stable-test`) and the isolated test bundle can display it; default production builds and their preview cannot. No public query/hash can enable a production-disabled route. |
++| Malformed async success | `TextConversationEditor.jsx:195` now requires a valid outcome: `{snapshot, result}` with optional `ok:true`; explicit failure is `{ok:false, error}`. It validates the snapshot through the D4-A selector, requires receipt entity/action/selected document ID, verifies Workspace UID, and derives state from the returned snapshot rather than trusting callback projection data. Undefined/scalar/error-only/ack-only/invalid snapshot/invalid receipt/wrong-identity responses cannot close drafts or reach `onStateChange`. |
++| Pending concurrency | Synchronous `pendingRef` excludes same-tick duplicate calls, while local pending state disables all existing mutation controls. It composes with parent `isBusy`, releases in `finally`, and does not require a parent to supply its own lock. A repeated click does not overwrite the first operation's result. |
++| Reset / Workspace state | `TextConversationEditor.jsx:527` scopes the existing editor session to selected Workspace ID **and UID**. Switching Workspaces or resetting a fixture clears obsolete local drafts, errors, focus and child forms even when local Card/Unit/Segment IDs are reused. It does not rebuild or restyle those components. |
++| Late responses | An unmounted-session ref guard ignores completions after switch/reset and prevents stale `onStateChange` publication. Awaited state-receiver rejection is surfaced as failure. Input drafts stay open on rejected commands within the active session. |
++| Failed merge / no receiver | `ConversationSentenceItem.jsx:313` closes the merge panel only on acknowledged success. Pure local fallback requires an `onStateChange` receiver; it cannot pretend a discarded snapshot was saved. |
++
++For controlled callback hosts, `onCommand` must return its complete D4-A outcome (or explicit failure). If the host commits internally, it must publish that snapshot through controlled props; if it delegates publication, use `onStateChange`. The editor validates the returned result but cannot undo side effects already performed inside an external callback. Future asynchronous persistence owners must also scope/cancel their own writes; none are wired here.
++
++No D4-A domain logic, commands, identity allocator, source reconciler, audio implementation or style/class names changed. Failure does not trigger any optimistic domain mutation by the UI boundary. Existing Scene/Turn/Sentence forms, selection helpers and command builders were reused.
++
++## Full browser interaction evidence
++
++New reproducible entry: `node scripts/audit-v603-p12d-d4c-browser.mjs --check-production` (run `npm run build` first). It uses installed Edge by default; `D4C_BROWSER_PATH` may select another Chromium executable. It runs real React/ReactDOM and existing components in a real headless Edge DOM, including StrictMode; interaction helpers dispatch DOM clicks, input/change and focused selection events. It is not the minimal DOM used by the 9 D4-B checks.
++
++The runner bundles tests only in memory with existing esbuild, serves them on loopback, uses a fresh temporary browser profile, blocks IndexedDB access with a counted throwing factory proxy, and closes its server/browser. Route tests compile **actual `src/main.jsx`** under DEV true/false with an **App stub**, so normal application startup cannot open the canonical library. Actual production output is separately checked for QA-preview absence. This verifies route selection, not a full production App boot.
++
++Final result: **13 PASS / 0 FAIL**, **4/4 environment route checks**, **20/20 command types successfully committed through UI**, **0 IndexedDB calls**. Production output: `qaPreviewAbsent=true`, one application JS asset, no preview chunk/marker. Browser: headless Edge 157; Node v24.11.1, Windows.
++
++| Browser scenario | Verified behavior |
++| --- | --- |
++| Async responses | Ten cases: undefined, false, error-only, ack-only, invalid snapshot, invalid receipt, changed Workspace UID, explicit rejection, thrown callback, rejected state receiver. Every failure retains entered draft text, shows an error and publishes no state. |
++| Pending double click | Two same-tick submissions invoke one callback. Controls disable until the deferred response resolves; one Scene is created and the draft closes only on success. |
++| Workspace switch | Pending old response cannot publish after switching. Returning to the original Workspace does not resurrect its old form. |
++| Fixture identity reset | Pending old response cannot replace the reset fixture; new UIDs distinguish reused local IDs. |
++| Actual QA preview controls | Reset Fixture removes open drafts; compact/dark switches retain the editor; migration/corrupt/unsupported/missing Workspace guards render expected recovery states and return to Live Fixture. |
++| Failed Sentence merge | Correction panel remains mounted on rejection. |
++| No state receiver | Unhandled local fallback shows failure and retains the draft rather than claiming a save. |
++| Scene workflow | Create zero-Unit Scene, edit title/note, Mixed Scene reorder, explicit Scene deletion, zero-Scene Workspace. Paragraph identity/content/order slot remain intact (the existing domain may update reorder timestamps). |
++| Turn / Sentence workflow | Create empty Turn, add multiple Sentences, edit, reorder within Turn without displacing an empty Turn, split/merge/reorder Turns, reassign/reset speakers, move a Sentence, delete audio-backed last Sentence while retaining Turn UID, explicitly delete Turn. |
++| Bilingual source workflow | Auto split/merge preserves retained Segment UID/external key, creates local child provenance without copied audio, retains existing RF/AudioVariant UIDs while marking retained audio stale, blocks mismatched translation Auto Split and requires confirmation for explicit blank Meaning parts. |
++| Speaker registry | Register, rename across populated/empty Turns while preserving speaker UID, reject in-use removal visibly, remove unused speaker. |
++| Manual cursor split | Focused EN and Meaning cursor selections are both required; the created Sentence receives the correct translated tail. Headless focus emulation is enabled for native selection events. |
++| Coverage assertion | The successful receipt set equals all 20 exported D4-A command types; attempted/rejected commands alone do not satisfy coverage. |
++
++Command coverage: `block.create/update/delete/reorder`; `contentUnit.create/update/delete/split/merge/reorder/reorderSegments`; `segment.create/update/delete/move`; `conversationSegment.split`; `conversationSegments.merge`; `speaker.register/rename/remove`. The final browser log lists all 20 individually and reports `missingCommands: []`.
++
++Before/after comparison: `--baseline` serves the three audited source files directly from `git show 2fbee534d62bc861ed33906ec99e929eef887d64:<path>`, without altering the worktree or branch. Final suite against baseline: **6 PASS / 7 FAIL**, plus **both production query/hash checks fail**. Final current suite: **13 PASS / 0 FAIL**, all four route checks pass. The original pre-edit run already reproduced the lifecycle failures and exposed both production routes; the corrected/full baseline replay provides the complete comparable evidence.
++
++Raw logs remain locally in `.tmp/d4c/` (Git-ignored): `before-browser.log`, `baseline-final-browser.log`, `after-browser.log`, `before-*.log`, `after-*.log`, `scoped-lint.log`, `build.log`. Browser profiles are isolated in the system temporary directory and contain no user profile data.
++
++## Compatibility verification
++
++All scripts are `scripts/audit-v603-<suffix>.mjs`; counts are script-reported scenarios/checks, not the number of nested assertions.
++
++| Suite | Result |
++| --- | --- |
++| D4-C real browser (`p12d-d4c-browser --check-production`) | **13 PASS**, 4 route checks PASS, 20/20 successful command coverage |
++| D4-B UI (`p12d-d4b-conversation-editor-ui`) | **9 PASS**, unchanged from baseline |
++| D4-A (`p12d-d4a-conversation-editor`) | **22 PASS**, unchanged from baseline |
++| D3-D (`p12d-d3d-regression`) | 12 PASS |
++| D3-D disposable IndexedDB browser (`p12d-d3d-browser`) | 9 PASS in a separate fresh profile / disposable QA DBs |
++| D3-C (`p12d-d3c-compatibility`) | 5 PASS |
++| D3-B (`p12d-d3b-content-unit-persistence`) | 11 PASS |
++| D2 (`p12d-virtual-content-units`) | 12 PASS |
++| External JSON (`d2-external-json`, `d3-d4-external-reconcile`, `p12a-external-reconcile`) | 30 / 19 / 11 PASS |
++| Speakers / Conversation playback (`p12b-speaker-registry`, `p12c-conversation-playback`) | 14 / 13 PASS |
++| Paragraph / P9 (`round-d3-paragraph-acceptance`, `p9b-playback-marathon`, `p9c-bulk-marathon`) | 7 / 24 / 17 PASS |
++| Audio / GC (`a0-a3-rf-portability`, `a4-staging-gc`) | 18 / 7 PASS |
++| Split/Full / runtime / ZIP (`beta8-p2-split-full-domain`, `beta8-p3-runtime-playback`, `beta8-p4-staging-zip`) | 17 / 15 / 21 PASS |
++| D0/D1 Text identity | **Baseline failure unchanged**: final Table hash assertion at line 229. Expected hash was not updated. |
++| P9 voice/audio UX (`beta8-p9-hf5-voice-audio-ux`) | **Baseline failure unchanged**: 9 checks pass, then line 834 expects `/Browser TTS/` while output is `David · US`. |
++
++Scoped ESLint across all changed production/QA code: **PASS (0 errors, 0 ESLint warnings)**. The baseline-browser-mapping package emits an existing data-age notice. The standalone test entry has a narrowly documented Fast Refresh exception; no lint config or production rules were weakened. Repository-wide historical lint debt was not part of this scoped check.
++
++`npm run build`: **PASS**, 1,897 modules transformed. Existing stale Browserslist-data and large-chunk warnings remain. Artifact QA absence is asserted by the browser runner after this build. `git diff --check`: **PASS**.
++
++## Changed files, full diff and Git status
++
++Three production files: **53 insertions / 19 deletions**. Two new QA files: **346 lines**. One report and a generated review patch. No dependency/lockfile, domain, persistence service, CSS, Paragraph/Legacy component or Track B file changed.
++
++| File | Change |
++| --- | --- |
++| `src/main.jsx` | +3/-3: compile-time DEV gating of route and lazy QA import. |
++| `src/components/text/conversation/TextConversationEditor.jsx` | +48/-14: strict response validation, ref lock/local busy state, awaited receiver handling, scoped UID session and stale-completion guard. |
++| `src/components/text/conversation/ConversationSentenceItem.jsx` | +2/-2: close merge panel on success only. |
++| `scripts/audit-v603-p12d-d4c-browser.mjs` | New, 83 lines: isolated Edge/CDP runner, before/after source loading, route-gate and actual build artifact checks. |
++| `scripts/fixtures/d4c/browser-interactions.jsx` | New, 263 lines: 13 real-browser scenarios, fixture controller, successful-command coverage assertion. |
++| `P12D_D4C_Integration_Acceptance_Report.md` | This consolidated acceptance record. |
++| `P12D_D4C_Changes.patch` | Full implementation/test/report diff, excluding the generated patch itself. Reverse applicability checked without applying it. |
++
++Git status on delivery (all changes uncommitted):
++
++```text
++ M src/components/text/conversation/ConversationSentenceItem.jsx
++ M src/components/text/conversation/TextConversationEditor.jsx
++ M src/main.jsx
++?? P12D_D4C_Changes.patch
++?? P12D_D4C_Integration_Acceptance_Report.md
++?? scripts/audit-v603-p12d-d4c-browser.mjs
++?? scripts/fixtures/d4c/
++```
++
++## D4 closure and remaining D5 boundaries
++
++**GO to close D4 for isolated fixtures/development.** The requested UI/core integration paths now pass real-browser interaction tests. Nonblocking visual/copy polish remains deferred to consolidated review; no redesign was performed.
++
++D5 remains limited by the existing architecture gate: canonical schema/DB v2 migration, live hydration/read/write integration and durability/cross-tab/quota/browser portability are not approved or implemented here. D5 still needs its own multi-speaker voice scheduling, Full composition/cache identity and physical audio-readiness verification. The editor's logical references and stored fingerprints are preserved, but this test does not certify audio generation/playback or real audio storage.
++
++Future async callback owners must protect their own side effects from stale sessions; UI result rejection is not a rollback mechanism for an already-performed external write. Tests cover actual React interaction in Edge and controlled fixture callbacks; mobile touch behavior and other browser engines are not claimed as verified. These are integration limits for later approved work, not unfinished D4 fixes.
++
++Safety closure: branch and HEAD remain at the requested baseline; `TEXT_LIBRARY_DB_VERSION = 1` and `TEXT_LIBRARY_SCHEMA_VERSION = 1` are unchanged. No canonical IndexedDB access, live v2 writes, upgrades, startup migration, audio generation, real audio deletion, real-data GC, Track B changes, commit, push, merge or deployment occurred. D4-C stops after this implementation and verification.

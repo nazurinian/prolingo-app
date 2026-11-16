@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import {
   applyTextConversationEditorCommand,
-  selectTextConversationEditorState
+  selectTextConversationEditorState,
+  TextConversationEditorError
 } from '../../../domain/text/textConversationEditorDomain.js';
 import {
   collectConversationEditorSpeakers,
@@ -126,13 +127,13 @@ const AddSceneForm = ({ workspaceId, isBusy, onCommand, onClose }) => {
 /**
  * Controlled Conversation Scene -> Speaker Turn -> Sentence Editor UI backed purely by D4-A selectors and commands.
  */
-export const TextConversationEditor = ({
+const ConversationEditorSession = ({
   snapshot,
   documentId = null,
   onCommand = null,
   onStateChange = null,
   compact = false,
-  isBusy = false,
+  isBusy: externalBusy = false,
   workspaceOptions = null,
   onSelectWorkspace = null,
   error = null,
@@ -140,6 +141,14 @@ export const TextConversationEditor = ({
   lastReceipt = null
 }) => {
   const [localError, setLocalError] = useState(null);
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const activeRef = useRef(true);
+  const isBusy = externalBusy || pending;
+  useEffect(() => {
+    activeRef.current = true;
+    return () => { activeRef.current = false; };
+  }, []);
   const [addingSceneWorkspaceId, setAddingSceneWorkspaceId] = useState(null);
   const [focusedSceneState, setFocusedSceneState] = useState({ workspaceId: null, sceneId: null });
 
@@ -185,19 +194,21 @@ export const TextConversationEditor = ({
   };
 
   const handleCommand = async command => {
-    if (isBusy) {
+    if (isBusy || pendingRef.current) {
       const busyError = normalizeConversationEditorError({
         code: 'INVALID_COMMAND',
         message: 'Conversation editor is currently processing another command.'
       });
-      setLocalError(busyError);
       return { ok: false, error: busyError };
     }
-    dismissBannerError();
+    pendingRef.current = true;
+    setPending(true);
     try {
+      dismissBannerError();
       if (typeof onCommand === 'function') {
         const outcome = await onCommand({ ...command, documentId: workspaceId || documentId || null });
-        if (outcome && outcome.ok === false) {
+        if (!activeRef.current) return { ok: false };
+        if (outcome?.ok === false) {
           const norm = ensureNormalizedError(outcome.error) || normalizeConversationEditorError({
             code: 'COMMAND_REJECTED',
             message: 'Conversation edit command was rejected.'
@@ -205,22 +216,37 @@ export const TextConversationEditor = ({
           setLocalError(norm);
           return { ok: false, error: norm };
         }
-        if (outcome && outcome.snapshot) {
-          onStateChange?.(outcome);
+        if (!outcome || typeof outcome !== 'object' || (outcome.ok !== undefined && outcome.ok !== true)
+          || outcome.error || !outcome.snapshot || !outcome.result || typeof outcome.result !== 'object'
+          || Array.isArray(outcome.result) || outcome.result.documentId !== workspaceId
+          || typeof outcome.result.action !== 'string' || typeof outcome.result.entity !== 'string') {
+          throw new TextConversationEditorError('COMMAND_REJECTED', 'Command callback must return a valid D4-A outcome or an explicit failure.');
         }
-        return outcome && typeof outcome === 'object' ? { ok: true, ...outcome } : { ok: true };
+        const nextState = selectTextConversationEditorState(outcome.snapshot, { documentId: workspaceId });
+        if (nextState.workspace.uid !== state.workspace.uid) {
+          throw new TextConversationEditorError('COMMAND_REJECTED', 'Command callback returned a different Workspace identity.');
+        }
+        const validated = { ...outcome, state: nextState, ok: true };
+        await onStateChange?.(validated);
+        return activeRef.current ? validated : { ok: false };
+      }
+      if (typeof onStateChange !== 'function') {
+        throw new TextConversationEditorError('COMMAND_REJECTED', 'An isolated state receiver is required to apply editor commands.');
       }
       const outcome = applyTextConversationEditorCommand(
         snapshot,
         command,
         workspaceId ? { documentId: workspaceId } : undefined
       );
-      onStateChange?.(outcome);
-      return { ok: true, ...outcome };
+      await onStateChange(outcome);
+      return activeRef.current ? { ok: true, ...outcome } : { ok: false };
     } catch (caught) {
       const norm = normalizeConversationEditorError(caught);
-      setLocalError(norm);
+      if (activeRef.current) setLocalError(norm);
       return { ok: false, error: norm };
+    } finally {
+      pendingRef.current = false;
+      if (activeRef.current) setPending(false);
     }
   };
 
@@ -495,6 +521,14 @@ export const TextConversationEditor = ({
       )}
     </div>
   );
+};
+
+// UID scopes local React state to this fixture/Workspace incarnation, not reused local IDs.
+export const TextConversationEditor = props => {
+  const id = props.documentId || props.snapshot?.activeDocumentId || '';
+  const documents = Array.isArray(props.snapshot?.documents) ? props.snapshot.documents : [];
+  const document = documents.find(item => item?.id === id);
+  return <ConversationEditorSession key={`${id}:${document?.uid || ''}`} {...props} />;
 };
 
 export default TextConversationEditor;

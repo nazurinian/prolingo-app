@@ -312,11 +312,11 @@ export const ConversationSentenceItem = ({
 
   const handleMergeWithNext = async () => {
     if (!nextSentence || isBusy) return;
-    await onCommand?.({
+    const outcome = await onCommand?.({
       type: 'conversationSegments.merge',
       payload: { ids: [sentence.id, nextSentence.id] }
     });
-    setSubMode(null);
+    if (outcome?.ok) setSubMode(null);
   };
 
   const handleSplitTurnBeforeHere = async () => {
