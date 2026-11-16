@@ -17,6 +17,7 @@ import {
   createTextContentUnitRecord,
   formatTextContentUnitId,
   getTextContentUnitIdSequence,
+  isUnmodifiedEmptyParagraphBackfill,
   isContentUnitSnapshot
 } from './textContentUnitDomain.js';
 import { TEXT_LEGACY_EDITOR_MODEL } from '../../constants/textDatabaseConstants.js';
@@ -296,7 +297,10 @@ const buildWorkingIdMap = ({ local, pack, attachment, includeUnits = false }) =>
     collections: { ...(attachment.idMap?.collections || {}) },
     documents: { ...(attachment.idMap?.documents || {}) },
     blocks: { ...(attachment.idMap?.blocks || {}) },
-    ...(includeUnits ? { contentUnits: { ...(attachment.idMap?.contentUnits || {}) } } : {}),
+    ...(includeUnits ? { contentUnits: Object.fromEntries(
+      Object.entries(attachment.idMap?.contentUnits || {})
+        .filter(([sourceId]) => attachment.baseline?.contentUnits?.[sourceId])
+    ) } : {}),
     segments: { ...(attachment.idMap?.segments || {}) },
     audioVariants: { ...(attachment.idMap?.audioVariants || {}) }
   };
@@ -383,7 +387,11 @@ const foreignChildConflicts = ({ local, attachment, removedLocalIds }) => {
   const mapped = {
     documents: new Set(Object.values(attachment.idMap?.documents || {})),
     blocks: new Set(Object.values(attachment.idMap?.blocks || {})),
-    contentUnits: new Set(Object.values(attachment.idMap?.contentUnits || {})),
+    // A v1 Pack imported into v2 can have synthetic Unit mappings without source baselines.
+    // Those mappings alone do not prove that the source owns the current Unit contents.
+    contentUnits: new Set(Object.entries(attachment.idMap?.contentUnits || {})
+      .filter(([sourceId]) => attachment.baseline?.contentUnits?.[sourceId])
+      .map(([, localId]) => localId)),
     segments: new Set(Object.values(attachment.idMap?.segments || {})),
     audioVariants: new Set(Object.values(attachment.idMap?.audioVariants || {}))
   };
@@ -425,11 +433,13 @@ const foreignChildConflicts = ({ local, attachment, removedLocalIds }) => {
         foreignUnits = unitsInBlock.filter(unit => {
           const childSegs = segsByUnitId.get(unit.id) || [];
           if (childSegs.some(seg => !mapped.segments.has(seg.id))) return true;
+          // v1 sources have no Unit metadata baseline; annotations cannot be source-owned.
+          if (childSegs.length > 0 && Object.keys(stripRuntimeMetadata(unit.metadata)).length > 0) return true;
           if (childSegs.length === 0) {
             if (block?.blockType !== 'paragraph') return true;
             if (blockHasMappedSegments) return true;
             if (unitsInBlock.length > 1) return true;
-            if (unit.createdAt !== block?.createdAt || unit.updatedAt !== block?.updatedAt) return true;
+            if (!isUnmodifiedEmptyParagraphBackfill(unit)) return true;
           }
           return false;
         });

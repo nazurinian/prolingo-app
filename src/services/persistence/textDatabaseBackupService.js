@@ -1,5 +1,7 @@
 import {
+  TEXT_LIBRARY_DB_VERSION,
   TEXT_LIBRARY_META_KEYS,
+  TEXT_LIBRARY_SCHEMA_VERSION,
   TEXT_LIBRARY_STORES
 } from '../../constants/textDatabaseConstants.js';
 import {
@@ -113,6 +115,11 @@ export const readProLingoTextDatabaseBackupFile = async file => {
 export const executeProLingoTextDatabaseReplaceRestore = async ({ backup: backupCandidate, now = Date.now() }) => {
   const prepared = validateProLingoTextDatabaseBackup(backupCandidate);
   const { backup } = prepared;
+  // The shared domain validator understands dormant v2 portability; this live writer is v1 only.
+  // Reject before opening the canonical database or queuing any replace-policy clears.
+  if (backup.database.dbVersion !== TEXT_LIBRARY_DB_VERSION || backup.database.schemaVersion !== TEXT_LIBRARY_SCHEMA_VERSION) {
+    throw new Error('Text Database v2 restore is disabled for the canonical v1 schema');
+  }
   const globalUidBackfill = backfillTextGlobalUids(prepared.snapshot);
   const snapshot = normalizeTextLibraryRuntimeSnapshot(globalUidBackfill.snapshot);
   const db = await openTextLibraryDatabase();

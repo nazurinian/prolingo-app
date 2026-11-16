@@ -11,6 +11,7 @@ import {
 import {
   backfillTextContentUnits,
   inspectTextContentUnitMigrationState,
+  isContentUnitSnapshot,
   TEXT_CONTENT_UNIT_MIGRATION_STATUS
 } from '../../domain/text/textContentUnitDomain.js';
 import { applyTextLibraryCommand } from '../../domain/text/textLibraryCommandDomain.js';
@@ -326,7 +327,16 @@ const writeTextLibraryV2SnapshotToDb = async ({ db, snapshot, now = Date.now() }
   const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
   const tx = db.transaction(storeNames, 'readwrite');
   const completion = txDonePromise(tx);
-  stageSnapshotWritesOnTx({ tx, hasUnitsStore, snapshot, now });
+  try {
+    if (isContentUnitSnapshot(snapshot) && !hasUnitsStore) {
+      throw new Error('Cannot write a v2 Content Unit snapshot to a v1 database');
+    }
+    stageSnapshotWritesOnTx({ tx, hasUnitsStore, snapshot, now });
+  } catch (error) {
+    tx.abort();
+    await completion.catch(() => {});
+    throw error;
+  }
   await completion;
 };
 
@@ -441,6 +451,9 @@ export const writeTextLibrarySnapshotToDisposableDb = async ({
   acquireQaWriteLock(safeName);
   try {
     const normalized = normalizeTextLibraryRuntimeSnapshot(snapshot);
+    if (isContentUnitSnapshot(normalized) && Number(version) < TEXT_LIBRARY_V2_DB_VERSION) {
+      throw new Error('Cannot write a v2 Content Unit snapshot to a v1 database');
+    }
     const db = await openDisposableTextLibraryV2Database({ dbName: safeName, version });
     try {
       await writeTextLibraryV2SnapshotToDb({ db, snapshot: normalized, now });

@@ -26,6 +26,19 @@ export const TEXT_CONTENT_UNIT_MIGRATION_STATUS = Object.freeze({
 });
 
 const CONTENT_UNIT_ID_PREFIX = TEXT_ID_PREFIXES.CONTENT_UNIT;
+export const TEXT_EMPTY_PARAGRAPH_BACKFILL_METADATA_KEY = 'emptyParagraphBackfillV1';
+
+// Explicit migration provenance, rather than equality with a mutable parent Card's timestamps.
+// Old snapshots without this evidence remain ambiguous and must be preserved on source removal.
+export const isUnmodifiedEmptyParagraphBackfill = unit => {
+  const metadata = unit?.metadata || {};
+  const origin = metadata[TEXT_EMPTY_PARAGRAPH_BACKFILL_METADATA_KEY];
+  return unit?.kind === 'paragraph' && unit.order === 1 && !unit.speakerId && !unit.speaker
+    && origin?.version === 1
+    && Number.isFinite(origin.createdAt) && Number.isFinite(origin.updatedAt)
+    && origin.createdAt === unit.createdAt && origin.updatedAt === unit.updatedAt
+    && Object.keys(metadata).every(key => [TEXT_EMPTY_PARAGRAPH_BACKFILL_METADATA_KEY, 'prolingoTextPackSource'].includes(key));
+};
 const CONTENT_UNIT_ID_PATTERN = new RegExp(`^${CONTENT_UNIT_ID_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`);
 const DOC_ID_PATTERN = new RegExp(`^${TEXT_ID_PREFIXES.DOCUMENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`);
 
@@ -524,7 +537,12 @@ const backfillUnitsForParagraphBlock = ({
         speakerId: null,
         speaker: null,
         createdAt: block.createdAt || now,
-        updatedAt: block.updatedAt || now
+        updatedAt: block.updatedAt || now,
+        metadata: {
+          [TEXT_EMPTY_PARAGRAPH_BACKFILL_METADATA_KEY]: {
+            version: 1, createdAt: block.createdAt || now, updatedAt: block.updatedAt || now
+          }
+        }
       }));
       createdCount += 1;
     }
@@ -668,7 +686,7 @@ export const backfillTextContentUnits = (snapshotCandidate, options = {}) => {
     return { ...unit, uid: createUniqueContentUnitUid(seenUids) };
   });
 
-  const allocateUnit = ({ documentId, blockId, kind, order, speakerId, speaker, createdAt, updatedAt }) => {
+  const allocateUnit = ({ documentId, blockId, kind, order, speakerId, speaker, createdAt, updatedAt, metadata }) => {
     nextUnitSeq += 1;
     return createTextContentUnitRecord({
       id: formatTextContentUnitId(nextUnitSeq),
@@ -680,7 +698,8 @@ export const backfillTextContentUnits = (snapshotCandidate, options = {}) => {
       speakerId,
       speaker,
       createdAt,
-      updatedAt
+      updatedAt,
+      metadata
     });
   };
 
