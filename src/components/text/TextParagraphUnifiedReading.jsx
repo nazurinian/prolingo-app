@@ -6,6 +6,7 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { buildTextStructuredRuntimeAudioKey } from '../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { TEXT_AUDIO_COVERAGE_STATUS } from '../../domain/text/textStructuredAudioCoverageDomain.js';
+import TextSegmentInteraction from './presentation/TextSegmentInteraction.jsx';
 
 const coverageLabel = status => ({
   [TEXT_AUDIO_COVERAGE_STATUS.READY]: 'READY',
@@ -59,53 +60,26 @@ const SentenceFlow = ({
       const focused = segment.id === focusSegmentId;
       const playable = playableSegmentIds?.has ? playableSegmentIds.has(segment.id) : true;
       const sentenceDisabled = disabled || !playable;
-      const sharedDataProps = {
-        'data-text-player-segment': segment.id,
-        'data-text-player-segment-active': active ? 'true' : undefined,
-        'data-text-search-focus-segment': focused ? 'true' : undefined,
+      const paragraphData = {
         'data-text-paragraph-sentence': segment.id,
         'data-text-paragraph-sentence-index': logicalIndex + 1,
         'data-text-paragraph-sentence-channel': channel
       };
-      const classes = fullChannelHighlighted
-        ? `inline align-baseline transition-colors rounded-sm ${splitMode && !sentenceDisabled ? 'cursor-pointer' : ''} ${channel === 'meaning' ? 'bg-emerald-200/80 dark:bg-emerald-800/70 text-emerald-950 dark:text-emerald-50' : 'bg-indigo-200/80 dark:bg-indigo-800/70 text-indigo-950 dark:text-indigo-50'}`
-        : splitMode
-          ? `inline align-baseline transition-colors duration-150 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${sentenceDisabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60'} ${speaking ? (channel === 'meaning' ? 'bg-emerald-200/90 dark:bg-emerald-800/75 text-emerald-950 dark:text-emerald-50 font-semibold ring-1 ring-emerald-400/50' : 'bg-indigo-200/90 dark:bg-indigo-800/75 text-indigo-950 dark:text-indigo-50 font-semibold ring-1 ring-indigo-400/50') : active ? 'bg-slate-200/60 dark:bg-slate-800/50 underline decoration-indigo-400/60 decoration-2 underline-offset-4' : ''}`
-          : `inline transition-colors ${focused ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`;
-
-      if (splitMode) {
-        const activateSentence = event => {
-          if (sentenceDisabled) return;
-          if (event?.type === 'keydown') {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-          }
-          onPlaySegment?.(segment.id);
-        };
-        return <React.Fragment key={`${channel}-${segment.id}`}>
-          <span
-            {...sharedDataProps}
-            role="button"
-            tabIndex={sentenceDisabled ? -1 : 0}
-            aria-disabled={sentenceDisabled ? 'true' : undefined}
-            onClick={activateSentence}
-            onKeyDown={activateSentence}
-            className={classes}
-            style={{
-              font: 'inherit',
-              lineHeight: 'inherit',
-              color: 'inherit',
-              boxDecorationBreak: 'clone',
-              WebkitBoxDecorationBreak: 'clone'
-            }}
-            title={`${sentenceTitle({ segment, index: logicalIndex, audioCoverageMap })}${sentenceDisabled ? ' • Not playable with current Manual Segment settings' : ' • Click to play only this sentence'}`}
-            aria-label={`Play sentence ${logicalIndex + 1} only`}
-          >{content}</span>{' '}
-        </React.Fragment>;
-      }
-
       return <React.Fragment key={`${channel}-${segment.id}`}>
-        <span {...sharedDataProps} className={classes}>{content}</span>{' '}
+        <TextSegmentInteraction
+          segmentId={segment.id}
+          channel={channel}
+          interactive={splitMode}
+          disabled={sentenceDisabled}
+          active={active}
+          speaking={speaking}
+          focused={focused}
+          fullChannelHighlighted={fullChannelHighlighted}
+          dataAttributes={paragraphData}
+          title={`${sentenceTitle({ segment, index: logicalIndex, audioCoverageMap })}${sentenceDisabled ? ' • Not playable with current Manual Segment settings' : ' • Click to play only this sentence'}`}
+          accessibleLabel={`Play sentence ${logicalIndex + 1} only`}
+          onActivate={onPlaySegment}
+        >{content}</TextSegmentInteraction>{' '}
       </React.Fragment>;
     })}
   </div>
