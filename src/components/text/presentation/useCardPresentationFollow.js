@@ -133,12 +133,16 @@ export const useCardPresentationFollow = ({
       if (!cardEl) return;
       let target = cardEl;
       if (cursorPrecision === 'segment' && cursorSegmentId) {
-        target = findSegmentTarget({
+        const segTarget = findSegmentTarget({
           rootNode: rootRef.current,
           cardEl,
           segmentId: cursorSegmentId,
           preferredChannel: cursorChannel
-        }) || cardEl.querySelector('[data-text-player-segment-active="true"]') || cardEl;
+        }) || cardEl.querySelector('[data-text-player-segment-active="true"]');
+        const inactiveHorizontalSlide = segTarget?.closest?.('[data-shared-part-slide]');
+        target = inactiveHorizontalSlide && inactiveHorizontalSlide.dataset.sharedPartActive !== 'true'
+          ? cardEl
+          : (segTarget || cardEl);
       } else if (cursorPrecision === 'card' && cursorChannel) {
         target = cardEl.querySelector(`[data-shared-card-flow="${escapeSelectorValue(cursorChannel)}"]`) || cardEl;
       }

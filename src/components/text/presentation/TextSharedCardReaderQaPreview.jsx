@@ -292,7 +292,7 @@ export const TextSharedCardReaderQaPreview = () => {
               </a>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>A2 Shared Card QA · Canonical DB Untouched</span>
+                <span>A3 Shared Card QA · Canonical DB Untouched</span>
               </span>
             </div>
 
@@ -495,6 +495,8 @@ export const TextSharedCardReaderQaPreview = () => {
               <span>precision={cursor.precision}</span>
               <span>card={cursor.cardId || 'null'}</span>
               <span>seg={cursor.segmentId || 'null'}</span>
+              <span>level={viewState.level}</span>
+              <span>part={viewState.partLayout}</span>
               <span>layout={viewState.bilingualLayout}</span>
             </div>
             {actionLog[0] && (
@@ -561,7 +563,7 @@ export const TextSharedCardReaderQaPreview = () => {
                 </section>
                 <section className="space-y-2.5" data-qa-compare-after="true">
                   <p className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-                    After · Shared Full Card Reader ({viewState.bilingualLayout})
+                    After · Shared Card Reader ({viewState.level}{viewState.level === 'part' ? ` · ${viewState.partLayout}` : ''} · {viewState.bilingualLayout})
                   </p>
                   <SharedParagraphWorkspaceReader
                     presentation={presentation}

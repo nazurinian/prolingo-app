@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Play } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -6,465 +6,34 @@ import {
   updateTextCardPresentationState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
-import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedBilingualLayoutToolbar from './SharedBilingualLayoutToolbar.jsx';
+import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
+import { SharedCardPartView, SharedCardSegmentView } from './SharedPartAndSegmentViews.jsx';
 import { useCardPresentationFollow } from './useCardPresentationFollow.js';
 import {
-  buildCardSegmentIndexMap,
-  buildSegmentCoverageTitle,
+  IDLE_SHARED_CURSOR,
+  buildCardUnitLookup,
   normalizeSegmentDisplayText,
   resolveCardChannelAvailability,
-  resolveSegmentJoinSeparator,
+  resolveEffectiveCardSelection,
   summarizeCardPresentationCoverage
 } from './sharedCardPresentationUtils.js';
 
-const IDLE_CURSOR = Object.freeze({
-  workspaceId: null,
-  workspaceUid: null,
-  sessionId: null,
-  state: 'idle',
-  cardId: null,
-  unitId: null,
-  segmentId: null,
-  channel: null,
-  precision: 'none'
-});
-
-const renderChannelJoinSeparator = (segment, hasNextSegment) => {
-  if (!hasNextSegment) return null;
-  const separator = resolveSegmentJoinSeparator(segment?.joinAfter);
-  if (separator === '') return null;
-  if (separator === '\n') return <br aria-hidden="true" />;
-  return ' ';
-};
-
-const CardChannelFlowBody = ({
-  units,
-  channel,
-  indexById,
-  cursor,
-  focusSegmentId,
-  playableSegmentIds,
-  audioCoverageMap,
-  isSpeakingCard,
-  fullChannelHighlighted,
-  isTitleRole,
-  langTag,
-  disabled,
-  showSectionHeaders,
-  showMissingInline,
-  onPlaySegment
-}) => {
-  const isMeaning = channel === 'meaning';
-  const proseTypography = isTitleRole
-    ? (isMeaning
-        ? 'text-base sm:text-[1.0625rem] leading-[1.72] text-slate-600 dark:text-slate-300'
-        : 'text-lg sm:text-[1.25rem] font-medium leading-[1.72] tracking-[-0.01em] text-slate-900 dark:text-slate-50')
-    : (isMeaning
-        ? 'text-[0.96875rem] sm:text-base leading-[1.75] text-slate-700 dark:text-slate-200'
-        : 'text-[1.0625rem] sm:text-[1.125rem] leading-[1.8] text-slate-800 dark:text-slate-100');
-
-  return (
-    <div
-      className="space-y-5"
-      data-shared-card-flow={channel}
-      data-shared-full-channel-highlight={fullChannelHighlighted ? 'true' : undefined}
-    >
-      {units.map((unit, unitIndex) => {
-        const unitSegments = unit.segments || [];
-        const hasAnyContent = unitSegments.some(segment => (
-          Boolean(normalizeSegmentDisplayText(isMeaning ? segment.meaning : segment.text))
-        ));
-        return (
-          <section
-            key={`${channel}-${unit.viewKey}`}
-            data-shared-card-unit={unit.viewKey}
-            data-shared-card-unit-id={unit.id || undefined}
-            data-shared-card-identity-source={unit.identitySource}
-            className={unitIndex > 0 ? 'pt-5 border-t border-slate-200/75 dark:border-slate-800/80' : ''}
-          >
-            {showSectionHeaders && (
-              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {unit.label || 'Section'} {unitIndex + 1}
-              </p>
-            )}
-            {unitSegments.length === 0 ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty section — no sentences yet.
-              </p>
-            ) : !hasAnyContent && !showMissingInline ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-channel={channel}>
-                {isMeaning ? 'No Indonesian meaning in this section yet.' : 'No English text in this section yet.'}
-              </p>
-            ) : (
-              <div lang={langTag} className={`max-w-[66ch] text-left break-words whitespace-pre-line ${proseTypography}`}>
-                {unitSegments.map((segment, segIdx) => {
-                  const content = normalizeSegmentDisplayText(isMeaning ? segment.meaning : segment.text);
-                  const logicalIndex = indexById.get(segment.id) ?? segIdx;
-                  if (!content) {
-                    if (!showMissingInline) return null;
-                    return (
-                      <React.Fragment key={`${channel}-${segment.id}-missing`}>
-                        <span
-                          data-shared-card-missing-meaning={isMeaning ? segment.id : undefined}
-                          data-shared-card-missing-text={!isMeaning ? segment.id : undefined}
-                          className="inline text-xs italic text-slate-400 dark:text-slate-500 select-none"
-                        >
-                          [{`#${logicalIndex + 1}: `}{isMeaning ? 'no meaning' : 'no text'}]
-                        </span>
-                        {segIdx < unitSegments.length - 1 ? ' ' : null}
-                      </React.Fragment>
-                    );
-                  }
-                  const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id;
-                  const speaking = active && cursor.channel === channel;
-                  const focused = segment.id === focusSegmentId;
-                  const playable = playableSegmentIds?.has ? playableSegmentIds.has(segment.id) : true;
-                  const segmentDisabled = disabled || !playable;
-                  const nextHasRenderable = unitSegments.slice(segIdx + 1).some(item => (
-                    showMissingInline || Boolean(normalizeSegmentDisplayText(isMeaning ? item.meaning : item.text))
-                  ));
-                  return (
-                    <React.Fragment key={`${channel}-${segment.id}`}>
-                      <TextSegmentInteraction
-                        segmentId={segment.id}
-                        channel={channel}
-                        interactive
-                        disabled={segmentDisabled}
-                        active={active}
-                        speaking={speaking}
-                        focused={focused}
-                        fullChannelHighlighted={fullChannelHighlighted}
-                        dataAttributes={{
-                          'data-shared-card-segment': segment.id,
-                          'data-shared-card-channel': channel,
-                          'data-shared-card-index': logicalIndex + 1
-                        }}
-                        title={buildSegmentCoverageTitle({
-                          segment,
-                          logicalIndex,
-                          audioCoverageMap,
-                          playable,
-                          disabled
-                        })}
-                        accessibleLabel={`Play sentence ${logicalIndex + 1} (${isMeaning ? 'Indonesian meaning' : 'English text'})`}
-                        onActivate={onPlaySegment}
-                      >
-                        {content}
-                      </TextSegmentInteraction>
-                      {renderChannelJoinSeparator(segment, nextHasRenderable)}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
-};
-
-const CardInterlinearBody = ({
-  units,
-  indexById,
-  cursor,
-  focusSegmentId,
-  playableSegmentIds,
-  audioCoverageMap,
-  isSpeakingCard,
-  isTitleRole,
-  textLang,
-  meaningLang,
-  disabled,
-  showSectionHeaders,
-  onPlaySegment
-}) => {
-  const fullTextHighlight = isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'text';
-  const fullMeaningHighlight = isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'meaning';
-
-  return (
-    <div className="space-y-6" data-shared-card-flow="interlinear">
-      {units.map((unit, unitIndex) => {
-        const unitSegments = unit.segments || [];
-        return (
-          <section
-            key={unit.viewKey}
-            data-shared-card-unit={unit.viewKey}
-            data-shared-card-unit-id={unit.id || undefined}
-            data-shared-card-identity-source={unit.identitySource}
-            className={unitIndex > 0 ? 'pt-5 border-t border-slate-200/75 dark:border-slate-800/80' : ''}
-          >
-            {showSectionHeaders && (
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {unit.label || 'Section'} {unitIndex + 1}
-              </p>
-            )}
-            {unitSegments.length === 0 ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty section — no sentences yet.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {unitSegments.map((segment, segIdx) => {
-                  const logicalIndex = indexById.get(segment.id) ?? segIdx;
-                  const textContent = normalizeSegmentDisplayText(segment.text);
-                  const meaningContent = normalizeSegmentDisplayText(segment.meaning);
-                  const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id;
-                  const focused = segment.id === focusSegmentId;
-                  const playable = playableSegmentIds?.has ? playableSegmentIds.has(segment.id) : true;
-                  const segmentDisabled = disabled || !playable;
-                  const sharedTitle = buildSegmentCoverageTitle({
-                    segment,
-                    logicalIndex,
-                    audioCoverageMap,
-                    playable,
-                    disabled
-                  });
-
-                  return (
-                    <div
-                      key={segment.id}
-                      data-shared-card-segment-pair={segment.id}
-                      data-shared-card-index={logicalIndex + 1}
-                      className="grid grid-cols-[1.6rem_minmax(0,1fr)] gap-x-2.5 items-baseline"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`select-none text-xs tabular-nums text-right ${
-                          active
-                            ? 'font-bold text-indigo-600 dark:text-indigo-400'
-                            : focused
-                              ? 'font-bold text-amber-600 dark:text-amber-400'
-                              : 'font-medium text-slate-400 dark:text-slate-500'
-                        }`}
-                      >
-                        {logicalIndex + 1}
-                      </span>
-                      <div className="min-w-0 max-w-[66ch] space-y-1.5">
-                        <div
-                          lang={textLang}
-                          className={`text-left break-words whitespace-pre-line ${
-                            isTitleRole
-                              ? 'text-lg sm:text-[1.25rem] font-medium leading-[1.72] tracking-[-0.01em] text-slate-900 dark:text-slate-50'
-                              : 'text-[1.0625rem] sm:text-[1.125rem] font-normal leading-[1.74] text-slate-900 dark:text-slate-100'
-                          }`}
-                        >
-                          {textContent ? (
-                            <TextSegmentInteraction
-                              segmentId={segment.id}
-                              channel="text"
-                              interactive
-                              disabled={segmentDisabled}
-                              active={active}
-                              speaking={active && cursor.channel === 'text'}
-                              focused={focused}
-                              fullChannelHighlighted={fullTextHighlight}
-                              dataAttributes={{
-                                'data-shared-card-segment': segment.id,
-                                'data-shared-card-channel': 'text',
-                                'data-shared-card-index': logicalIndex + 1
-                              }}
-                              title={sharedTitle}
-                              accessibleLabel={`Play sentence ${logicalIndex + 1} (English)`}
-                              onActivate={onPlaySegment}
-                            >
-                              {textContent}
-                            </TextSegmentInteraction>
-                          ) : (
-                            <span
-                              data-shared-card-missing-text={segment.id}
-                              className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
-                            >
-                              No English text
-                            </span>
-                          )}
-                        </div>
-
-                        <div
-                          lang={meaningLang}
-                          className="text-left break-words whitespace-pre-line text-[0.9375rem] sm:text-[0.96875rem] leading-[1.62] text-slate-600 dark:text-slate-300"
-                        >
-                          {meaningContent ? (
-                            <TextSegmentInteraction
-                              segmentId={segment.id}
-                              channel="meaning"
-                              interactive
-                              disabled={segmentDisabled}
-                              active={active}
-                              speaking={active && cursor.channel === 'meaning'}
-                              focused={focused}
-                              fullChannelHighlighted={fullMeaningHighlight}
-                              dataAttributes={{
-                                'data-shared-card-segment': segment.id,
-                                'data-shared-card-channel': 'meaning',
-                                'data-shared-card-index': logicalIndex + 1
-                              }}
-                              title={sharedTitle}
-                              accessibleLabel={`Play sentence ${logicalIndex + 1} (Indonesian meaning)`}
-                              onActivate={onPlaySegment}
-                            >
-                              {meaningContent}
-                            </TextSegmentInteraction>
-                          ) : (
-                            <span
-                              data-shared-card-missing-meaning={segment.id}
-                              className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
-                            >
-                              No Indonesian meaning
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
-};
-
-export const SharedFullCardBody = ({
-  card,
-  workspace = null,
-  bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
-  playbackCursor = IDLE_CURSOR,
-  focusSegmentId = null,
-  playableSegmentIds = null,
-  audioCoverageMap = null,
-  disabled = false,
-  onPlaySegment
-}) => {
-  const units = card?.units || [];
-  const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
-  const cursor = playbackCursor || IDLE_CURSOR;
-  const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
-  const { indexById } = useMemo(() => buildCardSegmentIndexMap(card), [card]);
-  const hasMultipleUnits = units.length > 1;
-  const hasPersistentEmpty = units.some(unit => unit.identitySource === 'persistent' && (unit.segments?.length || 0) === 0);
-  const showSectionHeaders = hasMultipleUnits || hasPersistentEmpty;
-  const textLang = workspace?.textLanguage || 'en';
-  const meaningLang = workspace?.meaningLanguage || 'id';
-
-  if (units.length === 0) {
-    return (
-      <p
-        className="text-sm italic text-slate-400 dark:text-slate-500"
-        data-shared-card-empty="zero-units"
-      >
-        No sections in this card yet.
-      </p>
-    );
-  }
-
-  if (bilingualLayout === 'separated') {
-    return (
-      <div className="space-y-6" data-shared-card-separated="true">
-        <div>
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 select-none">
-            English
-          </p>
-          <CardChannelFlowBody
-            units={units}
-            channel="text"
-            indexById={indexById}
-            cursor={cursor}
-            focusSegmentId={focusSegmentId}
-            playableSegmentIds={playableSegmentIds}
-            audioCoverageMap={audioCoverageMap}
-            isSpeakingCard={isSpeakingCard}
-            fullChannelHighlighted={isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'text'}
-            isTitleRole={isTitleRole}
-            langTag={textLang}
-            disabled={disabled}
-            showSectionHeaders={showSectionHeaders}
-            showMissingInline={false}
-            onPlaySegment={onPlaySegment}
-          />
-        </div>
-        <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800">
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 select-none">
-            Indonesian Meaning
-          </p>
-          <CardChannelFlowBody
-            units={units}
-            channel="meaning"
-            indexById={indexById}
-            cursor={cursor}
-            focusSegmentId={focusSegmentId}
-            playableSegmentIds={playableSegmentIds}
-            audioCoverageMap={audioCoverageMap}
-            isSpeakingCard={isSpeakingCard}
-            fullChannelHighlighted={isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'meaning'}
-            isTitleRole={isTitleRole}
-            langTag={meaningLang}
-            disabled={disabled}
-            showSectionHeaders={showSectionHeaders}
-            showMissingInline={false}
-            onPlaySegment={onPlaySegment}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (bilingualLayout === 'text-only' || bilingualLayout === 'meaning-only') {
-    const channel = bilingualLayout === 'meaning-only' ? 'meaning' : 'text';
-    return (
-      <CardChannelFlowBody
-        units={units}
-        channel={channel}
-        indexById={indexById}
-        cursor={cursor}
-        focusSegmentId={focusSegmentId}
-        playableSegmentIds={playableSegmentIds}
-        audioCoverageMap={audioCoverageMap}
-        isSpeakingCard={isSpeakingCard}
-        fullChannelHighlighted={isSpeakingCard && cursor.precision === 'card' && cursor.channel === channel}
-        isTitleRole={isTitleRole}
-        langTag={channel === 'meaning' ? meaningLang : textLang}
-        disabled={disabled}
-        showSectionHeaders={showSectionHeaders}
-        showMissingInline
-        onPlaySegment={onPlaySegment}
-      />
-    );
-  }
-
-  return (
-    <CardInterlinearBody
-      units={units}
-      indexById={indexById}
-      cursor={cursor}
-      focusSegmentId={focusSegmentId}
-      playableSegmentIds={playableSegmentIds}
-      audioCoverageMap={audioCoverageMap}
-      isSpeakingCard={isSpeakingCard}
-      isTitleRole={isTitleRole}
-      textLang={textLang}
-      meaningLang={meaningLang}
-      disabled={disabled}
-      showSectionHeaders={showSectionHeaders}
-      onPlaySegment={onPlaySegment}
-    />
-  );
-};
+export const SharedFullCardBody = props => <SharedBilingualUnitsBody {...props} />;
 
 /**
- * Cohesive Full Card reading surface. Renders a single paper-like surface without
- * boxed Section or Sentence wrappers, suitable both standalone (`variant="card"`) and
- * embedded inside existing host shells (`variant="embedded"`).
+ * Cohesive Shared Card reading surface supporting Full Card (continuous Sections),
+ * Part View (Horizontal Focus / Vertical Focus / Vertical List), and Segment Focus,
+ * usable standalone (`variant="card"`) or inside host shells (`variant="embedded"`).
  */
 export const SharedCardReadingSurface = ({
   card,
   index = 0,
   workspace = null,
-  bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
-  playbackCursor = IDLE_CURSOR,
+  presentationState = null,
+  bilingualLayout = null,
+  playbackCursor = IDLE_SHARED_CURSOR,
+  focusTarget = null,
   focusSegmentId = null,
   isFocusCard = false,
   playableSegmentIds = null,
@@ -476,44 +45,159 @@ export const SharedCardReadingSurface = ({
   onToggleExpanded,
   onPlayCard,
   onPlaySegment,
+  onManualNavigate = null,
   headerActionsSlot = null,
   footerSlot = null,
   variant = 'card'
 }) => {
+  const viewState = useMemo(() => (
+    presentationState
+      ? normalizeTextCardPresentationState(presentationState)
+      : normalizeTextCardPresentationState({
+          bilingualLayout: bilingualLayout || DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
+        })
+  ), [presentationState, bilingualLayout]);
+
+  const workspaceId = workspace?.id ?? card?.documentId ?? null;
+  const workspaceKey = workspace?.id
+    ? `${workspace.id}:${workspace.uid || ''}`
+    : (card?.documentId || 'default');
+
   const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
-  const cursor = playbackCursor || IDLE_CURSOR;
+  const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
-  const { orderedSegments, indexById } = useMemo(() => buildCardSegmentIndexMap(card), [card]);
+  const lookup = useMemo(() => buildCardUnitLookup(card), [card]);
+  const orderedSegments = useMemo(() => lookup.entries.map(item => item.segment), [lookup]);
   const { hasText, hasMeaning } = useMemo(() => resolveCardChannelAvailability(card), [card]);
   const coverage = useMemo(
     () => summarizeCardPresentationCoverage({ orderedSegments, audioCoverageMap }),
     [orderedSegments, audioCoverageMap]
   );
 
-  const activeSegmentNumber = cursor.precision === 'segment' && cursor.segmentId && indexById.has(cursor.segmentId)
-    ? indexById.get(cursor.segmentId) + 1
+  const [manualAnchor, setManualAnchor] = useState(null);
+  const [dismissedFocusNonce, setDismissedFocusNonce] = useState(null);
+  const [manualGraceActive, setManualGraceActive] = useState(false);
+  const graceTimerRef = useRef(null);
+
+  useEffect(() => () => window.clearTimeout(graceTimerRef.current), []);
+
+  const selection = useMemo(() => resolveEffectiveCardSelection({
+    card,
+    lookup,
+    cursor,
+    focusTarget,
+    workspaceId,
+    workspaceKey,
+    manualAnchor,
+    dismissedFocusNonce,
+    manualGraceActive
+  }), [card, lookup, cursor, focusTarget, workspaceId, workspaceKey, manualAnchor, dismissedFocusNonce, manualGraceActive]);
+
+  const triggerManualGrace = useCallback(() => {
+    window.clearTimeout(graceTimerRef.current);
+    setManualGraceActive(true);
+    graceTimerRef.current = window.setTimeout(() => {
+      setManualGraceActive(false);
+    }, 1800);
+    onManualNavigate?.();
+  }, [onManualNavigate]);
+
+  const handleSelectUnit = useCallback(unitViewKey => {
+    const unit = lookup.unitByViewKey.get(unitViewKey);
+    const firstSegId = unit?.segments?.[0]?.id || null;
+    if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
+      setDismissedFocusNonce(focusTarget.nonce);
+    }
+    setManualAnchor({
+      workspaceKey,
+      unitViewKey,
+      segmentId: firstSegId,
+      playingKeyAtManual: selection.audiblePlayingKey
+    });
+    triggerManualGrace();
+  }, [lookup, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
+
+  const handleSelectSegment = useCallback(segmentId => {
+    const entry = lookup.entryBySegmentId.get(segmentId);
+    if (!entry) return;
+    if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
+      setDismissedFocusNonce(focusTarget.nonce);
+    }
+    setManualAnchor({
+      workspaceKey,
+      unitViewKey: entry.unitViewKey,
+      segmentId,
+      playingKeyAtManual: selection.audiblePlayingKey
+    });
+    triggerManualGrace();
+  }, [lookup, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
+
+  const handleFollowAudible = useCallback(() => {
+    window.clearTimeout(graceTimerRef.current);
+    setManualGraceActive(false);
+    setManualAnchor(null);
+  }, []);
+
+  const activeSegmentNumber = cursor.precision === 'segment' && cursor.segmentId && lookup.entryBySegmentId.has(cursor.segmentId)
+    ? lookup.entryBySegmentId.get(cursor.segmentId).logicalIndex + 1
     : null;
   const channelBadge = cursor.channel === 'meaning' ? 'ID' : cursor.channel === 'text' ? 'EN' : 'Audio';
+  const effectiveFocusSegmentId = focusSegmentId ?? (isFocusCard ? focusTarget?.segmentId : null);
 
   const firstVisiblePreview = useMemo(() => {
-    const pickMeaning = bilingualLayout === 'meaning-only';
+    const pickMeaning = viewState.bilingualLayout === 'meaning-only';
     const first = orderedSegments.find(item => normalizeSegmentDisplayText(pickMeaning ? item.meaning : item.text));
     return first ? normalizeSegmentDisplayText(pickMeaning ? first.meaning : first.text) : '';
-  }, [orderedSegments, bilingualLayout]);
+  }, [orderedSegments, viewState.bilingualLayout]);
 
   const bodyNode = (
     <div data-shared-card-measure="true">
-      <SharedFullCardBody
-        card={card}
-        workspace={workspace}
-        bilingualLayout={bilingualLayout}
-        playbackCursor={cursor}
-        focusSegmentId={focusSegmentId}
-        playableSegmentIds={playableSegmentIds}
-        audioCoverageMap={audioCoverageMap}
-        disabled={disabled}
-        onPlaySegment={onPlaySegment}
-      />
+      {viewState.level === 'part' ? (
+        <SharedCardPartView
+          card={card}
+          lookup={lookup}
+          workspace={workspace}
+          partLayout={viewState.partLayout}
+          bilingualLayout={viewState.bilingualLayout}
+          playbackCursor={cursor}
+          focusSegmentId={effectiveFocusSegmentId}
+          playableSegmentIds={playableSegmentIds}
+          audioCoverageMap={audioCoverageMap}
+          disabled={disabled}
+          selection={selection}
+          onSelectUnit={handleSelectUnit}
+          onFollowAudible={handleFollowAudible}
+          onPlaySegment={onPlaySegment}
+        />
+      ) : viewState.level === 'segment' ? (
+        <SharedCardSegmentView
+          card={card}
+          lookup={lookup}
+          workspace={workspace}
+          bilingualLayout={viewState.bilingualLayout}
+          playbackCursor={cursor}
+          focusSegmentId={effectiveFocusSegmentId}
+          playableSegmentIds={playableSegmentIds}
+          audioCoverageMap={audioCoverageMap}
+          disabled={disabled}
+          selection={selection}
+          onSelectSegment={handleSelectSegment}
+          onFollowAudible={handleFollowAudible}
+          onPlaySegment={onPlaySegment}
+        />
+      ) : (
+        <SharedBilingualUnitsBody
+          card={card}
+          workspace={workspace}
+          bilingualLayout={viewState.bilingualLayout}
+          playbackCursor={cursor}
+          focusSegmentId={effectiveFocusSegmentId}
+          playableSegmentIds={playableSegmentIds}
+          audioCoverageMap={audioCoverageMap}
+          disabled={disabled}
+          onPlaySegment={onPlaySegment}
+        />
+      )}
     </div>
   );
 
@@ -524,7 +208,9 @@ export const SharedCardReadingSurface = ({
         data-shared-card-id={card?.id}
         data-shared-card-embedded="true"
         data-shared-card-role={isTitleRole ? 'title' : 'paragraph'}
-        data-shared-card-layout={bilingualLayout}
+        data-shared-card-level={viewState.level}
+        data-shared-card-part-layout={viewState.partLayout}
+        data-shared-card-layout={viewState.bilingualLayout}
         data-shared-card-precision={isSpeakingCard ? cursor.precision : 'none'}
       >
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800/80">
@@ -599,7 +285,9 @@ export const SharedCardReadingSurface = ({
       data-shared-card-id={card?.id}
       data-text-player-card={card?.id}
       data-shared-card-role={isTitleRole ? 'title' : 'paragraph'}
-      data-shared-card-layout={bilingualLayout}
+      data-shared-card-level={viewState.level}
+      data-shared-card-part-layout={viewState.partLayout}
+      data-shared-card-layout={viewState.bilingualLayout}
       data-shared-card-precision={isSpeakingCard ? cursor.precision : 'none'}
       data-shared-card-speaking={isSpeakingCard ? (cursor.precision === 'card' ? 'card' : 'segment') : undefined}
       data-text-search-focus-card={isFocusCard ? 'true' : undefined}
@@ -760,7 +448,7 @@ export const SharedParagraphWorkspaceReader = ({
   presentation,
   presentationState = null,
   onPresentationStateChange = null,
-  playbackCursor = IDLE_CURSOR,
+  playbackCursor = IDLE_SHARED_CURSOR,
   focusTarget = null,
   onFocusConsumed = null,
   expandedCardIds = null,
@@ -787,8 +475,8 @@ export const SharedParagraphWorkspaceReader = ({
     ? normalizeTextCardPresentationState(presentationState)
     : uncontrolledState;
 
-  const handleChangeLayout = useCallback(bilingualLayout => {
-    const next = updateTextCardPresentationState(activeViewState, { bilingualLayout });
+  const handleChangePresentationState = useCallback(nextCandidate => {
+    const next = updateTextCardPresentationState(activeViewState, nextCandidate);
     if (onPresentationStateChange) {
       onPresentationStateChange(next);
     } else {
@@ -797,15 +485,13 @@ export const SharedParagraphWorkspaceReader = ({
   }, [activeViewState, onPresentationStateChange]);
 
   const handleResetView = useCallback(() => {
-    const next = updateTextCardPresentationState(activeViewState, {
-      bilingualLayout: DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
-    });
+    const next = normalizeTextCardPresentationState(DEFAULT_TEXT_CARD_PRESENTATION_STATE);
     if (onPresentationStateChange) {
       onPresentationStateChange(next);
     } else {
       setUncontrolledState(next);
     }
-  }, [activeViewState, onPresentationStateChange]);
+  }, [onPresentationStateChange]);
 
   const { markUserNavigation, handleKeyDownNavigation } = useCardPresentationFollow({
     rootRef,
@@ -830,12 +516,14 @@ export const SharedParagraphWorkspaceReader = ({
       onKeyDown={handleKeyDownNavigation}
       data-shared-paragraph-reader="true"
       data-shared-workspace-id={presentation.workspace.id}
+      data-shared-view-level={activeViewState.level}
+      data-shared-part-layout={activeViewState.partLayout}
       data-shared-bilingual-layout={activeViewState.bilingualLayout}
       className="space-y-4"
     >
       <SharedBilingualLayoutToolbar
-        bilingualLayout={activeViewState.bilingualLayout}
-        onChangeLayout={handleChangeLayout}
+        presentationState={activeViewState}
+        onChangePresentationState={handleChangePresentationState}
         onResetView={handleResetView}
         rightSlot={toolbarRightSlot}
       />
@@ -860,8 +548,9 @@ export const SharedParagraphWorkspaceReader = ({
                 card={card}
                 index={cardIndex}
                 workspace={presentation.workspace}
-                bilingualLayout={activeViewState.bilingualLayout}
+                presentationState={activeViewState}
                 playbackCursor={playbackCursor}
+                focusTarget={focusTarget}
                 focusSegmentId={focusSegmentId}
                 isFocusCard={isFocusCard}
                 playableSegmentIds={playableSegmentIds}
@@ -873,6 +562,7 @@ export const SharedParagraphWorkspaceReader = ({
                 onToggleExpanded={onToggleCardExpanded}
                 onPlayCard={onPlayCard}
                 onPlaySegment={onPlaySegment}
+                onManualNavigate={markUserNavigation}
               />
             );
           })}

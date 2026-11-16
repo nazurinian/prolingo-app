@@ -28,8 +28,8 @@ import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
 import {
-  normalizeTextCardPresentationState,
-  updateTextCardPresentationState
+  DEFAULT_TEXT_CARD_PRESENTATION_STATE,
+  normalizeTextCardPresentationState
 } from '../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
 import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
@@ -141,6 +141,7 @@ const StructuredPlayerCard = ({
   useSharedCardReader = false,
   sharedCard = null,
   sharedWorkspace = null,
+  sharedPresentationState = null,
   sharedBilingualLayout = 'interlinear',
   sharedPlaybackCursor = null
 }) => {
@@ -283,8 +284,10 @@ const StructuredPlayerCard = ({
               card={sharedCard}
               index={index}
               workspace={sharedWorkspace}
+              presentationState={sharedPresentationState}
               bilingualLayout={sharedBilingualLayout}
               playbackCursor={effectiveSharedCursor}
+              focusTarget={focusTarget}
               focusSegmentId={isFocusCard ? focusTarget?.segmentId : null}
               isFocusCard={isFocusCard}
               playableSegmentIds={paragraphPlayableSegmentIds}
@@ -564,11 +567,16 @@ export const TextStructuredPlayer = ({
   const activeSharedView = sharedPresentationState
     ? normalizeTextCardPresentationState(sharedPresentationState)
     : uncontrolledSharedView;
-  const handleSharedLayoutChange = useCallback(bilingualLayout => {
-    const next = updateTextCardPresentationState(activeSharedView, { bilingualLayout });
+  const handleSharedPresentationChange = useCallback(nextState => {
+    const next = normalizeTextCardPresentationState(nextState);
     if (onSharedPresentationStateChange) onSharedPresentationStateChange(next);
     else setUncontrolledSharedView(next);
-  }, [activeSharedView, onSharedPresentationStateChange]);
+  }, [onSharedPresentationStateChange]);
+  const handleResetSharedView = useCallback(() => {
+    const next = normalizeTextCardPresentationState(DEFAULT_TEXT_CARD_PRESENTATION_STATE);
+    if (onSharedPresentationStateChange) onSharedPresentationStateChange(next);
+    else setUncontrolledSharedView(next);
+  }, [onSharedPresentationStateChange]);
   const lastProcessedActiveBlockIdRef = useRef(null);
   const playerRef = useRef(null);
   const userNavigationRef = useRef(0);
@@ -724,8 +732,9 @@ export const TextStructuredPlayer = ({
       <div className="space-y-3 animate-in fade-in duration-200">
         {useSharedCardReader && sharedPresentation && blocks.some(block => block.blockType === 'paragraph') && (
           <SharedBilingualLayoutToolbar
-            bilingualLayout={activeSharedView.bilingualLayout}
-            onChangeLayout={handleSharedLayoutChange}
+            presentationState={activeSharedView}
+            onChangePresentationState={handleSharedPresentationChange}
+            onResetView={handleResetSharedView}
           />
         )}
         {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Workspace belum memiliki Card. Buka DATA → CREATE untuk membuat Card pertama.</div>}
@@ -794,6 +803,7 @@ export const TextStructuredPlayer = ({
           useSharedCardReader={useSharedCardReader}
           sharedCard={useSharedCardReader ? (sharedPresentation?.cardById?.[block.id] || null) : null}
           sharedWorkspace={useSharedCardReader ? (sharedPresentation?.workspace || null) : null}
+          sharedPresentationState={useSharedCardReader ? activeSharedView : null}
           sharedBilingualLayout={activeSharedView.bilingualLayout}
           sharedPlaybackCursor={sharedPlaybackCursor}
         />)}
