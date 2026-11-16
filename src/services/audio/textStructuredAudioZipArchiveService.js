@@ -4,7 +4,8 @@ import { TEXT_AUDIO_MANIFEST_FILENAME, parseProLingoTextAudioManifestJson } from
 import { parseCanonicalTextFullArtifactFilename } from '../../domain/text/textFilenameDomain.js';
 import {
   buildTextStructuredFullArtifactRecord,
-  buildTextStructuredFullRepresentation
+  buildTextStructuredFullRepresentation,
+  normalizeTextStructuredFullArtifactRecord
 } from '../../domain/text/textStructuredSplitFullDomain.js';
 import {
   buildTextStructuredExternalAudioIdentityIndex,
@@ -114,7 +115,8 @@ export const scanTextStructuredAudioZipFiles = async ({
   segments = [],
   requirements = [],
   blocks = [],
-  documents = []
+  documents = [],
+  fullArtifactRequirements = []
 } = {}) => {
   const selected = [...(files || [])].filter(file => /\.zip$/i.test(file?.name || '') || file?.type === 'application/zip' || file?.type === 'application/x-zip-compressed');
   const index = buildTextStructuredExternalAudioIdentityIndex({ audioVariants, segments, requirements });
@@ -198,6 +200,16 @@ export const scanTextStructuredAudioZipFiles = async ({
     for (const block of candidates) {
       const representation = buildTextStructuredFullRepresentation({ block, channel: descriptor.channel });
       if (!representation.content || representation.contentFingerprint !== descriptor.contentFingerprint) continue;
+      if (descriptor.schemaVersion === 2) {
+        const requirement = fullArtifactRequirements.find(item => item.blockId === block.id && (!item.documentId || item.documentId === block.documentId) && item.fullArtifactFingerprint === fingerprint);
+        const artifact = requirement && normalizeTextStructuredFullArtifactRecord({ fullArtifactFingerprint: fingerprint,
+          descriptor: requirement.descriptor, segmentCount: representation.segmentCount, filename: common.filename, mimeType: common.mimeType, source: 'zip' });
+        const manifestArtifact = normalizeTextStructuredFullArtifactRecord({ fullArtifactFingerprint: fingerprint, descriptor, segmentCount: representation.segmentCount });
+        if (!artifact || !manifestArtifact) continue;
+        resolved.push({ ...common, representation: 'full', fullArtifactFingerprint: fingerprint, block,
+          document: documentsById.get(String(block.documentId).toUpperCase()) || null, artifact, manifestEntry });
+        continue;
+      }
       try {
         const artifact = buildTextStructuredFullArtifactRecord({
           block,

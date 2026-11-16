@@ -103,11 +103,21 @@ export const resolveTextStructuredRuntimeAudio = ({
   preferredGeneratedProfiles = [],
   strictProfileOrder = false,
   allowAnyGenerated = false,
+  expectedRenderFingerprint = null,
   content = ''
 }) => {
   const urls = runtimeAudioUrls && typeof runtimeAudioUrls === 'object' ? runtimeAudioUrls : {};
-  const runtimeVariants = filterContentCompatibleVariants({
-    audioVariants: (Array.isArray(audioVariants) ? audioVariants : []).filter(variant => Boolean(urls?.[variant.id]?.url || urls?.[variant.id]?.stagingBacked || urls?.[variant.id]?.folderBacked || urls?.[variant.id]?.zipBacked)),
+  const expectedRf = clean(expectedRenderFingerprint).toLowerCase();
+  const backedVariants = (Array.isArray(audioVariants) ? audioVariants : []).filter(variant => {
+    const runtime = urls[variant.id];
+    const bindingRf = clean(runtime?.renderFingerprint).toLowerCase();
+    if (expectedRf && bindingRf && bindingRf !== expectedRf) return false;
+    return Boolean(runtime?.url || runtime?.stagingBacked || runtime?.folderBacked || runtime?.zipBacked
+      || (expectedRf && typeof Blob !== 'undefined' && runtime?.blob instanceof Blob && runtime.blob.size > 0));
+  });
+  // Opt-in exact RF permits reuse after an undo without rewriting old metadata or fingerprints.
+  const runtimeVariants = expectedRf ? backedVariants.filter(variant => clean(variant?.metadata?.audioRenderFingerprintV1).toLowerCase() === expectedRf) : filterContentCompatibleVariants({
+    audioVariants: backedVariants,
     channel,
     content
   });
@@ -126,7 +136,7 @@ export const resolveTextStructuredRuntimeAudio = ({
     const candidate = runtimeVariants
       .filter(item => String(item?.segmentId || '').toUpperCase() === String(segmentId || '').toUpperCase())
       .filter(item => String(item?.channel || '').toLowerCase() === String(channel || '').toLowerCase())
-      .filter(item => doesTextStructuredVariantMatchPlaybackProfile({ variant: item, profile }))
+      .filter(item => doesTextStructuredVariantMatchPlaybackProfile({ variant: item, profile: expectedRf ? { ...profile, rate: null, pitch: null } : profile }))
       .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0))[0] || null;
     if (candidate) {
       variant = candidate;
@@ -185,8 +195,9 @@ export const resolveTextStructuredRuntimeAudio = ({
   }
   if (!variant) return null;
   const runtime = urls[variant.id];
-  if (!runtime?.url && !runtime?.stagingBacked && !runtime?.folderBacked && !runtime?.zipBacked) return null;
-  const compatibility = isTextStructuredAudioVariantContentCompatible({ variant, channel, content });
+  if (!runtime?.url && !runtime?.stagingBacked && !runtime?.folderBacked && !runtime?.zipBacked
+    && !(expectedRf && typeof Blob !== 'undefined' && runtime?.blob instanceof Blob && runtime.blob.size > 0)) return null;
+  const compatibility = expectedRf ? { verified: true } : isTextStructuredAudioVariantContentCompatible({ variant, channel, content });
   return {
     variant,
     url: runtime.url || null,

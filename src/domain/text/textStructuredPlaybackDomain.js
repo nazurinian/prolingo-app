@@ -1,4 +1,5 @@
 import { TEXT_PARAGRAPH_CARD_ROLES, resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
+import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 import {
   TEXT_STRUCTURED_ORDER_MODES,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
@@ -38,6 +39,8 @@ export const resolveStructuredTextPlaybackList = documentTree => {
         textLanguage: documentTree.textLanguage,
         meaningLanguage: documentTree.meaningLanguage,
         speaker: segment.speaker || null,
+        ...(segment.unitId ? { unitId: segment.unitId, unitUid: block.units?.find(unit => unit.id === segment.unitId)?.uid || null,
+          segmentUid: segment.uid || null, speakerId: getTextStructuredSegmentSpeakerId(segment) } : {}),
         text: normalize(segment.text),
         meaning: normalize(segment.meaning),
         displayId: documentSequence,

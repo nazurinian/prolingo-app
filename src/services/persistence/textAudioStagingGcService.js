@@ -1,13 +1,22 @@
 import { buildTextStructuredFullRepresentation, getTextStructuredFullAudioArtifacts } from '../../domain/text/textStructuredSplitFullDomain.js';
 import { listTextAudioStagingMetadata, releaseTextAudioStagingRecords, resolveTextAudioStagingPhysicalIdentity } from './textAudioStagingService.js';
+import { buildTextStructuredAudioRenderFingerprint } from '../../domain/text/textStructuredAudioRenderFingerprintDomain.js';
 
 const clean = value => String(value ?? '').trim();
 const rf = value => clean(value).toLowerCase();
 
 export const collectReferencedTextAudioRenderFingerprints = snapshot => {
   const referenced = new Set();
+  const segments = new Map((snapshot?.segments || []).map(segment => [segment.id, segment]));
+  const conversations = new Set((snapshot?.blocks || []).filter(block => block.blockType === 'conversation').map(block => block.id));
   (Array.isArray(snapshot?.audioVariants) ? snapshot.audioVariants : []).forEach(variant => {
-    if (variant?.metadata?.contentInvalidatedV1) return;
+    if (variant?.metadata?.contentInvalidatedV1) {
+      const segment = segments.get(variant.segmentId);
+      const descriptor = variant.metadata.audioRenderDescriptorV1;
+      if (!segment?.unitId || !conversations.has(segment.blockId) || !descriptor?.voiceId) return;
+      const current = buildTextStructuredAudioRenderFingerprint({ ...descriptor, content: variant.channel === 'meaning' ? segment.meaning : segment.text });
+      if (current.renderFingerprint !== variant.metadata.audioRenderFingerprintV1) return;
+    }
     const value = rf(variant?.metadata?.audioRenderFingerprintV1);
     if (value.startsWith('rf-sha256-')) referenced.add(value);
   });

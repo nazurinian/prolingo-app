@@ -42,12 +42,12 @@ const bufferToPcm16 = (audioBuffer, channels) => {
   return bytes;
 };
 
-export const buildDerivedTextFullAudioWav = async ({ blobs = [] } = {}) => {
+export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = null } = {}) => {
   const source = (Array.isArray(blobs) ? blobs : []).filter(blob => blob instanceof Blob && blob.size > 0);
   if (!source.length) throw new Error('Full derived audio requires at least one readable Segment binary.');
   const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (typeof AudioContextCtor !== 'function') throw new Error('This browser does not support AudioContext decoding for Full derived audio.');
-  const context = new AudioContextCtor();
+  const context = sampleRate ? new AudioContextCtor({ sampleRate }) : new AudioContextCtor();
   try {
     const decoded = [];
     for (const blob of source) {
@@ -55,17 +55,17 @@ export const buildDerivedTextFullAudioWav = async ({ blobs = [] } = {}) => {
       const audio = await context.decodeAudioData(arrayBuffer.slice(0));
       decoded.push(audio);
     }
-    const sampleRate = context.sampleRate || decoded[0]?.sampleRate;
-    if (!sampleRate) throw new Error('Unable to resolve Full audio sample rate.');
+    const outputSampleRate = context.sampleRate || decoded[0]?.sampleRate;
+    if (!outputSampleRate) throw new Error('Unable to resolve Full audio sample rate.');
     const channels = Math.min(2, Math.max(1, ...decoded.map(buffer => Number(buffer?.numberOfChannels || 1))));
     const frames = decoded.reduce((sum, buffer) => sum + Number(buffer?.length || 0), 0);
     if (!frames) throw new Error('Decoded Full audio is empty.');
-    const parts = [wavHeader({ sampleRate, channels, frames })];
+    const parts = [wavHeader({ sampleRate: outputSampleRate, channels, frames })];
     decoded.forEach(buffer => parts.push(bufferToPcm16(buffer, channels)));
     return {
       blob: new Blob(parts, { type: 'audio/wav' }),
       segmentCount: decoded.length,
-      sampleRate,
+      sampleRate: outputSampleRate,
       channels,
       duration: decoded.reduce((sum, buffer) => sum + Number(buffer?.duration || 0), 0),
       format: 'wav-pcm16-derived-v1'
@@ -78,4 +78,19 @@ export const buildDerivedTextFullAudioWav = async ({ blobs = [] } = {}) => {
 export const buildDerivedTextFullAudioFilename = ({ documentTitle = 'Text', blockId = 'CARD', channel = 'text' } = {}) => {
   const safe = value => clean(value).normalize('NFKD').replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-').replace(/\s+/g, '_').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/[-_]{2,}/g, '_').replace(/^[-._]+|[-._]+$/g, '') || 'TEXT';
   return `${safe(documentTitle)}__${safe(String(blockId).toUpperCase())}__FULL_${channel === 'meaning' ? 'ID' : 'EN'}__DERIVED.wav`;
+};
+
+// Persistent Conversation export uses the existing decoder/concatenator only when every
+// planned input is available. Never silently omit a Sentence or label unbaked rate changes.
+export const buildDerivedTextConversationFullAudioWav = async ({ plan, blobs = [] } = {}) => {
+  if (plan?.composition?.some(input => input.playbackRate !== 1)) {
+    throw new Error('Conversation Full file requires rate-aware assembly; retain per-Sentence playback for non-unit rates');
+  }
+  if (!plan?.readyToCompose || !plan.fullArtifactRequirement || blobs.length !== plan.entries.length
+    || blobs.some(blob => !(blob instanceof Blob) || blob.size === 0)) {
+    throw new Error('Conversation Full composition requires every planned Sentence binary');
+  }
+  const output = await buildDerivedTextFullAudioWav({ blobs, sampleRate: plan.fullArtifactRequirement.descriptor.sampleRate });
+  if (output.sampleRate !== plan.fullArtifactRequirement.descriptor.sampleRate) throw new Error('Unexpected Conversation Full output sample rate');
+  return { ...output, fullArtifactRequirement: plan.fullArtifactRequirement };
 };

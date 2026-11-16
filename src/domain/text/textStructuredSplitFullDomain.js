@@ -39,6 +39,15 @@ const sortByOrderThenId = values => [...(Array.isArray(values) ? values : [])].s
 });
 const separatorFor = joinAfter => joinAfter === 'none' ? '' : (joinAfter === 'line' ? '\n' : ' ');
 const channelContent = (segment, channel) => normalizeChannel(channel) === 'meaning' ? clean(segment?.meaning) : clean(segment?.text);
+const normalizeComposition = entries => {
+  if (!Array.isArray(entries) || !entries.length) throw new Error('Full composition requires ordered render inputs');
+  return entries.map(entry => {
+    if (!/^rf-sha256-[a-f0-9]{64}$/.test(entry?.renderFingerprint || '') || !Number.isFinite(entry?.playbackRate) || entry.playbackRate <= 0) {
+      throw new Error('Invalid Full composition render fingerprint or playback rate');
+    }
+    return { renderFingerprint: entry.renderFingerprint, playbackRate: entry.playbackRate };
+  });
+};
 const runtimeBacked = runtime => Boolean(runtime?.url || runtime?.stagingBacked || runtime?.zipBacked || runtime?.blob || runtime?.binaryReady);
 
 export const resolveTextStructuredOrderedSegments = block => sortByOrderThenId(block?.segments || []);
@@ -96,10 +105,18 @@ export const buildTextStructuredFullArtifactDescriptor = ({
   pitch = 0,
   rendererVersion = TEXT_AUDIO_RENDERER_PROFILE_VERSION,
   codecProfile = TEXT_AUDIO_CODEC_PROFILE,
+  composition = null,
   derivationVersion = TEXT_STRUCTURED_FULL_ARTIFACT_DERIVATION_VERSION
 } = {}) => {
   const representation = buildTextStructuredFullRepresentation({ block, channel });
   if (!representation.content) throw new Error('Full Audio Artifact requires non-empty derived Full Text.');
+  if (composition) {
+    const inputs = normalizeComposition(composition);
+    if (inputs.length !== representation.segmentCount) throw new Error('Full composition must cover every audible Sentence');
+    return { schemaVersion: 2, representation: 'full', contentFingerprint: representation.contentFingerprint,
+      channel: representation.channel, engine: 'derived', voiceId: 'multi-speaker',
+      composition: inputs, codecProfile: 'wav-pcm16-derived-v1', sampleRate: 48000, derivationVersion: 'prolingo-conversation-full-v1' };
+  }
   const resolvedVoiceId = clean(voiceId);
   if (!resolvedVoiceId) throw new Error('Full Audio Artifact requires a resolved voiceId.');
   return {
@@ -138,6 +155,7 @@ export const buildTextStructuredFullArtifactRecord = ({
   rendererVersion,
   codecProfile,
   derivationVersion,
+  composition = null,
   filename = null,
   mimeType = null,
   source = 'generated',
@@ -146,7 +164,7 @@ export const buildTextStructuredFullArtifactRecord = ({
   metadata = {}
 } = {}) => {
   const identity = buildTextStructuredFullArtifactIdentity({
-    block, channel, language, engine, voiceId, rate, pitch, rendererVersion, codecProfile, derivationVersion
+    block, channel, language, engine, voiceId, rate, pitch, rendererVersion, codecProfile, derivationVersion, composition
   });
   return {
     id: identity.fullArtifactFingerprint,
@@ -169,7 +187,18 @@ export const normalizeTextStructuredFullArtifactRecord = candidate => {
   if (!fingerprint.startsWith('full-sha256-') || !descriptor) return null;
   if (descriptor.representation !== TEXT_STRUCTURED_REPRESENTATIONS.FULL) return null;
   if (!clean(descriptor.contentFingerprint) || !clean(descriptor.voiceId)) return null;
-  const normalizedDescriptor = {
+  let composition = null;
+  if (descriptor.schemaVersion === 2) {
+    try { composition = normalizeComposition(descriptor.composition); } catch { return null; }
+    if (Number(candidate.segmentCount) !== composition.length) return null;
+    if (descriptor.engine !== 'derived' || descriptor.voiceId !== 'multi-speaker' || descriptor.derivationVersion !== 'prolingo-conversation-full-v1'
+      || descriptor.codecProfile !== 'wav-pcm16-derived-v1' || descriptor.sampleRate !== 48000) return null;
+  } else if (descriptor.composition) return null;
+  const normalizedDescriptor = composition ? {
+    schemaVersion: 2, representation: 'full', contentFingerprint: clean(descriptor.contentFingerprint),
+    channel: normalizeChannel(descriptor.channel), engine: 'derived', voiceId: 'multi-speaker',
+    composition, codecProfile: 'wav-pcm16-derived-v1', sampleRate: 48000, derivationVersion: 'prolingo-conversation-full-v1'
+  } : {
     schemaVersion: Number(descriptor.schemaVersion) || TEXT_STRUCTURED_FULL_ARTIFACT_SCHEMA_VERSION,
     representation: TEXT_STRUCTURED_REPRESENTATIONS.FULL,
     contentFingerprint: clean(descriptor.contentFingerprint),
@@ -246,18 +275,20 @@ export const resolveTextStructuredFullArtifactReadiness = ({
   channel = 'text',
   profile,
   language = null,
+  composition = null,
   runtimeFullAudio = {}
 } = {}) => {
   const representation = buildTextStructuredFullRepresentation({ block, channel });
   if (!representation.content) {
     return { status: TEXT_STRUCTURED_ARTIFACT_READINESS.MISSING, ready: false, representation, artifact: null, expected: null };
   }
-  const normalizedProfile = normalizeTextStructuredPlaybackProfile(profile);
+  const normalizedProfile = composition ? { engine: 'derived', voiceId: 'multi-speaker' } : normalizeTextStructuredPlaybackProfile(profile);
   if (!normalizedProfile) {
     return { status: TEXT_STRUCTURED_ARTIFACT_READINESS.MISSING, ready: false, representation, artifact: null, expected: null };
   }
   const expected = buildTextStructuredFullArtifactIdentity({
     block,
+    composition,
     channel: representation.channel,
     language,
     engine: normalizedProfile.engine,
@@ -269,14 +300,22 @@ export const resolveTextStructuredFullArtifactReadiness = ({
   const exact = artifacts.find(item => item.fullArtifactFingerprint === expected.fullArtifactFingerprint) || null;
   if (exact) {
     const runtime = runtimeFullAudio?.[exact.fullArtifactFingerprint] || runtimeFullAudio?.[exact.id] || null;
+    const available = composition ? Boolean((!runtime?.fullArtifactFingerprint || runtime.fullArtifactFingerprint === exact.fullArtifactFingerprint)
+      && (runtime?.url || runtime?.folderBacked || runtime?.stagingBacked || runtime?.zipBacked
+      || (typeof Blob !== 'undefined' && runtime?.blob instanceof Blob && runtime.blob.size > 0))) : runtimeBacked(runtime);
     return {
-      status: runtimeBacked(runtime) ? TEXT_STRUCTURED_ARTIFACT_READINESS.READY : TEXT_STRUCTURED_ARTIFACT_READINESS.METADATA_ONLY,
-      ready: runtimeBacked(runtime),
+      status: available ? TEXT_STRUCTURED_ARTIFACT_READINESS.READY : TEXT_STRUCTURED_ARTIFACT_READINESS.METADATA_ONLY,
+      ready: available,
       representation,
       artifact: exact,
       runtime,
       expected
     };
+  }
+  if (composition) {
+    const current = artifacts.find(item => item.descriptor.channel === representation.channel && item.descriptor.contentFingerprint === representation.contentFingerprint);
+    const stale = artifacts.find(item => item.descriptor.channel === representation.channel);
+    return { status: current ? 'other-profile' : stale ? 'stale' : 'missing', ready: false, representation, artifact: current || stale || null, expected };
   }
   const sameProfile = artifacts.find(item => item.descriptor?.channel === representation.channel && artifactMatchesProfile(item, normalizedProfile)) || null;
   if (sameProfile) {

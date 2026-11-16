@@ -2,6 +2,7 @@ import {
   resolveTextStructuredEffectivePlaybackOrder,
   resolveTextStructuredEffectiveTtsOnly
 } from './textStructuredAudioPlaybackOrderDomain.js';
+import { buildTextConversationAudioPlaybackPlan, isPersistentConversationAudioBlock } from './textConversationAudioDomain.js';
 import { resolveTextStructuredRuntimeAudio } from './textStructuredAudioRuntimeDomain.js';
 import {
   TEXT_STRUCTURED_ARTIFACT_READINESS,
@@ -114,8 +115,15 @@ export const buildTextStructuredSplitRuntimePlan = ({
   audioSourceMode = TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
   customLocalVoiceId = null,
   globalTtsOnly = false,
-  highlight = true
+  highlight = true,
+  preferences = null,
+  globalPlaybackRate = 1,
+  rendererVersion,
+  codecProfile
 } = {}) => {
+  if (isPersistentConversationAudioBlock(block)) return buildTextConversationAudioPlaybackPlan({ documentTree, block, channel, segmentIds,
+    representationMode: 'split', audioVariants, runtimeAudioUrls, fallbackVoiceId, fallbackEngine, fallbackRate, fallbackPitch,
+    globalPlaybackOrder, audioSourceMode, customLocalVoiceId, globalTtsOnly, preferences, globalPlaybackRate, rendererVersion, codecProfile });
   const normalizedChannel = normalizeChannel(channel);
   const customLocalMode = audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
   const effectiveGlobalTtsOnly = Boolean(globalTtsOnly) || audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
@@ -241,8 +249,15 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   audioSourceMode = TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST,
   customLocalVoiceId = null,
   globalTtsOnly = false,
-  allowFullArtifact = true
+  allowFullArtifact = true,
+  preferences = null,
+  globalPlaybackRate = 1,
+  rendererVersion,
+  codecProfile
 } = {}) => {
+  if (isPersistentConversationAudioBlock(block)) return buildTextConversationAudioPlaybackPlan({ documentTree, block, channel, segmentIds,
+    representationMode, audioVariants, runtimeAudioUrls, runtimeFullAudio, fallbackVoiceId, fallbackEngine, fallbackRate, fallbackPitch, language,
+    globalPlaybackOrder, audioSourceMode, customLocalVoiceId, globalTtsOnly, allowFullArtifact, preferences, globalPlaybackRate, rendererVersion, codecProfile });
   const normalizedChannel = normalizeChannel(channel);
   const customLocalMode = audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
   const effectiveGlobalTtsOnly = Boolean(globalTtsOnly) || audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
