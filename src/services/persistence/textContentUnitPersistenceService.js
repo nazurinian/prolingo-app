@@ -31,8 +31,12 @@ const txDonePromise = tx => new Promise((resolve, reject) => {
   tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
 });
 
+// ===========================================================================
+// SECTION 1 — Gate D3-B Disposable QA Isolation Guards
+// ===========================================================================
+
 /**
- * H1-02: Non-bypassable Gate D3-B guard restricting QA IndexedDB helpers strictly to
+ * Non-bypassable Gate D3-B guard restricting QA IndexedDB helpers strictly to
  * designated disposable QA databases and hard-blocking the canonical ProLingo database.
  */
 export const assertDisposableQaDatabaseName = (dbName, options = {}) => {
@@ -56,6 +60,25 @@ export const assertDisposableQaDatabaseName = (dbName, options = {}) => {
     );
   }
   return cleanName;
+};
+
+/**
+ * Validates that an IDBDatabase handle belongs strictly to an allowed disposable QA database.
+ */
+export const assertDisposableQaDatabaseHandle = (db, options = {}) => {
+  if (!db || typeof db !== 'object') {
+    throw new Error('Disposable QA database operation requires a valid IDBDatabase handle.');
+  }
+  assertDisposableQaDatabaseName(db.name, options);
+  return db;
+};
+
+const resolveQaEntrypointDbName = (dbName, restOptions = {}) => {
+  if (restOptions && typeof restOptions === 'object' && restOptions.db !== undefined) {
+    assertDisposableQaDatabaseHandle(restOptions.db, restOptions);
+    throw new Error('Disposable QA persistence APIs do not accept direct external db handles.');
+  }
+  return assertDisposableQaDatabaseName(dbName, restOptions);
 };
 
 const acquireQaWriteLock = safeDbName => {
@@ -103,8 +126,15 @@ const createV1BaseStores = db => {
   }
 };
 
+// ===========================================================================
+// SECTION 2 — Dormant Production Migration & Read Primitives (Unactivated in D3-B)
+// Reserved for future D3-C / D3-D activation; read-only or versionchange-only.
+// ===========================================================================
+
 /**
- * Dormant schema v2 upgrader: ensures canonical v1 stores/indexes plus contentUnits store and segments.byUnitId.
+ * Dormant production schema v2 upgrader primitive (D3-C/D3-D) & QA schema builder:
+ * ensures canonical v1 stores/indexes plus normalized contentUnits store and segments.byUnitId.
+ * Must only execute inside an authorized onupgradeneeded versionchange transaction.
  */
 export const createTextLibraryContentUnitStores = (db, transaction = null) => {
   createV1BaseStores(db);
@@ -127,6 +157,11 @@ export const createTextLibraryContentUnitStores = (db, transaction = null) => {
   }
 };
 
+// ===========================================================================
+// SECTION 3 — Disposable QA Persistence APIs (Scoped to prolingo_text_library_d3b_qa_*)
+// Canonical ProLingo DB handles/names and arbitrary direct db arguments are rejected.
+// ===========================================================================
+
 export const openDisposableTextLibraryV2Database = ({
   dbName = TEXT_DISPOSABLE_QA_DB_NAME,
   version = TEXT_LIBRARY_V2_DB_VERSION,
@@ -134,7 +169,7 @@ export const openDisposableTextLibraryV2Database = ({
 } = {}) => new Promise((resolve, reject) => {
   let safeName;
   try {
-    safeName = assertDisposableQaDatabaseName(dbName, restOptions);
+    safeName = resolveQaEntrypointDbName(dbName, restOptions);
   } catch (error) {
     reject(error);
     return;
@@ -151,7 +186,14 @@ export const openDisposableTextLibraryV2Database = ({
       createV1BaseStores(request.result);
     }
   };
-  request.onsuccess = () => resolve(request.result);
+  request.onsuccess = () => {
+    try {
+      resolve(assertDisposableQaDatabaseHandle(request.result));
+    } catch (error) {
+      request.result?.close?.();
+      reject(error);
+    }
+  };
   request.onerror = () => reject(request.error || new Error(`Failed to open database ${safeName}`));
 });
 
@@ -213,6 +255,10 @@ const stageSnapshotWritesOnTx = ({ tx, hasUnitsStore, snapshot, now }) => {
   }
 };
 
+/**
+ * Dormant read-only migration & QA snapshot inspector primitive.
+ * Opens a strictly 'readonly' transaction across v1 or v2 object stores and never mutates DB state.
+ */
 export const readTextLibraryV2SnapshotFromDb = async db => {
   const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
   const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
@@ -242,7 +288,9 @@ export const readTextLibraryV2SnapshotFromDb = async db => {
   });
 };
 
-export const writeTextLibraryV2SnapshotToDb = async ({ db, snapshot, now = Date.now() }) => {
+// Private QA-guarded low-level writer; never exported directly to prevent raw handle bypasses.
+const writeTextLibraryV2SnapshotToDb = async ({ db, snapshot, now = Date.now() }) => {
+  assertDisposableQaDatabaseHandle(db);
   const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
   const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
   const tx = db.transaction(storeNames, 'readwrite');
@@ -261,6 +309,7 @@ const runSingleReadWriteSnapshotTransaction = ({
   onBeforeCommit = null,
   transform
 }) => new Promise((resolve, reject) => {
+  assertDisposableQaDatabaseHandle(db);
   const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
   const storeNames = hasUnitsStore ? Object.values(TEXT_LIBRARY_V2_STORES) : Object.values(TEXT_LIBRARY_STORES);
   const tx = db.transaction(storeNames, 'readwrite');
@@ -345,7 +394,7 @@ export const writeTextLibrarySnapshotToDisposableDb = async ({
   now = Date.now(),
   ...restOptions
 } = {}) => {
-  const safeName = assertDisposableQaDatabaseName(dbName, restOptions);
+  const safeName = resolveQaEntrypointDbName(dbName, restOptions);
   acquireQaWriteLock(safeName);
   try {
     const normalized = normalizeTextLibraryRuntimeSnapshot(snapshot);
@@ -371,7 +420,7 @@ export const runDisposableContentUnitMigration = async ({
   onBeforeCommit = null,
   ...restOptions
 } = {}) => {
-  const safeName = assertDisposableQaDatabaseName(dbName, restOptions);
+  const safeName = resolveQaEntrypointDbName(dbName, restOptions);
   acquireQaWriteLock(safeName);
   try {
     const db = await openDisposableTextLibraryV2Database({
@@ -424,7 +473,7 @@ export const executeDisposableTextLibraryV2Command = async ({
   onBeforeCommit = null,
   ...restOptions
 } = {}) => {
-  const safeName = assertDisposableQaDatabaseName(dbName, restOptions);
+  const safeName = resolveQaEntrypointDbName(dbName, restOptions);
   acquireQaWriteLock(safeName);
   try {
     const db = await openDisposableTextLibraryV2Database({
@@ -465,7 +514,7 @@ export const deleteDisposableTextLibraryDatabase = ({
 } = {}) => new Promise((resolve, reject) => {
   let safeName;
   try {
-    safeName = assertDisposableQaDatabaseName(dbName, restOptions);
+    safeName = resolveQaEntrypointDbName(dbName, restOptions);
   } catch (error) {
     reject(error);
     return;

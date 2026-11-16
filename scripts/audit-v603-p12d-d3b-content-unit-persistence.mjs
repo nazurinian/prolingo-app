@@ -1695,6 +1695,57 @@ await test('D3B-08: Hard-blocks canonical DB even with allowCanonicalDatabase:tr
     }
 
     assert.equal(mockIdb._dbs.size, 0, 'Forbidden calls must not open or create any IndexedDB instance');
+
+    // Canonical database handle isolation: no exported unsafe raw writer & no QA write helper may accept canonical db handle
+    assert.equal(
+      persistenceService.writeTextLibraryV2SnapshotToDb,
+      undefined,
+      'Unsafe raw db-handle writer writeTextLibraryV2SnapshotToDb must not be exported in Gate D3-B'
+    );
+
+    const canonicalDb = await indexedDbService.openTextLibraryDatabase();
+    try {
+      const txCountBeforeCanonicalChecks = mockIdb._txHistory.length;
+
+      assert.throws(() => persistenceService.assertDisposableQaDatabaseHandle(canonicalDb));
+      assert.throws(() => persistenceService.assertDisposableQaDatabaseHandle({ name: 'arbitrary_other_db' }));
+      assert.throws(() => persistenceService.assertDisposableQaDatabaseHandle(null));
+
+      await assert.rejects(() => persistenceService.openDisposableTextLibraryV2Database({
+        dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+        db: canonicalDb
+      }));
+      await assert.rejects(() => persistenceService.writeTextLibrarySnapshotToDisposableDb({
+        dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+        db: canonicalDb,
+        snapshot: v1Snap
+      }));
+      await assert.rejects(() => persistenceService.runDisposableContentUnitMigration({
+        dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+        db: canonicalDb
+      }));
+      await assert.rejects(() => persistenceService.executeDisposableTextLibraryV2Command({
+        dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+        db: canonicalDb,
+        command: { type: 'collection.create', payload: { title: 'Blocked' } }
+      }));
+      await assert.rejects(() => persistenceService.deleteDisposableTextLibraryDatabase({
+        dbName: constants.TEXT_DISPOSABLE_QA_DB_NAME,
+        db: canonicalDb
+      }));
+
+      // Read-only migration primitive can inspect canonical DB safely without writing
+      const readonlyCanonicalSnap = await persistenceService.readTextLibraryV2SnapshotFromDb(canonicalDb);
+      assert.equal(readonlyCanonicalSnap.schemaVersion, 1);
+      assert.equal('contentUnits' in readonlyCanonicalSnap, false);
+
+      const canonicalTxs = mockIdb._txHistory.slice(txCountBeforeCanonicalChecks);
+      assert.equal(canonicalTxs.some(tx => tx.mode !== 'readonly'), false, 'Canonical DB must never receive readwrite tx');
+      assert.equal(canonicalDb.version, 1);
+      assert.equal(canonicalDb.objectStoreNames.contains('contentUnits'), false);
+    } finally {
+      canonicalDb.close();
+    }
   } finally {
     globalThis.indexedDB = prevIndexedDb;
   }
