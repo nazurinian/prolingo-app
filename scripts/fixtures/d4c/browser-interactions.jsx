@@ -60,7 +60,20 @@ const starts = (text, scope = document) => {
   const found = [...scope.querySelectorAll('button')].find(el => el.textContent.trim().startsWith(text));
   assert(found, `Missing button starting ${text}`); return found;
 };
-const click = async el => { el.click(); await tick(); };
+const click = async el => {
+  const before = control?.commits.length || 0;
+  el.click(); await tick();
+  const committed = control?.commits.length > before ? control.commits.at(-1).snapshot : null;
+  if (committed) await waitForCommittedState(() => control.snapshot === committed);
+};
+const waitForCommittedState = async predicate => {
+  const deadline = performance.now() + 3000;
+  while (performance.now() < deadline) {
+    if (predicate()) return;
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  throw new Error('D4 committed state did not settle within 3 seconds');
+};
 const input = async (el, value) => {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
@@ -166,8 +179,15 @@ export const runD4cBrowserInteractions = async () => {
     await click(label(`Move sentence ${ids.firstSentenceId} up`));
     await click(starts('Split Turn Here', sentence(ids.secondSentenceId)));
     const splitTurn = control.commits.at(-1).result.createdId;
-    await click(button('Merge Next', turn(ids.aliceTurnId)));
-    assert(!control.snapshot.contentUnits.some(u => u.id === splitTurn), 'Turn merge failed');
+    const mergeButton = button('Merge Next', turn(ids.aliceTurnId));
+    const beforeMerge = { disabled: mergeButton.disabled, connected: mergeButton.isConnected };
+    await click(mergeButton);
+    // The receipt is synchronous, but Harness publishes control.snapshot from a
+    // React effect. A fixed 20ms tick can observe the preceding split snapshot.
+    await waitForCommittedState(() => !control.snapshot.contentUnits.some(u => u.id === splitTurn)
+      && !document.querySelector(`[data-conversation-turn-id="${splitTurn}"]`));
+    assert(!control.snapshot.contentUnits.some(u => u.id === splitTurn), 'Turn merge failed: ' + JSON.stringify({ beforeMerge,
+      commands: control.commands.slice(-3).map(c => c.type), receipts: control.commits.slice(-3).map(c => c.result), alerts: [...document.querySelectorAll('[role="alert"]')].map(e => e.textContent) }));
     await click(label(`Move Turn ${ids.bobTurnId} up`));
     const bobSpeaker = control.snapshot.contentUnits.find(u => u.id === ids.bobTurnId).speakerId;
     await click(label(`Edit Turn ${ids.aliceTurnId}`)); await input(label('Turn Speaker Choice'), bobSpeaker); await click(button('Save Turn'));

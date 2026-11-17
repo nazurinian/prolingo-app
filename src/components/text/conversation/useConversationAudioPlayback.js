@@ -9,7 +9,8 @@ import {
   TEXT_STRUCTURED_ORDER_MODES,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
   TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES,
-  TEXT_STRUCTURED_REPEAT_MODES
+  TEXT_STRUCTURED_REPEAT_MODES,
+  resolveTextStructuredPlaybackRate
 } from '../../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import {
   buildTextStructuredBlockRuntimePlaybackPlan,
@@ -214,6 +215,7 @@ export const useConversationAudioPlayback = ({
   const cfgRepeatMode = audioConfig?.repeatMode || TEXT_STRUCTURED_REPEAT_MODES.ONCE;
   const cfgSourceMode = audioConfig?.audioSourceMode || TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST;
   const cfgRate = Number(audioConfig?.globalPlaybackRate) || 1;
+  const cfgInheritChannelRates = audioConfig?.globalPlaybackRate == null;
   const cfgGlobalOrder = audioConfig?.globalPlaybackOrder || null;
   const cfgCustomLocalVoice = audioConfig?.customLocalVoiceId || null;
   const cfgPreferences = audioConfig?.preferences || null;
@@ -225,6 +227,7 @@ export const useConversationAudioPlayback = ({
     repeatMode: cfgRepeatMode,
     audioSourceMode: cfgSourceMode,
     globalPlaybackRate: cfgRate,
+    inheritChannelRates: cfgInheritChannelRates,
     globalPlaybackOrder: cfgGlobalOrder,
     customLocalVoiceId: cfgCustomLocalVoice,
     preferences: cfgPreferences
@@ -235,6 +238,7 @@ export const useConversationAudioPlayback = ({
     cfgRepeatMode,
     cfgSourceMode,
     cfgRate,
+    cfgInheritChannelRates,
     cfgGlobalOrder,
     cfgCustomLocalVoice,
     cfgPreferences
@@ -311,7 +315,9 @@ export const useConversationAudioPlayback = ({
       runtimeAudioUrls,
       runtimeFullAudio,
       preferences: normalizedConfig.preferences,
-      globalPlaybackRate: normalizedConfig.globalPlaybackRate,
+      globalPlaybackRate: normalizedConfig.inheritChannelRates
+        ? resolveTextStructuredPlaybackRate(normalizedConfig.preferences, channel)
+        : normalizedConfig.globalPlaybackRate,
       globalPlaybackOrder: normalizedConfig.globalPlaybackOrder,
       audioSourceMode: normalizedConfig.audioSourceMode,
       customLocalVoiceId: normalizedConfig.customLocalVoiceId,
@@ -332,6 +338,7 @@ export const useConversationAudioPlayback = ({
     representation = 'split',
     playbackSessionId,
     unavailableBinaryFallback = false,
+    ignoreSegmentOverride = false,
     step = null
   }) => {
     const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
@@ -350,8 +357,8 @@ export const useConversationAudioPlayback = ({
       requestedVoiceName: requestedVoiceName || null,
       requestedSource: requestedSource || null,
       availableBrowserVoices: installedVoices,
-      ignoreSegmentOverride: false,
-      representationMode: 'split'
+      ignoreSegmentOverride,
+      representationMode: ignoreSegmentOverride ? 'full' : 'split'
     });
     const matchedVoice = installedVoices.find(voice => (
       typeof voice === 'object' && voice?.name && voice.name === voiceResolution.effectiveVoiceName
@@ -378,6 +385,13 @@ export const useConversationAudioPlayback = ({
       updatedAt: Date.now()
     };
     setPlaybackSourceStatus(nextStatus);
+    const onSpeechError = error => {
+      if (!playbackStillCurrent()) return;
+      const failedStatus = { ...nextStatus, source: 'unavailable', mode: 'unavailable', error: String(error || 'speech-error'), updatedAt: Date.now() };
+      setPlaybackSourceStatus(failedStatus);
+      audioRuntimeHooks?.onPlaybackStep?.({ ...failedStatus, step, item });
+      addLog('Error', `Browser TTS failed (${normalizedChannel.toUpperCase()}): ${failedStatus.error}`);
+    };
     audioRuntimeHooks?.onPlaybackStep?.({
       ...nextStatus,
       step,
@@ -387,22 +401,25 @@ export const useConversationAudioPlayback = ({
     });
 
     if (typeof audioRuntimeHooks?.executeBrowserTts === 'function') {
-      await audioRuntimeHooks.executeBrowserTts({
-        textToRead,
-        overrideVoice: matchedVoice,
-        targetVoiceName: voiceResolution.effectiveVoiceName,
-        requestedVoiceName: voiceResolution.requestedVoiceName,
-        voiceResolution,
-        rate: effectiveRate,
-        playbackRate: effectiveRate,
-        channel: normalizedChannel,
-        item,
-        step,
-        stopSignalRef,
-        pauseStateRef,
-        playbackSessionRef,
-        waitWhilePaused
-      });
+      try {
+        const result = await audioRuntimeHooks.executeBrowserTts({
+          textToRead,
+          overrideVoice: matchedVoice,
+          targetVoiceName: voiceResolution.effectiveVoiceName,
+          requestedVoiceName: voiceResolution.requestedVoiceName,
+          voiceResolution,
+          rate: effectiveRate,
+          playbackRate: effectiveRate,
+          channel: normalizedChannel,
+          item,
+          step,
+          stopSignalRef,
+          pauseStateRef,
+          playbackSessionRef,
+          waitWhilePaused
+        });
+        if (result?.status === 'error') onSpeechError(result.error || 'speech-error');
+      } catch (error) { onSpeechError(error?.message || 'speech-error'); }
       return;
     }
 
@@ -423,7 +440,8 @@ export const useConversationAudioPlayback = ({
       playbackResolveRef,
       rateRef: null,
       rate: effectiveRate,
-      pitch: 1
+      pitch: 1,
+      onError: onSpeechError
     });
   }, [documentTree, normalizedConfig.preferences, installedVoices, synth, audioRuntimeHooks, waitWhilePaused, addLog]);
 
@@ -534,6 +552,7 @@ export const useConversationAudioPlayback = ({
       representation,
       playbackSessionId,
       unavailableBinaryFallback,
+      ignoreSegmentOverride: step?.ignoreSegmentVoiceOverride === true || options?.ignoreSegmentOverride === true,
       step
     });
   }, [
@@ -554,6 +573,19 @@ export const useConversationAudioPlayback = ({
     if (!playbackStillCurrent()) return;
 
     const normalizedChannel = step?.channel === 'meaning' ? 'meaning' : 'text';
+    // Paragraph Full can be one whole-Card utterance, with no Sentence identity.
+    // Conversation's planner continues to emit per-Sentence recovery steps.
+    const playFullTts = async fullStep => {
+      await waitWhilePaused();
+      if (!playbackStillCurrent()) return;
+      await speakWithResolvedBrowserTts({ textToRead: fullStep.content, block, segment: null, item: null,
+        channel: normalizedChannel, playbackRate: Number(fullStep.playbackRate) || 1,
+        representation: 'full', playbackSessionId, ignoreSegmentOverride: true, step: fullStep });
+    };
+    if (step?.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_TTS) {
+      await playFullTts(step);
+      return;
+    }
     const runtimeFull = step?.runtimeFull || null;
     const artifactId = runtimeFull?.artifact?.fullArtifactFingerprint || runtimeFull?.artifact?.id || null;
     const runtime = runtimeFull?.runtime || (artifactId ? runtimeFullAudio[artifactId] : null) || null;
@@ -562,27 +594,29 @@ export const useConversationAudioPlayback = ({
       : null;
 
     if (step?.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_LOCAL && url) {
+      const composed = runtimeFull?.artifact?.descriptor?.schemaVersion === 2 && Array.isArray(runtimeFull.artifact.descriptor.composition);
+      const playbackRate = composed ? 1 : Number(step.playbackRate) || 1;
       const statusMeta = {
         sessionId: playbackSessionId,
         documentId: documentTree?.id || null,
         blockId: block?.id || null,
         unitId: null,
         segmentId: null,
-        speaker: 'All Speakers (Cached Full)',
+        speaker: composed ? 'All Speakers (Cached Full)' : 'Narrator (Cached Full)',
         channel: normalizedChannel,
         representation: 'full',
         mode: 'full-local',
         source: 'local',
         voiceId: runtimeFull?.artifact?.descriptor?.voiceId || 'multi-speaker',
-        effectiveVoice: 'Composed Full WAV (48 kHz)',
-        // Handoff contract: cached Full artifact schedule already bakes composition rates; keep playbackRate 1.
-        playbackRate: 1,
+        effectiveVoice: composed ? 'Composed Full WAV (48 kHz)' : runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null,
+        // Composed schedules bake rates; legacy single-voice Full uses P9's physical rate.
+        playbackRate,
         fullArtifactFingerprint: artifactId,
         updatedAt: Date.now()
       };
       const result = await playRuntimeUrl({
         url,
-        playbackRate: 1,
+        playbackRate,
         label: `Conversation Full ${block?.id || 'Scene'}/${normalizedChannel}`,
         step,
         item,
@@ -593,7 +627,7 @@ export const useConversationAudioPlayback = ({
 
     if (!playbackStillCurrent()) return;
     markFailedVariant(artifactId);
-    addLog('Warn', `Cached Full artifact unavailable for ${block?.id || 'Scene'}; recovering per Sentence.`);
+    addLog('Warn', `Cached Full artifact unavailable for ${block?.id || 'Scene'}; recovering per Sentence or the planned Paragraph Full utterance.`);
     // Reuse the authoritative D5 plan and existing Sentence callback. In particular,
     // keep local RF matches, speaker voice/rate/channel and persistent identities.
     const recoveryPlan = buildBlockPlan({
@@ -607,8 +641,17 @@ export const useConversationAudioPlayback = ({
       if (!playbackStillCurrent()) return;
       await waitWhilePaused();
       if (!playbackStillCurrent()) return;
+      if (sentenceStep.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_TTS) {
+        await playFullTts(sentenceStep);
+        continue;
+      }
       const sentenceItem = items.get(sentenceStep.segmentId);
-      if (!sentenceItem) return;
+      if (!sentenceItem) {
+        addLog('Error', `Full recovery unavailable: Sentence ${sentenceStep.segmentId || '(missing)'} is outside the current Workspace.`);
+        setPlaybackSourceStatus({ sessionId: playbackSessionId, documentId: documentTree?.id, blockId: block?.id,
+          segmentId: null, channel: normalizedChannel, representation: 'full', source: 'unavailable', mode: 'unavailable' });
+        return;
+      }
       setResumeCursorSegmentId(sentenceItem.id);
       if (playbackContextRef.current?.sessionId === playbackSessionId) {
         playbackContextRef.current.cursorSegmentId = sentenceItem.id;
@@ -619,7 +662,7 @@ export const useConversationAudioPlayback = ({
         step: sentenceStep
       });
     }
-  }, [documentTree, runtimeFullAudio, markFailedVariant, resolveBlobObjectUrl, playRuntimeUrl, buildBlockPlan, waitWhilePaused, playStructuredChannel, addLog]);
+  }, [documentTree, runtimeFullAudio, markFailedVariant, resolveBlobObjectUrl, playRuntimeUrl, buildBlockPlan, waitWhilePaused, playStructuredChannel, speakWithResolvedBrowserTts, addLog]);
 
   const startSession = useCallback(({
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,

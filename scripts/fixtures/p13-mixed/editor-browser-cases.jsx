@@ -234,5 +234,4 @@ export async function runP13BrowserCases() {
     indexedDbCalls: window.__p13DbCalls, storageCalls: window.__p13StorageCalls };
 }
 
-export const runP13AudioDiagnostics = async () => ({ scope: 'A3 editor; unrestricted audio intentionally excluded',
-  unresolved: ['A4-FULL-01', 'A4-RATE-01'], testedAsPassing: false });
+export const runP13AudioDiagnostics = async () => ({ scope: 'A3 editor only; Full/rate assertions run in the P13-A4 audio suite', testedAsPassing: false });

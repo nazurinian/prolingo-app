@@ -267,16 +267,15 @@ export const runP13BrowserCases = async () => {
 };
 
 /**
- * Observations of existing host behavior outside the A2 QA's Split/1x boundary.
- * Kept separate from acceptance checks; they are A4 blockers, not historical debt
- * or assertions that silently approve incorrect audio behavior.
+ * Original A4 blocker reproductions, retained as assertions after A4 closure.
+ * The runner now fails if either diagnostic's expected behavior regresses.
  */
 export const runP13AudioDiagnostics = async () => {
   const diagnostics = [];
   let h = await mount({ full: true });
   try {
     h.host.audio.playScene(h.data.ids.afterCardId);
-    await until(() => !h.host.audio.isPlaying && h.host.audio.playbackLogs.some(log => JSON.stringify(log).includes('recovering per Sentence')));
+    await until(() => h.events.length > 0 || h.host.audio.playbackLogs.some(log => log.message === 'Structured Text playback finished.'));
     diagnostics.push({
       issue: 'A4-FULL-01', expected: 'Nonempty Paragraph Full playback invokes local audio or TTS',
       actualAudioInvocations: h.events.length,

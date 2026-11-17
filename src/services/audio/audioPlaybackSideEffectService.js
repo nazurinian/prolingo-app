@@ -15,7 +15,8 @@ export const executeBrowserTtsPlaybackService = ({
   playbackResolveRef,
   rateRef,
   rate,
-  pitch
+  pitch,
+  onError = null
 }) => {
     return new Promise((resolve) => {
       // When getVoices() exposes no named voice, let the device/browser use
@@ -28,7 +29,7 @@ export const executeBrowserTtsPlaybackService = ({
       }
 
       if (typeof synth.cancel === 'function') {
-          try { synth.cancel(); } catch { resolve(); return; }
+          try { synth.cancel(); } catch { onError?.('cancel-failed'); resolve(); return; }
       }
       let settled = false;
 
@@ -41,7 +42,8 @@ export const executeBrowserTtsPlaybackService = ({
           resolve();
       };
 
-      const handleUtteranceDone = () => {
+      const handleUtteranceDone = event => {
+          if (settled) return;
           const replayState = ttsReplayRef?.current;
           // Android background MediaSession Pause may terminate the native
           // utterance. That termination is not the logical end of this ProLingo
@@ -50,6 +52,7 @@ export const executeBrowserTtsPlaybackService = ({
               currentUtteranceRef.current = null;
               return;
           }
+          if (event?.type === 'error' || event?.error) onError?.(event.error || 'speech-error');
           finish();
       };
 
@@ -71,7 +74,8 @@ export const executeBrowserTtsPlaybackService = ({
           try {
             synth.speak(utterance);
             return true;
-          } catch {
+          } catch (error) {
+            onError?.(error?.message || 'speak-failed');
             finish();
             return false;
           }

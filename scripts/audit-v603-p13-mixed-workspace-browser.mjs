@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const editorMode = process.argv.includes('--editor');
+const audioMode = process.argv.includes('--audio');
 
 const compile = async (entry, dev, stubApp = false) => (await build({
   absWorkingDir: root,
@@ -41,7 +42,7 @@ if (!cssName) throw new Error('Run npm run build before P13 browser acceptance')
 const css = await fs.readFile(path.join(root, 'dist/assets', cssName));
 
 const bundles = {
-  '/cases.js': await compile(editorMode ? 'scripts/fixtures/p13-mixed/editor-browser-cases.jsx' : 'scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
+  '/cases.js': await compile(audioMode ? 'scripts/fixtures/p13-mixed/audio-browser-cases.jsx' : editorMode ? 'scripts/fixtures/p13-mixed/editor-browser-cases.jsx' : 'scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
   '/gate-prod.js': await compile('src/main.jsx', false, true),
   '/gate-dev.js': await compile('src/main.jsx', true, true)
 };
@@ -88,7 +89,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-p13-mixed-'));
 const browser = spawn(
   process.env.P13_BROWSER_PATH || process.env.A2_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
+  ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', ...(audioMode ? ['--autoplay-policy=no-user-gesture-required'] : []), '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
   { windowsHide: true, stdio: 'ignore' }
 );
 
@@ -181,14 +182,29 @@ try {
       }
       return false;
     })()`);
+    const audioGateOk = !audioMode || !actualVisible || await evaluate(`(async () => {
+      const preview = document.querySelector('[data-mixed-workspace-qa-preview]');
+      const reader = document.querySelector('[data-shared-mixed-reader]');
+      for (const [selector, value] of [['[data-mixed-qa-audio-representation]', 'full'], ['[data-mixed-qa-audio-rate]', '1.5'], ['[data-mixed-qa-audio-channel]', 'meaning-text']]) {
+        const select = document.querySelector(selector);
+        if (!select) return false;
+        select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      return document.querySelector('[data-mixed-qa-audio-scope="controlled-audio"]')
+        && document.querySelector('[data-mixed-workspace-qa-preview]') === preview
+        && document.querySelector('[data-shared-mixed-reader]') === reader
+        && reader.dataset.readerCursorPrecision === 'none';
+    })()`);
     gates.push({
       route,
       expectedVisible,
       actualVisible,
       qaLevelSwitchOk,
       editorGateOk,
+      audioGateOk: Boolean(audioGateOk),
       zeroDbAndStorage: calls === 0,
-      ok: actualVisible === expectedVisible && qaLevelSwitchOk && editorGateOk && calls === 0
+      ok: actualVisible === expectedVisible && qaLevelSwitchOk && editorGateOk && audioGateOk && calls === 0
     });
   }
 
@@ -234,6 +250,7 @@ try {
     report.failed
     || report.indexedDbCalls
     || report.storageCalls
+    || Array.isArray(audioIntegrationDiagnostics) && audioIntegrationDiagnostics.some(d => d.expectationMet === false)
     || gates.some(g => !g.ok)
     || productionArtifacts?.qaPreviewAbsent === false
   ) {

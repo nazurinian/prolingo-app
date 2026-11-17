@@ -14,11 +14,12 @@ export default function TextMixedWorkspaceQaPreview() {
   const [focusTarget, setFocusTarget] = useState(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorPending, setEditorPending] = useState(false);
+  const [audioOptions, setAudioOptions] = useState({ playbackChannelMode: 'text-only', playbackRepresentationMode: 'split', globalPlaybackRate: 1 });
   const documentId = otherWorkspace ? fixture.ids.mixedDocumentId : fixture.ids.documentId;
   const state = useMemo(() => selectTextMixedReaderState(fixture.snapshot, { documentId }), [fixture, documentId]);
   const audioConfig = useMemo(() => ({
-    preferences: fixture.preferences, playbackChannelMode: 'text-only', playbackRepresentationMode: 'split', globalPlaybackRate: 1
-  }), [fixture]);
+    preferences: fixture.preferences, ...audioOptions
+  }), [fixture.preferences, audioOptions]);
   const audioPlayback = useConversationAudioPlayback({
     snapshot: fixture.snapshot, documentTree: state.documentTree, audioConfig
   });
@@ -42,8 +43,25 @@ export default function TextMixedWorkspaceQaPreview() {
           <h1 className="text-lg font-bold">P13 Mixed Workspace — isolated QA</h1>
           <p className="text-sm">Disposable v2 fixture. No canonical storage. Paragraph Sections and Speaker Turns stay in separate Cards.</p>
           <p className="text-sm">One existing audio host. Metadata-only fixture audio falls back through the existing browser playback path. This is not production Mixed audio activation.</p>
-          <p className="text-sm" data-mixed-qa-audio-scope="split-1x">Audio QA: Split at 1×. Full audio and rate integration remain gated for P13-A4; Full/Part/Segment below controls reading only.</p>
+          <p className="text-sm" data-mixed-qa-audio-scope={audioOptions.playbackRepresentationMode === 'split' && audioOptions.globalPlaybackRate === 1 ? 'split-1x' : 'controlled-audio'}>Isolated audio QA: Split or Full at a controlled rate. Full/Part/Segment below controls reading only. Audio setting changes stop the current session; press Play to restart.</p>
+          <fieldset disabled={editorPending} className="flex flex-wrap gap-3 border rounded p-2">
+            <legend className="text-sm">Audio QA settings (no persistence)</legend>
+            <label>Representation <select aria-label="Mixed audio representation" data-mixed-qa-audio-representation value={audioOptions.playbackRepresentationMode}
+              className="min-h-11 border rounded px-2 bg-white dark:bg-slate-900" onChange={e => setAudioOptions(v => ({ ...v, playbackRepresentationMode: e.target.value }))}>
+              <option value="split">Split</option><option value="full">Full</option>
+            </select></label>
+            <label>Rate <select aria-label="Mixed audio rate" data-mixed-qa-audio-rate value={audioOptions.globalPlaybackRate}
+              className="min-h-11 border rounded px-2 bg-white dark:bg-slate-900" onChange={e => setAudioOptions(v => ({ ...v, globalPlaybackRate: Number(e.target.value) }))}>
+              {[0.5, 1, 1.5, 2].map(rate => <option key={rate} value={rate}>{rate}×</option>)}
+            </select></label>
+            <label>Channel <select aria-label="Mixed audio channel" data-mixed-qa-audio-channel value={audioOptions.playbackChannelMode}
+              className="min-h-11 border rounded px-2 bg-white dark:bg-slate-900" onChange={e => setAudioOptions(v => ({ ...v, playbackChannelMode: e.target.value }))}>
+              <option value="text-only">EN only</option><option value="meaning-only">ID only</option><option value="text-meaning">EN → ID</option><option value="meaning-text">ID → EN</option>
+            </select></label>
+          </fieldset>
+          {audioPlayback.playbackSourceStatus?.source === 'unavailable' && <p role="alert" data-mixed-qa-audio-error>Audio unavailable: {audioPlayback.playbackSourceStatus.error || 'Browser TTS is unavailable and no compatible local binary could play.'}</p>}
           <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={editorPending} className="min-h-11 border rounded px-3" onClick={audioPlayback.playWorkspace}>Play Workspace</button>
             <button type="button" disabled={editorPending} className="min-h-11 border rounded px-3" data-mixed-qa-editor-toggle onClick={() => setEditorVisible(v => !v)}>{editorVisible ? 'Hide Editor' : 'Show Editor'}</button>
             <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-workspace onClick={() => { setEditorPending(false); setFocusTarget(null); setOtherWorkspace(v => !v); }}>Switch Workspace</button>
             <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-reset onClick={() => { setEditorPending(false); setFocusTarget(null); setFixture(createP13MixedFixture()); }}>Reset fixture</button>

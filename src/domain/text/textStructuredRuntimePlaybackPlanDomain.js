@@ -11,6 +11,9 @@ import {
   resolveTextStructuredOrderedSegments
 } from './textStructuredSplitFullDomain.js';
 import { resolveTextStructuredEffectiveCustomLocalVoice } from './textStructuredLocalAudioProfileDomain.js';
+import { resolveTextStructuredEffectivePlaybackRate } from './textStructuredPlaybackRateProfileDomain.js';
+import { resolveTextStructuredEffectiveDownloadVoice } from './textStructuredAudioDownloadProfileDomain.js';
+import { buildTextStructuredAudioRenderFingerprint } from './textStructuredAudioRenderFingerprintDomain.js';
 import {
   TEXT_STRUCTURED_AUDIO_SOURCE_MODES,
   TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES
@@ -88,6 +91,7 @@ export const resolveTextStructuredReadyFullRuntime = ({
       language,
       runtimeFullAudio
     });
+    if (readiness.runtime?.fullArtifactFingerprint && readiness.runtime.fullArtifactFingerprint !== readiness.artifact?.fullArtifactFingerprint) continue;
     if (readiness.status === TEXT_STRUCTURED_ARTIFACT_READINESS.READY && readiness.ready && runtimeReady(readiness.runtime)) {
       return {
         ...readiness,
@@ -125,6 +129,9 @@ export const buildTextStructuredSplitRuntimePlan = ({
     representationMode: 'split', audioVariants, runtimeAudioUrls, fallbackVoiceId, fallbackEngine, fallbackRate, fallbackPitch,
     globalPlaybackOrder, audioSourceMode, customLocalVoiceId, globalTtsOnly, preferences, globalPlaybackRate, rendererVersion, codecProfile });
   const normalizedChannel = normalizeChannel(channel);
+  const exactMixed = documentTree?.documentType === 'mixed' && Array.isArray(block?.units);
+  const prefs = { edgeRate: fallbackRate, edgePitch: fallbackPitch,
+    ...(fallbackVoiceId ? { [normalizedChannel === 'text' ? 'edgeTextVoiceId' : 'edgeMeaningVoiceId']: fallbackVoiceId } : {}), ...(preferences || {}) };
   const customLocalMode = audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL;
   const effectiveGlobalTtsOnly = Boolean(globalTtsOnly) || audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY;
   const playbackOrder = resolveTextStructuredRuntimePlaybackOrder({
@@ -146,8 +153,25 @@ export const buildTextStructuredSplitRuntimePlan = ({
   for (const segment of scopedSegments) {
     const content = contentFor(segment, normalizedChannel);
     if (!content) continue;
+    const playbackRate = resolveTextStructuredEffectivePlaybackRate({ documentTree, block, segment, channel: normalizedChannel, globalRate: globalPlaybackRate });
     let resolved = null;
-    if (!ttsOnly.enabled) {
+    if (!ttsOnly.enabled && exactMixed) {
+      // Persistent Mixed authoring uses D5's exact RF/binary contract. Preserve
+      // the historical P9 compatibility resolver below for existing v1 readers.
+      const download = resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, segment, channel: normalizedChannel, preferences: prefs });
+      const pin = clean(resolveTextStructuredEffectiveCustomLocalVoice({ documentTree, block, segment, channel: normalizedChannel })) || customLocalVoiceId;
+      const order = resolveTextStructuredRuntimePlaybackOrder({ documentTree, block, channel: normalizedChannel, globalPlaybackOrder,
+        fallbackVoiceId: download.voiceId, fallbackEngine, fallbackRate: prefs.edgeRate, fallbackPitch: prefs.edgePitch });
+      const profiles = customLocalMode ? (pin ? [{ voiceId: pin, engine: fallbackEngine, rate: prefs.edgeRate, pitch: prefs.edgePitch }] : []) : order.profiles;
+      for (const [index, profile] of profiles.entries()) {
+        const render = buildTextStructuredAudioRenderFingerprint({ channel: normalizedChannel, content,
+          language: normalizedChannel === 'text' ? documentTree.textLanguage : documentTree.meaningLanguage,
+          voiceId: profile.voiceId, engine: profile.engine, rate: profile.rate ?? prefs.edgeRate, pitch: profile.pitch ?? prefs.edgePitch, rendererVersion, codecProfile });
+        resolved = resolveTextStructuredRuntimeAudio({ audioVariants, runtimeAudioUrls, segmentId: segment.id, channel: normalizedChannel,
+          preferredGeneratedProfiles: [profile], strictProfileOrder: true, expectedRenderFingerprint: render.renderFingerprint, content });
+        if (resolved) { resolved = { ...resolved, playbackProfileRank: index + 1, renderFingerprint: render.renderFingerprint }; break; }
+      }
+    } else if (!ttsOnly.enabled) {
       if (customLocalMode) {
         const pinnedVoiceId = clean(resolveTextStructuredEffectiveCustomLocalVoice({
           documentTree,
@@ -195,6 +219,7 @@ export const buildTextStructuredSplitRuntimePlan = ({
         segmentId: segment.id,
         blockId: block?.id || null,
         content,
+        playbackRate,
         highlight: Boolean(highlight),
         runtimeAudio: resolved,
         voiceId: resolved.variant?.voiceId || null,
@@ -209,6 +234,7 @@ export const buildTextStructuredSplitRuntimePlan = ({
         segmentId: segment.id,
         blockId: block?.id || null,
         content,
+        playbackRate,
         highlight: Boolean(highlight),
         runtimeAudio: null,
         voiceId: null,
@@ -281,7 +307,11 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
       audioSourceMode,
       customLocalVoiceId,
       globalTtsOnly: effectiveGlobalTtsOnly,
-      highlight: true
+      highlight: true,
+      preferences,
+      globalPlaybackRate,
+      rendererVersion,
+      codecProfile
     });
     return {
       mode: normalizedMode,
@@ -302,14 +332,19 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     : block;
   const effectiveAllowFullArtifact = Boolean(allowFullArtifact) && !isPartialSegmentSlice;
   const fullRepresentation = buildTextStructuredFullRepresentation({ block: scopedBlock, channel: normalizedChannel });
+  const playbackRate = resolveTextStructuredEffectivePlaybackRate({ documentTree, block, segment: scopedSegments[0], channel: normalizedChannel, globalRate: globalPlaybackRate });
+  const exactMixed = documentTree?.documentType === 'mixed' && Array.isArray(block?.units);
+  const fullPrefs = { edgeRate: fallbackRate, edgePitch: fallbackPitch,
+    ...(fallbackVoiceId ? { [normalizedChannel === 'text' ? 'edgeTextVoiceId' : 'edgeMeaningVoiceId']: fallbackVoiceId } : {}), ...(preferences || {}) };
+  const fullVoice = exactMixed ? resolveTextStructuredEffectiveDownloadVoice({ documentTree, block, channel: normalizedChannel, preferences: fullPrefs }) : null;
   const playbackOrder = resolveTextStructuredRuntimePlaybackOrder({
     documentTree,
     block,
     channel: normalizedChannel,
-    fallbackVoiceId,
+    fallbackVoiceId: fullVoice?.voiceId || fallbackVoiceId,
     fallbackEngine,
-    fallbackRate,
-    fallbackPitch,
+    fallbackRate: exactMixed ? preferences?.edgeRate ?? fallbackRate : fallbackRate,
+    fallbackPitch: exactMixed ? preferences?.edgePitch ?? fallbackPitch : fallbackPitch,
     globalPlaybackOrder
   });
   const contentSegments = scopedSegments.filter(segment => Boolean(contentFor(segment, normalizedChannel)));
@@ -336,8 +371,8 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
           ? resolveFallbackProfile({
               fallbackVoiceId: resolvedCustomFullVoiceId,
               fallbackEngine,
-              fallbackRate,
-              fallbackPitch
+              fallbackRate: exactMixed ? fullPrefs.edgeRate : fallbackRate,
+              fallbackPitch: exactMixed ? fullPrefs.edgePitch : fallbackPitch
             })
           : []
       }
@@ -378,6 +413,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         blockId: block?.id || null,
         segmentId: null,
         content: fullRepresentation.content,
+        playbackRate,
         highlight: false,
         runtimeFull: null,
         ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,
@@ -392,7 +428,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
   const readyFull = effectiveAllowFullArtifact ? resolveTextStructuredReadyFullRuntime({
     block,
     channel: normalizedChannel,
-    language,
+    language: language || (exactMixed ? (normalizedChannel === 'text' ? documentTree.textLanguage : documentTree.meaningLanguage) : null),
     playbackOrder: effectivePlaybackOrder,
     runtimeFullAudio
   }) : null;
@@ -414,6 +450,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         blockId: block?.id || null,
         segmentId: null,
         content: fullRepresentation.content,
+        playbackRate,
         highlight: false,
         runtimeFull: readyFull,
         voiceId: readyFull.profile?.voiceId || readyFull.artifact?.descriptor?.voiceId || null,
@@ -442,7 +479,11 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     audioSourceMode,
     customLocalVoiceId,
     globalTtsOnly: false,
-    highlight: false
+    highlight: false,
+    preferences,
+    globalPlaybackRate,
+    rendererVersion,
+    codecProfile
   });
 
   // If Full is missing and not even one local Split exists, prefer one Full TTS
@@ -465,6 +506,7 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
         blockId: block?.id || null,
         segmentId: null,
         content: fullRepresentation.content,
+        playbackRate,
         highlight: false,
         runtimeFull: null,
         ttsVoicePolicy: TEXT_STRUCTURED_TTS_FALLBACK_POLICIES.FULL_CARD,

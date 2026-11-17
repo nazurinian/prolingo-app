@@ -8,15 +8,18 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const baseline = process.argv.includes('--baseline');
+const audioBaseline = process.argv.includes('--p13-a4-baseline');
 const changedSources = new Set(['src/main.jsx', 'src/components/text/conversation/TextConversationEditor.jsx', 'src/components/text/conversation/ConversationSentenceItem.jsx']);
+const audioSources = new Set(['src/components/text/conversation/useConversationAudioPlayback.js', 'src/domain/text/textStructuredRuntimePlaybackPlanDomain.js', 'src/services/audio/audioPlaybackSideEffectService.js', 'src/components/text/presentation/TextMixedWorkspaceQaPreview.jsx']);
 const compile = async (entry, dev) => (await build({ absWorkingDir: root, entryPoints: [entry], bundle: true, write: false,
   format: 'esm', jsx: 'automatic', loader: { '.css': 'empty' }, define: { 'import.meta.env.DEV': String(dev), 'process.env.NODE_ENV': '"development"' },
   plugins: [{ name: 'd4c-safety', setup(builder) {
     builder.onResolve({ filter: /^\.\/App\.jsx$/ }, () => ({ path: 'app-stub', namespace: 'd4c' }));
     builder.onLoad({ filter: /.*/, namespace: 'd4c' }, () => ({ contents: 'export default function App(){ return "D4C safe App stub"; }', loader: 'js' }));
-    if (baseline) builder.onLoad({ filter: /\.(jsx|js)$/ }, args => {
+    if (baseline || audioBaseline) builder.onLoad({ filter: /\.(jsx|js)$/ }, args => {
       const relative = path.relative(root, args.path).replaceAll('\\', '/');
-      if (changedSources.has(relative)) return { contents: execFileSync('git', ['show', `2fbee534d62bc861ed33906ec99e929eef887d64:${relative}`], { cwd: root, encoding: 'utf8' }), loader: relative.endsWith('jsx') ? 'jsx' : 'js' };
+      const ref = audioBaseline ? 'dde282e1bab6ed6c9884435f6d59f435bb2a4c00' : '2fbee534d62bc861ed33906ec99e929eef887d64';
+      if ((audioBaseline ? audioSources : changedSources).has(relative)) return { contents: execFileSync('git', ['show', `${ref}:${relative}`], { cwd: root, encoding: 'utf8' }), loader: relative.endsWith('jsx') ? 'jsx' : 'js' };
     });
   } }]
 })).outputFiles[0].text;
