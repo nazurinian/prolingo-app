@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const editorMode = process.argv.includes('--editor');
 
 const compile = async (entry, dev, stubApp = false) => (await build({
   absWorkingDir: root,
@@ -40,7 +41,7 @@ if (!cssName) throw new Error('Run npm run build before P13 browser acceptance')
 const css = await fs.readFile(path.join(root, 'dist/assets', cssName));
 
 const bundles = {
-  '/cases.js': await compile('scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
+  '/cases.js': await compile(editorMode ? 'scripts/fixtures/p13-mixed/editor-browser-cases.jsx' : 'scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
   '/gate-prod.js': await compile('src/main.jsx', false, true),
   '/gate-dev.js': await compile('src/main.jsx', true, true)
 };
@@ -171,13 +172,23 @@ try {
       }
       return false;
     })()`);
+    const editorGateOk = !editorMode || !actualVisible || await evaluate(`(async () => {
+      document.querySelector('[data-mixed-qa-editor-toggle]').click();
+      const deadline = performance.now() + 3000;
+      while (performance.now() < deadline) {
+        if (document.querySelector('[data-mixed-workspace-editor]') && document.querySelector('[data-mixed-paragraph-editor]') && document.querySelector('[data-conversation-scene-id]')) return true;
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      return false;
+    })()`);
     gates.push({
       route,
       expectedVisible,
       actualVisible,
       qaLevelSwitchOk,
+      editorGateOk,
       zeroDbAndStorage: calls === 0,
-      ok: actualVisible === expectedVisible && qaLevelSwitchOk && calls === 0
+      ok: actualVisible === expectedVisible && qaLevelSwitchOk && editorGateOk && calls === 0
     });
   }
 
@@ -207,7 +218,7 @@ try {
     productionArtifacts = {
       files: jsFiles,
       qaPreviewAbsent: !distAssets.some(name => name.includes('TextMixedWorkspaceQaPreview'))
-        && sources.every(src => !src.includes('data-mixed-workspace-qa-preview') && !src.includes('data-conversation-qa-preview'))
+        && sources.every(src => !src.includes('data-mixed-workspace-qa-preview') && !src.includes('data-conversation-qa-preview') && !src.includes('data-mixed-workspace-editor'))
     };
   }
 

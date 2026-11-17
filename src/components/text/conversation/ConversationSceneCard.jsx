@@ -256,6 +256,7 @@ export const ConversationSceneCard = ({
   scene,
   sceneIndex,
   state,
+  cardOrderPeers = null,
   speakerOptions = [],
   hydratedBlock = null,
   scenePlans = null,
@@ -274,7 +275,7 @@ export const ConversationSceneCard = ({
   const [selectedTurnIds, setSelectedTurnIds] = useState([]);
   const [mergeError, setMergeError] = useState(null);
 
-  const scenes = state?.scenes || [];
+  const scenes = cardOrderPeers || state?.scenes || [];
   const turns = scene?.turns || [];
   const preservedEntries = listPreservedMetadataEntries(scene?.metadata);
   const activeSelectedIds = selectedTurnIds.filter(id => turns.some(t => t.id === id));

@@ -35,7 +35,7 @@ const PartsPreviewList = ({ parts = [], retainedId }) => (
 /**
  * Bilingual-safe Conversation Sentence Split panel calling D4-A `conversationSegment.split`.
  */
-export const ConversationSentenceSplitPanel = ({ sentence, isBusy = false, onCommand, onClose, compact = false }) => {
+export const ConversationSentenceSplitPanel = ({ sentence, unitKind = 'turn', isBusy = false, onCommand, onClose, compact = false }) => {
   const autoProposal = useMemo(() => buildTextParagraphSentenceSplitProposal({ segment: sentence }), [sentence]);
   const [tab, setTab] = useState(() => (
     autoProposal.canApply || autoProposal.reason === 'meaning-count-mismatch' ? 'auto' : 'manual'
@@ -84,7 +84,7 @@ export const ConversationSentenceSplitPanel = ({ sentence, isBusy = false, onCom
     }
     try {
       const outcome = await onCommand?.({
-        type: 'conversationSegment.split',
+        type: unitKind === 'paragraph' ? 'paragraphSegment.split' : 'conversationSegment.split',
         payload: { id: sentence.id, parts: prepared }
       });
       if (!outcome?.ok) {

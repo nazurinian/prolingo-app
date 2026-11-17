@@ -4,6 +4,7 @@ import { selectTextMixedReaderState } from '../../../domain/text/textMixedReader
 import { normalizeTextCardPresentationState } from '../../../domain/text/textCardPresentationStateDomain.js';
 import { useConversationAudioPlayback } from '../conversation/useConversationAudioPlayback.js';
 import SharedMixedWorkspaceReader from './SharedMixedWorkspaceReader.jsx';
+import TextMixedWorkspaceEditor from '../mixed/TextMixedWorkspaceEditor.jsx';
 
 /** DEV-only isolated reading pilot. One existing host for the entire hydrated tree. */
 export default function TextMixedWorkspaceQaPreview() {
@@ -11,6 +12,8 @@ export default function TextMixedWorkspaceQaPreview() {
   const [otherWorkspace, setOtherWorkspace] = useState(false);
   const [view, setView] = useState(normalizeTextCardPresentationState);
   const [focusTarget, setFocusTarget] = useState(null);
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [editorPending, setEditorPending] = useState(false);
   const documentId = otherWorkspace ? fixture.ids.mixedDocumentId : fixture.ids.documentId;
   const state = useMemo(() => selectTextMixedReaderState(fixture.snapshot, { documentId }), [fixture, documentId]);
   const audioConfig = useMemo(() => ({
@@ -20,6 +23,10 @@ export default function TextMixedWorkspaceQaPreview() {
     snapshot: fixture.snapshot, documentTree: state.documentTree, audioConfig
   });
   const consumeFocus = useCallback(nonce => setFocusTarget(current => current?.nonce === nonce ? null : current), []);
+  const acceptCommand = useCallback((outcome, scope) => {
+    setFixture(current => current.snapshot === scope.snapshot ? { ...current, snapshot: outcome.snapshot } : current);
+    setFocusTarget(null);
+  }, []);
   const reveal = cardId => {
     const card = state.presentation.cardById[cardId];
     setFocusTarget(previous => ({
@@ -37,8 +44,9 @@ export default function TextMixedWorkspaceQaPreview() {
           <p className="text-sm">One existing audio host. Metadata-only fixture audio falls back through the existing browser playback path. This is not production Mixed audio activation.</p>
           <p className="text-sm" data-mixed-qa-audio-scope="split-1x">Audio QA: Split at 1×. Full audio and rate integration remain gated for P13-A4; Full/Part/Segment below controls reading only.</p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-workspace onClick={() => { setFocusTarget(null); setOtherWorkspace(v => !v); }}>Switch Workspace</button>
-            <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-reset onClick={() => { setFocusTarget(null); setFixture(createP13MixedFixture()); }}>Reset fixture</button>
+            <button type="button" disabled={editorPending} className="min-h-11 border rounded px-3" data-mixed-qa-editor-toggle onClick={() => setEditorVisible(v => !v)}>{editorVisible ? 'Hide Editor' : 'Show Editor'}</button>
+            <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-workspace onClick={() => { setEditorPending(false); setFocusTarget(null); setOtherWorkspace(v => !v); }}>Switch Workspace</button>
+            <button type="button" className="min-h-11 border rounded px-3" data-mixed-qa-reset onClick={() => { setEditorPending(false); setFocusTarget(null); setFixture(createP13MixedFixture()); }}>Reset fixture</button>
             <button type="button" className="min-h-11 border rounded px-3" onClick={audioPlayback.pausePlayback}>Pause</button>
             <button type="button" className="min-h-11 border rounded px-3" onClick={audioPlayback.resumePlayback}>Resume</button>
             <button type="button" className="min-h-11 border rounded px-3" onClick={audioPlayback.stopPlayback}>Stop</button>
@@ -48,7 +56,10 @@ export default function TextMixedWorkspaceQaPreview() {
               className="min-h-11 border rounded px-3 text-xs" onClick={() => reveal(card.id)}>{card.title || card.id}</button>)}
           </nav>
         </header>
+        {editorVisible && <TextMixedWorkspaceEditor key={`${documentId}:${state.presentation.workspace.uid}`} snapshot={fixture.snapshot} documentId={documentId}
+          onStateChange={acceptCommand} onPendingChange={setEditorPending} />}
         <SharedMixedWorkspaceReader snapshot={fixture.snapshot} documentId={documentId} audioPlayback={audioPlayback}
+          isBusy={editorPending}
           presentationState={view} onPresentationStateChange={setView} focusTarget={focusTarget} onFocusConsumed={consumeFocus} />
       </div>
     </main>

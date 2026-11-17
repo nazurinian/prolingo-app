@@ -961,13 +961,11 @@ const splitSentenceSegment = (snapshot, payload, now, blockType) => {
   const label = blockType === 'conversation' ? 'Conversation sentence' : 'Paragraph sentence';
   const parts = normalizeTextParagraphSentenceMutationParts(payload?.parts, current.joinAfter, label);
   const createdMetadata = { ...current.metadata };
-  if (blockType === 'conversation') {
-    // Only the retained Sentence owns the original external key. Copying it causes
-    // reconciliation's source-key map to overwrite one of the split Sentences.
-    delete createdMetadata.externalEntityV1;
-    if (createdMetadata.prolingoTextPackSource) {
-      createdMetadata.prolingoTextPackSource = { ...createdMetadata.prolingoTextPackSource, attachmentId: null, ownership: 'detached-local' };
-    }
+  // Only the retained Sentence owns the original external key, in either Card
+  // kind. New parts are local edits, not additional owners of the source entity.
+  delete createdMetadata.externalEntityV1;
+  if (createdMetadata.prolingoTextPackSource) {
+    createdMetadata.prolingoTextPackSource = { ...createdMetadata.prolingoTextPackSource, attachmentId: null, ownership: 'detached-local' };
   }
   let countersSnapshot = snapshot;
   const created = [];

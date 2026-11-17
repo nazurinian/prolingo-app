@@ -175,7 +175,8 @@ const EditSentenceForm = ({ sentence, isBusy, onCommand, onClose, compact }) => 
   );
 };
 
-const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, onCommand, onClose }) => {
+const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], unitKind = 'turn', isBusy, onCommand, onClose }) => {
+  const unitLabel = unitKind === 'paragraph' ? 'Section' : 'Turn';
   const otherTurns = sceneTurns.filter(t => t.id !== currentTurnId);
   const [targetUnitId, setTargetUnitId] = useState(otherTurns[0]?.id || sceneTurns[0]?.id || '');
   const [positionMode, setPositionMode] = useState('end');
@@ -188,7 +189,7 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
   const handleMove = async () => {
     setMoveError(null);
     if (!targetUnitId) {
-      setMoveError({ code: 'INVALID_COMMAND', message: 'Choose a destination Turn within this Scene.' });
+      setMoveError({ code: 'INVALID_COMMAND', message: `Choose a destination ${unitLabel} within this Card.` });
       return;
     }
     const payload = {
@@ -215,7 +216,7 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
   return (
     <div className="mt-2 rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-950/20 p-2.5 space-y-2" data-conversation-sentence-move="true">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] font-black text-sky-700 dark:text-sky-300">Move Sentence to Turn (Same Scene)</span>
+        <span className="text-[9px] font-black text-sky-700 dark:text-sky-300">Move Sentence to {unitLabel} (Same {unitKind === 'paragraph' ? 'Card' : 'Scene'})</span>
         <button type="button" onClick={onClose} className="p-1 text-slate-400" aria-label="Close move sentence">
           <X className="w-3.5 h-3.5" />
         </button>
@@ -229,12 +230,12 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
         value={targetUnitId}
         onChange={event => { setTargetUnitId(event.target.value); setPositionMode('end'); setBeforeSegmentId(''); }}
         disabled={isBusy}
-        aria-label="Destination Turn"
+        aria-label={`Destination ${unitLabel}`}
         className="w-full min-h-9 rounded-lg border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 px-2 text-xs dark:text-white"
       >
         {sceneTurns.map((turn, idx) => (
           <option key={turn.id} value={turn.id}>
-            Turn #{idx + 1} • {turn.speaker || 'No Speaker'} ({turn.sentenceCount}s){turn.id === currentTurnId ? ' [current]' : ''}
+            {unitLabel} #{idx + 1} • {unitKind === 'paragraph' ? turn.id : turn.speaker || 'No Speaker'} ({turn.sentenceCount}s){turn.id === currentTurnId ? ' [current]' : ''}
           </option>
         ))}
       </select>
@@ -248,7 +249,7 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
               if (mode === 'before' && !beforeSegmentId) setBeforeSegmentId(targetSentences[0]?.id || '');
             }}
             disabled={isBusy}
-            aria-label="Placement in Turn"
+            aria-label={`Placement in ${unitLabel}`}
             className="min-h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs dark:text-white"
           >
             <option value="end">Append at end</option>
@@ -271,7 +272,7 @@ const MoveSentencePanel = ({ sentence, currentTurnId, sceneTurns = [], isBusy, o
         </div>
       )}
       <p className="text-[8px] text-slate-500">
-        Moving inherits the target Turn&apos;s speaker{selectedTurn?.speaker ? ` (${selectedTurn.speaker})` : ''} and preserves an empty source Turn if this was its last Sentence.
+        {unitKind === 'paragraph' ? 'Moving keeps this Sentence within its Paragraph Card' : `Moving inherits the target Turn's speaker${selectedTurn?.speaker ? ` (${selectedTurn.speaker})` : ''}`} and preserves an empty source {unitLabel} if this was its last Sentence.
       </p>
       <div className="flex justify-end gap-1.5">
         <button type="button" disabled={isBusy} onClick={onClose} className="min-h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[9px] font-bold text-slate-500">Cancel</button>
@@ -342,6 +343,7 @@ export const ConversationSentenceItem = ({
 }) => {
   const [subMode, setSubMode] = useState(null);
   const siblings = turn?.sentences || [];
+  const unitLabel = turn?.kind === 'paragraph' ? 'Section' : 'Turn';
 
   const handleReorder = async direction => {
     const orderedIds = swapArrayIds(siblings.map(item => item.id), sentence.id, direction);
@@ -355,7 +357,7 @@ export const ConversationSentenceItem = ({
   const handleDelete = async () => {
     if (isBusy) return;
     if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm(`Delete sentence ${sentence.id}?${siblings.length === 1 ? ' Its parent Turn will remain intact as an empty Turn.' : ''}`)) return;
+      if (!window.confirm(`Delete sentence ${sentence.id}?${siblings.length === 1 ? ` Its parent ${unitLabel} will remain intact as an empty ${unitLabel}.` : ''}`)) return;
     }
     await onCommand?.({
       type: 'segment.delete',
@@ -366,7 +368,7 @@ export const ConversationSentenceItem = ({
   const handleMergeWithNext = async () => {
     if (!nextSentence || isBusy) return;
     const outcome = await onCommand?.({
-      type: 'conversationSegments.merge',
+      type: turn?.kind === 'paragraph' ? 'paragraphSegments.merge' : 'conversationSegments.merge',
       payload: { ids: [sentence.id, nextSentence.id] }
     });
     if (outcome?.ok) setSubMode(null);
@@ -496,7 +498,7 @@ export const ConversationSentenceItem = ({
             disabled={isBusy || sentenceIndex === 0}
             onClick={() => handleReorder(-1)}
             className={`${compact ? 'min-h-10' : 'p-1.5'} rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 disabled:opacity-25`}
-            title="Move sentence up inside Turn"
+            title={`Move sentence up inside ${unitLabel}`}
             aria-label={`Move sentence ${sentence.id} up`}
           >
             <ArrowUp className="w-3 h-3 mx-auto" />
@@ -506,7 +508,7 @@ export const ConversationSentenceItem = ({
             disabled={isBusy || sentenceIndex === siblings.length - 1}
             onClick={() => handleReorder(1)}
             className={`${compact ? 'min-h-10' : 'p-1.5'} rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-indigo-600 disabled:opacity-25`}
-            title="Move sentence down inside Turn"
+            title={`Move sentence down inside ${unitLabel}`}
             aria-label={`Move sentence ${sentence.id} down`}
           >
             <ArrowDown className="w-3 h-3 mx-auto" />
@@ -526,7 +528,7 @@ export const ConversationSentenceItem = ({
             disabled={isBusy}
             onClick={handleDelete}
             className={`${compact ? 'min-h-10' : 'p-1.5'} rounded-lg border border-red-200 dark:border-red-900 text-red-400 hover:text-red-600 disabled:opacity-40`}
-            title="Delete sentence (retains empty Turn)"
+            title={`Delete sentence (retains empty ${unitLabel})`}
             aria-label={`Delete sentence ${sentence.id}`}
           >
             <Trash2 className="w-3 h-3 mx-auto" />
@@ -546,7 +548,7 @@ export const ConversationSentenceItem = ({
             onClick={() => toggleSubMode('move')}
             className={`${compact ? 'min-h-9 col-span-2' : 'px-1.5 py-1'} rounded-lg border ${subMode === 'move' ? 'bg-sky-600 border-sky-600 text-white' : 'border-sky-200 dark:border-sky-800 text-sky-600 dark:text-sky-300'} text-[8px] font-black disabled:opacity-30`}
           >
-            <ArrowRightLeft className="w-2.5 h-2.5 inline mr-0.5" />Move Turn
+            <ArrowRightLeft className="w-2.5 h-2.5 inline mr-0.5" />Move {unitLabel}
           </button>
           {nextSentence && (
             <button
@@ -564,9 +566,9 @@ export const ConversationSentenceItem = ({
               disabled={isBusy}
               onClick={handleSplitTurnBeforeHere}
               className={`${compact ? 'min-h-9 col-span-2' : 'px-1.5 py-1'} rounded-lg border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[8px] font-black`}
-              title="Split Turn so this Sentence starts a new Speaker Turn"
+              title={`Split ${unitLabel} so this Sentence starts a new ${unitLabel}`}
             >
-              <Split className="w-2.5 h-2.5 inline mr-0.5" />Split Turn Here
+              <Split className="w-2.5 h-2.5 inline mr-0.5" />Split {unitLabel} Here
             </button>
           )}
         </div>
@@ -576,6 +578,7 @@ export const ConversationSentenceItem = ({
         <ConversationSentenceSplitPanel
           key={`${sentence.id}-split`}
           sentence={sentence}
+          unitKind={turn?.kind}
           isBusy={isBusy}
           onCommand={onCommand}
           onClose={() => setSubMode(null)}
@@ -589,6 +592,7 @@ export const ConversationSentenceItem = ({
           sentence={sentence}
           currentTurnId={turn.id}
           sceneTurns={sceneTurns}
+          unitKind={turn?.kind}
           isBusy={isBusy}
           onCommand={onCommand}
           onClose={() => setSubMode(null)}

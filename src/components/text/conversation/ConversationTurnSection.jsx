@@ -22,7 +22,7 @@ import ConversationSentenceItem from './ConversationSentenceItem.jsx';
 
 const clean = value => String(value ?? '').trim();
 
-const AddSentenceForm = ({ sceneId, turn, isBusy, onCommand, onClose, compact }) => {
+export const AddSentenceForm = ({ sceneId, turn, isBusy, onCommand, onClose, compact }) => {
   const [text, setText] = useState('');
   const [meaning, setMeaning] = useState('');
   const [joinAfter, setJoinAfter] = useState('line');
@@ -65,7 +65,7 @@ const AddSentenceForm = ({ sceneId, turn, isBusy, onCommand, onClose, compact })
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-[9px] font-black text-indigo-700 dark:text-indigo-300">
-          Add Sentence to {turn.speaker || 'Unattributed'} Turn ({turn.id})
+          Add Sentence to {turn.kind === 'paragraph' ? 'Section' : `${turn.speaker || 'Unattributed'} Turn`} ({turn.id})
         </p>
         <button type="button" onClick={onClose} className="p-1 text-slate-400" aria-label="Cancel add sentence">
           <X className="w-3.5 h-3.5" />
