@@ -15,7 +15,7 @@ import {
   createA2V1CompatibilityParagraphFixture
 } from './paragraph-reader-fixture.js';
 import { createD5AudioFixture } from '../d5/conversation-audio-fixture.js';
-import { waitForCompletedReveal } from './completed-reveal.js';
+import { waitForCompletedReveal, waitForStableBrowserLayout } from './completed-reveal.js';
 
 const root = createRoot(document.getElementById('root'));
 const tick = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
@@ -61,6 +61,7 @@ const segTarget = (segId, channel = 'text') => document.querySelector(
 export const runA2BrowserCases = async () => {
   const results = [];
   const completedReveals = [];
+  const preparedLayouts = [];
   const runCase = async (name, fn) => {
     try {
       await fn();
@@ -221,7 +222,7 @@ export const runA2BrowserCases = async () => {
     assert(enTarget.matches(':focus-visible'), 'Keyboard focus-visible must stay active');
     assert(getComputedStyle(enTarget).boxShadow !== 'none', 'Focus ring must be computed/visible');
     const scrollAfterFocus = window.scrollY;
-    await tick(60);
+    preparedLayouts.push(await waitForStableBrowserLayout(() => enTarget, { label: 'Keyboard baseline after native focus/follow scroll' }));
     await pressKey('Enter');
     const scrollBeforeSpace = window.scrollY;
     await pressKey(' ');
@@ -467,6 +468,7 @@ export const runA2BrowserCases = async () => {
     // V1 check at Desktop 1280px
     await setViewport(1280, 800);
     await render(<SharedParagraphWorkspaceReader presentation={v1Pres} />);
+    const normalRootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize);
     assert(document.querySelector('[data-shared-card-identity-source="v1-paragraph-compat"]'), 'V1 compat identity source must be visible in DOM');
     assert(document.documentElement.scrollWidth <= window.innerWidth, 'Desktop must have zero horizontal overflow');
     const measureEl = document.querySelector(`[data-shared-card-body="${v1.ids.cardId}"] [data-shared-card-segment-pair] > div`)
@@ -499,6 +501,13 @@ export const runA2BrowserCases = async () => {
     // Reduced motion behavior check
     await setReducedMotion(true);
     await setViewport(1024, 300);
+    // Finish the viewport/font transition and React commit BEFORE introducing focusTarget.
+    // Otherwise native auto scrolling can center the old layout, then be clamped by reflow.
+    await render(<SharedParagraphWorkspaceReader presentation={v2Pres} />);
+    preparedLayouts.push(await waitForStableBrowserLayout(() => segTarget(f.ids.duplicateSeg2Id), {
+      label: 'R1 reset-font 1024x300 before search', width: 1024, height: 300,
+      rootFontSize: normalRootFontSize, reducedMotion: true
+    }));
     const motionCalls = [];
     const originalScrollIntoView = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = function (options) {
@@ -581,6 +590,7 @@ export const runA2BrowserCases = async () => {
     browser: navigator.userAgent,
     results,
     completedReveals,
+    preparedLayouts,
     passed: results.filter(item => item.ok).length,
     failed: results.filter(item => !item.ok).length,
     indexedDbCalls: window.__a2DbCalls,

@@ -51,3 +51,51 @@ export const waitForCompletedReveal = async (getTarget, { label = 'Search target
   }
   throw new Error(`${label} was not visibly revealed and settled within ${timeoutMs}ms: ${JSON.stringify(last)}`);
 };
+
+/** Test setup barrier: commit/layout/anchoring must settle before requesting an interaction. */
+export const waitForStableBrowserLayout = async (getTarget, {
+  label = 'Reader layout', width = innerWidth, height = innerHeight,
+  rootFontSize = null, reducedMotion = null, timeoutMs = 4000
+} = {}) => {
+  const start = performance.now();
+  let previous = null;
+  let stableSince = null;
+  let frames = 0;
+  let last;
+  while (performance.now() - start < timeoutMs) {
+    // Observe real paint opportunities; a CDP metrics acknowledgement is not a layout commit.
+    const painted = await new Promise(resolve => {
+      const remaining = Math.max(1, timeoutMs - (performance.now() - start));
+      const timer = setTimeout(() => { cancelAnimationFrame(frame); resolve(false); }, Math.min(250, remaining));
+      const frame = requestAnimationFrame(() => { clearTimeout(timer); resolve(true); });
+    });
+    const target = getTarget();
+    const geometry = sampleReveal(target);
+    last = { width: innerWidth, height: innerHeight,
+      rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      targetFontSize: target?.isConnected ? parseFloat(getComputedStyle(target).fontSize) : null,
+      documentHeight: document.documentElement.scrollHeight,
+      reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, ...geometry };
+    const ready = painted && geometry.rect && innerWidth === width && innerHeight === height
+      && (rootFontSize === null || last.rootFontSize === rootFontSize)
+      && (reducedMotion === null || last.reducedMotion === reducedMotion)
+      && (!document.fonts || document.fonts.status === 'loaded');
+    const values = ready ? [last.width, last.height, last.rootFontSize, last.targetFontSize,
+      last.documentHeight, ...Object.values(geometry.rect), ...Object.values(geometry.bounds),
+      geometry.documentTop, geometry.documentLeft,
+      ...geometry.scrollContainers.flatMap(container => Object.values(container))] : null;
+    const unchanged = values && previous && values.length === previous.length
+      && values.every((value, i) => Math.abs(value - previous[i]) < 0.5);
+    const now = performance.now();
+    if (now - start >= timeoutMs) break;
+    if (ready) {
+      stableSince = unchanged ? stableSince ?? now : now;
+      frames = unchanged ? frames + 1 : 1;
+      if (frames >= 3 && now - stableSince >= 120) {
+        return { label, ...last, elapsedMs: Math.round(now - start), stableMs: Math.round(now - stableSince), frames };
+      }
+    } else { stableSince = null; frames = 0; }
+    previous = values;
+  }
+  throw new Error(`${label} did not reach committed stable layout within ${timeoutMs}ms: ${JSON.stringify(last)}`);
+};
