@@ -335,7 +335,7 @@ export const renderMainAppShellView = (props) => {
         })()}
 
         {/* MAIN BODY AREA */}
-        <div className={`flex-1 bg-slate-50 dark:bg-slate-900 ${isMobile ? '' : 'overflow-hidden relative flex flex-col'}`}>
+        <div className={`flex-1 bg-slate-50 dark:bg-slate-900 ${mode === 'text' ? 'min-w-0' : ''} ${isMobile ? '' : 'overflow-hidden relative flex flex-col'}`}>
             
             {/* 4. TABLE WORKSPACE SHELL (Desktop) */}
             {!isMobile && mode === 'table' && renderWorkspaceTabs(false)}

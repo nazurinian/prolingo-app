@@ -45,6 +45,9 @@ import { MemoizedRow } from './components/table/MemoizedRow';
 import { MemoizedTextRow } from './components/table/MemoizedTextRow';
 import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
 import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
+import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
+import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from './domain/text/textMainReaderDomain.js';
+import { loadTextMainReaderPreference, saveTextMainReaderPreference } from './services/persistence/textMainReaderPreferenceService.js';
 import { renderPlaylistViewport } from './components/table/PlaylistViewport';
 import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE_KEYS, V510_SOURCE_LABELS, V58_CANONICAL_HEADERS } from './constants/datasetConstants';
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
@@ -847,6 +850,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [textContent, setTextIdentityState]);
 
   const activeTextEditorModel = textLibrarySnapshot?.documents?.find(document => document.id === activeTextDocumentId)?.editorModel || null;
+  const [textMainReaderPreference, setTextMainReaderPreference] = useState(loadTextMainReaderPreference);
+  const textMainReaderProvenanceRef = useRef(null);
+  const textMainReader = useMemo(
+    () => selectTextMainReaderPresentation(textLibrarySnapshot, activeTextDocumentId),
+    [textLibrarySnapshot, activeTextDocumentId]
+  );
+  const sharedTextReaderActive = Boolean(textDatabaseStatus === 'ready' && textMainReader.presentation && textMainReaderPreference.reader === 'shared');
+  const updateTextMainReaderPreference = patch => setTextMainReaderPreference(previous => (
+    saveTextMainReaderPreference({ ...previous, ...patch })
+  ));
   const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
   const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
@@ -4157,6 +4170,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       orderedListOverride,
       onPlaybackCursor: ({ documentId, segmentId, orderedList }) => {
         if (documentId !== activeTextDocumentTree?.id || !segmentId) return;
+        // Observe the existing host session; do not allocate a token or change audio.
+        const context = playbackContextRef.current;
+        if (context?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT && context.documentId === documentId
+          && context.sessionId === playbackSessionRef.current) {
+          textMainReaderProvenanceRef.current = {
+            snapshot: textLibrarySnapshot, documentId,
+            workspaceUid: activeTextDocumentTree.uid ?? null, sessionId: context.sessionId
+          };
+        }
         const retainedManualShuffleList = isManualUnitScope
           && globalShuffleActive
           && structuredTextResumeCursorRef.current.documentId === documentId
@@ -7472,13 +7494,28 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     rangeInput, setRangeInput, handleRangeAdd
   });
 
-  const renderPlaylist = () => {
+  const sharedTextPlaybackCursor = resolveTextMainReaderCursor({
+    presentation: textMainReader.presentation,
+    snapshot: textLibrarySnapshot,
+    provenance: textMainReaderProvenanceRef.current,
+    context: playbackContextRef.current,
+    sessionId: playbackSessionRef.current,
+    status: scopedStructuredTextPlaybackSourceStatus,
+    isPlaying, isPaused, playingContext, stopped: stopSignalRef.current
+  });
+
+  const renderPlaylistContent = () => {
     if (mode === 'text' && textDatabaseStatus !== 'ready') {
       return <TextHydrationGate status={textDatabaseStatus} error={textDatabaseError} />;
     }
     if (mode === 'text' && activeTextEditorModel === 'structured-v1') {
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
+        useSharedCardReader={sharedTextReaderActive}
+        sharedPresentation={textMainReader.presentation}
+        sharedPresentationState={textMainReaderPreference.view}
+        onSharedPresentationStateChange={view => updateTextMainReaderPreference({ view })}
+        sharedPlaybackCursor={sharedTextPlaybackCursor}
         isPlaying={isPlaying}
         isPaused={isPaused}
         speakingPart={speakingPart}
@@ -7622,6 +7659,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     cancelActiveAudioGeneration
     });
   };
+
+  const renderPlaylist = () => mode === 'text' ? (
+    <div className="h-full min-h-0 flex flex-col" data-text-main-reader={sharedTextReaderActive ? 'shared' : 'legacy'}>
+      <TextMainReaderControl
+        reader={sharedTextReaderActive ? 'shared' : 'legacy'}
+        eligible={Boolean(textMainReader.presentation) && textDatabaseStatus === 'ready'}
+        reason={textDatabaseStatus === 'ready' ? textMainReader.reason : textDatabaseStatus === 'error'
+          ? 'Workspace Text gagal dimuat; Shared Beta tidak tersedia.' : 'Workspace Text sedang dimuat.'}
+        onChange={reader => updateTextMainReaderPreference({ reader })}
+      />
+      <div className="flex-1 min-h-0">{renderPlaylistContent()}</div>
+    </div>
+  ) : renderPlaylistContent();
 
   return renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
