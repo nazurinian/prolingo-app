@@ -4,13 +4,75 @@ import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRol
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import {
   IDLE_SHARED_CURSOR,
-  getSharedUnitTerms,
-  getSharedUnitHeading,
   buildCardSegmentIndexMap,
+  buildCardSpeakerAppearanceMap,
   buildSharedSegmentRenderFlags,
+  getSharedUnitHeading,
+  getSharedUnitTerms,
   normalizeSegmentDisplayText,
-  resolveSegmentJoinSeparator
+  resolveSegmentJoinSeparator,
+  resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
+
+const UnitHeadingBlock = ({
+  unit,
+  unitIndex,
+  speakerInfo,
+  isRepeatedSpeaker = false,
+  isAudibleTurn = false,
+  cursorState = 'idle',
+  compact = false
+}) => {
+  if (unit?.kind !== 'turn') {
+    return (
+      <p className={`${compact ? 'mb-2.5' : 'mb-3'} text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none`}>
+        {getSharedUnitHeading(unit, unitIndex)}
+      </p>
+    );
+  }
+
+  return (
+    <div
+      className={`${compact ? 'mb-2' : 'mb-2.5'} flex flex-wrap items-center justify-between gap-2`}
+      data-shared-turn-header={unit.viewKey}
+    >
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <span
+          aria-hidden="true"
+          className={`h-6 w-6 rounded-full text-[11px] font-bold inline-flex items-center justify-center shrink-0 select-none ${speakerInfo.palette.avatar}`}
+        >
+          {speakerInfo.monogram}
+        </span>
+        <span
+          data-shared-turn-speaker={unit.viewKey}
+          className={`text-[13px] font-semibold leading-snug break-words ${speakerInfo.palette.nameText}`}
+        >
+          {speakerInfo.displayName}
+        </span>
+        <span
+          data-shared-turn-label="true"
+          className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums select-none"
+        >
+          {unit.label || getSharedUnitTerms(unit).label} {unitIndex + 1}
+        </span>
+        {isRepeatedSpeaker && (
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 select-none">
+            · consecutive turn
+          </span>
+        )}
+      </div>
+      {isAudibleTurn && (
+        <span
+          data-shared-turn-audible="true"
+          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-700/70 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200"
+        >
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${speakerInfo.palette.dot}`} />
+          <span>{cursorState === 'paused' ? 'Paused' : 'Speaking'}</span>
+        </span>
+      )}
+    </div>
+  );
+};
 
 const renderChannelJoinSeparator = (segment, hasNextSegment) => {
   if (!hasNextSegment) return null;
@@ -24,6 +86,7 @@ const CardChannelFlowBody = ({
   units,
   channel,
   indexById,
+  speakerAppearanceMap,
   cursor,
   focusSegmentId,
   playableSegmentIds,
@@ -54,6 +117,27 @@ const CardChannelFlowBody = ({
     >
       {units.map((unit, unitIndex) => {
         const unitSegments = unit.segments || [];
+        const isTurn = unit.kind === 'turn';
+        const speakerInfo = isTurn
+          ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
+          : null;
+        const prevUnit = unitIndex > 0 ? units[unitIndex - 1] : null;
+        const prevSpeakerInfo = prevUnit?.kind === 'turn'
+          ? resolveTurnSpeakerPresentation({ unit: prevUnit, appearanceMap: speakerAppearanceMap })
+          : null;
+        const isRepeatedSpeaker = Boolean(
+          isTurn
+          && prevSpeakerInfo?.speakerKey
+          && speakerInfo?.speakerKey
+          && prevSpeakerInfo.speakerKey === speakerInfo.speakerKey
+        );
+        const isAudibleTurn = Boolean(
+          isTurn
+          && isSpeakingCard
+          && cursor.precision === 'segment'
+          && cursor.segmentId
+          && unitSegments.some(item => item.id === cursor.segmentId)
+        );
         const hasAnyContent = unitSegments.some(segment => (
           Boolean(normalizeSegmentDisplayText(isMeaning ? segment.meaning : segment.text))
         ));
@@ -63,80 +147,98 @@ const CardChannelFlowBody = ({
             data-shared-card-unit={unit.viewKey}
             data-shared-card-unit-id={unit.id || undefined}
             data-shared-card-identity-source={unit.identitySource}
-            className={unitIndex > 0 ? 'pt-5 border-t border-slate-200/75 dark:border-slate-800/80' : ''}
+            data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
+            data-shared-turn-audible={isAudibleTurn ? 'true' : undefined}
+            className={`${unitIndex > 0 ? 'pt-5 border-t border-slate-200/75 dark:border-slate-800/80' : ''}`}
           >
             {showSectionHeaders && (
-              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {getSharedUnitHeading(unit, unitIndex)}
-              </p>
+              <UnitHeadingBlock
+                unit={unit}
+                unitIndex={unitIndex}
+                speakerInfo={speakerInfo}
+                isRepeatedSpeaker={isRepeatedSpeaker}
+                isAudibleTurn={isAudibleTurn}
+                cursorState={cursor.state}
+                compact
+              />
             )}
-            {unitSegments.length === 0 ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
-              </p>
-            ) : !hasAnyContent && !showMissingInline ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-channel={channel}>
-                {`No ${isMeaning ? 'Indonesian meaning' : 'English text'} in this ${getSharedUnitTerms(unit).lower} yet.`}
-              </p>
-            ) : (
-              <div lang={langTag} className={`max-w-[66ch] text-left break-words whitespace-pre-line ${proseTypography}`}>
-                {unitSegments.map((segment, segIdx) => {
-                  const content = normalizeSegmentDisplayText(isMeaning ? segment.meaning : segment.text);
-                  const logicalIndex = indexById.get(segment.id) ?? segIdx;
-                  if (!content) {
-                    if (!showMissingInline) return null;
+            <div
+              className={
+                isTurn && showSectionHeaders
+                  ? `pl-3.5 sm:pl-4 border-l-2 transition-colors motion-reduce:transition-none ${
+                      isAudibleTurn ? speakerInfo.palette.rail : speakerInfo.palette.railMuted
+                    }`
+                  : ''
+              }
+            >
+              {unitSegments.length === 0 ? (
+                <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
+                  Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
+                </p>
+              ) : !hasAnyContent && !showMissingInline ? (
+                <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-channel={channel}>
+                  {`No ${isMeaning ? 'Indonesian meaning' : 'English text'} in this ${getSharedUnitTerms(unit).lower} yet.`}
+                </p>
+              ) : (
+                <div lang={langTag} className={`max-w-[66ch] text-left break-words whitespace-pre-line ${proseTypography}`}>
+                  {unitSegments.map((segment, segIdx) => {
+                    const content = normalizeSegmentDisplayText(isMeaning ? segment.meaning : segment.text);
+                    const logicalIndex = indexById.get(segment.id) ?? segIdx;
+                    if (!content) {
+                      if (!showMissingInline) return null;
+                      return (
+                        <React.Fragment key={`${channel}-${segment.id}-missing`}>
+                          <span
+                            data-shared-card-missing-meaning={isMeaning ? segment.id : undefined}
+                            data-shared-card-missing-text={!isMeaning ? segment.id : undefined}
+                            className="inline text-xs italic text-slate-400 dark:text-slate-500 select-none"
+                          >
+                            [{`#${logicalIndex + 1}: `}{isMeaning ? 'no meaning' : 'no text'}]
+                          </span>
+                          {segIdx < unitSegments.length - 1 ? ' ' : null}
+                        </React.Fragment>
+                      );
+                    }
+                    const flags = buildSharedSegmentRenderFlags({
+                      segment,
+                      logicalIndex,
+                      channel,
+                      cursor,
+                      isSpeakingCard,
+                      fullChannelHighlighted,
+                      focusSegmentId,
+                      playableSegmentIds,
+                      audioCoverageMap,
+                      disabled
+                    });
+                    const nextHasRenderable = unitSegments.slice(segIdx + 1).some(item => (
+                      showMissingInline || Boolean(normalizeSegmentDisplayText(isMeaning ? item.meaning : item.text))
+                    ));
                     return (
-                      <React.Fragment key={`${channel}-${segment.id}-missing`}>
-                        <span
-                          data-shared-card-missing-meaning={isMeaning ? segment.id : undefined}
-                          data-shared-card-missing-text={!isMeaning ? segment.id : undefined}
-                          className="inline text-xs italic text-slate-400 dark:text-slate-500 select-none"
+                      <React.Fragment key={`${channel}-${segment.id}`}>
+                        <TextSegmentInteraction
+                          segmentId={segment.id}
+                          channel={channel}
+                          interactive
+                          disabled={flags.segmentDisabled}
+                          active={flags.active}
+                          speaking={flags.speaking}
+                          focused={flags.focused}
+                          fullChannelHighlighted={flags.fullChannelHighlighted}
+                          dataAttributes={flags.dataAttributes}
+                          title={flags.title}
+                          accessibleLabel={flags.accessibleLabel}
+                          onActivate={onPlaySegment}
                         >
-                          [{`#${logicalIndex + 1}: `}{isMeaning ? 'no meaning' : 'no text'}]
-                        </span>
-                        {segIdx < unitSegments.length - 1 ? ' ' : null}
+                          {content}
+                        </TextSegmentInteraction>
+                        {renderChannelJoinSeparator(segment, nextHasRenderable)}
                       </React.Fragment>
                     );
-                  }
-                  const flags = buildSharedSegmentRenderFlags({
-                    segment,
-                    logicalIndex,
-                    channel,
-                    cursor,
-                    isSpeakingCard,
-                    fullChannelHighlighted,
-                    focusSegmentId,
-                    playableSegmentIds,
-                    audioCoverageMap,
-                    disabled
-                  });
-                  const nextHasRenderable = unitSegments.slice(segIdx + 1).some(item => (
-                    showMissingInline || Boolean(normalizeSegmentDisplayText(isMeaning ? item.meaning : item.text))
-                  ));
-                  return (
-                    <React.Fragment key={`${channel}-${segment.id}`}>
-                      <TextSegmentInteraction
-                        segmentId={segment.id}
-                        channel={channel}
-                        interactive
-                        disabled={flags.segmentDisabled}
-                        active={flags.active}
-                        speaking={flags.speaking}
-                        focused={flags.focused}
-                        fullChannelHighlighted={flags.fullChannelHighlighted}
-                        dataAttributes={flags.dataAttributes}
-                        title={flags.title}
-                        accessibleLabel={flags.accessibleLabel}
-                        onActivate={onPlaySegment}
-                      >
-                        {content}
-                      </TextSegmentInteraction>
-                      {renderChannelJoinSeparator(segment, nextHasRenderable)}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            )}
+                  })}
+                </div>
+              )}
+            </div>
           </section>
         );
       })}
@@ -147,6 +249,7 @@ const CardChannelFlowBody = ({
 const CardInterlinearBody = ({
   units,
   indexById,
+  speakerAppearanceMap,
   cursor,
   focusSegmentId,
   playableSegmentIds,
@@ -167,153 +270,191 @@ const CardInterlinearBody = ({
     <div className="space-y-6" data-shared-card-flow="interlinear">
       {units.map((unit, unitIndex) => {
         const unitSegments = unit.segments || [];
+        const isTurn = unit.kind === 'turn';
+        const speakerInfo = isTurn
+          ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
+          : null;
+        const prevUnit = unitIndex > 0 ? units[unitIndex - 1] : null;
+        const prevSpeakerInfo = prevUnit?.kind === 'turn'
+          ? resolveTurnSpeakerPresentation({ unit: prevUnit, appearanceMap: speakerAppearanceMap })
+          : null;
+        const isRepeatedSpeaker = Boolean(
+          isTurn
+          && prevSpeakerInfo?.speakerKey
+          && speakerInfo?.speakerKey
+          && prevSpeakerInfo.speakerKey === speakerInfo.speakerKey
+        );
+        const isAudibleTurn = Boolean(
+          isTurn
+          && isSpeakingCard
+          && cursor.precision === 'segment'
+          && cursor.segmentId
+          && unitSegments.some(item => item.id === cursor.segmentId)
+        );
         return (
           <section
             key={unit.viewKey}
             data-shared-card-unit={unit.viewKey}
             data-shared-card-unit-id={unit.id || undefined}
             data-shared-card-identity-source={unit.identitySource}
+            data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
+            data-shared-turn-audible={isAudibleTurn ? 'true' : undefined}
             className={unitIndex > 0 ? 'pt-5 border-t border-slate-200/75 dark:border-slate-800/80' : ''}
           >
             {showSectionHeaders && (
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {getSharedUnitHeading(unit, unitIndex)}
-              </p>
+              <UnitHeadingBlock
+                unit={unit}
+                unitIndex={unitIndex}
+                speakerInfo={speakerInfo}
+                isRepeatedSpeaker={isRepeatedSpeaker}
+                isAudibleTurn={isAudibleTurn}
+                cursorState={cursor.state}
+              />
             )}
-            {unitSegments.length === 0 ? (
-              <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {unitSegments.map((segment, segIdx) => {
-                  const logicalIndex = indexById.get(segment.id) ?? segIdx;
-                  const textContent = normalizeSegmentDisplayText(segment.text);
-                  const meaningContent = normalizeSegmentDisplayText(segment.meaning);
-                  const textFlags = buildSharedSegmentRenderFlags({
-                    segment,
-                    logicalIndex,
-                    channel: 'text',
-                    cursor,
-                    isSpeakingCard,
-                    fullChannelHighlighted: fullTextHighlight,
-                    focusSegmentId,
-                    playableSegmentIds,
-                    audioCoverageMap,
-                    disabled
-                  });
-                  const meaningFlags = buildSharedSegmentRenderFlags({
-                    segment,
-                    logicalIndex,
-                    channel: 'meaning',
-                    cursor,
-                    isSpeakingCard,
-                    fullChannelHighlighted: fullMeaningHighlight,
-                    focusSegmentId,
-                    playableSegmentIds,
-                    audioCoverageMap,
-                    disabled
-                  });
-                  const active = textFlags.active;
-                  const focused = textFlags.focused;
+            <div
+              className={
+                isTurn && showSectionHeaders
+                  ? `pl-3.5 sm:pl-4 border-l-2 transition-colors motion-reduce:transition-none ${
+                      isAudibleTurn ? speakerInfo.palette.rail : speakerInfo.palette.railMuted
+                    }`
+                  : ''
+              }
+            >
+              {unitSegments.length === 0 ? (
+                <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
+                  Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {unitSegments.map((segment, segIdx) => {
+                    const logicalIndex = indexById.get(segment.id) ?? segIdx;
+                    const textContent = normalizeSegmentDisplayText(segment.text);
+                    const meaningContent = normalizeSegmentDisplayText(segment.meaning);
+                    const textFlags = buildSharedSegmentRenderFlags({
+                      segment,
+                      logicalIndex,
+                      channel: 'text',
+                      cursor,
+                      isSpeakingCard,
+                      fullChannelHighlighted: fullTextHighlight,
+                      focusSegmentId,
+                      playableSegmentIds,
+                      audioCoverageMap,
+                      disabled
+                    });
+                    const meaningFlags = buildSharedSegmentRenderFlags({
+                      segment,
+                      logicalIndex,
+                      channel: 'meaning',
+                      cursor,
+                      isSpeakingCard,
+                      fullChannelHighlighted: fullMeaningHighlight,
+                      focusSegmentId,
+                      playableSegmentIds,
+                      audioCoverageMap,
+                      disabled
+                    });
+                    const active = textFlags.active;
+                    const focused = textFlags.focused;
 
-                  return (
-                    <div
-                      key={segment.id}
-                      data-shared-card-segment-pair={segment.id}
-                      data-shared-card-index={logicalIndex + 1}
-                      className={
-                        showSegmentNumbers
-                          ? 'grid grid-cols-[1.6rem_minmax(0,1fr)] gap-x-2.5 items-baseline'
-                          : 'block'
-                      }
-                    >
-                      {showSegmentNumbers && (
-                        <span
-                          aria-hidden="true"
-                          className={`select-none text-xs tabular-nums text-right ${
-                            active
-                              ? 'font-bold text-indigo-600 dark:text-indigo-400'
-                              : focused
-                                ? 'font-bold text-amber-600 dark:text-amber-400'
-                                : 'font-medium text-slate-400 dark:text-slate-500'
-                          }`}
-                        >
-                          {logicalIndex + 1}
-                        </span>
-                      )}
-                      <div className="min-w-0 max-w-[66ch] space-y-1.5">
-                        <div
-                          lang={textLang}
-                          className={`text-left break-words whitespace-pre-line ${
-                            isTitleRole
-                              ? 'text-lg sm:text-[1.25rem] font-medium leading-[1.72] tracking-[-0.01em] text-slate-900 dark:text-slate-50'
-                              : 'text-[1.0625rem] sm:text-[1.125rem] font-normal leading-[1.74] text-slate-900 dark:text-slate-100'
-                          }`}
-                        >
-                          {textContent ? (
-                            <TextSegmentInteraction
-                              segmentId={segment.id}
-                              channel="text"
-                              interactive
-                              disabled={textFlags.segmentDisabled}
-                              active={textFlags.active}
-                              speaking={textFlags.speaking}
-                              focused={textFlags.focused}
-                              fullChannelHighlighted={textFlags.fullChannelHighlighted}
-                              dataAttributes={textFlags.dataAttributes}
-                              title={textFlags.title}
-                              accessibleLabel={textFlags.accessibleLabel}
-                              onActivate={onPlaySegment}
-                            >
-                              {textContent}
-                            </TextSegmentInteraction>
-                          ) : (
-                            <span
-                              data-shared-card-missing-text={segment.id}
-                              className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
-                            >
-                              No English text
-                            </span>
-                          )}
-                        </div>
+                    return (
+                      <div
+                        key={segment.id}
+                        data-shared-card-segment-pair={segment.id}
+                        data-shared-card-index={logicalIndex + 1}
+                        className={
+                          showSegmentNumbers
+                            ? 'grid grid-cols-[1.6rem_minmax(0,1fr)] gap-x-2.5 items-baseline'
+                            : 'block'
+                        }
+                      >
+                        {showSegmentNumbers && (
+                          <span
+                            aria-hidden="true"
+                            className={`select-none text-xs tabular-nums text-right ${
+                              active
+                                ? 'font-bold text-indigo-600 dark:text-indigo-400'
+                                : focused
+                                  ? 'font-bold text-amber-600 dark:text-amber-400'
+                                  : 'font-medium text-slate-400 dark:text-slate-500'
+                            }`}
+                          >
+                            {logicalIndex + 1}
+                          </span>
+                        )}
+                        <div className="min-w-0 max-w-[66ch] space-y-1.5">
+                          <div
+                            lang={textLang}
+                            className={`text-left break-words whitespace-pre-line ${
+                              isTitleRole
+                                ? 'text-lg sm:text-[1.25rem] font-medium leading-[1.72] tracking-[-0.01em] text-slate-900 dark:text-slate-50'
+                                : 'text-[1.0625rem] sm:text-[1.125rem] font-normal leading-[1.74] text-slate-900 dark:text-slate-100'
+                            }`}
+                          >
+                            {textContent ? (
+                              <TextSegmentInteraction
+                                segmentId={segment.id}
+                                channel="text"
+                                interactive
+                                disabled={textFlags.segmentDisabled}
+                                active={textFlags.active}
+                                speaking={textFlags.speaking}
+                                focused={textFlags.focused}
+                                fullChannelHighlighted={textFlags.fullChannelHighlighted}
+                                dataAttributes={textFlags.dataAttributes}
+                                title={textFlags.title}
+                                accessibleLabel={textFlags.accessibleLabel}
+                                onActivate={onPlaySegment}
+                              >
+                                {textContent}
+                              </TextSegmentInteraction>
+                            ) : (
+                              <span
+                                data-shared-card-missing-text={segment.id}
+                                className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
+                              >
+                                No English text
+                              </span>
+                            )}
+                          </div>
 
-                        <div
-                          lang={meaningLang}
-                          className="text-left break-words whitespace-pre-line text-[0.9375rem] sm:text-[0.96875rem] leading-[1.62] text-slate-600 dark:text-slate-300"
-                        >
-                          {meaningContent ? (
-                            <TextSegmentInteraction
-                              segmentId={segment.id}
-                              channel="meaning"
-                              interactive
-                              disabled={meaningFlags.segmentDisabled}
-                              active={meaningFlags.active}
-                              speaking={meaningFlags.speaking}
-                              focused={meaningFlags.focused}
-                              fullChannelHighlighted={meaningFlags.fullChannelHighlighted}
-                              dataAttributes={meaningFlags.dataAttributes}
-                              title={meaningFlags.title}
-                              accessibleLabel={meaningFlags.accessibleLabel}
-                              onActivate={onPlaySegment}
-                            >
-                              {meaningContent}
-                            </TextSegmentInteraction>
-                          ) : (
-                            <span
-                              data-shared-card-missing-meaning={segment.id}
-                              className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
-                            >
-                              No Indonesian meaning
-                            </span>
-                          )}
+                          <div
+                            lang={meaningLang}
+                            className="text-left break-words whitespace-pre-line text-[0.9375rem] sm:text-[0.96875rem] leading-[1.62] text-slate-600 dark:text-slate-300"
+                          >
+                            {meaningContent ? (
+                              <TextSegmentInteraction
+                                segmentId={segment.id}
+                                channel="meaning"
+                                interactive
+                                disabled={meaningFlags.segmentDisabled}
+                                active={meaningFlags.active}
+                                speaking={meaningFlags.speaking}
+                                focused={meaningFlags.focused}
+                                fullChannelHighlighted={meaningFlags.fullChannelHighlighted}
+                                dataAttributes={meaningFlags.dataAttributes}
+                                title={meaningFlags.title}
+                                accessibleLabel={meaningFlags.accessibleLabel}
+                                onActivate={onPlaySegment}
+                              >
+                                {meaningContent}
+                              </TextSegmentInteraction>
+                            ) : (
+                              <span
+                                data-shared-card-missing-meaning={segment.id}
+                                className="text-xs italic text-slate-400 dark:text-slate-500 select-none"
+                              >
+                                No Indonesian meaning
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </section>
         );
       })}
@@ -329,6 +470,7 @@ export const SharedBilingualUnitsBody = ({
   card,
   unitsOverride = null,
   workspace = null,
+  speakerAppearanceMap = null,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
@@ -344,6 +486,10 @@ export const SharedBilingualUnitsBody = ({
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
   const { indexById } = useMemo(() => buildCardSegmentIndexMap(card), [card]);
+  const resolvedSpeakerMap = useMemo(
+    () => speakerAppearanceMap || buildCardSpeakerAppearanceMap(card),
+    [card, speakerAppearanceMap]
+  );
   const hasMultipleUnits = units.length > 1;
   const hasPersistentEmpty = units.some(unit => unit.identitySource === 'persistent' && (unit.segments?.length || 0) === 0);
   const showSectionHeaders = forceSectionHeaders !== null ? forceSectionHeaders : (card?.blockType === 'conversation' || hasMultipleUnits || hasPersistentEmpty);
@@ -356,7 +502,7 @@ export const SharedBilingualUnitsBody = ({
         className="text-sm italic text-slate-400 dark:text-slate-500"
         data-shared-card-empty="zero-units"
       >
-        No {getSharedUnitTerms(card).plural} in this card yet.
+        No {getSharedUnitTerms(card).plural} in this {getSharedUnitTerms(card).cardLower} yet.
       </p>
     );
   }
@@ -372,6 +518,7 @@ export const SharedBilingualUnitsBody = ({
             units={units}
             channel="text"
             indexById={indexById}
+            speakerAppearanceMap={resolvedSpeakerMap}
             cursor={cursor}
             focusSegmentId={focusSegmentId}
             playableSegmentIds={playableSegmentIds}
@@ -394,6 +541,7 @@ export const SharedBilingualUnitsBody = ({
             units={units}
             channel="meaning"
             indexById={indexById}
+            speakerAppearanceMap={resolvedSpeakerMap}
             cursor={cursor}
             focusSegmentId={focusSegmentId}
             playableSegmentIds={playableSegmentIds}
@@ -419,6 +567,7 @@ export const SharedBilingualUnitsBody = ({
         units={units}
         channel={channel}
         indexById={indexById}
+        speakerAppearanceMap={resolvedSpeakerMap}
         cursor={cursor}
         focusSegmentId={focusSegmentId}
         playableSegmentIds={playableSegmentIds}
@@ -439,6 +588,7 @@ export const SharedBilingualUnitsBody = ({
     <CardInterlinearBody
       units={units}
       indexById={indexById}
+      speakerAppearanceMap={resolvedSpeakerMap}
       cursor={cursor}
       focusSegmentId={focusSegmentId}
       playableSegmentIds={playableSegmentIds}

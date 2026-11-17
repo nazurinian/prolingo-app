@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Play, Radio } from 'lucide-react';
 import { DEFAULT_TEXT_CARD_PRESENTATION_STATE } from '../../../domain/text/textCardPresentationStateDomain.js';
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import {
   IDLE_SHARED_CURSOR,
-  getSharedUnitTerms,
-  getSharedUnitHeading,
+  buildCardSpeakerAppearanceMap,
   buildSharedSegmentRenderFlags,
+  getSharedUnitHeading,
+  getSharedUnitTerms,
   isPrefersReducedMotion,
   normalizeSegmentDisplayText,
   resolveSegmentCoverageStatuses,
+  resolveTurnSpeakerPresentation,
   stepCardSegmentId,
   stepCardUnitViewKey
 } from './sharedCardPresentationUtils.js';
@@ -21,15 +23,104 @@ const escapeSelectorValue = value => {
   return raw.replace(/["\\]/g, '\\$&');
 };
 
+const PartUnitIdentityHeader = ({
+  unit,
+  unitIndex,
+  speakerAppearanceMap,
+  rolePrefix = null,
+  segCount = 0,
+  isAudible = false,
+  isRepeatedSpeaker = false,
+  emphasize = false
+}) => {
+  if (unit?.kind !== 'turn') {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
+        {emphasize ? (
+          <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-200">
+            {rolePrefix ? `${rolePrefix} · ` : ''}{getSharedUnitHeading(unit, unitIndex)}
+          </span>
+        ) : (
+          <span className="font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+            {rolePrefix ? `${rolePrefix} · ` : ''}{getSharedUnitHeading(unit, unitIndex)}
+          </span>
+        )}
+        <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
+        <span className="text-slate-500 dark:text-slate-400">
+          {segCount} {segCount === 1 ? 'sentence' : 'sentences'}
+        </span>
+        {isAudible && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+            <Radio aria-hidden="true" className="w-3 h-3" />
+            <span>Audible</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const speakerInfo = resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap });
+  return (
+    <div className="flex flex-wrap items-center gap-2 min-w-0">
+      <span
+        aria-hidden="true"
+        className={`h-6 w-6 rounded-full text-[11px] font-bold inline-flex items-center justify-center shrink-0 select-none ${speakerInfo.palette.avatar}`}
+      >
+        {speakerInfo.monogram}
+      </span>
+      <span
+        data-shared-turn-speaker={unit.viewKey}
+        className={`text-xs sm:text-[13px] font-semibold leading-snug break-words ${speakerInfo.palette.nameText}`}
+      >
+        {speakerInfo.displayName}
+      </span>
+      <span
+        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          emphasize
+            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-200'
+            : 'bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400'
+        }`}
+      >
+        {rolePrefix ? `${rolePrefix} · ` : ''}{unit.label || 'Speaker Turn'} {unitIndex + 1}
+      </span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        {segCount} {segCount === 1 ? 'sentence' : 'sentences'}
+      </span>
+      {isRepeatedSpeaker && (
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">
+          · consecutive turn
+        </span>
+      )}
+      {isAudible && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+          <Radio aria-hidden="true" className="w-3 h-3" />
+          <span>Audible</span>
+        </span>
+      )}
+    </div>
+  );
+};
+
 const PartSectionNavigator = ({
+  card,
   units,
+  speakerAppearanceMap,
   selection,
   onSelectUnit,
   onFollowAudible
 }) => {
   const { selectedUnitViewKey, selectedUnitIndex, audibleUnitViewKey, unitDivergedFromAudible, isCardPrecisionPlaying } = selection;
   const activeUnit = selectedUnitIndex >= 0 ? units[selectedUnitIndex] : null;
+  const isTurnMode = (activeUnit?.kind || card?.blockType) === 'turn' || card?.blockType === 'conversation';
+  const unitTerms = getSharedUnitTerms(activeUnit || card);
   const isV1Compat = activeUnit?.identitySource === 'v1-paragraph-compat';
+  const activeSpeakerInfo = activeUnit?.kind === 'turn'
+    ? resolveTurnSpeakerPresentation({ unit: activeUnit, appearanceMap: speakerAppearanceMap })
+    : null;
+  const audibleUnit = selection.audibleUnitIndex >= 0 ? units[selection.audibleUnitIndex] : null;
+  const audibleSpeakerInfo = audibleUnit?.kind === 'turn'
+    ? resolveTurnSpeakerPresentation({ unit: audibleUnit, appearanceMap: speakerAppearanceMap })
+    : null;
 
   const handleGroupKeyDown = event => {
     if (!units.length) return;
@@ -56,8 +147,17 @@ const PartSectionNavigator = ({
     >
       <div className="flex flex-wrap items-center gap-2 min-w-0">
         <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums" data-shared-part-position="true">
-          {getSharedUnitTerms(activeUnit).label} {Math.max(1, selectedUnitIndex + 1)} of {units.length}
+          {unitTerms.label} {Math.max(1, selectedUnitIndex + 1)} of {units.length}
         </span>
+        {activeSpeakerInfo && (
+          <span
+            data-shared-part-nav-speaker="true"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${activeSpeakerInfo.palette.pill}`}
+          >
+            <span aria-hidden="true" className={`h-2 w-2 rounded-full ${activeSpeakerInfo.palette.dot}`} />
+            <span>{activeSpeakerInfo.displayName}</span>
+          </span>
+        )}
         {isV1Compat && (
           <span
             className="text-[11px] font-medium text-slate-400 dark:text-slate-500"
@@ -73,7 +173,7 @@ const PartSectionNavigator = ({
             className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
           >
             <Radio aria-hidden="true" className="w-3 h-3" />
-            <span>Playing Full Card audio · Browse {getSharedUnitTerms(activeUnit).plural} freely</span>
+            <span>Playing Full {isTurnMode ? 'Scene' : 'Card'} audio · Browse {unitTerms.plural} freely</span>
           </span>
         )}
         {!isCardPrecisionPlaying && unitDivergedFromAudible && (
@@ -84,7 +184,10 @@ const PartSectionNavigator = ({
             className="min-h-8 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <Radio aria-hidden="true" className="w-3 h-3" />
-            <span>Playing {getSharedUnitTerms(activeUnit).label} {selection.audibleUnitIndex + 1} · Follow</span>
+            <span>
+              Playing {isTurnMode ? `Turn ${selection.audibleUnitIndex + 1}` : `${unitTerms.label} ${selection.audibleUnitIndex + 1}`}
+              {audibleSpeakerInfo?.isAssigned ? ` (${audibleSpeakerInfo.displayName})` : ''} · Follow
+            </span>
           </button>
         )}
       </div>
@@ -98,24 +201,28 @@ const PartSectionNavigator = ({
             if (step.nextViewKey) onSelectUnit?.(step.nextViewKey);
           }}
           data-shared-part-prev="true"
-          aria-label={`Previous ${getSharedUnitTerms(activeUnit).lower}`}
-          className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          aria-label={`Previous ${unitTerms.lower}`}
+          className="order-1 min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <ChevronLeft aria-hidden="true" className="w-3.5 h-3.5" />
           <span>Prev</span>
         </button>
 
         {units.length > 1 && units.length <= 12 && (
-          <div role="group" aria-label={`Jump to ${getSharedUnitTerms(activeUnit).lower}`} className="flex flex-wrap items-center gap-1">
+          <div role="group" aria-label={`Jump to ${unitTerms.lower}`} className="order-3 sm:order-2 w-full sm:w-auto flex flex-wrap items-center gap-1">
             {units.map((unit, idx) => {
               const selected = unit.viewKey === selectedUnitViewKey;
               const isAudible = unit.viewKey === audibleUnitViewKey;
+              const unitSpeaker = unit.kind === 'turn'
+                ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
+                : null;
               return (
                 <button
                   key={unit.viewKey}
                   type="button"
                   aria-pressed={selected}
-                  aria-label={`${getSharedUnitTerms(unit).label} ${idx + 1}${isAudible ? ' (playing audio)' : ''}`}
+                  aria-label={`${getSharedUnitTerms(unit).label} ${idx + 1}${unitSpeaker ? ` · ${unitSpeaker.displayName}` : ''}${isAudible ? ' (playing audio)' : ''}`}
+                  title={unitSpeaker ? `${getSharedUnitTerms(unit).label} ${idx + 1} · ${unitSpeaker.displayName}` : `${getSharedUnitTerms(unit).label} ${idx + 1}`}
                   data-shared-part-pill={unit.viewKey}
                   onClick={() => onSelectUnit?.(unit.viewKey)}
                   className={`min-h-11 min-w-10 sm:min-h-8 sm:min-w-8 px-2 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center justify-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
@@ -126,8 +233,11 @@ const PartSectionNavigator = ({
                         : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
                   }`}
                 >
+                  {unitSpeaker && !selected && (
+                    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${unitSpeaker.palette.dot}`} />
+                  )}
                   <span>{idx + 1}</span>
-                  {isAudible && !selected && (
+                  {isAudible && !selected && !unitSpeaker && (
                     <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                   )}
                 </button>
@@ -144,8 +254,8 @@ const PartSectionNavigator = ({
             if (step.nextViewKey) onSelectUnit?.(step.nextViewKey);
           }}
           data-shared-part-next="true"
-          aria-label={`Next ${getSharedUnitTerms(activeUnit).lower}`}
-          className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          aria-label={`Next ${unitTerms.lower}`}
+          className="order-2 sm:order-3 min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <span>Next</span>
           <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
@@ -159,6 +269,7 @@ const PartHorizontalFocusView = ({
   card,
   units,
   workspace,
+  speakerAppearanceMap,
   bilingualLayout,
   playbackCursor,
   focusSegmentId,
@@ -248,14 +359,30 @@ const PartHorizontalFocusView = ({
         const isSelected = unit.viewKey === selection.selectedUnitViewKey;
         const isAudible = unit.viewKey === selection.audibleUnitViewKey;
         const segCount = unit.segments?.length || 0;
+        const isTurn = unit.kind === 'turn';
+        const speakerInfo = isTurn ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap }) : null;
+        const prevUnit = unitIndex > 0 ? units[unitIndex - 1] : null;
+        const prevSpeakerInfo = prevUnit?.kind === 'turn'
+          ? resolveTurnSpeakerPresentation({ unit: prevUnit, appearanceMap: speakerAppearanceMap })
+          : null;
+        const isRepeatedSpeaker = Boolean(
+          isTurn
+          && prevSpeakerInfo?.speakerKey
+          && speakerInfo?.speakerKey
+          && prevSpeakerInfo.speakerKey === speakerInfo.speakerKey
+        );
         return (
           <div
             key={unit.viewKey}
             data-shared-part-slide={unit.viewKey}
             data-shared-part-active={isSelected ? 'true' : undefined}
+            data-shared-part-audible={isAudible ? 'true' : undefined}
+            data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
             aria-hidden={!isSelected || undefined}
             inert={!isSelected}
-            className={`w-full min-w-full shrink-0 snap-start snap-always rounded-xl border p-4 sm:p-6 transition-colors motion-reduce:transition-none ${
+            className={`w-full min-w-full shrink-0 snap-start snap-always rounded-xl border ${
+              isTurn ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}` : ''
+            } p-4 sm:p-6 transition-colors motion-reduce:transition-none ${
               isAudible
                 ? 'border-indigo-400/90 dark:border-indigo-500/80 bg-indigo-50/15 dark:bg-indigo-950/20'
                 : isSelected
@@ -263,27 +390,21 @@ const PartHorizontalFocusView = ({
                   : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/35'
             }`}
           >
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  {getSharedUnitHeading(unit, unitIndex)}
-                </span>
-                <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                <span className="text-slate-500 dark:text-slate-400">
-                  {segCount} {segCount === 1 ? 'sentence' : 'sentences'}
-                </span>
-              </div>
-              {isAudible && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                  <Radio aria-hidden="true" className="w-3 h-3" />
-                  <span>Audible</span>
-                </span>
-              )}
+            <div className="mb-3.5 pb-2.5 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+              <PartUnitIdentityHeader
+                unit={unit}
+                unitIndex={unitIndex}
+                speakerAppearanceMap={speakerAppearanceMap}
+                segCount={segCount}
+                isAudible={isAudible}
+                isRepeatedSpeaker={isRepeatedSpeaker}
+              />
             </div>
             <SharedBilingualUnitsBody
               card={card}
               unitsOverride={[unit]}
               workspace={workspace}
+              speakerAppearanceMap={speakerAppearanceMap}
               bilingualLayout={bilingualLayout}
               playbackCursor={playbackCursor}
               focusSegmentId={focusSegmentId}
@@ -304,6 +425,7 @@ const PartVerticalFocusView = ({
   card,
   units,
   workspace,
+  speakerAppearanceMap,
   bilingualLayout,
   playbackCursor,
   focusSegmentId,
@@ -318,30 +440,44 @@ const PartVerticalFocusView = ({
   const prevUnit = idx > 0 ? units[idx - 1] : null;
   const currentUnit = units[idx];
   const nextUnit = idx < units.length - 1 ? units[idx + 1] : null;
+  const cardTerms = getSharedUnitTerms(card);
+
+  const checkRepeatedSpeaker = unitIndex => {
+    const unit = units[unitIndex];
+    const prev = unitIndex > 0 ? units[unitIndex - 1] : null;
+    if (unit?.kind !== 'turn' || prev?.kind !== 'turn') return false;
+    const curInfo = resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap });
+    const prevInfo = resolveTurnSpeakerPresentation({ unit: prev, appearanceMap: speakerAppearanceMap });
+    return Boolean(curInfo.speakerKey && prevInfo.speakerKey && curInfo.speakerKey === prevInfo.speakerKey);
+  };
 
   const renderNeighbor = ({ unit, unitIndex, roleLabel, testRole }) => {
     const isAudible = unit.viewKey === selection.audibleUnitViewKey;
+    const isTurn = unit.kind === 'turn';
+    const speakerInfo = isTurn ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap }) : null;
     return (
       <div
         key={unit.viewKey}
         data-shared-part-neighbor={testRole}
-        className={`rounded-xl border px-4 py-3.5 sm:px-6 sm:py-4 transition-colors motion-reduce:transition-none ${
+        data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
+        className={`rounded-xl border ${
+          isTurn ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}` : ''
+        } px-4 py-3.5 sm:px-6 sm:py-4 transition-colors motion-reduce:transition-none ${
           isAudible
             ? 'border-indigo-300/80 dark:border-indigo-700 bg-indigo-50/20 dark:bg-indigo-950/20'
             : 'border-slate-200/80 dark:border-slate-800/90 bg-slate-50/75 dark:bg-slate-900/45 opacity-90 hover:opacity-100'
         }`}
       >
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {roleLabel} · {getSharedUnitHeading(unit, unitIndex)}
-            </span>
-            {isAudible && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 dark:bg-indigo-950/70 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200">
-                Audible
-              </span>
-            )}
-          </div>
+          <PartUnitIdentityHeader
+            unit={unit}
+            unitIndex={unitIndex}
+            speakerAppearanceMap={speakerAppearanceMap}
+            rolePrefix={roleLabel}
+            segCount={unit.segments?.length || 0}
+            isAudible={isAudible}
+            isRepeatedSpeaker={checkRepeatedSpeaker(unitIndex)}
+          />
           <button
             type="button"
             onClick={() => onSelectUnit?.(unit.viewKey)}
@@ -355,6 +491,7 @@ const PartVerticalFocusView = ({
           card={card}
           unitsOverride={[unit]}
           workspace={workspace}
+          speakerAppearanceMap={speakerAppearanceMap}
           bilingualLayout={bilingualLayout}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
@@ -369,6 +506,8 @@ const PartVerticalFocusView = ({
   };
 
   const currentAudible = currentUnit.viewKey === selection.audibleUnitViewKey;
+  const currentIsTurn = currentUnit.kind === 'turn';
+  const currentSpeaker = currentIsTurn ? resolveTurnSpeakerPresentation({ unit: currentUnit, appearanceMap: speakerAppearanceMap }) : null;
 
   return (
     <div className="space-y-3.5" data-shared-part-layout="vertical-focus">
@@ -376,39 +515,40 @@ const PartVerticalFocusView = ({
         renderNeighbor({ unit: prevUnit, unitIndex: idx - 1, roleLabel: 'Previous', testRole: 'previous' })
       ) : (
         <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1" data-shared-part-boundary="start">
-          Start of card · {getSharedUnitTerms(card).label} 1 of {units.length}
+          Start of {cardTerms.cardLower} · {cardTerms.label} 1 of {units.length}
         </p>
       )}
 
       <div
         data-shared-part-focused={currentUnit.viewKey}
         data-shared-part-active="true"
-        className={`rounded-2xl border-2 p-5 sm:p-7 shadow-md transition-colors motion-reduce:transition-none ${
+        data-shared-part-audible={currentAudible ? 'true' : undefined}
+        data-shared-turn-speaker-palette={currentSpeaker?.palette?.id || undefined}
+        className={`rounded-2xl border-2 ${
+          currentIsTurn ? `border-l-4 ${currentAudible ? currentSpeaker.palette.rail : currentSpeaker.palette.railMuted}` : ''
+        } p-5 sm:p-7 shadow-md transition-colors motion-reduce:transition-none ${
           currentAudible
             ? 'border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 ring-2 ring-indigo-500/15'
             : 'border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 ring-1 ring-indigo-400/15'
         }`}
       >
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-200">
-              Focused · {getSharedUnitHeading(currentUnit, idx)}
-            </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {(currentUnit.segments?.length || 0)} {(currentUnit.segments?.length || 0) === 1 ? 'sentence' : 'sentences'}
-            </span>
-          </div>
-          {currentAudible && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-0.5 text-[11px] font-semibold text-white">
-              <Radio aria-hidden="true" className="w-3 h-3" />
-              <span>Audible</span>
-            </span>
-          )}
+          <PartUnitIdentityHeader
+            unit={currentUnit}
+            unitIndex={idx}
+            speakerAppearanceMap={speakerAppearanceMap}
+            rolePrefix="Focused"
+            segCount={currentUnit.segments?.length || 0}
+            isAudible={currentAudible}
+            isRepeatedSpeaker={checkRepeatedSpeaker(idx)}
+            emphasize
+          />
         </div>
         <SharedBilingualUnitsBody
           card={card}
           unitsOverride={[currentUnit]}
           workspace={workspace}
+          speakerAppearanceMap={speakerAppearanceMap}
           bilingualLayout={bilingualLayout}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
@@ -424,7 +564,7 @@ const PartVerticalFocusView = ({
         renderNeighbor({ unit: nextUnit, unitIndex: idx + 1, roleLabel: 'Next', testRole: 'next' })
       ) : (
         <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1" data-shared-part-boundary="end">
-          End of card · {getSharedUnitTerms(card).label} {units.length} of {units.length}
+          End of {cardTerms.cardLower} · {cardTerms.label} {units.length} of {units.length}
         </p>
       )}
     </div>
@@ -435,6 +575,7 @@ const PartVerticalListView = ({
   card,
   units,
   workspace,
+  speakerAppearanceMap,
   bilingualLayout,
   playbackCursor,
   focusSegmentId,
@@ -450,13 +591,28 @@ const PartVerticalListView = ({
       const isSelected = unit.viewKey === selection.selectedUnitViewKey;
       const isAudible = unit.viewKey === selection.audibleUnitViewKey;
       const segCount = unit.segments?.length || 0;
+      const isTurn = unit.kind === 'turn';
+      const speakerInfo = isTurn ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap }) : null;
+      const prevUnit = unitIndex > 0 ? units[unitIndex - 1] : null;
+      const prevSpeakerInfo = prevUnit?.kind === 'turn'
+        ? resolveTurnSpeakerPresentation({ unit: prevUnit, appearanceMap: speakerAppearanceMap })
+        : null;
+      const isRepeatedSpeaker = Boolean(
+        isTurn
+        && prevSpeakerInfo?.speakerKey
+        && speakerInfo?.speakerKey
+        && prevSpeakerInfo.speakerKey === speakerInfo.speakerKey
+      );
       return (
         <div
           key={unit.viewKey}
           data-shared-part-list-item={unit.viewKey}
           data-shared-part-active={isSelected ? 'true' : undefined}
           data-shared-part-audible={isAudible ? 'true' : undefined}
-          className={`rounded-xl border p-4 sm:p-6 transition-colors motion-reduce:transition-none ${
+          data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
+          className={`rounded-xl border ${
+            isTurn ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}` : ''
+          } p-4 sm:p-6 transition-colors motion-reduce:transition-none ${
             isAudible
               ? 'border-indigo-400/90 dark:border-indigo-500/80 bg-indigo-50/15 dark:bg-indigo-950/20 ring-1 ring-indigo-500/15'
               : isSelected
@@ -465,21 +621,14 @@ const PartVerticalListView = ({
           }`}
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100/90 dark:border-slate-800/75">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                {getSharedUnitHeading(unit, unitIndex)}
-              </span>
-              <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-              <span className="text-slate-500 dark:text-slate-400">
-                {segCount} {segCount === 1 ? 'sentence' : 'sentences'}
-              </span>
-              {isAudible && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
-                  <Radio aria-hidden="true" className="w-3 h-3" />
-                  <span>Audible</span>
-                </span>
-              )}
-            </div>
+            <PartUnitIdentityHeader
+              unit={unit}
+              unitIndex={unitIndex}
+              speakerAppearanceMap={speakerAppearanceMap}
+              segCount={segCount}
+              isAudible={isAudible}
+              isRepeatedSpeaker={isRepeatedSpeaker}
+            />
             <button
               type="button"
               aria-pressed={isSelected}
@@ -498,6 +647,7 @@ const PartVerticalListView = ({
             card={card}
             unitsOverride={[unit]}
             workspace={workspace}
+            speakerAppearanceMap={speakerAppearanceMap}
             bilingualLayout={bilingualLayout}
             playbackCursor={playbackCursor}
             focusSegmentId={focusSegmentId}
@@ -514,7 +664,7 @@ const PartVerticalListView = ({
 );
 
 /**
- * Focused Part (Section) view supporting Horizontal Focus, Vertical Focus, and Vertical List.
+ * Focused Part (Section / Speaker Turn) view supporting Horizontal Focus, Vertical Focus, and Vertical List.
  */
 export const SharedCardPartView = ({
   card,
@@ -533,6 +683,7 @@ export const SharedCardPartView = ({
   onPlaySegment
 }) => {
   const units = lookup?.units || card?.units || [];
+  const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
 
   if (!units.length) {
     return (
@@ -540,7 +691,7 @@ export const SharedCardPartView = ({
         className="text-sm italic text-slate-400 dark:text-slate-500"
         data-shared-part-empty="zero-units"
       >
-        No {getSharedUnitTerms(card).plural} in this card to focus.
+        No {getSharedUnitTerms(card).plural} in this {getSharedUnitTerms(card).cardLower} to focus.
       </p>
     );
   }
@@ -554,7 +705,9 @@ export const SharedCardPartView = ({
   return (
     <div data-shared-part-view="true">
       <PartSectionNavigator
+        card={card}
         units={units}
+        speakerAppearanceMap={speakerAppearanceMap}
         selection={selection}
         onSelectUnit={onSelectUnit}
         onFollowAudible={onFollowAudible}
@@ -563,6 +716,7 @@ export const SharedCardPartView = ({
         card={card}
         units={units}
         workspace={workspace}
+        speakerAppearanceMap={speakerAppearanceMap}
         bilingualLayout={bilingualLayout}
         playbackCursor={playbackCursor}
         focusSegmentId={focusSegmentId}
@@ -597,13 +751,15 @@ export const SharedCardSegmentView = ({
   onPlaySegment
 }) => {
   const entries = lookup?.entries || [];
+  const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
+  const cardTerms = getSharedUnitTerms(card);
   if (!entries.length) {
     return (
       <p
         className="text-sm italic text-slate-400 dark:text-slate-500"
         data-shared-segment-empty="true"
       >
-        No sentences available to focus in this card.
+        No sentences available to focus in this {cardTerms.cardLower}.
       </p>
     );
   }
@@ -611,6 +767,14 @@ export const SharedCardSegmentView = ({
   const entry = selection.selectedEntry || entries[0];
   const segment = entry.segment;
   const logicalIndex = entry.logicalIndex;
+  const unitSegments = entry.unit?.segments || [];
+  const indexInTurn = unitSegments.findIndex(item => item.id === segment.id);
+  const unitTerms = getSharedUnitTerms(entry.unit || card);
+  const isTurn = entry.unit?.kind === 'turn';
+  const speakerInfo = isTurn
+    ? resolveTurnSpeakerPresentation({ unit: entry.unit, appearanceMap: speakerAppearanceMap })
+    : null;
+  const legacySegmentSpeaker = !isTurn ? normalizeSegmentDisplayText(segment.speaker) : '';
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
   const textContent = normalizeSegmentDisplayText(segment.text);
@@ -663,6 +827,7 @@ export const SharedCardSegmentView = ({
       data-shared-segment-focus={segment.id}
       data-shared-segment-focus-unit={entry.unitViewKey}
       data-shared-segment-focus-index={logicalIndex + 1}
+      data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
     >
       {/* Context Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800/80">
@@ -672,13 +837,14 @@ export const SharedCardSegmentView = ({
           </span>
           <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
           <span className="text-slate-500 dark:text-slate-400" data-shared-segment-unit-context="true">
-            {entry.unit?.label || 'Section'} {entry.unitIndex + 1}{isV1Compat ? ' (Compatibility)' : ''}
+            {entry.unit?.label || unitTerms.label} {entry.unitIndex + 1}{isV1Compat ? ' (Compatibility)' : ''}
+            {isTurn && unitSegments.length > 1 && indexInTurn >= 0 ? ` · Line ${indexInTurn + 1} of ${unitSegments.length}` : ''}
           </span>
-          {(entry.unit?.kind === 'turn' ? entry.unit.speakerLabel : segment.speaker) && (
+          {!isTurn && legacySegmentSpeaker && (
             <>
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
               <span className="rounded-md bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                {entry.unit?.kind === 'turn' ? entry.unit.speakerLabel : segment.speaker}
+                {legacySegmentSpeaker}
               </span>
             </>
           )}
@@ -699,7 +865,7 @@ export const SharedCardSegmentView = ({
               className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
             >
               <Radio aria-hidden="true" className="w-3 h-3" />
-              <span>Playing Full Card audio · Browse freely</span>
+              <span>Playing Full {card?.blockType === 'conversation' ? 'Scene' : 'Card'} audio · Browse freely</span>
             </span>
           )}
           {!selection.isCardPrecisionPlaying && selection.segmentDivergedFromAudible && (
@@ -718,7 +884,9 @@ export const SharedCardSegmentView = ({
 
       {/* Focused Sentence Stage */}
       <div
-        className={`rounded-2xl border p-5 sm:p-7 transition-colors motion-reduce:transition-none ${
+        className={`rounded-2xl border ${
+          isTurn ? `border-l-4 ${textFlags.active ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}` : ''
+        } p-5 sm:p-7 transition-colors motion-reduce:transition-none ${
           textFlags.active
             ? 'border-indigo-400/90 dark:border-indigo-500/80 bg-indigo-50/15 dark:bg-indigo-950/20 ring-1 ring-indigo-500/15'
             : textFlags.focused
@@ -727,6 +895,29 @@ export const SharedCardSegmentView = ({
         }`}
       >
         <div className="max-w-[62ch] space-y-4">
+          {isTurn && speakerInfo && (
+            <div
+              className="flex flex-wrap items-center gap-2 pb-2.5 border-b border-slate-200/70 dark:border-slate-800/80"
+              data-shared-segment-speaker-stage="true"
+            >
+              <span
+                aria-hidden="true"
+                className={`h-7 w-7 rounded-full text-xs font-bold inline-flex items-center justify-center shrink-0 select-none ${speakerInfo.palette.avatar}`}
+              >
+                {speakerInfo.monogram}
+              </span>
+              <span
+                data-shared-segment-speaker-name="true"
+                className={`text-sm font-semibold break-words ${speakerInfo.palette.nameText}`}
+              >
+                {speakerInfo.displayName}
+              </span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                · {entry.unit?.label || unitTerms.label} {entry.unitIndex + 1}
+                {unitSegments.length > 1 && indexInTurn >= 0 ? ` (${indexInTurn + 1}/${unitSegments.length})` : ''}
+              </span>
+            </div>
+          )}
           {showText && (
             <div className="space-y-1.5" data-shared-segment-channel-block="text">
               {showSeparatedLabels && (
@@ -814,7 +1005,20 @@ export const SharedCardSegmentView = ({
 
       {/* Browse & Manual Playback Bar (Browsing never invokes playback) */}
       <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          onKeyDown={event => {
+            if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              const step = stepCardSegmentId({ entries, currentSegmentId: segment.id, delta: 1 });
+              if (step.nextSegmentId && step.nextSegmentId !== segment.id) onSelectSegment?.(step.nextSegmentId);
+            } else if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              const step = stepCardSegmentId({ entries, currentSegmentId: segment.id, delta: -1 });
+              if (step.nextSegmentId && step.nextSegmentId !== segment.id) onSelectSegment?.(step.nextSegmentId);
+            }
+          }}
+        >
           <button
             type="button"
             disabled={atStart}
@@ -824,23 +1028,27 @@ export const SharedCardSegmentView = ({
             }}
             data-shared-segment-prev="true"
             aria-label="Previous sentence"
-            className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="order-1 min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <ChevronLeft aria-hidden="true" className="w-4 h-4" />
             <span>Previous</span>
           </button>
 
           {entries.length > 1 && entries.length <= 12 && (
-            <div role="group" aria-label="Jump to sentence" className="flex flex-wrap items-center gap-1">
+            <div role="group" aria-label="Jump to sentence" className="order-3 sm:order-2 w-full sm:w-auto flex flex-wrap items-center gap-1">
               {entries.map(item => {
                 const selected = item.segment.id === segment.id;
                 const isAudible = item.segment.id === selection.audibleSegmentId;
+                const itemSpeaker = item.unit?.kind === 'turn'
+                  ? resolveTurnSpeakerPresentation({ unit: item.unit, appearanceMap: speakerAppearanceMap })
+                  : null;
                 return (
                   <button
                     key={item.segment.id}
                     type="button"
                     aria-pressed={selected}
-                    aria-label={`Sentence ${item.logicalIndex + 1}${isAudible ? ' (playing audio)' : ''}`}
+                    aria-label={`Sentence ${item.logicalIndex + 1}${itemSpeaker ? ` · ${itemSpeaker.displayName}` : ''}${isAudible ? ' (playing audio)' : ''}`}
+                    title={itemSpeaker ? `Sentence ${item.logicalIndex + 1} · ${itemSpeaker.displayName}` : `Sentence ${item.logicalIndex + 1}`}
                     data-shared-segment-pill={item.segment.id}
                     onClick={() => onSelectSegment?.(item.segment.id)}
                     className={`min-h-11 min-w-10 sm:min-h-9 sm:min-w-8 px-2 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center justify-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
@@ -851,8 +1059,11 @@ export const SharedCardSegmentView = ({
                           : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
                     }`}
                   >
+                    {itemSpeaker && !selected && (
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${itemSpeaker.palette.dot}`} />
+                    )}
                     <span>{item.logicalIndex + 1}</span>
-                    {isAudible && !selected && (
+                    {isAudible && !selected && !itemSpeaker && (
                       <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                     )}
                   </button>
@@ -870,7 +1081,7 @@ export const SharedCardSegmentView = ({
             }}
             data-shared-segment-next="true"
             aria-label="Next sentence"
-            className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="order-2 sm:order-3 min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <span>Next</span>
             <ChevronRight aria-hidden="true" className="w-4 h-4" />

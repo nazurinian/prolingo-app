@@ -12,12 +12,14 @@ import { SharedCardPartView, SharedCardSegmentView } from './SharedPartAndSegmen
 import { useCardPresentationFollow } from './useCardPresentationFollow.js';
 import {
   IDLE_SHARED_CURSOR,
-  getSharedUnitTerms,
+  buildCardSpeakerAppearanceMap,
   buildCardUnitLookup,
+  getSharedUnitTerms,
   normalizeSegmentDisplayText,
   resolveCardChannelAvailability,
   resolveEffectiveCardSelection,
-  summarizeCardPresentationCoverage
+  summarizeCardPresentationCoverage,
+  summarizeSceneSpeakers
 } from './sharedCardPresentationUtils.js';
 
 export const SharedFullCardBody = props => <SharedBilingualUnitsBody {...props} />;
@@ -65,10 +67,20 @@ export const SharedCardReadingSurface = ({
     : (card?.documentId || 'default');
 
   const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
+  const isConversationScene = card?.blockType === 'conversation';
+  const cardTerms = getSharedUnitTerms(card);
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
   const lookup = useMemo(() => buildCardUnitLookup(card), [card]);
   const orderedSegments = useMemo(() => lookup.entries.map(item => item.segment), [lookup]);
+  const speakerAppearanceMap = useMemo(
+    () => (isConversationScene ? buildCardSpeakerAppearanceMap(card) : null),
+    [isConversationScene, card]
+  );
+  const sceneCast = useMemo(
+    () => (isConversationScene ? summarizeSceneSpeakers({ card, appearanceMap: speakerAppearanceMap }) : []),
+    [isConversationScene, card, speakerAppearanceMap]
+  );
   const { hasText, hasMeaning } = useMemo(() => resolveCardChannelAvailability(card), [card]);
   const coverage = useMemo(
     () => summarizeCardPresentationCoverage({ orderedSegments, audioCoverageMap }),
@@ -190,6 +202,7 @@ export const SharedCardReadingSurface = ({
         <SharedBilingualUnitsBody
           card={card}
           workspace={workspace}
+          speakerAppearanceMap={speakerAppearanceMap}
           bilingualLayout={viewState.bilingualLayout}
           playbackCursor={cursor}
           focusSegmentId={effectiveFocusSegmentId}
@@ -221,7 +234,7 @@ export const SharedCardReadingSurface = ({
               disabled={disabled || !hasText}
               onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'text-only' })}
               data-shared-card-play-channel="text"
-              title="Play EN — Play English only (entire card, one-time override)"
+              title={`Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
               aria-label="EN — Play English only"
               className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-indigo-200/85 dark:border-indigo-800/75 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
@@ -233,7 +246,7 @@ export const SharedCardReadingSurface = ({
               disabled={disabled || !hasMeaning}
               onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'meaning-only' })}
               data-shared-card-play-channel="meaning"
-              title="Play ID — Play Indonesian only (entire card, one-time override)"
+              title={`Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
               aria-label="ID — Play Indonesian only"
               className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-emerald-200/85 dark:border-emerald-800/75 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
@@ -254,7 +267,7 @@ export const SharedCardReadingSurface = ({
             >
               {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
               {cursor.precision === 'card'
-                ? ' · Full Card'
+                ? (isConversationScene ? ' · Full Scene' : ' · Full Card')
                 : activeSegmentNumber
                   ? ` · S${activeSegmentNumber}`
                   : ''}
@@ -279,13 +292,15 @@ export const SharedCardReadingSurface = ({
 
   const cardBackground = isTitleRole
     ? 'bg-gradient-to-b from-slate-50/95 via-white to-white dark:from-slate-800/45 dark:via-slate-900/95 dark:to-slate-900/95'
-    : 'bg-white dark:bg-slate-900/90';
+    : isConversationScene
+      ? 'bg-gradient-to-b from-indigo-50/20 via-white to-white dark:from-slate-800/35 dark:via-slate-900/95 dark:to-slate-900/95'
+      : 'bg-white dark:bg-slate-900/90';
 
   return (
     <article
       data-shared-card-id={card?.id}
       data-text-player-card={card?.id}
-      data-shared-card-role={isTitleRole ? 'title' : card?.blockType === 'conversation' ? 'scene' : 'paragraph'}
+      data-shared-card-role={isTitleRole ? 'title' : isConversationScene ? 'scene' : 'paragraph'}
       data-shared-card-level={viewState.level}
       data-shared-card-part-layout={viewState.partLayout}
       data-shared-card-layout={viewState.bilingualLayout}
@@ -301,7 +316,7 @@ export const SharedCardReadingSurface = ({
               type="button"
               onClick={() => onToggleExpanded?.(card.id)}
               aria-expanded={expanded}
-              aria-label={expanded ? 'Collapse card' : 'Expand card'}
+              aria-label={expanded ? `Collapse ${cardTerms.cardLower}` : `Expand ${cardTerms.cardLower}`}
               className="min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 -ml-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 inline-flex items-center justify-center transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <ChevronRight
@@ -320,16 +335,20 @@ export const SharedCardReadingSurface = ({
                 className={
                   isTitleRole
                     ? 'font-bold uppercase tracking-wider text-[11px] text-indigo-700 dark:text-indigo-300'
-                    : 'font-medium text-slate-500 dark:text-slate-400'
+                    : isConversationScene
+                      ? 'font-semibold uppercase tracking-wider text-[11px] text-indigo-700/85 dark:text-indigo-300'
+                      : 'font-medium text-slate-500 dark:text-slate-400'
                 }
-                data-shared-card-role-label={isTitleRole ? 'title' : card?.blockType === 'conversation' ? 'scene' : 'paragraph'}
+                data-shared-card-role-label={isTitleRole ? 'title' : isConversationScene ? 'scene' : 'paragraph'}
               >
-                {isTitleRole ? 'Title' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph'}
+                {isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph'}
               </span>
-              {card?.units?.length > 1 && (
+              {(isConversationScene ? card?.units?.length > 0 : card?.units?.length > 1) && (
                 <>
                   <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                  <span className="text-slate-500 dark:text-slate-400">{card.units.length} {getSharedUnitTerms(card).plural}</span>
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {card.units.length} {card.units.length === 1 ? cardTerms.lower : cardTerms.plural}
+                  </span>
                 </>
               )}
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
@@ -361,7 +380,7 @@ export const SharedCardReadingSurface = ({
                   />
                   {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
                   {cursor.precision === 'card'
-                    ? ' · Full Card'
+                    ? (isConversationScene ? ' · Full Scene' : ' · Full Card')
                     : activeSegmentNumber
                       ? ` · S${activeSegmentNumber}`
                       : ''}
@@ -377,8 +396,23 @@ export const SharedCardReadingSurface = ({
               }`}
               style={{ textWrap: 'balance' }}
             >
-              {card?.title || (isTitleRole ? 'Untitled Title Card' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph')}
+              {card?.title || (isTitleRole ? 'Untitled Title Card' : isConversationScene ? 'Scene' : 'Paragraph')}
             </h3>
+
+            {sceneCast.length > 0 && (
+              <div className="pt-1 flex flex-wrap items-center gap-1.5" data-shared-scene-cast={card?.id}>
+                <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 select-none">Cast:</span>
+                {sceneCast.map(person => (
+                  <span
+                    key={person.speakerKey || person.displayName}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${person.palette.pill}`}
+                  >
+                    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${person.palette.dot}`} />
+                    <span>{person.displayName}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -388,7 +422,7 @@ export const SharedCardReadingSurface = ({
             disabled={disabled || !hasText}
             onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'text-only' })}
             data-shared-card-play-channel="text"
-            title="Play EN — Play English only (entire card, one-time override)"
+            title={`Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
             aria-label="EN — Play English only"
             className="min-h-11 sm:min-h-9 px-2.5 rounded-xl border border-indigo-200/85 dark:border-indigo-800/75 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
@@ -400,7 +434,7 @@ export const SharedCardReadingSurface = ({
             disabled={disabled || !hasMeaning}
             onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'meaning-only' })}
             data-shared-card-play-channel="meaning"
-            title="Play ID — Play Indonesian only (entire card, one-time override)"
+            title={`Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
             aria-label="ID — Play Indonesian only"
             className="min-h-11 sm:min-h-9 px-2.5 rounded-xl border border-emerald-200/85 dark:border-emerald-800/75 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
@@ -412,8 +446,8 @@ export const SharedCardReadingSurface = ({
             disabled={disabled || !cardPlayable}
             onClick={() => onPlayCard?.(card.id)}
             data-shared-card-play="true"
-            title="Play entire card"
-            aria-label={`Play card ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph')}`}
+            title={`Play entire ${cardTerms.cardLower}`}
+            aria-label={`Play ${cardTerms.cardLower} ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
             className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 px-3 rounded-full text-xs font-semibold inline-flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
               isSpeakingCard
                 ? 'bg-indigo-700 text-white'

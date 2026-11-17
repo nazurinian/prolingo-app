@@ -57,7 +57,11 @@ export const SharedBilingualLayoutToolbar = ({
   unitKind = 'paragraph'
 }) => {
   const terms = getSharedUnitTerms({ kind: unitKind });
-  const describe = option => option.description.replaceAll('sections', terms.plural).replaceAll('section', terms.lower);
+  const describe = option => option.description
+    .replaceAll('sections', terms.plural)
+    .replaceAll('section', terms.lower)
+    .replaceAll('passage', terms.collectionNoun)
+    .replaceAll('card', terms.cardLower);
   const activeState = presentationState
     ? normalizeTextCardPresentationState(presentationState)
     : normalizeTextCardPresentationState({
@@ -144,7 +148,7 @@ export const SharedBilingualLayoutToolbar = ({
                     type="button"
                     aria-pressed={active}
                     onClick={() => emitPatch({ bilingualLayout: option.id })}
-                    title={option.description}
+                    title={describe(option)}
                     data-shared-card-layout-option={option.id}
                     className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                       active
@@ -195,7 +199,7 @@ export const SharedBilingualLayoutToolbar = ({
           </span>
           <div
             role="group"
-            aria-label="Part section layout (display only)"
+            aria-label={`Part ${terms.lower} layout (display only)`}
             className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/75 dark:bg-slate-800/60 p-1"
           >
             {SHARED_PART_LAYOUT_OPTIONS.map(option => {

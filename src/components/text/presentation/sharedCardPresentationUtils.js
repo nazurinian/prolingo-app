@@ -26,12 +26,209 @@ export const SHARED_BILINGUAL_LAYOUT_OPTIONS = Object.freeze([
 
 export const normalizeSegmentDisplayText = value => String(value ?? '').trim();
 
-const SECTION_TERMS = Object.freeze({ label: 'Section', lower: 'section', plural: 'sections' });
-const TURN_TERMS = Object.freeze({ label: 'Speaker Turn', lower: 'speaker turn', plural: 'speaker turns' });
-export const getSharedUnitTerms = unitOrCard => unitOrCard?.kind === 'turn' || unitOrCard?.blockType === 'conversation'
-  ? TURN_TERMS : SECTION_TERMS;
+const SECTION_TERMS = Object.freeze({
+  label: 'Section',
+  lower: 'section',
+  plural: 'sections',
+  cardLabel: 'Paragraph',
+  cardLower: 'card',
+  collectionNoun: 'passage'
+});
+const TURN_TERMS = Object.freeze({
+  label: 'Speaker Turn',
+  lower: 'speaker turn',
+  plural: 'speaker turns',
+  cardLabel: 'Scene',
+  cardLower: 'scene',
+  collectionNoun: 'dialogue'
+});
+export const getSharedUnitTerms = unitOrCard => (
+  unitOrCard?.kind === 'turn' || unitOrCard?.blockType === 'conversation' || unitOrCard === 'turn'
+    ? TURN_TERMS
+    : SECTION_TERMS
+);
 export const getSharedUnitHeading = (unit, index) => `${unit?.label || getSharedUnitTerms(unit).label} ${index + 1}`
   + (unit?.kind === 'turn' ? ` · ${unit.speakerLabel || 'Unassigned speaker'}` : '');
+
+export const SPEAKER_ACCENT_PALETTE = Object.freeze([
+  Object.freeze({
+    id: 'sky',
+    rail: 'border-l-sky-500 dark:border-l-sky-400',
+    railMuted: 'border-l-sky-300/90 dark:border-l-sky-700/80',
+    avatar: 'bg-sky-600 text-white dark:bg-sky-500 dark:text-slate-950',
+    pill: 'border-sky-200/90 bg-sky-50/85 text-sky-900 dark:border-sky-800/75 dark:bg-sky-950/45 dark:text-sky-100',
+    nameText: 'text-sky-900 dark:text-sky-100',
+    dot: 'bg-sky-500 dark:bg-sky-400',
+    surfaceTint: 'bg-sky-50/30 dark:bg-sky-950/15'
+  }),
+  Object.freeze({
+    id: 'teal',
+    rail: 'border-l-teal-500 dark:border-l-teal-400',
+    railMuted: 'border-l-teal-300/90 dark:border-l-teal-700/80',
+    avatar: 'bg-teal-600 text-white dark:bg-teal-500 dark:text-slate-950',
+    pill: 'border-teal-200/90 bg-teal-50/85 text-teal-900 dark:border-teal-800/75 dark:bg-teal-950/45 dark:text-teal-100',
+    nameText: 'text-teal-900 dark:text-teal-100',
+    dot: 'bg-teal-500 dark:bg-teal-400',
+    surfaceTint: 'bg-teal-50/30 dark:bg-teal-950/15'
+  }),
+  Object.freeze({
+    id: 'rose',
+    rail: 'border-l-rose-500 dark:border-l-rose-400',
+    railMuted: 'border-l-rose-300/90 dark:border-l-rose-700/80',
+    avatar: 'bg-rose-600 text-white dark:bg-rose-500 dark:text-slate-950',
+    pill: 'border-rose-200/90 bg-rose-50/85 text-rose-900 dark:border-rose-800/75 dark:bg-rose-950/45 dark:text-rose-100',
+    nameText: 'text-rose-900 dark:text-rose-100',
+    dot: 'bg-rose-500 dark:bg-rose-400',
+    surfaceTint: 'bg-rose-50/30 dark:bg-rose-950/15'
+  }),
+  Object.freeze({
+    id: 'violet',
+    rail: 'border-l-violet-500 dark:border-l-violet-400',
+    railMuted: 'border-l-violet-300/90 dark:border-l-violet-700/80',
+    avatar: 'bg-violet-600 text-white dark:bg-violet-500 dark:text-slate-950',
+    pill: 'border-violet-200/90 bg-violet-50/85 text-violet-900 dark:border-violet-800/75 dark:bg-violet-950/45 dark:text-violet-100',
+    nameText: 'text-violet-900 dark:text-violet-100',
+    dot: 'bg-violet-500 dark:bg-violet-400',
+    surfaceTint: 'bg-violet-50/30 dark:bg-violet-950/15'
+  }),
+  Object.freeze({
+    id: 'orange',
+    rail: 'border-l-orange-500 dark:border-l-orange-400',
+    railMuted: 'border-l-orange-300/90 dark:border-l-orange-700/80',
+    avatar: 'bg-orange-600 text-white dark:bg-orange-500 dark:text-slate-950',
+    pill: 'border-orange-200/90 bg-orange-50/85 text-orange-900 dark:border-orange-800/75 dark:bg-orange-950/45 dark:text-orange-100',
+    nameText: 'text-orange-900 dark:text-orange-100',
+    dot: 'bg-orange-500 dark:bg-orange-400',
+    surfaceTint: 'bg-orange-50/30 dark:bg-orange-950/15'
+  }),
+  Object.freeze({
+    id: 'cyan',
+    rail: 'border-l-cyan-600 dark:border-l-cyan-400',
+    railMuted: 'border-l-cyan-300/90 dark:border-l-cyan-700/80',
+    avatar: 'bg-cyan-700 text-white dark:bg-cyan-500 dark:text-slate-950',
+    pill: 'border-cyan-200/90 bg-cyan-50/85 text-cyan-900 dark:border-cyan-800/75 dark:bg-cyan-950/45 dark:text-cyan-100',
+    nameText: 'text-cyan-900 dark:text-cyan-100',
+    dot: 'bg-cyan-500 dark:bg-cyan-400',
+    surfaceTint: 'bg-cyan-50/30 dark:bg-cyan-950/15'
+  })
+]);
+
+export const UNASSIGNED_SPEAKER_APPEARANCE = Object.freeze({
+  id: 'neutral',
+  rail: 'border-l-slate-400 dark:border-l-slate-600',
+  railMuted: 'border-l-slate-300 dark:border-l-slate-700',
+  avatar: 'border border-dashed border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+  pill: 'border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300',
+  nameText: 'text-slate-600 dark:text-slate-300 italic',
+  dot: 'bg-slate-400 dark:bg-slate-500',
+  surfaceTint: 'bg-slate-50/40 dark:bg-slate-900/35'
+});
+
+const hashSpeakerKey = key => {
+  let h = 2166136261;
+  for (const ch of String(key || '')) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+};
+
+export const getSpeakerMonogram = label => {
+  const cleanLabel = normalizeSegmentDisplayText(label);
+  if (!cleanLabel) return '?';
+  const words = cleanLabel.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    const first = [...words[0]][0] || '';
+    const second = [...words[1]][0] || '';
+    const pair = `${first}${second}`.toUpperCase();
+    if (pair.trim()) return pair;
+  }
+  const chars = [...cleanLabel];
+  return (chars[0] || '?').toUpperCase();
+};
+
+export const getStableTurnSpeakerKey = unit => {
+  if (!unit || unit.kind !== 'turn') return null;
+  if (unit.speakerId) return `id:${unit.speakerId}`;
+  if (unit.speakerUid) return `uid:${unit.speakerUid}`;
+  return null;
+};
+
+/**
+ * Assigns stable, collision-free speaker palette entries keyed strictly by persistent
+ * speaker UID/ID (never display label or turn position) so renames and Turn reorders
+ * never shuffle speaker colors.
+ */
+export const buildCardSpeakerAppearanceMap = card => {
+  const map = new Map();
+  const keys = [];
+  const seen = new Set();
+  for (const unit of card?.units || []) {
+    const key = getStableTurnSpeakerKey(unit);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  keys.sort();
+  const usedSlots = new Set();
+  const count = SPEAKER_ACCENT_PALETTE.length;
+  for (const key of keys) {
+    let slot = hashSpeakerKey(key) % count;
+    let probes = 0;
+    while (usedSlots.has(slot) && probes < count) {
+      slot = (slot + 1) % count;
+      probes += 1;
+    }
+    usedSlots.add(slot);
+    map.set(key, SPEAKER_ACCENT_PALETTE[slot]);
+  }
+  return map;
+};
+
+export const resolveTurnSpeakerPresentation = ({ unit, appearanceMap = null }) => {
+  const displayName = normalizeSegmentDisplayText(unit?.speakerLabel);
+  const speakerKey = getStableTurnSpeakerKey(unit);
+  const isAssigned = Boolean(displayName || speakerKey);
+  const palette = speakerKey && appearanceMap?.has?.(speakerKey)
+    ? appearanceMap.get(speakerKey)
+    : UNASSIGNED_SPEAKER_APPEARANCE;
+  return {
+    isAssigned,
+    speakerKey,
+    displayName: displayName || 'Unassigned speaker',
+    monogram: isAssigned && displayName ? getSpeakerMonogram(displayName) : '?',
+    palette
+  };
+};
+
+export const summarizeSceneSpeakers = ({ card, appearanceMap = null }) => {
+  if (!card || card.blockType !== 'conversation') return [];
+  const resolvedMap = appearanceMap || buildCardSpeakerAppearanceMap(card);
+  const roster = [];
+  const seenKeys = new Set();
+  let hasUnassigned = false;
+  for (const unit of card.units || []) {
+    const info = resolveTurnSpeakerPresentation({ unit, appearanceMap: resolvedMap });
+    if (!info.isAssigned) {
+      hasUnassigned = true;
+      continue;
+    }
+    const dedupeKey = info.speakerKey || `label:${info.displayName.toLowerCase()}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
+    roster.push(info);
+  }
+  if (hasUnassigned) {
+    roster.push({
+      isAssigned: false,
+      speakerKey: null,
+      displayName: 'Unassigned',
+      monogram: '?',
+      palette: UNASSIGNED_SPEAKER_APPEARANCE
+    });
+  }
+  return roster;
+};
 
 export const IDLE_SHARED_CURSOR = Object.freeze({
   workspaceId: null,
