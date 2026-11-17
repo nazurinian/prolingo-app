@@ -155,32 +155,15 @@ export const getStableTurnSpeakerKey = unit => {
 };
 
 /**
- * Assigns stable, collision-free speaker palette entries keyed strictly by persistent
- * speaker UID/ID (never display label or turn position) so renames and Turn reorders
- * never shuffle speaker colors.
+ * Derives color only from persistent speaker ID/UID, independent of Scene cast,
+ * labels and Turn order. Six hues deliberately allow reuse; names, monograms and
+ * Turn identity distinguish speakers whose colors coincide. Nothing is persisted.
  */
 export const buildCardSpeakerAppearanceMap = card => {
   const map = new Map();
-  const keys = [];
-  const seen = new Set();
   for (const unit of card?.units || []) {
     const key = getStableTurnSpeakerKey(unit);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    keys.push(key);
-  }
-  keys.sort();
-  const usedSlots = new Set();
-  const count = SPEAKER_ACCENT_PALETTE.length;
-  for (const key of keys) {
-    let slot = hashSpeakerKey(key) % count;
-    let probes = 0;
-    while (usedSlots.has(slot) && probes < count) {
-      slot = (slot + 1) % count;
-      probes += 1;
-    }
-    usedSlots.add(slot);
-    map.set(key, SPEAKER_ACCENT_PALETTE[slot]);
+    if (key && !map.has(key)) map.set(key, SPEAKER_ACCENT_PALETTE[hashSpeakerKey(key) % SPEAKER_ACCENT_PALETTE.length]);
   }
   return map;
 };

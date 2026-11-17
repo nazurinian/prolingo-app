@@ -15,6 +15,7 @@ import {
   createA2V1CompatibilityParagraphFixture
 } from './paragraph-reader-fixture.js';
 import { createD5AudioFixture } from '../d5/conversation-audio-fixture.js';
+import { waitForCompletedReveal } from './completed-reveal.js';
 
 const root = createRoot(document.getElementById('root'));
 const tick = (ms = 30) => new Promise(resolve => setTimeout(resolve, ms));
@@ -59,6 +60,7 @@ const segTarget = (segId, channel = 'text') => document.querySelector(
 
 export const runA2BrowserCases = async () => {
   const results = [];
+  const completedReveals = [];
   const runCase = async (name, fn) => {
     try {
       await fn();
@@ -345,8 +347,9 @@ export const runA2BrowserCases = async () => {
           />
         </div>
       );
-      await tick(100);
+      await until(() => scrollCalls.some(c => c.seg === f.ids.duplicateSeg2Id && c.options?.block === 'center'));
       assert(scrollCalls.some(c => c.seg === f.ids.duplicateSeg2Id && c.options?.block === 'center'), 'Opt-in player must center search reveal target');
+      completedReveals.push(await waitForCompletedReveal(() => segTarget(f.ids.duplicateSeg2Id), { label: 'Opt-in Full search / nested 240px container' }));
       const dup2El = document.querySelector(`[data-shared-card-segment="${f.ids.duplicateSeg2Id}"][data-shared-card-channel="text"]`);
       assert(dup2El.dataset.textSearchFocusSegment === 'true', 'Search target attribute must stay visible when interactive');
       assert(getComputedStyle(dup2El).backgroundColor !== 'rgba(0, 0, 0, 0)', 'Interactive search target must expose amber highlight background');
@@ -378,13 +381,80 @@ export const runA2BrowserCases = async () => {
           />
         </div>
       );
-      await tick(80);
+      await until(() => scrollCalls.some(c => c.seg === f.ids.duplicateSeg2Id && c.channel === 'meaning'));
       assert(
         scrollCalls.some(c => c.seg === f.ids.duplicateSeg2Id && c.channel === 'meaning'),
         `Separated follow must resolve channel-qualified meaning target, got ${JSON.stringify(scrollCalls)}`
       );
+      completedReveals.push(await waitForCompletedReveal(() => segTarget(f.ids.duplicateSeg2Id, 'meaning'), { label: 'Separated ID follow / nested 220px container' }));
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  await runCase('HF1: native search reveal completes across Full, all Part styles and Segment in smooth and reduced motion', async () => {
+    const f = createA2ParagraphReaderFixture();
+    const pres = selectTextCardPresentation(f.snapshot, { documentId: f.ids.documentId });
+    const calls = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (options) {
+      calls.push({ segmentId: this.dataset.textPlayerSegment, channel: this.dataset.sharedCardChannel, options });
+      return original.call(this, options);
+    };
+    const variants = [
+      { level: 'full', bilingualLayout: 'interlinear' },
+      { level: 'full', bilingualLayout: 'separated' },
+      ...['horizontal-focus', 'vertical-focus', 'vertical-list'].map(partLayout => ({ level: 'part', partLayout })),
+      { level: 'segment' }
+    ];
+    try {
+      for (const reduced of [false, true]) {
+        await setReducedMotion(reduced);
+        for (const [index, view] of variants.entries()) {
+          const label = `${reduced ? 'reduced' : 'smooth'} ${view.level}/${view.partLayout || view.bilingualLayout || 'interlinear'}`;
+          const key = `${reduced}-${index}`;
+          const surface = focusTarget => (
+            <div key={key} data-test-reveal-container={key} style={{ height: 260, overflow: 'auto' }}>
+              <SharedParagraphWorkspaceReader presentation={pres} presentationState={normalizeTextCardPresentationState(view)} focusTarget={focusTarget} />
+            </div>
+          );
+          await render(surface(null));
+          calls.length = 0;
+          root.render(surface({ documentId: f.ids.documentId, blockId: f.ids.storyCardId, segmentId: f.ids.duplicateSeg2Id, nonce: key }));
+          await until(() => calls.some(call => call.segmentId === f.ids.duplicateSeg2Id && call.options?.block === 'center'));
+          assert(calls.some(call => call.segmentId === f.ids.duplicateSeg2Id && call.channel === 'text' && call.options?.block === 'center'), `${label}: exact search identity/channel request`);
+          assert(calls.every(call => call.options?.behavior === (reduced ? 'auto' : 'smooth')), `${label}: native motion policy`);
+          const evidence = await waitForCompletedReveal(() => segTarget(f.ids.duplicateSeg2Id), { label });
+          assert(evidence.scrollContainers.some(container => container.height === 260 && container.top > 0), `${label}: nested container actually scrolled`);
+          equal(evidence.segmentId, f.ids.duplicateSeg2Id, `${label}: completed target identity`);
+          completedReveals.push(evidence);
+        }
+      }
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  await runCase('HF1: a correct scroll request without native movement fails completed visibility', async () => {
+    const f = createA2ParagraphReaderFixture();
+    const pres = selectTextCardPresentation(f.snapshot, { documentId: f.ids.documentId });
+    const calls = [];
+    const original = Element.prototype.scrollIntoView;
+    // Negative control: the old request-only check would pass while the target stays clipped.
+    Element.prototype.scrollIntoView = function (options) { calls.push({ id: this.dataset.textPlayerSegment, options }); };
+    try {
+      await render(<div style={{ height: 240, overflow: 'auto' }}>
+        <div style={{ height: 600 }} />
+        <SharedParagraphWorkspaceReader presentation={pres}
+          focusTarget={{ documentId: f.ids.documentId, blockId: f.ids.storyCardId, segmentId: f.ids.duplicateSeg2Id, nonce: 'no-native-scroll' }} />
+      </div>);
+      await until(() => calls.some(call => call.id === f.ids.duplicateSeg2Id && call.options?.block === 'center'));
+      let failure;
+      try { await waitForCompletedReveal(() => segTarget(f.ids.duplicateSeg2Id), { timeoutMs: 300 }); }
+      catch (error) { failure = error; }
+      assert(failure?.message.includes('not visibly revealed and settled'), 'Completion check must reject request-only false positives');
+    } finally {
+      Element.prototype.scrollIntoView = original;
     }
   });
 
@@ -447,8 +517,9 @@ export const runA2BrowserCases = async () => {
           }}
         />
       );
-      await tick(80);
+      await until(() => motionCalls.length > 0);
       assert(motionCalls.length > 0 && motionCalls.every(o => o?.behavior === 'auto'), `Reduced motion must use behavior:'auto', got ${JSON.stringify(motionCalls)}`);
+      completedReveals.push(await waitForCompletedReveal(() => segTarget(f.ids.duplicateSeg2Id), { label: 'Reduced motion / 300px viewport' }));
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;
     }
@@ -509,6 +580,7 @@ export const runA2BrowserCases = async () => {
   return {
     browser: navigator.userAgent,
     results,
+    completedReveals,
     passed: results.filter(item => item.ok).length,
     failed: results.filter(item => !item.ok).length,
     indexedDbCalls: window.__a2DbCalls,

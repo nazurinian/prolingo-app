@@ -159,7 +159,7 @@ test('Canonical Text DB/schema constants remain v1 and zero IndexedDB accesses o
   assert.equal(dbCalls, 0);
 });
 
-test('Speaker visual palette is keyed by registry UID/ID, distinct per scene speaker, and stable across rename + reorder', () => {
+test('Speaker visual palette is keyed by registry UID/ID and stable across rename + reorder', () => {
   const initialMap = utils.buildCardSpeakerAppearanceMap(scene1Card);
   const baristaUnit = scene1Card.units[0];
   const mayaUnit = scene1Card.units[1];
@@ -172,9 +172,10 @@ test('Speaker visual palette is keyed by registry UID/ID, distinct per scene spe
   const unassignedInfo = utils.resolveTurnSpeakerPresentation({ unit: unassignedUnit, appearanceMap: initialMap });
 
   assert.equal(baristaInfo.isAssigned, true);
-  assert.notEqual(baristaInfo.palette.id, mayaInfo.palette.id);
-  assert.notEqual(mayaInfo.palette.id, tariInfo.palette.id);
-  assert.notEqual(baristaInfo.palette.id, tariInfo.palette.id);
+  for (const info of [baristaInfo, mayaInfo, tariInfo]) {
+    assert.ok(utils.SPEAKER_ACCENT_PALETTE.includes(info.palette));
+    assert.ok(info.displayName && info.monogram);
+  }
   assert.equal(unassignedInfo.isAssigned, false);
   assert.equal(unassignedInfo.displayName, 'Unassigned speaker');
   assert.equal(unassignedInfo.monogram, '?');
@@ -231,6 +232,60 @@ test('Speaker visual palette is keyed by registry UID/ID, distinct per scene spe
   assert.equal(afterMaya.monogram, 'MP');
   assert.equal(afterBarista.palette.id, baristaInfo.palette.id);
   assert.equal(afterTari.palette.id, tariInfo.palette.id);
+});
+
+test('HF1: A5 collision cast addition/removal preserves existing speaker colors across Scenes and snapshot identity', () => {
+  const before = JSON.stringify(fixture.snapshot);
+  const initialMaps = new Map(presentation.cards.map(card => [card.id, utils.buildCardSpeakerAppearanceMap(card)]));
+  const victimKey = 'id:SPK_A9FC29F9';
+  const intruderId = 'SPK_00000003';
+  assert.equal(initialMaps.get(scene1Card.id).get(victimKey).id, 'orange', 'Exact A5-C1 collision fixture');
+  const registered = applyTextConversationEditorCommand(fixture.snapshot, {
+    type: 'speaker.register', payload: { documentId: fixture.ids.documentId, speakerId: intruderId, label: 'Extra cast' }
+  }, { documentId: fixture.ids.documentId });
+  const added = applyTextConversationEditorCommand(registered.snapshot, {
+    type: 'contentUnit.create', payload: { blockId: fixture.ids.scene1Id, kind: 'turn', speakerId: intruderId }
+  }, { documentId: fixture.ids.documentId });
+  const removed = applyTextConversationEditorCommand(added.snapshot, {
+    type: 'contentUnit.delete', payload: { id: added.result.id }
+  }, { documentId: fixture.ids.documentId });
+  for (const snapshot of [added.snapshot, removed.snapshot]) {
+    const projected = selectTextConversationReaderPresentation(snapshot, { documentId: fixture.ids.documentId });
+    for (const card of projected.cards) {
+      const map = utils.buildCardSpeakerAppearanceMap(card);
+      for (const [key, color] of initialMaps.get(card.id)) assert.equal(map.get(key), color, `Stable ${key} in ${card.id}`);
+      for (const unit of card.units.filter(unit => presentation.unitById[unit.id])) {
+        assert.deepEqual(unit, presentation.unitById[unit.id], 'Existing Turn/Segment IDs, UIDs, labels and parents unchanged');
+      }
+    }
+    assert.deepEqual(snapshot.audioVariants, fixture.snapshot.audioVariants);
+  }
+  assert.equal(JSON.stringify(fixture.snapshot), before, 'Original fixture never mutated');
+});
+
+test('HF1: intentional hue reuse retains distinct speaker labels, monograms and Turns; UID fallback and neutral are stable', () => {
+  const units = Array.from({ length: 8 }, (_, i) => ({ kind: 'turn', id: `turn-${i}`, uid: `turn-uid-${i}`,
+    viewKey: `unit:turn-uid-${i}`, speakerId: `SPK_${String(i + 1).padStart(8, '0')}`,
+    speakerUid: `speaker-uid-${i}`, speakerLabel: `Speaker ${i + 1}`, segments: [] }));
+  const card = { blockType: 'conversation', units };
+  const before = JSON.stringify(card);
+  const map = utils.buildCardSpeakerAppearanceMap(card);
+  assert.ok(new Set([...map.values()]).size < units.length, 'Six colors deliberately permit reuse');
+  for (const unit of units) {
+    const alone = utils.buildCardSpeakerAppearanceMap({ units: [unit] });
+    assert.equal(map.get(utils.getStableTurnSpeakerKey(unit)), alone.get(utils.getStableTurnSpeakerKey(unit)), 'Cast-independent color');
+  }
+  const cast = utils.summarizeSceneSpeakers({ card, appearanceMap: map });
+  assert.equal(cast.length, units.length, 'Shared hues cannot merge speaker identities');
+  assert.deepEqual(cast.map(info => info.displayName), units.map(unit => unit.speakerLabel));
+  assert.ok(cast.every(info => info.monogram && info.isAssigned));
+  const uidOnly = { kind: 'turn', speakerUid: 'speaker-uid-fallback', speakerLabel: 'UID speaker' };
+  const uidMap = utils.buildCardSpeakerAppearanceMap({ units: [...units, uidOnly] });
+  assert.equal(uidMap.get('uid:speaker-uid-fallback'), utils.buildCardSpeakerAppearanceMap({ units: [uidOnly] }).get('uid:speaker-uid-fallback'));
+  const unassigned = utils.resolveTurnSpeakerPresentation({ unit: { kind: 'turn' }, appearanceMap: map });
+  assert.equal(unassigned.palette.id, 'neutral');
+  assert.equal(unassigned.displayName, 'Unassigned speaker');
+  assert.equal(JSON.stringify(card), before);
 });
 
 test('SharedBilingualLayoutToolbar adapts terminology and aria-labels for unitKind=turn without Section leaks', () => {
