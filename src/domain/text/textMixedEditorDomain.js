@@ -25,14 +25,15 @@ export const selectTextMixedEditorState = (snapshot, { documentId } = {}) => {
       sentences: documentTree.blocks.reduce((sum, c) => sum + c.segments.length, 0) } });
 };
 
-const scopeCommand = (snapshot, state, command) => {
+// Shared structured authoring boundary; state must come from a validated hydrated tree.
+export const scopeTextStructuredEditorCommand = (snapshot, state, command) => {
   const { type, payload = {} } = command || {};
   const fields = Object.hasOwn(TEXT_MIXED_EDITOR_COMMAND_FIELDS, type) && TEXT_MIXED_EDITOR_COMMAND_FIELDS[type];
   if (!fields || !payload || typeof payload !== 'object' || Array.isArray(payload)
     || Object.keys(payload).some(k => !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
   const card = id => {
     const value = state.cards.find(c => c.id === id);
-    if (!value) fail('OUT_OF_SCOPE', 'Card is outside the selected Mixed Workspace');
+    if (!value) fail('OUT_OF_SCOPE', 'Card is outside the selected Workspace');
     return value;
   };
   const unit = id => {
@@ -106,7 +107,7 @@ const scopeCommand = (snapshot, state, command) => {
 export const applyTextMixedEditorCommand = (snapshot, command, { documentId, now = Date.now() } = {}) => {
   const state = selectTextMixedEditorState(snapshot, { documentId });
   try {
-    const outcome = applyTextLibraryCommand(structuredClone(snapshot), scopeCommand(snapshot, state, command), now);
+    const outcome = applyTextLibraryCommand(structuredClone(snapshot), scopeTextStructuredEditorCommand(snapshot, state, command), now);
     return { ...outcome, state: selectTextMixedEditorState(outcome.snapshot, { documentId: state.workspace.id }) };
   } catch (error) {
     if (error.code) throw error;
@@ -115,7 +116,7 @@ export const applyTextMixedEditorCommand = (snapshot, command, { documentId, now
 };
 
 /** Synchronous lock + immutable staged command; async acknowledgements cannot replace newer snapshots. */
-export const createTextMixedEditorCoordinator = ({ getScope, onCommit, onPending = () => {}, execute = null }) => {
+export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPending = () => {}, execute = null, prepare }) => {
   let pending = false, disposed = false;
   const errorResult = error => ({ ok: false, error: { code: typeof error?.code === 'string' ? error.code : 'COMMAND_REJECTED', message: error?.message || 'Command failed' } });
   return {
@@ -128,7 +129,7 @@ export const createTextMixedEditorCoordinator = ({ getScope, onCommit, onPending
       try {
         const scope = getScope();
         const captured = canonicalJsonStringify(scope.snapshot);
-        const staged = freeze(applyTextMixedEditorCommand(scope.snapshot, command, { documentId: scope.documentId }));
+        const staged = freeze(prepare(scope.snapshot, command, { ...scope }));
         const expected = canonicalJsonStringify({ snapshot: staged.snapshot, result: staged.result });
         const outcome = await (execute ? execute(structuredClone(command), { preparedOutcome: staged, documentId: scope.documentId }) : staged);
         const latest = getScope();
@@ -145,3 +146,7 @@ export const createTextMixedEditorCoordinator = ({ getScope, onCommit, onPending
     }
   };
 };
+
+export const createTextMixedEditorCoordinator = options => createTextSnapshotCommandCoordinator({
+  ...options, prepare: (snapshot, command, scope) => applyTextMixedEditorCommand(snapshot, command, { documentId: scope.documentId })
+});
