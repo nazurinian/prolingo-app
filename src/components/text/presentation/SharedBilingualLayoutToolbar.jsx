@@ -54,9 +54,10 @@ export const SharedBilingualLayoutToolbar = ({
   onResetView = null,
   rightSlot = null,
   subtitle = null,
-  unitKind = 'paragraph'
+  unitKind = 'paragraph',
+  workspaceType = null
 }) => {
-  const terms = getSharedUnitTerms({ kind: unitKind });
+  const terms = getSharedUnitTerms({ kind: unitKind, documentType: workspaceType });
   const describe = option => option.description
     .replaceAll('sections', terms.plural)
     .replaceAll('section', terms.lower)

@@ -15,6 +15,10 @@ const LazySharedConversationReaderQaPreview = import.meta.env.DEV ? lazy(() => (
   import('./components/text/presentation/TextSharedConversationReaderQaPreview.jsx')
 )) : null
 
+const LazyMixedWorkspaceQaPreview = import.meta.env.DEV ? lazy(() => (
+  import('./components/text/presentation/TextMixedWorkspaceQaPreview.jsx')
+)) : null
+
 const getActiveQaRoute = () => {
   if (!import.meta.env.DEV || typeof window === 'undefined') return null
   const search = new URLSearchParams(window.location.search || '')
@@ -27,6 +31,9 @@ const getActiveQaRoute = () => {
   }
   if (qa === 'shared-conversation-reader' || window.location.hash === '#qa-shared-conversation-reader') {
     return 'shared-conversation-reader'
+  }
+  if (qa === 'mixed-workspace' || window.location.hash === '#qa-mixed-workspace') {
+    return 'mixed-workspace'
   }
   return null
 }
@@ -46,6 +53,10 @@ createRoot(document.getElementById('root')).render(
     ) : activeQaRoute === 'shared-conversation-reader' ? (
       <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Conversation Reader QA Preview...</div>}>
         <LazySharedConversationReaderQaPreview />
+      </Suspense>
+    ) : activeQaRoute === 'mixed-workspace' ? (
+      <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Mixed Workspace QA...</div>}>
+        <LazyMixedWorkspaceQaPreview />
       </Suspense>
     ) : (
       <App />

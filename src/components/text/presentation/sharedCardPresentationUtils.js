@@ -42,8 +42,18 @@ const TURN_TERMS = Object.freeze({
   cardLower: 'scene',
   collectionNoun: 'dialogue'
 });
+const MIXED_TERMS = Object.freeze({
+  label: 'Part',
+  lower: 'section or speaker turn',
+  plural: 'sections or speaker turns',
+  cardLabel: 'Card',
+  cardLower: 'card',
+  collectionNoun: 'content'
+});
 export const getSharedUnitTerms = unitOrCard => (
-  unitOrCard?.kind === 'turn' || unitOrCard?.blockType === 'conversation' || unitOrCard === 'turn'
+  unitOrCard?.documentType === 'mixed'
+    ? MIXED_TERMS
+    : unitOrCard?.kind === 'turn' || unitOrCard?.blockType === 'conversation' || unitOrCard === 'turn'
     ? TURN_TERMS
     : SECTION_TERMS
 );

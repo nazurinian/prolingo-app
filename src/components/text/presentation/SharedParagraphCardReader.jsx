@@ -558,6 +558,7 @@ export const SharedParagraphWorkspaceReader = ({
     >
       <SharedBilingualLayoutToolbar
         unitKind={presentation.workspace.documentType === 'conversation' ? 'turn' : 'paragraph'}
+        workspaceType={presentation.workspace.documentType}
         presentationState={activeViewState}
         onChangePresentationState={handleChangePresentationState}
         onResetView={handleResetView}
