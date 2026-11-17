@@ -32,6 +32,7 @@ export const executeBrowserTtsPlaybackService = ({
           try { synth.cancel(); } catch { onError?.('cancel-failed'); resolve(); return; }
       }
       let settled = false;
+      let utteranceGeneration = 0;
 
       const finish = () => {
           if (settled) return;
@@ -42,8 +43,8 @@ export const executeBrowserTtsPlaybackService = ({
           resolve();
       };
 
-      const handleUtteranceDone = event => {
-          if (settled) return;
+      const handleUtteranceDone = (event, generation) => {
+          if (settled || generation !== utteranceGeneration) return;
           const replayState = ttsReplayRef?.current;
           // Android background MediaSession Pause may terminate the native
           // utterance. That termination is not the logical end of this ProLingo
@@ -63,12 +64,13 @@ export const executeBrowserTtsPlaybackService = ({
           }
 
           const utterance = new SpeechSynthesisUtterance(textToRead);
+          const generation = ++utteranceGeneration;
           currentUtteranceRef.current = utterance;
           if (targetVoice) utterance.voice = targetVoice;
           utterance.rate = Number(rateRef?.current ?? rate) || 1;
           utterance.pitch = Number(pitch) || 1;
-          utterance.onend = handleUtteranceDone;
-          utterance.onerror = handleUtteranceDone;
+          utterance.onend = event => handleUtteranceDone(event, generation);
+          utterance.onerror = event => handleUtteranceDone(event, generation);
 
           if (synth.paused && typeof synth.resume === 'function') synth.resume();
           try {
@@ -92,6 +94,9 @@ export const executeBrowserTtsPlaybackService = ({
                       finish();
                       return false;
                   }
+                  // Invalidate the cancelled native utterance before unsuspending:
+                  // its delayed event can arrive before the replacement starts.
+                  utteranceGeneration += 1;
                   replayState.suspended = false;
                   // Pause already cancelled the old Android utterance. Give the
                   // engine one task turn before queueing the replacement so the

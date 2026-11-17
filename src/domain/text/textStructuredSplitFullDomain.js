@@ -276,6 +276,8 @@ export const resolveTextStructuredFullArtifactReadiness = ({
   profile,
   language = null,
   composition = null,
+  rendererVersion,
+  codecProfile,
   runtimeFullAudio = {}
 } = {}) => {
   const representation = buildTextStructuredFullRepresentation({ block, channel });
@@ -294,7 +296,9 @@ export const resolveTextStructuredFullArtifactReadiness = ({
     engine: normalizedProfile.engine,
     voiceId: normalizedProfile.voiceId,
     rate: normalizedProfile.rate ?? 0,
-    pitch: normalizedProfile.pitch ?? 0
+    pitch: normalizedProfile.pitch ?? 0,
+    rendererVersion,
+    codecProfile
   });
   const artifacts = getTextStructuredFullAudioArtifacts(block);
   const exact = artifacts.find(item => item.fullArtifactFingerprint === expected.fullArtifactFingerprint) || null;

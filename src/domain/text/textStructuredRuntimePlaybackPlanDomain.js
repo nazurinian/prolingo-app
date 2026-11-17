@@ -79,6 +79,8 @@ export const resolveTextStructuredReadyFullRuntime = ({
   channel = 'text',
   language = null,
   playbackOrder,
+  rendererVersion,
+  codecProfile,
   runtimeFullAudio = {}
 } = {}) => {
   const profiles = Array.isArray(playbackOrder?.profiles) ? playbackOrder.profiles : [];
@@ -89,6 +91,8 @@ export const resolveTextStructuredReadyFullRuntime = ({
       channel,
       profile,
       language,
+      rendererVersion,
+      codecProfile,
       runtimeFullAudio
     });
     if (readiness.runtime?.fullArtifactFingerprint && readiness.runtime.fullArtifactFingerprint !== readiness.artifact?.fullArtifactFingerprint) continue;
@@ -430,6 +434,8 @@ export const buildTextStructuredBlockRuntimePlaybackPlan = ({
     channel: normalizedChannel,
     language: language || (exactMixed ? (normalizedChannel === 'text' ? documentTree.textLanguage : documentTree.meaningLanguage) : null),
     playbackOrder: effectivePlaybackOrder,
+    rendererVersion,
+    codecProfile,
     runtimeFullAudio
   }) : null;
 

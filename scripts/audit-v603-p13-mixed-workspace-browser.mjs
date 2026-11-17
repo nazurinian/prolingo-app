@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const editorMode = process.argv.includes('--editor');
 const audioMode = process.argv.includes('--audio');
+const a5Mode = process.argv.includes('--a5');
 
 const compile = async (entry, dev, stubApp = false) => (await build({
   absWorkingDir: root,
@@ -42,7 +43,7 @@ if (!cssName) throw new Error('Run npm run build before P13 browser acceptance')
 const css = await fs.readFile(path.join(root, 'dist/assets', cssName));
 
 const bundles = {
-  '/cases.js': await compile(audioMode ? 'scripts/fixtures/p13-mixed/audio-browser-cases.jsx' : editorMode ? 'scripts/fixtures/p13-mixed/editor-browser-cases.jsx' : 'scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
+  '/cases.js': await compile(a5Mode ? 'scripts/fixtures/p13-mixed/a5-browser-cases.jsx' : audioMode ? 'scripts/fixtures/p13-mixed/audio-browser-cases.jsx' : editorMode ? 'scripts/fixtures/p13-mixed/editor-browser-cases.jsx' : 'scripts/fixtures/p13-mixed/browser-cases.jsx', true, false),
   '/gate-prod.js': await compile('src/main.jsx', false, true),
   '/gate-dev.js': await compile('src/main.jsx', true, true)
 };

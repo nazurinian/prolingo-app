@@ -15,7 +15,7 @@ const assert = (value, message) => { if (!value) throw Error(message); };
 const until = async (predicate, label = 'condition') => { const end = performance.now() + 4000; while (performance.now() < end) { if (predicate()) return; await tick(); } throw Error('Timed out: ' + label); };
 const voices = ['en-GB-RyanNeural', 'en-GB-SoniaNeural', 'en-GB-LibbyNeural', 'id-ID-GadisNeural'].map(name => ({ name, lang: name.startsWith('id-') ? 'id-ID' : 'en-GB' }));
 let latest, update, generation = 0;
-async function mount({ full = false, rate = 1, channel = 'text-only', setup = null, native = false, unsupported = false, speechFailure = false } = {}) {
+async function mount({ full = false, rate = 1, channel = 'text-only', setup = null, native = false, unsupported = false, speechFailure = false, nativeSpeech = false, isMobile = false } = {}) {
   const data = createP13MixedFixture({ runtimeBindings: true });
   if (setup) await setup(data);
   const source = JSON.stringify(data.snapshot), events = [], statuses = [], logs = [], elements = [];
@@ -30,6 +30,10 @@ async function mount({ full = false, rate = 1, channel = 'text-only', setup = nu
     delete hooks.executeBrowserTts;
     hooks.speechSynth.speak = utterance => { events.push({ kind: 'native-tts-error', args: utterance, finish() {} }); setTimeout(() => utterance.onerror?.({ error: 'synthesis-failed' }), 0); };
   }
+  if (nativeSpeech) {
+    delete hooks.executeBrowserTts;
+    hooks.speechSynth.speak = utterance => events.push({ kind: 'native-tts', args: utterance, finish: () => utterance.onend?.({ type: 'end' }) });
+  }
   const originalAudio = window.Audio;
   if (native) {
     delete hooks.executeRuntimeAudio;
@@ -41,7 +45,7 @@ async function mount({ full = false, rate = 1, channel = 'text-only', setup = nu
     const [view, setView] = useState(undefined);
     const selection = useMemo(() => selectTextMixedReaderState(model.snapshot, { documentId: model.documentId }), [model.snapshot, model.documentId]);
     const audio = useConversationAudioPlayback({ snapshot: model.snapshot, documentTree: selection.documentTree, runtimeAudioUrls: data.runtimeAudioUrls,
-      runtimeFullAudio, audioConfig: model.config, availableBrowserVoices: speechFailure ? [] : voices, audioRuntimeHooks: hooks });
+      runtimeFullAudio, audioConfig: model.config, availableBrowserVoices: speechFailure || nativeSpeech ? [] : voices, audioRuntimeHooks: hooks, isMobile });
     useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
     useEffect(() => { latest = { ...model, audio, selection, cursor: resolveTextMixedReaderCursor({ presentation: selection.presentation, audioPlayback: audio }) }; update = change; }, [model, audio, selection]);
     return <SharedMixedWorkspaceReader snapshot={model.snapshot} documentId={model.documentId} audioPlayback={audio} presentationState={view} onPresentationStateChange={setView} />;
@@ -237,3 +241,4 @@ export async function runP13BrowserCases() {
   return { results, binaryEvidence, passed: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, indexedDbCalls: window.__p13DbCalls, storageCalls: window.__p13StorageCalls };
 }
 export const runP13AudioDiagnostics = async () => ({ suite: 'P13-A4 explicit assertion regressions' });
+export { mount as mountP13AudioAudit, addFull as addP13FullFixture, wavFixture as prepareP13WavFixture };
