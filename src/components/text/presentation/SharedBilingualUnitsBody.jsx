@@ -4,6 +4,8 @@ import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRol
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import {
   IDLE_SHARED_CURSOR,
+  getSharedUnitTerms,
+  getSharedUnitHeading,
   buildCardSegmentIndexMap,
   buildSharedSegmentRenderFlags,
   normalizeSegmentDisplayText,
@@ -65,16 +67,16 @@ const CardChannelFlowBody = ({
           >
             {showSectionHeaders && (
               <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {unit.label || 'Section'} {unitIndex + 1}
+                {getSharedUnitHeading(unit, unitIndex)}
               </p>
             )}
             {unitSegments.length === 0 ? (
               <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty section — no sentences yet.
+                Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
               </p>
             ) : !hasAnyContent && !showMissingInline ? (
               <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-channel={channel}>
-                {isMeaning ? 'No Indonesian meaning in this section yet.' : 'No English text in this section yet.'}
+                {`No ${isMeaning ? 'Indonesian meaning' : 'English text'} in this ${getSharedUnitTerms(unit).lower} yet.`}
               </p>
             ) : (
               <div lang={langTag} className={`max-w-[66ch] text-left break-words whitespace-pre-line ${proseTypography}`}>
@@ -175,12 +177,12 @@ const CardInterlinearBody = ({
           >
             {showSectionHeaders && (
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-                {unit.label || 'Section'} {unitIndex + 1}
+                {getSharedUnitHeading(unit, unitIndex)}
               </p>
             )}
             {unitSegments.length === 0 ? (
               <p className="text-sm italic text-slate-400 dark:text-slate-500" data-shared-card-empty-section={unit.viewKey}>
-                Empty section — no sentences yet.
+                Empty {getSharedUnitTerms(unit).lower} — no sentences yet.
               </p>
             ) : (
               <div className="space-y-4">
@@ -344,7 +346,7 @@ export const SharedBilingualUnitsBody = ({
   const { indexById } = useMemo(() => buildCardSegmentIndexMap(card), [card]);
   const hasMultipleUnits = units.length > 1;
   const hasPersistentEmpty = units.some(unit => unit.identitySource === 'persistent' && (unit.segments?.length || 0) === 0);
-  const showSectionHeaders = forceSectionHeaders !== null ? forceSectionHeaders : (hasMultipleUnits || hasPersistentEmpty);
+  const showSectionHeaders = forceSectionHeaders !== null ? forceSectionHeaders : (card?.blockType === 'conversation' || hasMultipleUnits || hasPersistentEmpty);
   const textLang = workspace?.textLanguage || 'en';
   const meaningLang = workspace?.meaningLanguage || 'id';
 
@@ -354,7 +356,7 @@ export const SharedBilingualUnitsBody = ({
         className="text-sm italic text-slate-400 dark:text-slate-500"
         data-shared-card-empty="zero-units"
       >
-        No sections in this card yet.
+        No {getSharedUnitTerms(card).plural} in this card yet.
       </p>
     );
   }

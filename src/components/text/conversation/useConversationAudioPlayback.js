@@ -779,7 +779,29 @@ export const useConversationAudioPlayback = ({
     forceStopAll();
   }, [forceStopAll]);
 
+  // Scalar evidence from the existing session refs, read at render time. In
+  // particular, an old source status cannot supply its own session authority.
+  const readPresentationPlaybackScope = useCallback(() => {
+    const context = playbackContextRef.current;
+    return Object.freeze({
+      current: !stopSignalRef.current && prevSnapshotRef.current === snapshot
+        && prevWorkspaceKeyRef.current === workspaceKey
+        && prevBindingsKeyRef.current.runtimeAudioUrls === runtimeAudioUrls
+        && prevBindingsKeyRef.current.runtimeFullAudio === runtimeFullAudio
+        && prevBindingsKeyRef.current.normalizedConfig === normalizedConfig
+        && context?.sessionId === playbackSessionRef.current && context?.documentId === documentTree?.id,
+      workspaceId: context?.documentId ?? null,
+      workspaceUid: documentTree?.uid ?? null,
+      sessionId: playbackSessionRef.current,
+      playingContext: context?.context ?? null,
+      isPlaying: isPlayingRef.current,
+      isPaused: isPausedRef.current,
+      playbackRepresentationMode: context?.playbackRepresentationMode ?? null
+    });
+  }, [snapshot, workspaceKey, documentTree?.id, documentTree?.uid, runtimeAudioUrls, runtimeFullAudio, normalizedConfig]);
+
   return useMemo(() => ({
+    readPresentationPlaybackScope,
     isPlaying,
     isPaused,
     playingContext,
@@ -800,6 +822,7 @@ export const useConversationAudioPlayback = ({
     resumePlayback,
     stopPlayback
   }), [
+    readPresentationPlaybackScope,
     isPlaying,
     isPaused,
     playingContext,

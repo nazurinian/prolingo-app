@@ -12,6 +12,7 @@ import { SharedCardPartView, SharedCardSegmentView } from './SharedPartAndSegmen
 import { useCardPresentationFollow } from './useCardPresentationFollow.js';
 import {
   IDLE_SHARED_CURSOR,
+  getSharedUnitTerms,
   buildCardUnitLookup,
   normalizeSegmentDisplayText,
   resolveCardChannelAvailability,
@@ -207,7 +208,7 @@ export const SharedCardReadingSurface = ({
         className="px-1 py-1 sm:px-2 sm:py-2 space-y-4"
         data-shared-card-id={card?.id}
         data-shared-card-embedded="true"
-        data-shared-card-role={isTitleRole ? 'title' : 'paragraph'}
+        data-shared-card-role={isTitleRole ? 'title' : card?.blockType === 'conversation' ? 'scene' : 'paragraph'}
         data-shared-card-level={viewState.level}
         data-shared-card-part-layout={viewState.partLayout}
         data-shared-card-layout={viewState.bilingualLayout}
@@ -284,7 +285,7 @@ export const SharedCardReadingSurface = ({
     <article
       data-shared-card-id={card?.id}
       data-text-player-card={card?.id}
-      data-shared-card-role={isTitleRole ? 'title' : 'paragraph'}
+      data-shared-card-role={isTitleRole ? 'title' : card?.blockType === 'conversation' ? 'scene' : 'paragraph'}
       data-shared-card-level={viewState.level}
       data-shared-card-part-layout={viewState.partLayout}
       data-shared-card-layout={viewState.bilingualLayout}
@@ -321,14 +322,14 @@ export const SharedCardReadingSurface = ({
                     ? 'font-bold uppercase tracking-wider text-[11px] text-indigo-700 dark:text-indigo-300'
                     : 'font-medium text-slate-500 dark:text-slate-400'
                 }
-                data-shared-card-role-label={isTitleRole ? 'title' : 'paragraph'}
+                data-shared-card-role-label={isTitleRole ? 'title' : card?.blockType === 'conversation' ? 'scene' : 'paragraph'}
               >
-                {isTitleRole ? 'Title' : 'Paragraph'}
+                {isTitleRole ? 'Title' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph'}
               </span>
               {card?.units?.length > 1 && (
                 <>
                   <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                  <span className="text-slate-500 dark:text-slate-400">{card.units.length} sections</span>
+                  <span className="text-slate-500 dark:text-slate-400">{card.units.length} {getSharedUnitTerms(card).plural}</span>
                 </>
               )}
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
@@ -376,7 +377,7 @@ export const SharedCardReadingSurface = ({
               }`}
               style={{ textWrap: 'balance' }}
             >
-              {card?.title || (isTitleRole ? 'Untitled Title Card' : 'Paragraph')}
+              {card?.title || (isTitleRole ? 'Untitled Title Card' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph')}
             </h3>
           </div>
         </div>
@@ -412,7 +413,7 @@ export const SharedCardReadingSurface = ({
             onClick={() => onPlayCard?.(card.id)}
             data-shared-card-play="true"
             title="Play entire card"
-            aria-label={`Play card ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : 'Paragraph')}`}
+            aria-label={`Play card ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : card?.blockType === 'conversation' ? 'Scene' : 'Paragraph')}`}
             className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 px-3 rounded-full text-xs font-semibold inline-flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
               isSpeakingCard
                 ? 'bg-indigo-700 text-white'
@@ -433,7 +434,7 @@ export const SharedCardReadingSurface = ({
         </div>
       ) : (
         <div className="px-5 py-3.5 sm:px-8 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">
-          {firstVisiblePreview || (card?.units?.length === 0 ? 'No sections in this card yet.' : 'No preview text.')}
+          {firstVisiblePreview || (card?.units?.length === 0 ? `No ${getSharedUnitTerms(card).plural} in this card yet.` : 'No preview text.')}
         </div>
       )}
     </article>
@@ -522,6 +523,7 @@ export const SharedParagraphWorkspaceReader = ({
       className="space-y-4"
     >
       <SharedBilingualLayoutToolbar
+        unitKind={presentation.workspace.documentType === 'conversation' ? 'turn' : 'paragraph'}
         presentationState={activeViewState}
         onChangePresentationState={handleChangePresentationState}
         onResetView={handleResetView}

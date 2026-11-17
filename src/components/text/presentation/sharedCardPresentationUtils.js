@@ -26,6 +26,13 @@ export const SHARED_BILINGUAL_LAYOUT_OPTIONS = Object.freeze([
 
 export const normalizeSegmentDisplayText = value => String(value ?? '').trim();
 
+const SECTION_TERMS = Object.freeze({ label: 'Section', lower: 'section', plural: 'sections' });
+const TURN_TERMS = Object.freeze({ label: 'Speaker Turn', lower: 'speaker turn', plural: 'speaker turns' });
+export const getSharedUnitTerms = unitOrCard => unitOrCard?.kind === 'turn' || unitOrCard?.blockType === 'conversation'
+  ? TURN_TERMS : SECTION_TERMS;
+export const getSharedUnitHeading = (unit, index) => `${unit?.label || getSharedUnitTerms(unit).label} ${index + 1}`
+  + (unit?.kind === 'turn' ? ` · ${unit.speakerLabel || 'Unassigned speaker'}` : '');
+
 export const IDLE_SHARED_CURSOR = Object.freeze({
   workspaceId: null,
   workspaceUid: null,

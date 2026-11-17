@@ -11,6 +11,10 @@ const LazySharedCardReaderQaPreview = import.meta.env.DEV ? lazy(() => (
   import('./components/text/presentation/TextSharedCardReaderQaPreview.jsx')
 )) : null
 
+const LazySharedConversationReaderQaPreview = import.meta.env.DEV ? lazy(() => (
+  import('./components/text/presentation/TextSharedConversationReaderQaPreview.jsx')
+)) : null
+
 const getActiveQaRoute = () => {
   if (!import.meta.env.DEV || typeof window === 'undefined') return null
   const search = new URLSearchParams(window.location.search || '')
@@ -20,6 +24,9 @@ const getActiveQaRoute = () => {
   }
   if (qa === 'shared-card-reader' || window.location.hash === '#qa-shared-card-reader') {
     return 'shared-card-reader'
+  }
+  if (qa === 'shared-conversation-reader' || window.location.hash === '#qa-shared-conversation-reader') {
+    return 'shared-conversation-reader'
   }
   return null
 }
@@ -35,6 +42,10 @@ createRoot(document.getElementById('root')).render(
     ) : activeQaRoute === 'shared-card-reader' ? (
       <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Shared Card Reader QA Preview...</div>}>
         <LazySharedCardReaderQaPreview />
+      </Suspense>
+    ) : activeQaRoute === 'shared-conversation-reader' ? (
+      <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Conversation Reader QA Preview...</div>}>
+        <LazySharedConversationReaderQaPreview />
       </Suspense>
     ) : (
       <App />

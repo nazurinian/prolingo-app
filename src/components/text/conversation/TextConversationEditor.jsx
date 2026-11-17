@@ -166,7 +166,8 @@ const ConversationEditorSession = ({
   availableBrowserVoices = null,
   onAssembleFullWav = null,
   audioRuntimeHooks = null,
-  onAudioStateReport = null
+  onAudioStateReport = null,
+  renderReader = null
 }) => {
   const [localError, setLocalError] = useState(null);
   const [pending, setPending] = useState(false);
@@ -588,6 +589,8 @@ const ConversationEditorSession = ({
           compact={compact}
         />
       )}
+
+      {renderReader?.({ snapshot, editorState: state, audioPlayback: enableAudio ? audioPlayback : null, isBusy })}
 
       <ConversationSpeakerPanel
         state={state}

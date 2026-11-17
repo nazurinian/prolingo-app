@@ -5,6 +5,8 @@ import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import {
   IDLE_SHARED_CURSOR,
+  getSharedUnitTerms,
+  getSharedUnitHeading,
   buildSharedSegmentRenderFlags,
   isPrefersReducedMotion,
   normalizeSegmentDisplayText,
@@ -54,7 +56,7 @@ const PartSectionNavigator = ({
     >
       <div className="flex flex-wrap items-center gap-2 min-w-0">
         <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums" data-shared-part-position="true">
-          Section {Math.max(1, selectedUnitIndex + 1)} of {units.length}
+          {getSharedUnitTerms(activeUnit).label} {Math.max(1, selectedUnitIndex + 1)} of {units.length}
         </span>
         {isV1Compat && (
           <span
@@ -71,7 +73,7 @@ const PartSectionNavigator = ({
             className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
           >
             <Radio aria-hidden="true" className="w-3 h-3" />
-            <span>Playing Full Card audio · Browse sections freely</span>
+            <span>Playing Full Card audio · Browse {getSharedUnitTerms(activeUnit).plural} freely</span>
           </span>
         )}
         {!isCardPrecisionPlaying && unitDivergedFromAudible && (
@@ -82,7 +84,7 @@ const PartSectionNavigator = ({
             className="min-h-8 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <Radio aria-hidden="true" className="w-3 h-3" />
-            <span>Playing Section {selection.audibleUnitIndex + 1} · Follow</span>
+            <span>Playing {getSharedUnitTerms(activeUnit).label} {selection.audibleUnitIndex + 1} · Follow</span>
           </button>
         )}
       </div>
@@ -96,7 +98,7 @@ const PartSectionNavigator = ({
             if (step.nextViewKey) onSelectUnit?.(step.nextViewKey);
           }}
           data-shared-part-prev="true"
-          aria-label="Previous section"
+          aria-label={`Previous ${getSharedUnitTerms(activeUnit).lower}`}
           className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <ChevronLeft aria-hidden="true" className="w-3.5 h-3.5" />
@@ -104,7 +106,7 @@ const PartSectionNavigator = ({
         </button>
 
         {units.length > 1 && units.length <= 12 && (
-          <div role="group" aria-label="Jump to section" className="flex flex-wrap items-center gap-1">
+          <div role="group" aria-label={`Jump to ${getSharedUnitTerms(activeUnit).lower}`} className="flex flex-wrap items-center gap-1">
             {units.map((unit, idx) => {
               const selected = unit.viewKey === selectedUnitViewKey;
               const isAudible = unit.viewKey === audibleUnitViewKey;
@@ -113,7 +115,7 @@ const PartSectionNavigator = ({
                   key={unit.viewKey}
                   type="button"
                   aria-pressed={selected}
-                  aria-label={`Section ${idx + 1}${isAudible ? ' (playing audio)' : ''}`}
+                  aria-label={`${getSharedUnitTerms(unit).label} ${idx + 1}${isAudible ? ' (playing audio)' : ''}`}
                   data-shared-part-pill={unit.viewKey}
                   onClick={() => onSelectUnit?.(unit.viewKey)}
                   className={`min-h-11 min-w-10 sm:min-h-8 sm:min-w-8 px-2 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center justify-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
@@ -142,7 +144,7 @@ const PartSectionNavigator = ({
             if (step.nextViewKey) onSelectUnit?.(step.nextViewKey);
           }}
           data-shared-part-next="true"
-          aria-label="Next section"
+          aria-label={`Next ${getSharedUnitTerms(activeUnit).lower}`}
           className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <span>Next</span>
@@ -239,7 +241,7 @@ const PartHorizontalFocusView = ({
       onScroll={handleTrackScroll}
       data-shared-part-layout="horizontal-focus"
       data-shared-part-track="horizontal"
-      aria-label="Horizontal sections track"
+      aria-label={`Horizontal ${getSharedUnitTerms(card).plural} track`}
       className="relative flex items-start gap-4 overflow-x-auto overflow-y-visible snap-x snap-mandatory overscroll-x-contain scroll-smooth motion-reduce:scroll-auto custom-scrollbar pb-2"
     >
       {units.map((unit, unitIndex) => {
@@ -264,7 +266,7 @@ const PartHorizontalFocusView = ({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  {unit.label || 'Section'} {unitIndex + 1}
+                  {getSharedUnitHeading(unit, unitIndex)}
                 </span>
                 <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
                 <span className="text-slate-500 dark:text-slate-400">
@@ -332,7 +334,7 @@ const PartVerticalFocusView = ({
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {roleLabel} · {unit.label || 'Section'} {unitIndex + 1}
+              {roleLabel} · {getSharedUnitHeading(unit, unitIndex)}
             </span>
             {isAudible && (
               <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 dark:bg-indigo-950/70 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200">
@@ -346,7 +348,7 @@ const PartVerticalFocusView = ({
             data-shared-part-focus={unit.viewKey}
             className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
-            Focus section
+            Focus {getSharedUnitTerms(unit).lower}
           </button>
         </div>
         <SharedBilingualUnitsBody
@@ -374,7 +376,7 @@ const PartVerticalFocusView = ({
         renderNeighbor({ unit: prevUnit, unitIndex: idx - 1, roleLabel: 'Previous', testRole: 'previous' })
       ) : (
         <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1" data-shared-part-boundary="start">
-          Start of card · Section 1 of {units.length}
+          Start of card · {getSharedUnitTerms(card).label} 1 of {units.length}
         </p>
       )}
 
@@ -390,7 +392,7 @@ const PartVerticalFocusView = ({
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-200">
-              Focused · {currentUnit.label || 'Section'} {idx + 1}
+              Focused · {getSharedUnitHeading(currentUnit, idx)}
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {(currentUnit.segments?.length || 0)} {(currentUnit.segments?.length || 0) === 1 ? 'sentence' : 'sentences'}
@@ -422,7 +424,7 @@ const PartVerticalFocusView = ({
         renderNeighbor({ unit: nextUnit, unitIndex: idx + 1, roleLabel: 'Next', testRole: 'next' })
       ) : (
         <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1" data-shared-part-boundary="end">
-          End of card · Section {units.length} of {units.length}
+          End of card · {getSharedUnitTerms(card).label} {units.length} of {units.length}
         </p>
       )}
     </div>
@@ -465,7 +467,7 @@ const PartVerticalListView = ({
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100/90 dark:border-slate-800/75">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                {unit.label || 'Section'} {unitIndex + 1}
+                {getSharedUnitHeading(unit, unitIndex)}
               </span>
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
               <span className="text-slate-500 dark:text-slate-400">
@@ -538,7 +540,7 @@ export const SharedCardPartView = ({
         className="text-sm italic text-slate-400 dark:text-slate-500"
         data-shared-part-empty="zero-units"
       >
-        No sections in this card to focus.
+        No {getSharedUnitTerms(card).plural} in this card to focus.
       </p>
     );
   }
@@ -672,11 +674,11 @@ export const SharedCardSegmentView = ({
           <span className="text-slate-500 dark:text-slate-400" data-shared-segment-unit-context="true">
             {entry.unit?.label || 'Section'} {entry.unitIndex + 1}{isV1Compat ? ' (Compatibility)' : ''}
           </span>
-          {segment.speaker && (
+          {(entry.unit?.kind === 'turn' ? entry.unit.speakerLabel : segment.speaker) && (
             <>
               <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
               <span className="rounded-md bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
-                {segment.speaker}
+                {entry.unit?.kind === 'turn' ? entry.unit.speakerLabel : segment.speaker}
               </span>
             </>
           )}

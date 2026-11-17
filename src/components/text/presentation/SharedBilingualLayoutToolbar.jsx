@@ -18,7 +18,8 @@ import {
 import {
   SHARED_BILINGUAL_LAYOUT_OPTIONS,
   SHARED_LEVEL_OPTIONS,
-  SHARED_PART_LAYOUT_OPTIONS
+  SHARED_PART_LAYOUT_OPTIONS,
+  getSharedUnitTerms
 } from './sharedCardPresentationUtils.js';
 
 const LAYOUT_ICONS = {
@@ -52,8 +53,11 @@ export const SharedBilingualLayoutToolbar = ({
   onChangeLayout = null,
   onResetView = null,
   rightSlot = null,
-  subtitle = null
+  subtitle = null,
+  unitKind = 'paragraph'
 }) => {
+  const terms = getSharedUnitTerms({ kind: unitKind });
+  const describe = option => option.description.replaceAll('sections', terms.plural).replaceAll('section', terms.lower);
   const activeState = presentationState
     ? normalizeTextCardPresentationState(presentationState)
     : normalizeTextCardPresentationState({
@@ -103,7 +107,7 @@ export const SharedBilingualLayoutToolbar = ({
                     type="button"
                     aria-pressed={active}
                     onClick={() => emitPatch({ level: option.id })}
-                    title={option.description}
+                    title={describe(option)}
                     data-shared-card-level-option={option.id}
                     className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                       active
@@ -203,7 +207,7 @@ export const SharedBilingualLayoutToolbar = ({
                   type="button"
                   aria-pressed={active}
                   onClick={() => emitPatch({ partLayout: option.id })}
-                  title={option.description}
+                  title={describe(option)}
                   data-shared-card-part-layout-option={option.id}
                   className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     active
