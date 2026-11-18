@@ -115,6 +115,9 @@ export default function TextDataManagementPage({
   audio = null,
   execute = null,
   persistenceAdapter = null,
+  connectionError = null,
+  connectionActions = null,
+  sourceReloadNonce = 0,
   samplePack = null,
   sampleExternalPackage = null,
   loading = false,
@@ -131,6 +134,23 @@ export default function TextDataManagementPage({
   }
   const effectiveMetaRecords = metaRecords ?? persistenceAdapter?.metaRecords ?? null;
 
+  // Enforce the persistence adapter's boundary and permission grant as a strict upper ceiling.
+  const effectiveBoundary = persistenceAdapter
+    ? (persistenceAdapter.boundary === 'disposable' && boundary === 'disposable' ? 'disposable' : 'read-only')
+    : boundary;
+  const adapterPermissions = Array.isArray(persistenceAdapter?.permissions) ? persistenceAdapter.permissions : null;
+  const effectivePermissions = useMemo(() => (
+    adapterPermissions
+      ? permissions.filter(permission => adapterPermissions.includes(permission))
+      : permissions
+  ), [adapterPermissions, permissions]);
+  const isCeilingClamped = Boolean(
+    persistenceAdapter && (
+      (boundary === 'disposable' && effectiveBoundary !== 'disposable')
+      || permissions.some(permission => adapterPermissions && !adapterPermissions.includes(permission))
+    )
+  );
+
   const [store] = useState(createExternalSessionStore);
   const [activeTab, setActiveTab] = useState('all');
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(true);
@@ -139,12 +159,13 @@ export default function TextDataManagementPage({
   const initialConfigRef = useRef({
     snapshot,
     initialSelection,
-    boundary,
-    permissions,
+    boundary: effectiveBoundary,
+    permissions: effectivePermissions,
     sourceAttachments,
     externalImports,
     metaRecords: effectiveMetaRecords,
     dbName: persistenceAdapter?.dbName,
+    sourceReloadNonce,
     audio,
     execute: effectiveExecute
   });
@@ -152,26 +173,29 @@ export default function TextDataManagementPage({
     initialConfigRef.current = {
       snapshot,
       initialSelection,
-      boundary,
-      permissions,
+      boundary: effectiveBoundary,
+      permissions: effectivePermissions,
       sourceAttachments,
       externalImports,
       metaRecords: effectiveMetaRecords,
       dbName: persistenceAdapter?.dbName,
+      sourceReloadNonce,
       audio,
       execute: effectiveExecute
     };
-  }, [snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, effectiveMetaRecords, audio, effectiveExecute, persistenceAdapter?.dbName]);
+  }, [snapshot, initialSelection, effectiveBoundary, effectivePermissions, sourceAttachments, externalImports, effectiveMetaRecords, audio, effectiveExecute, persistenceAdapter?.dbName, sourceReloadNonce]);
 
   const appliedSourceRef = useRef({
     session: null,
     snapshot: undefined,
     sourceAttachments: EMPTY_ARRAY,
     externalImports: EMPTY_ARRAY,
-    metaRecords: null
+    metaRecords: null,
+    dbName: undefined,
+    reloadNonce: 0
   });
 
-  const permissionsKey = permissions.join(',');
+  const effectivePermissionsKey = effectivePermissions.join(',');
   useEffect(() => {
     if (externalSession) {
       store.attachExternal(externalSession);
@@ -195,7 +219,8 @@ export default function TextDataManagementPage({
       sourceAttachments: canonicalJsonStringify(cfg.sourceAttachments),
       externalImports: canonicalJsonStringify(cfg.externalImports),
       metaRecords: canonicalJsonStringify(cfg.metaRecords),
-      dbName: cfg.dbName
+      dbName: cfg.dbName,
+      reloadNonce: cfg.sourceReloadNonce
     };
     return () => store.teardown();
   }, [store, externalSession]);
@@ -205,9 +230,14 @@ export default function TextDataManagementPage({
 
   useEffect(() => {
     if (!externalSession && !loading && syncedState.session) {
-      syncedState.session.configure({ boundary, permissions, execute: effectiveExecute, audio });
+      syncedState.session.configure({
+        boundary: effectiveBoundary,
+        permissions: effectivePermissions,
+        execute: effectiveExecute,
+        audio
+      });
     }
-  }, [externalSession, loading, syncedState.session, boundary, permissions, permissionsKey, effectiveExecute, audio]);
+  }, [externalSession, loading, syncedState.session, effectiveBoundary, effectivePermissions, effectivePermissionsKey, effectiveExecute, audio]);
 
   const sessionState = useMemo(() => {
     if (externalSession && syncedState.session !== externalSession) {
@@ -225,28 +255,36 @@ export default function TextDataManagementPage({
       sourceAttachments: canonicalJsonStringify(sourceAttachments),
       externalImports: canonicalJsonStringify(externalImports),
       metaRecords: canonicalJsonStringify(effectiveMetaRecords),
-      dbName: persistenceAdapter?.dbName
+      dbName: persistenceAdapter?.dbName,
+      reloadNonce: sourceReloadNonce
     };
     if (
       prev.snapshot === next.snapshot &&
       prev.sourceAttachments === next.sourceAttachments &&
       prev.externalImports === next.externalImports &&
       prev.metaRecords === next.metaRecords &&
-      prev.dbName === next.dbName
+      prev.dbName === next.dbName &&
+      prev.reloadNonce === next.reloadNonce
     ) {
       return;
     }
+    const isSameDbReload = prev.reloadNonce !== next.reloadNonce && prev.dbName === next.dbName;
+    const activeSel = syncedState.session.getState?.()?.view?.selection;
+    const preservedWorkspaceId = isSameDbReload && initialSelection === EMPTY_OBJECT && activeSel?.workspaceId
+      && snapshot?.documents?.some(doc => doc.id === activeSel.workspaceId)
+      ? activeSel.workspaceId
+      : null;
     appliedSourceRef.current = {
       session: syncedState.session,
       ...next
     };
     syncedState.session.replaceSource(snapshot, {
-      selection: initialSelection,
+      selection: preservedWorkspaceId ? { workspaceId: preservedWorkspaceId } : initialSelection,
       sourceAttachments,
       externalImports,
       metaRecords: effectiveMetaRecords
     });
-  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports, effectiveMetaRecords, persistenceAdapter?.dbName]);
+  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports, effectiveMetaRecords, persistenceAdapter?.dbName, sourceReloadNonce]);
 
   const getDraft = useCallback(key => {
     if (!activeSession) return undefined;
@@ -339,14 +377,19 @@ export default function TextDataManagementPage({
       <main
         data-dm-page="loading"
         data-dm-loading="true"
-        className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6"
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-3 sm:p-5 lg:p-6 overflow-x-clip"
       >
-        <div className="max-w-5xl mx-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-3" role="status">
-          <Loader2 className="w-7 h-7 animate-spin mx-auto text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
-          <h1 className="text-base font-black">Loading Structured Text Data Management...</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Initializing isolated working snapshot and headless session coordinator.
-          </p>
+        <div className="max-w-7xl mx-auto space-y-4">
+          {headerActions}
+          <div className="max-w-5xl mx-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center space-y-3" role="status">
+            <Loader2 className="w-7 h-7 animate-spin mx-auto text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+            <h1 className="text-base font-black">Loading Structured Text Data Management...</h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {persistenceAdapter
+                ? `Reading authoritative disposable IndexedDB state (${persistenceAdapter.dbName}) in one readonly transaction...`
+                : 'Initializing isolated working snapshot and headless session coordinator.'}
+            </p>
+          </div>
         </div>
       </main>
     );
@@ -358,10 +401,86 @@ export default function TextDataManagementPage({
   const isReadOnlyBoundary = !Object.values(view?.capabilities || {}).some(cap => cap?.enabled);
   const workspaceSelected = Boolean(view?.workspace);
   const showAll = activeTab === 'all';
+  const retainedDraftEntries = getRetainedDraftEntries();
+
+  // State 1b: Persistence Connection / Load Error (distinct from snapshot validation failure)
+  if (connectionError) {
+    return (
+      <main
+        data-dm-page="connection-error"
+        data-dm-connection-error={connectionError.code || 'CONNECTION_ERROR'}
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-3 sm:p-5 lg:p-6 overflow-x-clip"
+      >
+        <div className="max-w-7xl mx-auto space-y-4">
+          {headerActions}
+          <section role="alert" className="max-w-4xl mx-auto rounded-2xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" aria-hidden="true" />
+              <div className="space-y-1">
+                <h1 className="text-base font-black text-amber-900 dark:text-amber-200">
+                  {connectionError.code || 'CONNECTION_ERROR'}: Disposable Database Not Ready
+                </h1>
+                <p className="text-xs text-slate-700 dark:text-slate-300">
+                  {connectionError.message || 'Unable to load an authoritative state from the selected disposable database.'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {explainReason(connectionError.code || 'UNINITIALIZED')} Canonical database (`prolingo_text_library`) remains untouched and existing databases are never overwritten automatically.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {onReloadValidSource && (
+                <button
+                  type="button"
+                  data-dm-reload-valid-source="true"
+                  onClick={onReloadValidSource}
+                  className={`${DM_CONTROL_BTN} border-indigo-600 bg-indigo-600 text-white`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                  Reload Authoritative Source
+                </button>
+              )}
+              {connectionActions}
+            </div>
+          </section>
+
+          {draftCount > 0 && (
+            <section
+              aria-label="Retained Drafts Recovery"
+              data-dm-retained-drafts="true"
+              className="max-w-4xl mx-auto rounded-2xl border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/25 p-4 space-y-2.5"
+            >
+              <h2 className="text-xs font-black text-amber-900 dark:text-amber-200">
+                Retained Drafts ({draftCount} in memory)
+              </h2>
+              {retainedDraftEntries.length > 0 && (
+                <ul className="space-y-1.5">
+                  {retainedDraftEntries.map(entry => (
+                    <li key={entry.id} data-dm-retained-draft-item={entry.id} className="rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 p-2.5 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200">{formatDraftKeyLabel(entry.key)}</p>
+                        <p className="text-xs text-slate-900 dark:text-slate-100 break-words">{String(entry.value)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => clearDraft(entry.key)}
+                        className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200`}
+                      >
+                        Discard Draft
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </div>
+      </main>
+    );
+  }
 
   // State 2: Invalid Snapshot / Failed Validation (view === null)
   if (!view) {
-    const retainedDraftEntries = getRetainedDraftEntries();
     return (
       <main
         data-dm-page="invalid-snapshot"
@@ -394,7 +513,7 @@ export default function TextDataManagementPage({
                   className={`${DM_CONTROL_BTN} border-indigo-600 bg-indigo-600 text-white`}
                 >
                   <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                  Reload Valid Source Snapshot
+                  Reload Authoritative Source
                 </button>
               </div>
             )}
@@ -472,7 +591,7 @@ export default function TextDataManagementPage({
                 <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white" style={{ textWrap: 'balance' }}>
                   Structured Text Data Management
                 </h1>
-                {isReadOnlyBoundary && boundary === 'read-only' ? (
+                {isReadOnlyBoundary && effectiveBoundary === 'read-only' ? (
                   <span data-dm-mode-badge="read-only" className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-black text-slate-700 dark:text-slate-200">
                     <Lock className="w-3 h-3" aria-hidden="true" /> Read-Only Default
                   </span>
@@ -481,9 +600,27 @@ export default function TextDataManagementPage({
                     <ShieldCheck className="w-3 h-3" aria-hidden="true" /> Isolated Disposable Mode
                   </span>
                 )}
+                <span
+                  data-dm-storage-badge={persistenceAdapter ? 'disposable-idb' : 'in-memory'}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-mono font-bold ${
+                    persistenceAdapter
+                      ? 'border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200'
+                      : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {persistenceAdapter ? `Disposable IDB: ${persistenceAdapter.dbName}` : 'In-Memory Fixture Only'}
+                </span>
+                {isCeilingClamped && (
+                  <span
+                    data-dm-ceiling-clamped="true"
+                    className="inline-flex items-center gap-1 rounded-full border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-0.5 text-[10px] font-black text-amber-800 dark:text-amber-200"
+                  >
+                    <Lock className="w-3 h-3" aria-hidden="true" /> Adapter Ceiling Active
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400">
-                Scope: <span className="font-mono font-bold text-slate-800 dark:text-slate-200" data-dm-current-selection={selectedLabel}>{selectedLabel}</span> · Rev <span className="font-mono" data-dm-revision={revision}>{revision}</span> · Drafts <span className="font-mono" data-dm-draft-count={draftCount}>{draftCount}</span> · Canonical Writes: <span className="font-mono font-bold">false</span>
+                Scope: <span className="font-mono font-bold text-slate-800 dark:text-slate-200" data-dm-current-selection={selectedLabel}>{selectedLabel}</span> · Permissions: <span className="font-mono font-bold" data-dm-effective-permissions={effectivePermissions.join(',') || 'none'}>{effectivePermissions.length ? effectivePermissions.join(', ') : 'none (read-only)'}</span> · Rev <span className="font-mono" data-dm-revision={revision}>{revision}</span> · Drafts <span className="font-mono" data-dm-draft-count={draftCount}>{draftCount}</span> · Canonical Writes: <span className="font-mono font-bold">false</span>
               </p>
             </div>
 
@@ -504,6 +641,19 @@ export default function TextDataManagementPage({
                 {disposed ? 'Disposed' : pending ? 'Pending...' : 'Idle'}
               </output>
 
+              {onReloadValidSource && (
+                <button
+                  type="button"
+                  data-dm-ready-reload-source="true"
+                  disabled={pending}
+                  onClick={onReloadValidSource}
+                  className={`${DM_CONTROL_BTN} border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                  Reload Authoritative Source
+                </button>
+              )}
+
               <button
                 type="button"
                 data-dm-mobile-explorer-toggle="true"
@@ -516,25 +666,74 @@ export default function TextDataManagementPage({
             </div>
           </div>
 
-          {error && (
-            <div
-              role="alert"
-              data-dm-page-error={error.code || 'ERROR'}
-              className="rounded-xl border border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/35 px-3.5 py-2.5 text-xs text-red-900 dark:text-red-200 space-y-1"
-            >
-              <div className="flex items-center gap-2 font-black">
-                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
-                <span>{error.code}: {error.message}</span>
+          {error && (() => {
+            const isCommittedConflict = Boolean(error.committed && error.reloadRequired);
+            const isPreCommitConflict = !error.committed && (error.code === 'STALE_RESULT' || Boolean(error.reloadRequired));
+            const conflictKind = isCommittedConflict
+              ? 'committed-reload-required'
+              : isPreCommitConflict
+                ? 'pre-commit-stale'
+                : error.code === 'BUSY'
+                  ? 'busy'
+                  : error.code === 'INVALID_RESPONSE'
+                    ? 'invalid-response'
+                    : error.code === 'PERMISSION_DENIED'
+                      ? 'permission-denied'
+                      : 'rejected';
+            return (
+              <div
+                role="alert"
+                data-dm-page-error={error.code || 'ERROR'}
+                data-dm-error-committed={String(Boolean(error.committed))}
+                data-dm-reload-required={String(Boolean(error.reloadRequired))}
+                data-dm-conflict-kind={conflictKind}
+                className={`rounded-xl border px-3.5 py-2.5 text-xs space-y-1.5 ${
+                  isCommittedConflict
+                    ? 'border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100'
+                    : 'border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/35 text-red-900 dark:text-red-200'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 font-black">
+                    <AlertTriangle className={`w-4 h-4 shrink-0 ${isCommittedConflict ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`} aria-hidden="true" />
+                    <span>{error.code}: {error.message}</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded border border-current/25">
+                    {isCommittedConflict
+                      ? 'DATABASE COMMITTED — UI RECEIPT NOT ACCEPTED'
+                      : isPreCommitConflict
+                        ? 'PRE-COMMIT CONFLICT — NO DATABASE WRITE'
+                        : error.code === 'BUSY'
+                          ? 'COMMAND IN PROGRESS'
+                          : error.code === 'INVALID_RESPONSE'
+                            ? 'RECEIPT VERIFICATION FAILED'
+                            : error.code === 'PERMISSION_DENIED'
+                              ? 'PERMISSION CEILING BLOCKED'
+                              : 'COMMAND REJECTED'}
+                  </span>
+                </div>
+                <p className="text-[11px]">
+                  {isCommittedConflict
+                    ? 'The database transaction already committed, but this session could not accept its receipt. Do NOT resubmit or replay automatically — click Reload Authoritative Source to reconcile committed state. Recoverable drafts remain preserved in memory.'
+                    : isPreCommitConflict
+                      ? `${explainReason(error.code)} No database write or ID allocation occurred. Click Reload Authoritative Source to load current state before reviewing drafts.`
+                      : `${explainReason(error.code)} Any active edits remain saved in your session drafts for review.`}
+                </p>
+                {onReloadValidSource && (error.reloadRequired || error.committed || error.code === 'STALE_RESULT' || error.code === 'INVALID_RESPONSE') && (
+                  <button
+                    type="button"
+                    data-dm-reload-valid-source="true"
+                    disabled={pending}
+                    onClick={onReloadValidSource}
+                    className={`${DM_SMALL_BTN} border-indigo-600 bg-indigo-600 text-white`}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    Reload Authoritative Source
+                  </button>
+                )}
               </div>
-              <p className="text-[11px] text-red-800 dark:text-red-300">
-                {explainReason(error.code)} Any active edits remain saved in your session drafts for review and retry.
-              </p>
-              {onReloadValidSource && (error.reloadRequired || error.code === 'STALE_RESULT' || error.code === 'INVALID_RESPONSE') && (
-                <button type="button" data-dm-reload-valid-source="true" disabled={pending}
-                  onClick={onReloadValidSource} className={DM_SMALL_BTN}>Reload Authoritative Source</button>
-              )}
-            </div>
-          )}
+            );
+          })()}
         </header>
 
         {/* Responsive Workspace Layout */}
@@ -652,6 +851,9 @@ export default function TextDataManagementPage({
                   sourceAttachments={sourceAttachments}
                   externalImports={externalImports}
                   extraMetaRecords={extraMetaRecords}
+                  persistenceMode={persistenceAdapter ? 'disposable-idb' : 'in-memory'}
+                  persistenceDbName={persistenceAdapter?.dbName || null}
+                  onExportAuthoritativeBackup={persistenceAdapter ? () => persistenceAdapter.exportBackup() : null}
                   samplePack={samplePack}
                   sampleExternalPackage={sampleExternalPackage}
                   onNavigate={handleNavigate}

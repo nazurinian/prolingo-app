@@ -17,6 +17,9 @@ export default function DataManagementTransfersDiagnosticsPanel({
   sourceAttachments = [],
   externalImports = [],
   extraMetaRecords = [],
+  persistenceMode = 'in-memory',
+  persistenceDbName = null,
+  onExportAuthoritativeBackup = null,
   samplePack = null,
   sampleExternalPackage = null,
   onNavigate,
@@ -29,10 +32,12 @@ export default function DataManagementTransfersDiagnosticsPanel({
     sampleExternalPackage ? JSON.stringify(sampleExternalPackage, null, 2) : ''
   ));
   const [exportedPayload, setExportedPayload] = useState(null);
+  const [exportPending, setExportPending] = useState(false);
   const [inspectResult, setInspectResult] = useState(null);
   const [previewResult, setPreviewResult] = useState(null);
   const [transferError, setTransferError] = useState(null);
 
+  const isDisposableDb = persistenceMode === 'disposable-idb' && typeof onExportAuthoritativeBackup === 'function';
   const selection = view?.selection || {};
   const diagnostics = view?.diagnostics;
   const hasExportScope = Boolean(selection.workspaceId || selection.collectionId);
@@ -52,25 +57,54 @@ export default function DataManagementTransfersDiagnosticsPanel({
 
   const handleExportTextPack = () => runSafely(() => {
     const pack = onExportData({ kind: 'text-pack' });
-    setExportedPayload({ kind: 'text-pack', data: pack });
+    setExportedPayload({ kind: 'text-pack', origin: isDisposableDb ? 'session-snapshot' : 'in-memory-preview', data: pack });
     setInspectKind('text-pack');
     setTransferJson(JSON.stringify(pack, null, 2));
   });
 
-  const handleExportBackup = () => runSafely(() => {
-    const metaRecords = buildCompleteBackupMetaRecords(snapshot, {
-      sourceAttachments,
-      externalImports,
-      extraMetaRecords
+  const handleExportBackup = async () => {
+    setTransferError(null);
+    if (isDisposableDb) {
+      setExportPending(true);
+      try {
+        const backup = await onExportAuthoritativeBackup();
+        setExportedPayload({
+          kind: 'database-backup',
+          origin: 'authoritative-disposable-idb',
+          dbName: persistenceDbName,
+          data: backup
+        });
+        setInspectKind('database-backup');
+        setTransferJson(JSON.stringify(backup, null, 2));
+      } catch (error) {
+        setTransferError({
+          code: error?.code || 'INVALID_TRANSFER',
+          message: error?.message || 'Authoritative disposable database backup failed.'
+        });
+      } finally {
+        setExportPending(false);
+      }
+      return;
+    }
+    runSafely(() => {
+      const metaRecords = buildCompleteBackupMetaRecords(snapshot, {
+        sourceAttachments,
+        externalImports,
+        extraMetaRecords
+      });
+      const backup = onExportData({ kind: 'database-backup', metaRecords });
+      setExportedPayload({
+        kind: 'database-backup',
+        origin: 'in-memory-preview',
+        data: backup
+      });
+      setInspectKind('database-backup');
+      setTransferJson(JSON.stringify(backup, null, 2));
     });
-    const backup = onExportData({ kind: 'database-backup', metaRecords });
-    setExportedPayload({ kind: 'database-backup', data: backup });
-    setInspectKind('database-backup');
-    setTransferJson(JSON.stringify(backup, null, 2));
-  });
+  };
 
   const handleVerifyBackupWithoutMeta = () => runSafely(() => {
-    onExportData({ kind: 'database-backup' });
+    onExportData({ kind: 'database-backup', metaRecords: null });
   });
 
   const handleInspect = () => runSafely(() => {
@@ -101,22 +135,48 @@ export default function DataManagementTransfersDiagnosticsPanel({
               Import / Export &amp; Pure Transfer Inspection
             </h3>
           </div>
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-            JSON Only · No Audio Binaries · applyEnabled: false
-          </span>
+          <div className="flex flex-wrap gap-1.5" data-dm-backup-policy-labels="true">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              No Physical Audio Binaries
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200">
+              Canonical Backup Unavailable in H2
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+              applyEnabled: false
+            </span>
+          </div>
         </div>
 
         {/* Export Controls */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5" data-dm-exports="true">
-          <h4 className="text-xs font-black text-slate-800 dark:text-slate-200">Pure JSON Exports</h4>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h4 className="text-xs font-black text-slate-800 dark:text-slate-200">
+              {isDisposableDb ? 'Authoritative Disposable QA JSON Backup' : 'In-Memory JSON Preview (Non-Authoritative Fixture)'}
+            </h4>
+            <span
+              data-dm-backup-origin-badge={isDisposableDb ? 'authoritative-disposable-idb' : 'in-memory-preview'}
+              className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                isDisposableDb
+                  ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
+                  : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              {isDisposableDb
+                ? `Authoritative disposable QA JSON backup (${persistenceDbName})`
+                : 'In-memory JSON preview (fixture build helper)'}
+            </span>
+          </div>
           <p className="text-xs text-slate-600 dark:text-slate-400">
-            Database backup exports require consistent authoritative <code className="font-mono">metaRecords</code> matching the snapshot read (`METADATA_REQUIRED` if absent). Complete recovery cannot be guaranteed from a partial read or without binaries.
+            {isDisposableDb
+              ? 'Exports directly from IndexedDB via adapter.exportBackup() inside a single consistent readonly transaction (no synthetic helper metaRecords). No physical audio binaries are embedded; canonical backup remains unavailable in H2.'
+              : 'Simulates a fixture JSON backup in memory using buildCompleteBackupMetaRecords(). This preview is not an authoritative IndexedDB database read; no physical audio binaries are embedded and canonical backup remains unavailable in H2.'}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               data-dm-export-text-pack="true"
-              disabled={!hasExportScope}
+              disabled={!hasExportScope || exportPending}
               onClick={handleExportTextPack}
               title={hasExportScope ? 'Export selected Collection or Workspace as Text Pack JSON' : explainReason('SELECT_EXPORT_SCOPE')}
               className={`${DM_SMALL_BTN} border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-200`}
@@ -127,15 +187,19 @@ export default function DataManagementTransfersDiagnosticsPanel({
             <button
               type="button"
               data-dm-export-backup="true"
+              disabled={exportPending}
               onClick={handleExportBackup}
               className={`${DM_SMALL_BTN} border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200`}
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
-              Export Complete DB Backup (With metaRecords)
+              {isDisposableDb
+                ? (exportPending ? 'Exporting Consistent DB Backup...' : 'Export Authoritative Disposable DB Backup')
+                : 'Preview In-Memory DB Backup JSON'}
             </button>
             <button
               type="button"
               data-dm-export-backup-missing-meta="true"
+              disabled={exportPending}
               onClick={handleVerifyBackupWithoutMeta}
               className={`${DM_SMALL_BTN} border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200`}
             >
@@ -148,15 +212,23 @@ export default function DataManagementTransfersDiagnosticsPanel({
             </p>
           )}
           {exportedPayload && (
-            <div data-dm-export-output={exportedPayload.kind} className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 text-xs space-y-1">
+            <div
+              data-dm-export-output={exportedPayload.kind}
+              data-dm-export-origin={exportedPayload.origin}
+              className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 text-xs space-y-1"
+            >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-black text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Exported {exportedPayload.kind}
+                  {exportedPayload.kind === 'database-backup'
+                    ? (exportedPayload.origin === 'authoritative-disposable-idb'
+                        ? `Authoritative disposable QA JSON backup (${exportedPayload.dbName})`
+                        : 'In-memory JSON preview exported (non-authoritative fixture)')
+                    : `Exported ${exportedPayload.kind}`}
                 </span>
                 {exportedPayload.kind === 'database-backup' && (
                   <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
-                    audioBinaryIncluded: {String(exportedPayload.data.audioBinaryIncluded)} · metaRecords: {exportedPayload.data.metaRecords?.length || 0}
+                    audioBinaryIncluded: {String(exportedPayload.data.audioBinaryIncluded)} (No physical audio binaries) · metaRecords: {exportedPayload.data.metaRecords?.length || 0}
                   </span>
                 )}
               </div>
@@ -275,14 +347,14 @@ export default function DataManagementTransfersDiagnosticsPanel({
           )}
 
           <div className="flex flex-wrap gap-1.5 pt-1" data-dm-transfer-disabled-apply="true">
-            <button type="button" disabled title="Import apply is blocked in P15-H1; review previews only" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
-              <Lock className="w-3 h-3" aria-hidden="true" /> Apply Import (Disabled)
+            <button type="button" disabled title="Import, source-sync, and reconciliation apply actions are disabled in P15-H2" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
+              <Lock className="w-3 h-3" aria-hidden="true" /> Apply Import / Source Reconcile (Disabled)
             </button>
-            <button type="button" disabled title="Database Replace Restore is destructive and disabled in P15-H1" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
+            <button type="button" disabled title="Database Replace Restore is destructive and disabled in P15-H2" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
               <Lock className="w-3 h-3" aria-hidden="true" /> Execute Replace-Restore (Disabled)
             </button>
-            <button type="button" disabled title="Physical Audio ZIP extraction/GC is out of scope for Data Management JSON transfers" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
-              <Lock className="w-3 h-3" aria-hidden="true" /> Audio ZIP Extract / GC (Disabled)
+            <button type="button" disabled title="Physical Audio ZIP extraction, Staging GC, and production migration are disabled in P15-H2" className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-500`}>
+              <Lock className="w-3 h-3" aria-hidden="true" /> Staging GC / Production Migration (Disabled)
             </button>
           </div>
 
