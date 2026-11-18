@@ -72,6 +72,24 @@ export async function runBetaFirst() {
     q('[data-dm-segment-save="' + id + '"]').click();
     await until(async () => (await read({ dbName: MAIN })).snapshot.segments.find(s => s.id === id).text === 'Keep recovery draft');
   });
+  await test('Full/rate controls retain one host and distinguish whole-Card from per-Sentence fallback', async () => {
+    click('Show Reader'); await frame();
+    const select = q('[aria-label="Beta Workspace"]'), mixed = [...select.options].find(o => o.textContent.startsWith('mixed:')).value;
+    await input('[aria-label="Beta Workspace"]', mixed);
+    const host = q('[data-structured-workspace-player]');
+    await input('[aria-label="Audio representation"]', 'full'); await input('[aria-label="Audio rate"]', '1.5');
+    const start = events.length; click('Play Workspace'); await until(() => events.length > start);
+    await until(() => JSON.parse(q('[data-unified-source-status]').textContent)?.representation === 'full');
+    assert(events[start].args.rate === 1.5, 'UI lost requested effective rate');
+    assert(q('[data-unified-reader]').dataset.readerCursorPrecision === 'card', 'Paragraph whole-Card Full invented Sentence timing');
+    events[start].resolve({ status: 'played' });
+    await until(() => events.length > start + 1);
+    await until(() => JSON.parse(q('[data-unified-source-status]').textContent)?.segmentId);
+    assert(q('[data-unified-reader]').dataset.readerCursorPrecision === 'segment', 'Conversation Full fallback lost authoritative Sentence precision');
+    assert(q('[data-structured-workspace-player]') === host, 'Representation/rate controls replaced host');
+    click('Stop'); events.slice(start).forEach(e => e.resolve({ status: 'stopped' }));
+    await input('[aria-label="Audio representation"]', 'split'); await input('[aria-label="Audio rate"]', '1');
+  });
   await test('Consistent backup file verification and create-only fresh recovery copy', async () => {
     click('Export QA JSON'); await until(() => exported);
     const file = new File([JSON.stringify(exported)], 'qa.json', { type: 'application/json' }), data = new DataTransfer(); data.items.add(file);

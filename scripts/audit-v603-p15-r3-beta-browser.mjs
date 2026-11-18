@@ -11,12 +11,13 @@ const compile = async (entry, dev, stub = false) => (await build({ absWorkingDir
   plugins: stub ? [{ name: 'safe-app', setup(b) { b.onResolve({ filter: /^\.\/App\.jsx$/ }, () => ({ path: 'stub', namespace: 'safe' })); b.onLoad({ filter: /.*/, namespace: 'safe' }, () => ({ contents: 'export default function App(){return "Safe production App stub"}', loader: 'js' })); } }] : [] })).outputFiles[0].text;
 const assets = await fs.readdir(path.join(root, 'dist/assets'));
 const css = await fs.readFile(path.join(root, 'dist/assets', assets.find(s => s.endsWith('.css'))));
-const bundles = { '/cases.js': await compile('scripts/fixtures/p15-integrated/beta-browser-cases.jsx', true), '/dev.js': await compile('src/main.jsx', true, true), '/prod.js': await compile('src/main.jsx', false, true) };
+const bundles = { '/cases.js': await compile('scripts/fixtures/p15-integrated/beta-browser-cases.jsx', true), '/dev.js': await compile('src/main.jsx', true, true),
+  '/real.js': await compile('src/main.jsx', true), '/prod.js': await compile('src/main.jsx', false, true) };
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (bundles[url.pathname]) { res.setHeader('Content-Type', 'text/javascript'); res.end(bundles[url.pathname]); return; }
   if (url.pathname === '/style.css') { res.end(css); return; }
-  const entry = url.pathname.startsWith('/prod') ? '/prod.js' : url.pathname.startsWith('/dev') ? '/dev.js' : '/cases.js';
+  const entry = url.pathname.startsWith('/prod') ? '/prod.js' : url.pathname.startsWith('/real') ? '/real.js' : url.pathname.startsWith('/dev') ? '/dev.js' : '/cases.js';
   res.setHeader('Content-Type', 'text/html'); res.end(`<!doctype html><link rel="stylesheet" href="/style.css"><div id="root"></div><script>
   window.qaOpens=0;window.canonicalTouches=0;const op=indexedDB.open.bind(indexedDB);
   indexedDB.open=(name,...rest)=>{if(!String(name).startsWith('prolingo_text_library_d3b_qa_')){window.canonicalTouches++;throw Error('Non-QA database blocked');} window.qaOpens++;return op(name,...rest);};
@@ -55,7 +56,8 @@ try {
   await browser.evaluate('window.tests.cleanupBeta()');
   report.canonicalTouches = await browser.evaluate('window.canonicalTouches');
   const gates = [];
-  for (const [prefix, qa, marker, visible] of [['/prod', 'text-beta', 'data-structured-text-beta', false], ['/dev', 'text-beta', 'data-structured-text-beta', true], ['/prod', 'structured-text', 'data-unified-text-demo', false], ['/dev', 'structured-text', 'data-unified-text-demo', true]]) {
+  for (const [prefix, qa, marker, visible] of [['/prod', 'text-beta', 'data-structured-text-beta', false], ['/dev', 'text-beta', 'data-structured-text-beta', true], ['/prod', 'structured-text', 'data-unified-text-demo', false], ['/dev', 'structured-text', 'data-unified-text-demo', true],
+    ['/real', 'text-beta', 'data-structured-text-beta', true], ['/real', 'structured-text', 'data-unified-text-demo', true]]) {
     await browser.navigate(prefix + '?qa=' + qa);
     const actual = await browser.evaluate('Boolean(document.querySelector("[' + marker + ']"))');
     const opens = await browser.evaluate('window.qaOpens');

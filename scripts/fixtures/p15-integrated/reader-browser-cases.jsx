@@ -27,12 +27,18 @@ export async function runP15A2BrowserCases() {
     });
     await test('Switching modes/levels during audio retains current session for ' + id, async () => {
       const initial = events.length; click('Play Workspace'); await until(() => events.length > initial);
+      // The injected callback can run before React commits source telemetry.
+      // Capture the session only after the active step is actually published.
+      await until(() => {
+        const status = JSON.parse(document.querySelector('[data-unified-source-status]').textContent);
+        return status?.documentId === id && status.mode === 'tts' && status.sessionId && status.segmentId;
+      });
       const count = events.length, stopped = cancellations, source = document.querySelector('[data-unified-source-status]').textContent;
       click('Tampilan Lama'); await frame(); click('Shared UI (Beta)'); await frame();
       document.querySelector('[data-shared-card-level-option=part]').click(); await frame();
       document.querySelector('[data-shared-card-level-option=segment]').click(); await frame();
       assert(events.length === count && cancellations === stopped, 'View change restarted/stopped playback');
-      assert(document.querySelector('[data-unified-source-status]').textContent === source, 'Source/session status changed');
+      assert(document.querySelector('[data-unified-source-status]').textContent === source, 'Source/session status changed: before=' + source + '; after=' + document.querySelector('[data-unified-source-status]').textContent);
       click('Pause'); await frame(); click('Tampilan Lama'); await frame(); click('Resume'); await frame();
       assert(events.length === count, 'Resume duplicated pending audio');
       click('Stop'); events.slice(initial).forEach(e => e.resolve({ status: 'stopped' })); await frame();

@@ -185,11 +185,12 @@ test('Explicit actions preserve current Segment/Card IDs and only validated one-
   createTextMixedReaderActions({ presentation, audioPlayback: host, disabled: true }).onPlayCard(ids.sceneId);
   assert.equal(calls.length, 4);
 });
-test('Mixed toolbar is type-neutral while Paragraph/Scene terminology and A6 eligibility remain unchanged', () => {
+test('Mixed terms stay type-aware; R1 accepts validated v2 while canonical v1 stays gated', () => {
   assert.equal(getSharedUnitTerms({ documentType: 'mixed' }).plural, 'sections or speaker turns');
   assert.equal(getSharedUnitTerms(presentation.cardById[ids.beforeCardId]).label, 'Section');
   assert.equal(getSharedUnitTerms(presentation.cardById[ids.sceneId]).label, 'Speaker Turn');
-  assert.equal(selectTextMainReaderPresentation(snapshot, ids.documentId).presentation, null);
+  assert.deepEqual(selectTextMainReaderPresentation(snapshot, ids.documentId).presentation.cards.map(c => c.id), presentation.cards.map(c => c.id));
+  assert.equal(selectTextMainReaderPresentation({ ...snapshot, schemaVersion: 1 }, ids.documentId).presentation, null);
   assert.equal(TEXT_LIBRARY_DB_VERSION, 1); assert.equal(TEXT_LIBRARY_SCHEMA_VERSION, 1);
   assert.equal(storageCalls, 0); assert.equal(JSON.stringify(snapshot), original);
 });
