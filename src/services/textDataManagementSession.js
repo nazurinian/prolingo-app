@@ -1,17 +1,22 @@
 import { createTextSnapshotCommandCoordinator } from '../domain/text/textMixedEditorDomain.js';
 import { validateTextManagementSnapshot, selectTextDataManagementState, resolveTextManagementSelection,
-  applyTextDataManagementCommand, freezeTextManagementView, TextDataManagementError } from '../domain/text/textDataManagementDomain.js';
+  applyTextDataManagementCommand, validateAndScopeTextDataManagementCommand, freezeTextManagementView, TextDataManagementError } from '../domain/text/textDataManagementDomain.js';
 import { exportTextManagementData, inspectTextManagementTransfer, previewTextManagementTransfer } from '../domain/text/textDataManagementTransferDomain.js';
+import { executeTextLibraryCommand } from './persistence/textLibraryCommandService.js';
 
 /**
- * Headless Hydrogen adapter. This is an isolated working snapshot, never a canonical persistence adapter.
- * execute is an optional QA acknowledgement, NOT executeTextLibraryCommand (which allocates again).
+ * Headless Hydrogen adapter. Supports in-memory disposable sessions and explicit
+ * authoritative disposable persistence adapters, never direct executeTextLibraryCommand.
  * Navigation never calls document.setActive. Drafts survive rejection/navigation and are identity scoped.
  */
 export const createTextDataManagementSession = ({ snapshot: initial, selection: initialSelection = {},
-  boundary = 'read-only', permissions = [], sourceAttachments = [], externalImports = [], audio = null, execute = null } = {}) => {
+  boundary = 'read-only', permissions = [], sourceAttachments = [], externalImports = [], metaRecords = null, audio = null, execute = null } = {}) => {
+  if (execute && (execute === executeTextLibraryCommand || execute.__unsafeNonTransactionalExecutor || execute.name === 'executeTextLibraryCommand')) {
+    throw new TextDataManagementError('INVALID_EXECUTOR', 'executeTextLibraryCommand cannot be passed directly as session execute callback');
+  }
   let snapshot, selection = {}, revision = 0, pending = false, error = null, disposed = false, state;
   let sidecars = structuredClone({ sourceAttachments, externalImports });
+  let authoritativeMetaRecords = Array.isArray(metaRecords) ? structuredClone(metaRecords) : null;
   const access = { boundary, permissions: [...permissions] };
   const drafts = new Map(), listeners = new Set();
   const emit = () => {
@@ -35,11 +40,14 @@ export const createTextDataManagementSession = ({ snapshot: initial, selection: 
   loadSource(initial, initialSelection);
   const coordinator = createTextSnapshotCommandCoordinator({
     getScope: () => ({ snapshot, documentId: selection.workspaceId, revision, selection, ...access }),
+    precheck: (source, command, scope) => validateAndScopeTextDataManagementCommand(source, command, scope),
     prepare: (source, command, scope) => applyTextDataManagementCommand(source, command, scope),
+    validateSnapshot: candidate => validateTextManagementSnapshot(candidate),
     execute,
     onPending(value) { pending = value; emit(); },
     onCommit(outcome) {
       snapshot = freezeTextManagementView(outcome.snapshot); revision++; error = null;
+      if (Array.isArray(outcome.metaRecords)) authoritativeMetaRecords = structuredClone(outcome.metaRecords);
       // Native deletions may remove the browsed entity; fall back to its nearest surviving parent.
       for (const [field, records] of [['segmentId', snapshot.segments], ['unitId', snapshot.contentUnits || []], ['cardId', snapshot.blocks], ['workspaceId', snapshot.documents], ['collectionId', snapshot.collections]]) {
         if (selection[field] && !records.some(r => r.id === selection[field])) delete selection[field];
@@ -67,6 +75,7 @@ export const createTextDataManagementSession = ({ snapshot: initial, selection: 
     getState: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getSnapshot: () => snapshot,
+    getMetaRecords: () => (authoritativeMetaRecords ? structuredClone(authoritativeMetaRecords) : null),
     navigate(nextSelection) {
       if (disposed) return false;
       try { selection = resolveTextManagementSelection(snapshot, nextSelection); revision++; error = null; emit(); return true; }
@@ -80,10 +89,16 @@ export const createTextDataManagementSession = ({ snapshot: initial, selection: 
     setDraft(key, value) { if (disposed) return; drafts.set(draftKey(key), structuredClone(value)); emit(); },
     getDraft(key) { return structuredClone(drafts.get(draftKey(key, false))); },
     clearDraft(key) { if (disposed) return; drafts.delete(draftKey(key, false)); emit(); },
-    replaceSource(candidate, { selection: nextSelection = {}, sourceAttachments: attachments = [], externalImports: imports = [] } = {}) {
-      if (disposed) return; sidecars = structuredClone({ sourceAttachments: attachments, externalImports: imports }); loadSource(candidate, nextSelection);
+    replaceSource(candidate, { selection: nextSelection = {}, sourceAttachments: attachments = [], externalImports: imports = [], metaRecords: nextMeta = null } = {}) {
+      if (disposed) return;
+      sidecars = structuredClone({ sourceAttachments: attachments, externalImports: imports });
+      authoritativeMetaRecords = Array.isArray(nextMeta) ? structuredClone(nextMeta) : null;
+      loadSource(candidate, nextSelection);
     },
-    exportData(options) { return exportTextManagementData(snapshot, { ...options, selection, ...sidecars }); },
+    exportData(options) {
+      const resolvedMetaRecords = options?.metaRecords !== undefined ? options.metaRecords : authoritativeMetaRecords;
+      return exportTextManagementData(snapshot, { ...options, selection, ...sidecars, ...(resolvedMetaRecords !== null ? { metaRecords: resolvedMetaRecords } : {}) });
+    },
     inspectTransfer: inspectTextManagementTransfer,
     previewTransfer(options) { return previewTextManagementTransfer(snapshot, { ...options, selection, ...sidecars }); },
     dispose() { disposed = true; revision++; coordinator.dispose(); pending = false; emit(); listeners.clear(); }

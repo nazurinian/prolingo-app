@@ -11,6 +11,8 @@ import {
   RefreshCw,
   ShieldCheck
 } from 'lucide-react';
+import { TextDataManagementError } from '../../../domain/text/textDataManagementDomain.js';
+import { executeTextLibraryCommand } from '../../../services/persistence/textLibraryCommandService.js';
 import { createTextDataManagementSession } from '../../../services/textDataManagementSession.js';
 import DataManagementLibraryExplorer from './DataManagementLibraryExplorer.jsx';
 import DataManagementWorkspaceInspector from './DataManagementWorkspaceInspector.jsx';
@@ -24,6 +26,9 @@ import {
   explainReason,
   formatDraftKeyLabel
 } from './dataManagementUiUtils.js';
+
+const EMPTY_OBJECT = Object.freeze({});
+const EMPTY_ARRAY = Object.freeze([]);
 
 const LOADING_SNAPSHOT = Object.freeze({
   revision: 0,
@@ -83,7 +88,11 @@ const createExternalSessionStore = () => {
     },
     getState: () => cachedState,
     attachExternal: session => bind(session, false),
-    createInternal: options => bind(createTextDataManagementSession(options), true),
+    createInternal: options => {
+      const created = createTextDataManagementSession(options);
+      bind(created, true);
+      return created;
+    },
     teardown: () => bind(null, false)
   };
 };
@@ -95,14 +104,16 @@ const createExternalSessionStore = () => {
 export default function TextDataManagementPage({
   session: externalSession = null,
   snapshot = null,
-  initialSelection = {},
+  initialSelection = EMPTY_OBJECT,
   boundary = 'read-only',
-  permissions = [],
-  sourceAttachments = [],
-  externalImports = [],
-  extraMetaRecords = [],
+  permissions = EMPTY_ARRAY,
+  sourceAttachments = EMPTY_ARRAY,
+  externalImports = EMPTY_ARRAY,
+  extraMetaRecords = EMPTY_ARRAY,
+  metaRecords = null,
   audio = null,
   execute = null,
+  persistenceAdapter = null,
   samplePack = null,
   sampleExternalPackage = null,
   loading = false,
@@ -110,15 +121,52 @@ export default function TextDataManagementPage({
   compact = false,
   headerActions = null
 }) {
+  if (persistenceAdapter?.canonicalWritesEnabled === true) {
+    throw new TextDataManagementError('CANONICAL_WRITES_DISABLED', 'Canonical persistence writes remain disabled in P15-A2');
+  }
+  const effectiveExecute = persistenceAdapter?.execute ?? execute;
+  if (effectiveExecute && (effectiveExecute === executeTextLibraryCommand || effectiveExecute.__unsafeNonTransactionalExecutor || effectiveExecute.name === 'executeTextLibraryCommand')) {
+    throw new TextDataManagementError('INVALID_EXECUTOR', 'executeTextLibraryCommand cannot be passed directly to TextDataManagementPage');
+  }
+  const effectiveMetaRecords = metaRecords ?? persistenceAdapter?.metaRecords ?? null;
+
   const [store] = useState(createExternalSessionStore);
   const [activeTab, setActiveTab] = useState('all');
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(true);
   const [trackedDraftKeys, setTrackedDraftKeys] = useState(() => new Map());
 
-  const initialConfigRef = useRef({ snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, audio, execute });
+  const initialConfigRef = useRef({
+    snapshot,
+    initialSelection,
+    boundary,
+    permissions,
+    sourceAttachments,
+    externalImports,
+    metaRecords: effectiveMetaRecords,
+    audio,
+    execute: effectiveExecute
+  });
   useEffect(() => {
-    initialConfigRef.current = { snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, audio, execute };
-  }, [snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, audio, execute]);
+    initialConfigRef.current = {
+      snapshot,
+      initialSelection,
+      boundary,
+      permissions,
+      sourceAttachments,
+      externalImports,
+      metaRecords: effectiveMetaRecords,
+      audio,
+      execute: effectiveExecute
+    };
+  }, [snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, effectiveMetaRecords, audio, effectiveExecute]);
+
+  const appliedSourceRef = useRef({
+    session: null,
+    snapshot: undefined,
+    sourceAttachments: EMPTY_ARRAY,
+    externalImports: EMPTY_ARRAY,
+    metaRecords: null
+  });
 
   const permissionsKey = permissions.join(',');
   useEffect(() => {
@@ -131,16 +179,24 @@ export default function TextDataManagementPage({
       return () => store.teardown();
     }
     const cfg = initialConfigRef.current;
-    store.createInternal({
+    const createdSession = store.createInternal({
       snapshot: cfg.snapshot,
       selection: cfg.initialSelection,
       boundary: cfg.boundary,
       permissions: cfg.permissions,
       sourceAttachments: cfg.sourceAttachments,
       externalImports: cfg.externalImports,
+      metaRecords: cfg.metaRecords,
       audio: cfg.audio,
       execute: cfg.execute
     });
+    appliedSourceRef.current = {
+      session: createdSession,
+      snapshot: cfg.snapshot,
+      sourceAttachments: cfg.sourceAttachments,
+      externalImports: cfg.externalImports,
+      metaRecords: cfg.metaRecords
+    };
     return () => store.teardown();
   }, [store, externalSession, loading, boundary, permissionsKey]);
 
@@ -154,19 +210,32 @@ export default function TextDataManagementPage({
     return syncedState;
   }, [externalSession, syncedState]);
 
-  const firstMountRef = useRef(true);
   useEffect(() => {
-    if (firstMountRef.current) {
-      firstMountRef.current = false;
+    if (externalSession || loading || !syncedState.session || snapshot === undefined) return;
+    const prev = appliedSourceRef.current;
+    if (prev.session !== syncedState.session) return;
+    if (
+      prev.snapshot === snapshot &&
+      prev.sourceAttachments === sourceAttachments &&
+      prev.externalImports === externalImports &&
+      prev.metaRecords === effectiveMetaRecords
+    ) {
       return;
     }
-    if (externalSession || loading || !syncedState.session || snapshot === undefined) return;
+    appliedSourceRef.current = {
+      session: syncedState.session,
+      snapshot,
+      sourceAttachments,
+      externalImports,
+      metaRecords: effectiveMetaRecords
+    };
     syncedState.session.replaceSource(snapshot, {
       selection: initialSelection,
       sourceAttachments,
-      externalImports
+      externalImports,
+      metaRecords: effectiveMetaRecords
     });
-  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports]);
+  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports, effectiveMetaRecords]);
 
   const getDraft = useCallback(key => {
     if (!activeSession) return undefined;
@@ -403,7 +472,7 @@ export default function TextDataManagementPage({
                 )}
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400">
-                Scope: <span className="font-mono font-bold text-slate-800 dark:text-slate-200" data-dm-current-selection={selectedLabel}>{selectedLabel}</span> · Rev <span className="font-mono">{revision}</span> · Drafts <span className="font-mono" data-dm-draft-count={draftCount}>{draftCount}</span> · Canonical Writes: <span className="font-mono font-bold">false</span>
+                Scope: <span className="font-mono font-bold text-slate-800 dark:text-slate-200" data-dm-current-selection={selectedLabel}>{selectedLabel}</span> · Rev <span className="font-mono" data-dm-revision={revision}>{revision}</span> · Drafts <span className="font-mono" data-dm-draft-count={draftCount}>{draftCount}</span> · Canonical Writes: <span className="font-mono font-bold">false</span>
               </p>
             </div>
 

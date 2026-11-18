@@ -133,8 +133,11 @@ export const selectTextDataManagementState = (candidate, { selection = {}, bound
       counts: Object.fromEntries(['collections', 'documents', 'blocks', 'contentUnits', 'segments', 'audioVariants'].map(k => [k, snapshot[k]?.length ?? 0])) } }));
 };
 
-/** Native command application, explicitly restricted to an in-memory disposable boundary. */
-export const applyTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], now = Date.now() } = {}) => {
+/**
+ * Validates command fields, capability boundaries, protected metadata, and Workspace scope
+ * without allocating persistent IDs/UIDs or mutating snapshots.
+ */
+export const validateAndScopeTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [] } = {}) => {
   const snapshot = validateTextManagementSnapshot(candidate);
   const selected = resolveTextManagementSelection(snapshot, selection);
   const { type, payload = {} } = command || {};
@@ -167,6 +170,12 @@ export const applyTextDataManagementCommand = (candidate, command, { selection =
     } else scoped = scopeTextStructuredEditorCommand(snapshot, { workspace: tree, cards: tree.blocks, speakerRegistry: state.speakers }, command);
     if (type === 'block.create' && tree.documentType !== 'mixed' && payload.blockType !== tree.documentType) fail('INVALID_COMMAND', 'Card kind must match this Workspace');
   }
+  return { snapshot, selected, scoped };
+};
+
+/** Native command application, explicitly restricted to an in-memory disposable boundary. */
+export const applyTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], now = Date.now() } = {}) => {
+  const { snapshot, scoped } = validateAndScopeTextDataManagementCommand(candidate, command, { selection, boundary, permissions });
   try {
     const outcome = applyTextLibraryCommand(snapshot, scoped, now);
     validateTextManagementSnapshot(outcome.snapshot);
