@@ -110,9 +110,6 @@ const openExistingDisposableDb = async (safeName, version = null) => {
   if (typeof indexedDB === 'undefined') {
     typedFail('INVALID_OPERATION', 'IndexedDB is unavailable in this environment');
   }
-  if (version != null) {
-    return openDisposableTextLibraryV2Database({ dbName: safeName, version });
-  }
   return new Promise((resolve, reject) => {
     let createdBlank = false;
     const request = indexedDB.open(safeName);
@@ -125,10 +122,17 @@ const openExistingDisposableDb = async (safeName, version = null) => {
         assertDisposableQaDatabaseHandle(db);
         if (createdBlank || !db.objectStoreNames?.contains?.(TEXT_LIBRARY_STORES.META)) {
           db.close?.();
+          const error = new TextDataManagementError('UNINITIALIZED', `Disposable QA database "${safeName}" has not been initialized`);
+          error.databaseMissing = createdBlank;
           if (createdBlank) {
-            try { indexedDB.deleteDatabase(safeName); } catch { /* ignore cleanup error */ }
-          }
-          reject(new TextDataManagementError('UNINITIALIZED', `Disposable QA database "${safeName}" has not been initialized`));
+            const cleanup = indexedDB.deleteDatabase(safeName);
+            cleanup.onsuccess = cleanup.onerror = () => reject(error);
+          } else reject(error);
+          return;
+        }
+        if (version != null && db.version !== version) {
+          db.close();
+          reject(new TextDataManagementError('VERSION_MISMATCH', 'Existing database version differs; reads and restore must not upgrade it. Use a separately named QA database.'));
           return;
         }
         resolve(db);
@@ -784,17 +788,13 @@ export const restoreDisposableTextManagementDatabaseBackup = async ({
   ...restOptions
 } = {}) => {
   const safeName = assertDisposablePersistenceOptions({ dbName, ...restOptions });
-  if (!upgradeV1Backup && Array.isArray(backup?.metaRecords)) {
-    const rawMetaKeys = new Set(backup.metaRecords.map(record => record?.key));
-    const missingMeta = [
-      TEXT_LIBRARY_META_KEYS.SCHEMA_VERSION,
-      TEXT_LIBRARY_META_KEYS.INITIALIZED,
-      TEXT_LIBRARY_META_KEYS.ID_COUNTERS
-    ].filter(key => !rawMetaKeys.has(key));
-    if (missingMeta.length > 0) {
-      typedFail('METADATA_REQUIRED', `Backup metaRecords missing required keys: ${missingMeta.join(', ')}`);
-    }
-  }
+  // Validate raw metadata BEFORE the compatibility backup parser can normalize counters,
+  // booleans or missing fields. Explicit v1->v2 conversion does not authorize repair.
+  reconstructValidatedStateFromRows({
+    ...backup?.stores, metaRecords: backup?.metaRecords,
+    hasUnitsStore: Object.hasOwn(backup?.stores || {}, 'contentUnits'),
+    dbVersion: backup?.database?.dbVersion, requireCompleteMetadata: true
+  });
   let inspected;
   try {
     inspected = inspectTextManagementTransfer({ kind: 'database-backup', data: backup });
@@ -811,7 +811,11 @@ export const restoreDisposableTextManagementDatabaseBackup = async ({
   const release = acquireWriteLock(safeName);
   let db;
   try {
-    db = await openDisposableTextLibraryV2Database({ dbName: safeName, version: targetDbVersion });
+    try { db = await openExistingDisposableDb(safeName, targetDbVersion); }
+    catch (error) {
+      if (!error.databaseMissing) throw error;
+      db = await openDisposableTextLibraryV2Database({ dbName: safeName, version: targetDbVersion });
+    }
     const { hasUnitsStore, storeNames } = resolveStoreNames(db);
     if (validatedSnapshot.schemaVersion === TEXT_LIBRARY_V2_SCHEMA_VERSION && !hasUnitsStore) {
       typedFail('INVALID_SNAPSHOT', 'Target database does not have contentUnits store for v2 restore');
@@ -877,17 +881,26 @@ export const createTextDataManagementPersistenceAdapter = ({
   const grantedPermissions = Object.freeze([...permissions]);
   const resolveNow = typeof now === 'function' ? now : () => Number(now) || Date.now();
 
-  const execute = (command, context = {}) => executeDisposableTextManagementTransaction({
+  const execute = (command, context = {}) => {
+    if (boundary !== 'disposable' && context.boundary === 'disposable') {
+      typedFail('READ_ONLY', 'Command context cannot widen the persistence adapter boundary');
+    }
+    const requestedPermissions = context.permissions ?? grantedPermissions;
+    if (!Array.isArray(requestedPermissions) || requestedPermissions.some(permission => !grantedPermissions.includes(permission))) {
+      typedFail('PERMISSION_DENIED', 'Command context cannot widen persistence adapter permissions');
+    }
+    return executeDisposableTextManagementTransaction({
     dbName: safeName,
     version,
     command,
     selection: context.selection || {},
     boundary: context.boundary ?? boundary,
-    permissions: context.permissions ?? grantedPermissions,
+    permissions: requestedPermissions,
     expectedSnapshotFingerprint: context.expectedSnapshotFingerprint ?? null,
     expectedRevision: context.expectedRevision ?? null,
     now: resolveNow()
-  });
+    });
+  };
   Object.defineProperty(execute, 'authoritativeTransaction', {
     value: true,
     enumerable: false,

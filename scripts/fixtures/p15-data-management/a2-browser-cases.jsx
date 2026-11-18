@@ -563,13 +563,16 @@ export async function runP15A2BrowserCases() {
       const deferredExecute = (cmd, { preparedOutcome }) => new Promise(resolve => {
         releaseDeferred = () => resolve(preparedOutcome);
       });
-      // Switch execute by recreating internal session via boundary toggle test:
-      // Actually update customExecute first, then toggle boundary read-only -> disposable so Effect 1 creates internal session with deferredExecute
+      // Executor and permission changes reconfigure the same session. Previously this
+      // test forced destructive session recreation and expected revision to reset to 1.
+      const revisionBeforeConfigure = Number(q('[data-dm-revision]').dataset.dmRevision);
       hostControls.setCustomExecute(deferredExecute);
       hostControls.setBoundary('read-only');
       await until(() => q('[data-dm-mode-badge="read-only"]'));
+      assert(q(`[aria-label="Sentence text ${secondSentence.id}"]`).value === 'Keep Unrelated Direct-Host Draft.', 'Boundary change must preserve unrelated draft');
       hostControls.setBoundary('disposable');
-      await until(() => q('[data-dm-mode-badge="disposable"]') && q('[data-dm-revision="1"]'));
+      await until(() => q('[data-dm-mode-badge="disposable"]') && Number(q('[data-dm-revision]').dataset.dmRevision) > revisionBeforeConfigure);
+      assert(q(`[aria-label="Sentence text ${ids.firstSentenceId}"]`).value === 'External Prop Reload.', 'Configuration change must preserve current source');
 
       await setInputValue(q(`[aria-label="Sentence text ${ids.firstSentenceId}"]`), 'Deferred Direct-Host Draft.');
       await clickEl(q(`[data-dm-segment-save="${ids.firstSentenceId}"]`));

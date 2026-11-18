@@ -12,6 +12,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { TextDataManagementError } from '../../../domain/text/textDataManagementDomain.js';
+import { canonicalJsonStringify } from '../../../domain/text/textCanonicalFingerprintDomain.js';
 import { executeTextLibraryCommand } from '../../../services/persistence/textLibraryCommandService.js';
 import { createTextDataManagementSession } from '../../../services/textDataManagementSession.js';
 import DataManagementLibraryExplorer from './DataManagementLibraryExplorer.jsx';
@@ -143,6 +144,7 @@ export default function TextDataManagementPage({
     sourceAttachments,
     externalImports,
     metaRecords: effectiveMetaRecords,
+    dbName: persistenceAdapter?.dbName,
     audio,
     execute: effectiveExecute
   });
@@ -155,10 +157,11 @@ export default function TextDataManagementPage({
       sourceAttachments,
       externalImports,
       metaRecords: effectiveMetaRecords,
+      dbName: persistenceAdapter?.dbName,
       audio,
       execute: effectiveExecute
     };
-  }, [snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, effectiveMetaRecords, audio, effectiveExecute]);
+  }, [snapshot, initialSelection, boundary, permissions, sourceAttachments, externalImports, effectiveMetaRecords, audio, effectiveExecute, persistenceAdapter?.dbName]);
 
   const appliedSourceRef = useRef({
     session: null,
@@ -170,10 +173,6 @@ export default function TextDataManagementPage({
 
   const permissionsKey = permissions.join(',');
   useEffect(() => {
-    if (loading) {
-      store.teardown();
-      return undefined;
-    }
     if (externalSession) {
       store.attachExternal(externalSession);
       return () => store.teardown();
@@ -192,16 +191,23 @@ export default function TextDataManagementPage({
     });
     appliedSourceRef.current = {
       session: createdSession,
-      snapshot: cfg.snapshot,
-      sourceAttachments: cfg.sourceAttachments,
-      externalImports: cfg.externalImports,
-      metaRecords: cfg.metaRecords
+      snapshot: canonicalJsonStringify(cfg.snapshot),
+      sourceAttachments: canonicalJsonStringify(cfg.sourceAttachments),
+      externalImports: canonicalJsonStringify(cfg.externalImports),
+      metaRecords: canonicalJsonStringify(cfg.metaRecords),
+      dbName: cfg.dbName
     };
     return () => store.teardown();
-  }, [store, externalSession, loading, boundary, permissionsKey]);
+  }, [store, externalSession]);
 
   const syncedState = useSyncExternalStore(store.subscribe, store.getState);
   const activeSession = externalSession || syncedState.session;
+
+  useEffect(() => {
+    if (!externalSession && !loading && syncedState.session) {
+      syncedState.session.configure({ boundary, permissions, execute: effectiveExecute, audio });
+    }
+  }, [externalSession, loading, syncedState.session, boundary, permissions, permissionsKey, effectiveExecute, audio]);
 
   const sessionState = useMemo(() => {
     if (externalSession && syncedState.session !== externalSession) {
@@ -214,20 +220,25 @@ export default function TextDataManagementPage({
     if (externalSession || loading || !syncedState.session || snapshot === undefined) return;
     const prev = appliedSourceRef.current;
     if (prev.session !== syncedState.session) return;
+    const next = {
+      snapshot: canonicalJsonStringify(snapshot),
+      sourceAttachments: canonicalJsonStringify(sourceAttachments),
+      externalImports: canonicalJsonStringify(externalImports),
+      metaRecords: canonicalJsonStringify(effectiveMetaRecords),
+      dbName: persistenceAdapter?.dbName
+    };
     if (
-      prev.snapshot === snapshot &&
-      prev.sourceAttachments === sourceAttachments &&
-      prev.externalImports === externalImports &&
-      prev.metaRecords === effectiveMetaRecords
+      prev.snapshot === next.snapshot &&
+      prev.sourceAttachments === next.sourceAttachments &&
+      prev.externalImports === next.externalImports &&
+      prev.metaRecords === next.metaRecords &&
+      prev.dbName === next.dbName
     ) {
       return;
     }
     appliedSourceRef.current = {
       session: syncedState.session,
-      snapshot,
-      sourceAttachments,
-      externalImports,
-      metaRecords: effectiveMetaRecords
+      ...next
     };
     syncedState.session.replaceSource(snapshot, {
       selection: initialSelection,
@@ -235,7 +246,7 @@ export default function TextDataManagementPage({
       externalImports,
       metaRecords: effectiveMetaRecords
     });
-  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports, effectiveMetaRecords]);
+  }, [externalSession, loading, syncedState.session, snapshot, initialSelection, sourceAttachments, externalImports, effectiveMetaRecords, persistenceAdapter?.dbName]);
 
   const getDraft = useCallback(key => {
     if (!activeSession) return undefined;
@@ -518,6 +529,10 @@ export default function TextDataManagementPage({
               <p className="text-[11px] text-red-800 dark:text-red-300">
                 {explainReason(error.code)} Any active edits remain saved in your session drafts for review and retry.
               </p>
+              {onReloadValidSource && (error.reloadRequired || error.code === 'STALE_RESULT' || error.code === 'INVALID_RESPONSE') && (
+                <button type="button" data-dm-reload-valid-source="true" disabled={pending}
+                  onClick={onReloadValidSource} className={DM_SMALL_BTN}>Reload Authoritative Source</button>
+              )}
             </div>
           )}
         </header>

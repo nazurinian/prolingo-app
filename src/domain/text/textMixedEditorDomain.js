@@ -116,12 +116,13 @@ export const applyTextMixedEditorCommand = (snapshot, command, { documentId, now
 };
 
 /** Synchronous lock + immutable staged or single-allocation transactional command; async acknowledgements cannot replace newer snapshots. */
-export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPending = () => {}, execute = null, prepare, precheck = null, validateSnapshot = null }) => {
+export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPending = () => {}, execute = null, getExecutor = () => execute, prepare, precheck = null, validateSnapshot = null }) => {
   if (execute && (execute.__unsafeNonTransactionalExecutor || execute.name === 'executeTextLibraryCommand')) {
     fail('INVALID_EXECUTOR', 'Non-transactional executeTextLibraryCommand cannot be passed directly as session acknowledgement callback');
   }
   let pending = false, disposed = false;
-  const errorResult = error => ({ ok: false, error: { code: typeof error?.code === 'string' ? error.code : 'COMMAND_REJECTED', message: error?.message || 'Command failed' } });
+  const errorResult = error => ({ ok: false, error: { code: typeof error?.code === 'string' ? error.code : 'COMMAND_REJECTED', message: error?.message || 'Command failed',
+    ...(error?.committed ? { committed: true } : {}), ...(error?.reloadRequired ? { reloadRequired: true } : {}) } });
   const assertStillCurrent = (scope, captured) => {
     const latest = getScope();
     if (disposed || latest.documentId !== scope.documentId || latest.snapshot !== scope.snapshot || latest.revision !== scope.revision
@@ -134,13 +135,16 @@ export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPen
       if (pending) return errorResult({ code: 'BUSY', message: 'Wait for the pending command' });
       pending = true;
       onPending(true);
+      let committed = false;
       try {
+        const executor = getExecutor();
+        if (executor && (executor.__unsafeNonTransactionalExecutor || executor.name === 'executeTextLibraryCommand')) fail('INVALID_EXECUTOR', 'Unsafe executor');
         const scope = getScope();
         const captured = canonicalJsonStringify(scope.snapshot);
-        if (execute?.authoritativeTransaction) {
-          if (precheck) precheck(scope.snapshot, command, { ...scope });
-          else prepare(scope.snapshot, command, { ...scope });
-          const outcome = await execute(structuredClone(command), {
+        if (executor?.authoritativeTransaction) {
+          if (!precheck) fail('INVALID_EXECUTOR', 'Authoritative transactions require a zero-allocation precheck');
+          precheck(scope.snapshot, command, { ...scope });
+          const outcome = await executor(structuredClone(command), {
             documentId: scope.documentId,
             selection: scope.selection,
             boundary: scope.boundary,
@@ -148,10 +152,14 @@ export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPen
             expectedSnapshotFingerprint: captured,
             expectedRevision: scope.revision
           });
+          committed = outcome?.ok === true && outcome?.authoritative === true;
           assertStillCurrent(scope, captured);
           if (outcome?.ok === false || outcome?.error) return errorResult(outcome.error || { message: 'Command rejected' });
           if (!outcome || outcome.ok !== true || outcome.authoritative !== true
             || outcome.previousFingerprint !== captured
+            || outcome.snapshotFingerprint !== canonicalJsonStringify(outcome.snapshot)
+            || (outcome.expectedRevision !== undefined && outcome.expectedRevision !== scope.revision)
+            || (outcome.commandType !== undefined && outcome.commandType !== command.type)
             || !outcome.snapshot || typeof outcome.snapshot !== 'object'
             || outcome.result === undefined) {
             fail('INVALID_RESPONSE', 'Authoritative transaction receipt failed precondition or shape verification');
@@ -168,7 +176,7 @@ export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPen
         }
         const staged = freeze(prepare(scope.snapshot, command, { ...scope }));
         const expected = canonicalJsonStringify({ snapshot: staged.snapshot, result: staged.result });
-        const outcome = await (execute ? execute(structuredClone(command), { preparedOutcome: staged, documentId: scope.documentId }) : staged);
+        const outcome = await (executor ? executor(structuredClone(command), { preparedOutcome: staged, documentId: scope.documentId }) : staged);
         assertStillCurrent(scope, captured);
         if (outcome?.ok === false || outcome?.error) return errorResult(outcome.error || { message: 'Command rejected' });
         if (!outcome || (outcome.ok !== undefined && outcome.ok !== true)
@@ -176,7 +184,12 @@ export const createTextSnapshotCommandCoordinator = ({ getScope, onCommit, onPen
         // Publish the staged result, never an externally supplied mutable object.
         onCommit(staged, scope);
         return { ok: true, ...staged };
-      } catch (error) { return errorResult(error); }
+      } catch (error) {
+        if (committed) return errorResult({ code: error?.code || 'INVALID_RESPONSE', committed: true, reloadRequired: true,
+          message: 'The database transaction committed, but this session could not accept its receipt. Reload the authoritative source before retrying; do not resubmit automatically. ' + (error?.message || 'Receipt could not be accepted') });
+        if (error?.code === 'STALE_RESULT') return errorResult({ ...error, code: error.code, message: error.message, reloadRequired: true });
+        return errorResult(error);
+      }
       finally { pending = false; if (!disposed) onPending(false); }
     }
   };

@@ -3,6 +3,8 @@ import { validateTextManagementSnapshot, selectTextDataManagementState, resolveT
   applyTextDataManagementCommand, validateAndScopeTextDataManagementCommand, freezeTextManagementView, TextDataManagementError } from '../domain/text/textDataManagementDomain.js';
 import { exportTextManagementData, inspectTextManagementTransfer, previewTextManagementTransfer } from '../domain/text/textDataManagementTransferDomain.js';
 import { executeTextLibraryCommand } from './persistence/textLibraryCommandService.js';
+import { normalizeTextSourceAttachments } from '../domain/text/textSourceAttachmentDomain.js';
+import { normalizeTextExternalImportRegistry } from '../domain/text/textExternalJsonDomain.js';
 
 /**
  * Headless Hydrogen adapter. Supports in-memory disposable sessions and explicit
@@ -43,11 +45,16 @@ export const createTextDataManagementSession = ({ snapshot: initial, selection: 
     precheck: (source, command, scope) => validateAndScopeTextDataManagementCommand(source, command, scope),
     prepare: (source, command, scope) => applyTextDataManagementCommand(source, command, scope),
     validateSnapshot: candidate => validateTextManagementSnapshot(candidate),
-    execute,
+    getExecutor: () => execute,
     onPending(value) { pending = value; emit(); },
     onCommit(outcome) {
       snapshot = freezeTextManagementView(outcome.snapshot); revision++; error = null;
-      if (Array.isArray(outcome.metaRecords)) authoritativeMetaRecords = structuredClone(outcome.metaRecords);
+      if (Array.isArray(outcome.metaRecords)) {
+        authoritativeMetaRecords = structuredClone(outcome.metaRecords);
+        const meta = new Map(authoritativeMetaRecords.map(record => [record.key, record.value]));
+        sidecars = { sourceAttachments: normalizeTextSourceAttachments(meta.get('sourceAttachments') || []),
+          externalImports: normalizeTextExternalImportRegistry(meta.get('externalSourceImports') || []) };
+      }
       // Native deletions may remove the browsed entity; fall back to its nearest surviving parent.
       for (const [field, records] of [['segmentId', snapshot.segments], ['unitId', snapshot.contentUnits || []], ['cardId', snapshot.blocks], ['workspaceId', snapshot.documents], ['collectionId', snapshot.collections]]) {
         if (selection[field] && !records.some(r => r.id === selection[field])) delete selection[field];
@@ -76,6 +83,13 @@ export const createTextDataManagementSession = ({ snapshot: initial, selection: 
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     getSnapshot: () => snapshot,
     getMetaRecords: () => (authoritativeMetaRecords ? structuredClone(authoritativeMetaRecords) : null),
+    configure({ boundary: nextBoundary = access.boundary, permissions: nextPermissions = access.permissions, execute: nextExecute = execute, audio: nextAudio = audio } = {}) {
+      if (disposed) return;
+      if (nextExecute && (nextExecute === executeTextLibraryCommand || nextExecute.__unsafeNonTransactionalExecutor || nextExecute.name === 'executeTextLibraryCommand')) throw new TextDataManagementError('INVALID_EXECUTOR', 'Unsafe executor');
+      if (access.boundary === nextBoundary && JSON.stringify(access.permissions) === JSON.stringify(nextPermissions) && execute === nextExecute && audio === nextAudio) return;
+      access.boundary = nextBoundary; access.permissions = [...nextPermissions]; execute = nextExecute; audio = nextAudio;
+      revision++; emit();
+    },
     navigate(nextSelection) {
       if (disposed) return false;
       try { selection = resolveTextManagementSelection(snapshot, nextSelection); revision++; error = null; emit(); return true; }
