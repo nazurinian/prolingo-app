@@ -823,15 +823,7 @@ export const exportDisposableTextManagementDatabaseBackup = async ({
  * Atomically replaces a disposable QA database from a validated ProLingo Text Database backup,
  * preserving all unknown/sidecar metadata records, counters, UIDs, and audio metadata references.
  */
-export const restoreDisposableTextManagementDatabaseBackup = async ({
-  dbName = TEXT_DISPOSABLE_QA_DB_NAME,
-  backup,
-  upgradeV1Backup = false,
-  now = Date.now(),
-  onBeforeCommit = null,
-  ...restOptions
-} = {}) => {
-  const safeName = assertDisposablePersistenceOptions({ dbName, ...restOptions });
+export const inspectStrictTextManagementBackup = backup => {
   // Validate raw metadata BEFORE the compatibility backup parser can normalize counters,
   // booleans or missing fields. Explicit v1->v2 conversion does not authorize repair.
   reconstructValidatedStateFromRows({
@@ -846,6 +838,15 @@ export const restoreDisposableTextManagementDatabaseBackup = async ({
     if (error instanceof TextDataManagementError) throw error;
     typedFail('INVALID_TRANSFER', error?.message || 'Invalid database backup payload');
   }
+  return inspected;
+};
+
+export const restoreDisposableTextManagementDatabaseBackup = async ({
+  dbName = TEXT_DISPOSABLE_QA_DB_NAME, backup, upgradeV1Backup = false,
+  now = Date.now(), onBeforeCommit = null, ...restOptions
+} = {}) => {
+  const safeName = assertDisposablePersistenceOptions({ dbName, ...restOptions });
+  const inspected = inspectStrictTextManagementBackup(backup);
   const validated = validateProLingoTextDatabaseBackup(inspected.backup, {
     upgradeToV2: Boolean(upgradeV1Backup),
     now

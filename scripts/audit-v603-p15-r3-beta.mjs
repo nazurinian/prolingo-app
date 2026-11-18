@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { buildStoredZipBlob } from '../src/services/audio/browserZipService.js';
+import { buildCanonicalTextRenderAudioFilename } from '../src/domain/text/textFilenameDomain.js';
+import { createStructuredTestingFixture } from './fixtures/p15-integrated/structured-fixture.js';
+import { bindQaPortableAudio } from '../src/services/audio/textQaPortableAudioService.js';
+const f = createStructuredTestingFixture(), before = JSON.stringify(f.snapshot);
+const variant = f.snapshot.audioVariants.find(a => a.metadata?.audioRenderFingerprintV1);
+const filename = buildCanonicalTextRenderAudioFilename({ renderFingerprint: variant.metadata.audioRenderFingerprintV1, engine: variant.engine, voiceId: variant.voiceId, extension: 'mp3' });
+const zip = await buildStoredZipBlob([{ filename, blob: new Blob([new Uint8Array([1, 2, 3, 4])]) }]);
+const file = new File([zip], 'audio.zip', { type: 'application/zip' });
+const bound = await bindQaPortableAudio({ snapshot: f.snapshot, files: [file] });
+assert.ok(bound.matched > 0);
+assert.ok(bound.runtimeAudioUrls[variant.id].blob.size > 0);
+assert.equal(bound.runtimeAudioUrls[variant.id].renderFingerprint, variant.metadata.audioRenderFingerprintV1);
+assert.equal(JSON.stringify(f.snapshot), before);
+assert.equal(Object.keys(bound.runtimeFullAudio).length, 0);
+console.log('PASS R3: native RF ZIP matching binds physical Blob to existing identities without metadata/cache/Staging writes; no false Full binding');

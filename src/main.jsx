@@ -23,12 +23,14 @@ const LazyDataManagementQaPreview = import.meta.env.DEV ? lazy(() => (
   import('./components/text/management/TextDataManagementQaPreview.jsx')
 )) : null
 const LazyStructuredTextDemo = import.meta.env.DEV ? lazy(() => import('./components/text/presentation/StructuredTextDemo.jsx')) : null
+const LazyStructuredTextBeta = import.meta.env.DEV ? lazy(() => import('./components/text/management/StructuredTextBeta.jsx')) : null
 
 const getActiveQaRoute = () => {
   if (!import.meta.env.DEV || typeof window === 'undefined') return null
   const search = new URLSearchParams(window.location.search || '')
   const qa = search.get('qa')
   if (qa === 'structured-text') return 'structured-text'
+  if (qa === 'text-beta') return 'text-beta'
   if (qa === 'conversation-editor' || window.location.hash === '#qa-conversation-editor') {
     return 'conversation-editor'
   }
@@ -56,7 +58,9 @@ const activeQaRoute = getActiveQaRoute()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {activeQaRoute === 'structured-text' ? (
+    {activeQaRoute === 'text-beta' ? (
+      <Suspense fallback={<div>Loading isolated Beta...</div>}><LazyStructuredTextBeta /></Suspense>
+    ) : activeQaRoute === 'structured-text' ? (
       <Suspense fallback={<div>Loading isolated Structured Text...</div>}><LazyStructuredTextDemo /></Suspense>
     ) : activeQaRoute === 'conversation-editor' ? (
       <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Conversation Editor QA Preview...</div>}>
