@@ -19,6 +19,10 @@ const LazyMixedWorkspaceQaPreview = import.meta.env.DEV ? lazy(() => (
   import('./components/text/presentation/TextMixedWorkspaceQaPreview.jsx')
 )) : null
 
+const LazyDataManagementQaPreview = import.meta.env.DEV ? lazy(() => (
+  import('./components/text/management/TextDataManagementQaPreview.jsx')
+)) : null
+
 const getActiveQaRoute = () => {
   if (!import.meta.env.DEV || typeof window === 'undefined') return null
   const search = new URLSearchParams(window.location.search || '')
@@ -34,6 +38,14 @@ const getActiveQaRoute = () => {
   }
   if (qa === 'mixed-workspace' || window.location.hash === '#qa-mixed-workspace') {
     return 'mixed-workspace'
+  }
+  if (
+    qa === 'data-management'
+    || qa === 'structured-data-management'
+    || window.location.hash === '#qa-data-management'
+    || window.location.hash === '#qa-structured-data-management'
+  ) {
+    return 'data-management'
   }
   return null
 }
@@ -57,6 +69,10 @@ createRoot(document.getElementById('root')).render(
     ) : activeQaRoute === 'mixed-workspace' ? (
       <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Mixed Workspace QA...</div>}>
         <LazyMixedWorkspaceQaPreview />
+      </Suspense>
+    ) : activeQaRoute === 'data-management' ? (
+      <Suspense fallback={<div className="p-6 text-xs font-bold text-slate-500">Loading Structured Text Data Management QA...</div>}>
+        <LazyDataManagementQaPreview />
       </Suspense>
     ) : (
       <App />
