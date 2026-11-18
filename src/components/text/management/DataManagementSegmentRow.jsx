@@ -144,10 +144,10 @@ export default function DataManagementSegmentRow({
             <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">
               Sentence #{segIndex + 1} (order {effectiveSeg?.order ?? seg.order ?? segIndex})
             </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 break-all max-w-full">
               {seg.id}
             </span>
-            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 break-all max-w-full">
               {seg.uid}
             </span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
@@ -370,26 +370,31 @@ export default function DataManagementSegmentRow({
             </span>
             <span className="text-[10px] text-slate-500">Cross-Card moves unsupported</span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              aria-label={`Destination ${unitLabel} for ${seg.id}`}
-              value={moveTargetId}
-              onChange={e => setDraft(moveTargetKey, e.target.value)}
-              disabled={isPending}
-              className={`${DM_INPUT_CLASS} flex-1 min-w-44`}
-            >
-              {otherUnits.map((target, idx) => (
-                <option key={target.id} value={target.id}>
-                  {target.kind === 'turn' ? `Turn (${target.speakerLabel || 'No Speaker'})` : `Section #${idx + 1}`} · {target.id}
-                </option>
-              ))}
-            </select>
-            <button type="submit" disabled={isPending} data-dm-segment-move-submit={seg.id} className={`${DM_SMALL_BTN} border-sky-600 bg-sky-600 text-white`}>
-              Confirm Move
-            </button>
-            <button type="button" onClick={() => setMoveOpen(false)} className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}>
-              Cancel
-            </button>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+            <label className="flex-1 min-w-0 space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Target {unitLabel}</span>
+              <select
+                aria-label={`Destination ${unitLabel} for ${seg.id}`}
+                value={moveTargetId}
+                onChange={e => setDraft(moveTargetKey, e.target.value)}
+                disabled={isPending}
+                className={`${DM_INPUT_CLASS} w-full sm:min-w-44`}
+              >
+                {otherUnits.map((target, idx) => (
+                  <option key={target.id} value={target.id}>
+                    {target.kind === 'turn' ? `Turn (${target.speakerLabel || 'No Speaker'})` : `Section #${idx + 1}`} · {target.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap gap-2 items-end">
+              <button type="submit" disabled={isPending} data-dm-segment-move-submit={seg.id} className={`${DM_SMALL_BTN} border-sky-600 bg-sky-600 text-white`}>
+                Confirm Move
+              </button>
+              <button type="button" onClick={() => setMoveOpen(false)} className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}>
+                Cancel
+              </button>
+            </div>
           </div>
         </form>
       )}

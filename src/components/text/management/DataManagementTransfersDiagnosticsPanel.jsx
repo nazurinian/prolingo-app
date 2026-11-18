@@ -32,6 +32,7 @@ export default function DataManagementTransfersDiagnosticsPanel({
     sampleExternalPackage ? JSON.stringify(sampleExternalPackage, null, 2) : ''
   ));
   const [exportedPayload, setExportedPayload] = useState(null);
+  const [downloadedFilename, setDownloadedFilename] = useState('');
   const [exportPending, setExportPending] = useState(false);
   const [inspectResult, setInspectResult] = useState(null);
   const [previewResult, setPreviewResult] = useState(null);
@@ -58,12 +59,14 @@ export default function DataManagementTransfersDiagnosticsPanel({
   const handleExportTextPack = () => runSafely(() => {
     const pack = onExportData({ kind: 'text-pack' });
     setExportedPayload({ kind: 'text-pack', origin: isDisposableDb ? 'session-snapshot' : 'in-memory-preview', data: pack });
+    setDownloadedFilename('');
     setInspectKind('text-pack');
     setTransferJson(JSON.stringify(pack, null, 2));
   });
 
   const handleExportBackup = async () => {
     setTransferError(null);
+    setDownloadedFilename('');
     if (isDisposableDb) {
       setExportPending(true);
       try {
@@ -101,6 +104,27 @@ export default function DataManagementTransfersDiagnosticsPanel({
       setInspectKind('database-backup');
       setTransferJson(JSON.stringify(backup, null, 2));
     });
+  };
+
+  const handleDownloadExportedJson = () => {
+    if (!exportedPayload?.data || typeof document === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
+    const rawSlug = exportedPayload.kind === 'text-pack'
+      ? `${exportedPayload.data.scope?.type || 'pack'}-${exportedPayload.data.scope?.rootId || 'export'}`
+      : `${exportedPayload.origin === 'authoritative-disposable-idb' ? (exportedPayload.dbName || 'disposable-qa') : 'in-memory-preview'}-backup`;
+    const safeSlug = String(rawSlug).replace(/[^a-zA-Z0-9._-]+/g, '_');
+    const filename = exportedPayload.kind === 'text-pack'
+      ? `${safeSlug}.text-pack.json`
+      : `${safeSlug}.no-audio.json`;
+    const blob = new Blob([JSON.stringify(exportedPayload.data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setDownloadedFilename(filename);
   };
 
   const handleVerifyBackupWithoutMeta = () => runSafely(() => {
@@ -215,26 +239,39 @@ export default function DataManagementTransfersDiagnosticsPanel({
             <div
               data-dm-export-output={exportedPayload.kind}
               data-dm-export-origin={exportedPayload.origin}
-              className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 text-xs space-y-1"
+              className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 text-xs space-y-2"
             >
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="font-black text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+                <span className="font-black text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1 break-words">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {exportedPayload.kind === 'database-backup'
                     ? (exportedPayload.origin === 'authoritative-disposable-idb'
                         ? `Authoritative disposable QA JSON backup (${exportedPayload.dbName})`
                         : 'In-memory JSON preview exported (non-authoritative fixture)')
                     : `Exported ${exportedPayload.kind}`}
                 </span>
-                {exportedPayload.kind === 'database-backup' && (
-                  <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
-                    audioBinaryIncluded: {String(exportedPayload.data.audioBinaryIncluded)} (No physical audio binaries) · metaRecords: {exportedPayload.data.metaRecords?.length || 0}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  data-dm-download-exported-json="true"
+                  onClick={handleDownloadExportedJson}
+                  className={`${DM_SMALL_BTN} border-emerald-600 bg-emerald-600 text-white`}
+                >
+                  <Download className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  Download JSON File (No Audio Binaries)
+                </button>
               </div>
-              {exportedPayload.kind === 'text-pack' && (
-                <p className="font-mono text-[10px] text-slate-600 dark:text-slate-300">
-                  packageId: {exportedPayload.data.packageId} · scope: {exportedPayload.data.scope?.type} ({exportedPayload.data.scope?.rootId})
+              {exportedPayload.kind === 'database-backup' ? (
+                <p className="font-mono text-[10px] text-emerald-800 dark:text-emerald-200 [overflow-wrap:anywhere]" data-dm-export-scope-summary="database-backup">
+                  source: {exportedPayload.origin === 'authoritative-disposable-idb' ? exportedPayload.dbName : 'in-memory-fixture'} · scope: Whole Disposable QA Library (v{exportedPayload.data.snapshot?.schemaVersion}) · audioBinaryIncluded: {String(exportedPayload.data.audioBinaryIncluded)} (Physical audio binaries NOT included) · metaRecords: {exportedPayload.data.metaRecords?.length || 0}
+                </p>
+              ) : (
+                <p className="font-mono text-[10px] text-slate-600 dark:text-slate-300 [overflow-wrap:anywhere]" data-dm-export-scope-summary="text-pack">
+                  source: {exportedPayload.origin} · packageId: {exportedPayload.data.packageId} · scope: {exportedPayload.data.scope?.type} ({exportedPayload.data.scope?.rootId}) · audioBinaryIncluded: false
+                </p>
+              )}
+              {downloadedFilename && (
+                <p role="status" data-dm-export-downloaded={downloadedFilename} className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 [overflow-wrap:anywhere]">
+                  Downloaded read-only JSON file: <span className="font-mono">{downloadedFilename}</span> (0 DB mutations; no audio binaries embedded)
                 </p>
               )}
             </div>
@@ -247,18 +284,21 @@ export default function DataManagementTransfersDiagnosticsPanel({
             Transfer Format Inspector &amp; Import Previews
           </h4>
 
-          <div className="flex flex-wrap gap-1.5">
-            <select
-              aria-label="Inspect transfer kind"
-              data-dm-inspect-kind="true"
-              value={inspectKind}
-              onChange={e => setInspectKind(e.target.value)}
-              className={`${DM_INPUT_CLASS} w-auto min-w-44`}
-            >
-              <option value="database-backup">database-backup</option>
-              <option value="text-pack">text-pack</option>
-              <option value="external-json">external-json</option>
-            </select>
+          <div className="flex flex-wrap items-end gap-1.5">
+            <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 w-full sm:w-auto min-w-0">
+              <span>Inspect Format Kind</span>
+              <select
+                aria-label="Inspect transfer kind"
+                data-dm-inspect-kind="true"
+                value={inspectKind}
+                onChange={e => setInspectKind(e.target.value)}
+                className={`${DM_INPUT_CLASS} w-full sm:w-auto sm:min-w-44`}
+              >
+                <option value="database-backup">database-backup</option>
+                <option value="text-pack">text-pack</option>
+                <option value="external-json">external-json</option>
+              </select>
+            </label>
 
             {samplePack && (
               <button
@@ -290,15 +330,18 @@ export default function DataManagementTransfersDiagnosticsPanel({
             </button>
           </div>
 
-          <textarea
-            aria-label="Transfer payload JSON"
-            data-dm-transfer-json-input="true"
-            value={transferJson}
-            onChange={e => setTransferJson(e.target.value)}
-            rows={4}
-            placeholder="Paste database-backup, text-pack, or external-json payload"
-            className={`${DM_INPUT_CLASS} font-mono text-[11px] resize-y`}
-          />
+          <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+            <span>Transfer Payload JSON</span>
+            <textarea
+              aria-label="Transfer payload JSON"
+              data-dm-transfer-json-input="true"
+              value={transferJson}
+              onChange={e => setTransferJson(e.target.value)}
+              rows={4}
+              placeholder="Paste database-backup, text-pack, or external-json payload"
+              className={`${DM_INPUT_CLASS} font-mono text-[11px] resize-y`}
+            />
+          </label>
 
           <div className="flex flex-wrap gap-2">
             <button

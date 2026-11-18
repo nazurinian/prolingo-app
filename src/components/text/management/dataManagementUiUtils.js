@@ -2,6 +2,12 @@ export const CAPABILITY_REASON_EXPLANATIONS = Object.freeze({
   READ_ONLY: 'Read-only boundary (or read-only persistence adapter ceiling). Editing requires an explicit disposable boundary grant.',
   PERMISSION_DENIED: 'Missing catalog or content permission (or blocked by the active persistence adapter ceiling).',
   UNINITIALIZED: 'Database or library snapshot has not been initialized yet.',
+  CONNECTION_ERROR: 'Unable to read or validate the selected disposable IndexedDB database.',
+  ALREADY_INITIALIZED: 'Refused ordinary initialization because an initialized disposable database already exists on disk.',
+  EXISTING_DB_PROTECTED: 'Existing disposable database (valid, partial, wrong-version, or corrupted) is protected against ordinary initialization. Use explicit two-step confirmation if overwrite is intentional.',
+  CONCURRENT_INIT: 'Another initialization or overwrite operation is already in flight. Concurrent initialization was rejected.',
+  INITIALIZE_FAILED: 'Disposable database initialization failed before a readable snapshot could be confirmed.',
+  CONFIRMATION_REQUIRED: 'Explicit confirmation checkbox acknowledgment is required before overwriting an existing database.',
   SELECT_WORKSPACE: 'Select a supported Workspace first.',
   SELECT_COLLECTION: 'Select a specific Collection first.',
   SELECT_CATALOG_SCOPE: 'Return from Workspace view to Library or Collection scope to create or reorder catalog items.',
@@ -118,9 +124,9 @@ export const buildCompleteBackupMetaRecords = (
 };
 
 /** Shared responsive button and input class tokens aligned with ProLingo Text UI. */
-export const DM_CONTROL_BTN = 'min-h-11 sm:min-h-9 px-3 rounded-lg border text-xs font-bold transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5';
-export const DM_SMALL_BTN = 'min-h-11 sm:min-h-8 px-2.5 rounded-lg border text-[11px] font-bold transition disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1';
-export const DM_INPUT_CLASS = 'w-full min-h-11 sm:min-h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-sm sm:text-xs text-slate-900 dark:text-slate-100 disabled:opacity-50';
+export const DM_CONTROL_BTN = 'min-h-11 sm:min-h-9 max-w-full px-3 py-1.5 rounded-lg border text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:focus-visible:outline-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 text-center';
+export const DM_SMALL_BTN = 'min-h-11 sm:min-h-8 max-w-full px-2.5 py-1 rounded-lg border text-[11px] font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:focus-visible:outline-indigo-400 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1 text-center';
+export const DM_INPUT_CLASS = 'w-full min-w-0 max-w-full min-h-11 sm:min-h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-sm sm:text-xs text-slate-900 dark:text-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:focus-visible:outline-indigo-400 disabled:opacity-50';
 
 export const formatDocTypeBadge = documentType => {
   if (documentType === 'conversation') return { label: 'CONVERSATION', cls: 'bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 border-sky-200 dark:border-sky-800' };

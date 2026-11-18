@@ -92,10 +92,20 @@ export default function TextDataManagementQaPreview() {
   const [dbError, setDbError] = useState(null);
   const [dbStatusMessage, setDbStatusMessage] = useState('');
   const [sourceReloadNonce, setSourceReloadNonce] = useState(0);
+  const [initInFlight, setInitInFlight] = useState(false);
+  const [overwriteConfirmOpen, setOverwriteConfirmOpen] = useState(false);
+  const [overwriteAcknowledged, setOverwriteAcknowledged] = useState(false);
 
   const deferredResolverRef = useRef(null);
   const dbConnectSeqRef = useRef(0);
   const conflictCounterRef = useRef(0);
+  const initInFlightRef = useRef(false);
+  const concurrentInitBlockedRef = useRef(false);
+  const accessConfigRef = useRef({
+    boundary: MODE_CONFIG['read-only'].boundary,
+    permissions: MODE_CONFIG['read-only'].permissions,
+    audio: null
+  });
   const transportModeRef = useRef(transportMode);
   useEffect(() => {
     transportModeRef.current = transportMode;
@@ -147,6 +157,20 @@ export default function TextDataManagementQaPreview() {
     presetRef.current = preset;
   }, [preset]);
 
+  useEffect(() => {
+    accessConfigRef.current = {
+      boundary: modeCfg.boundary,
+      permissions: modeCfg.permissions,
+      audio: audioConfig
+    };
+  }, [modeCfg.boundary, modeCfg.permissions, audioConfig]);
+
+  // Reset explicit overwrite confirmation whenever target DB, storage mode, or seed preset changes.
+  useEffect(() => {
+    setOverwriteConfirmOpen(false);
+    setOverwriteAcknowledged(false);
+  }, [isDisposableIdb, activeDbName, presetKey]);
+
   // In-memory QA session lifecycle (only active in default in-memory storageMode; zero IDB access).
   useEffect(() => {
     if (isDisposableIdb) {
@@ -154,6 +178,7 @@ export default function TextDataManagementQaPreview() {
       return undefined;
     }
     const activePreset = presetRef.current;
+    const activeAccess = accessConfigRef.current;
     const preserved = qaBox.getPreservedContext();
     const initialSnapshot = preserved.snapshot || activePreset.snapshot;
     const initialSelection = preserved.selection || {};
@@ -161,11 +186,11 @@ export default function TextDataManagementQaPreview() {
     const nextSession = createTextDataManagementSession({
       snapshot: initialSnapshot,
       selection: initialSelection,
-      boundary: modeCfg.boundary,
-      permissions: modeCfg.permissions,
+      boundary: activeAccess.boundary,
+      permissions: activeAccess.permissions,
       sourceAttachments: activePreset.sourceAttachments,
       externalImports: activePreset.externalImports,
-      audio: audioConfig,
+      audio: activeAccess.audio,
       execute: (_, { preparedOutcome }) => {
         const mode = transportModeRef.current;
         if (mode === 'reject') {
@@ -196,7 +221,17 @@ export default function TextDataManagementQaPreview() {
       }
       nextSession.dispose();
     };
-  }, [qaBox, isDisposableIdb, modeCfg.boundary, modeCfg.permissions, audioConfig, presetKey]);
+  }, [qaBox, isDisposableIdb, presetKey]);
+
+  // Configure live in-memory session when boundary, permissions, or audio mode change (preserves session drafts).
+  useEffect(() => {
+    if (isDisposableIdb) return;
+    qaBox.getActiveSession()?.configure({
+      boundary: modeCfg.boundary,
+      permissions: modeCfg.permissions,
+      audio: audioConfig
+    });
+  }, [qaBox, isDisposableIdb, modeCfg.boundary, modeCfg.permissions, audioConfig]);
 
   const { session, seq } = useSyncExternalStore(qaBox.subscribe, qaBox.getSnapshot);
 
@@ -252,7 +287,8 @@ export default function TextDataManagementQaPreview() {
       setDbLoaded(null);
       setDbError({
         code: error?.code || 'CONNECTION_ERROR',
-        message: error?.message || 'Unable to load disposable IndexedDB state.'
+        message: error?.message || 'Unable to load disposable IndexedDB state.',
+        databaseMissing: error?.code === 'UNINITIALIZED' ? Boolean(error?.databaseMissing) : false
       });
       setDbStatusMessage(`Connection failed (${error?.code || 'CONNECTION_ERROR'})`);
     } finally {
@@ -266,6 +302,8 @@ export default function TextDataManagementQaPreview() {
   useEffect(() => {
     if (!isDisposableIdb) {
       lastConnectedDbRef.current = null;
+      setDbLoaded(null);
+      setDbError(null);
       return;
     }
     const targetDb = baseAdapterState.adapter?.dbName || activeDbName;
@@ -324,15 +362,59 @@ export default function TextDataManagementQaPreview() {
   }, [fixtures.presets, isDisposableIdb, qaBox]);
 
   const handleInitializeDisposableDb = useCallback(async ({ allowOverwrite = false } = {}) => {
-    if (!isDisposableIdb || !baseAdapterState.adapter) return;
-    if (!allowOverwrite && dbLoaded) {
-      setDbStatusMessage('Refused silent overwrite of an already-initialized QA database.');
-      return;
+    if (!isDisposableIdb || !baseAdapterState.adapter) {
+      return { ok: false, code: 'UNAVAILABLE' };
     }
+    if (initInFlightRef.current) {
+      concurrentInitBlockedRef.current = true;
+      setDbStatusMessage('Refused concurrent initialization (`CONCURRENT_INIT`): initialization already in progress.');
+      return { ok: false, code: 'CONCURRENT_INIT' };
+    }
+    if (allowOverwrite && !overwriteAcknowledged) {
+      setDbStatusMessage('Refused destructive overwrite (`CONFIRMATION_REQUIRED`): explicit confirmation checkbox must be checked first.');
+      return { ok: false, code: 'CONFIRMATION_REQUIRED' };
+    }
+    if (!allowOverwrite && dbLoaded) {
+      setDbStatusMessage('Refused ordinary initialization (`ALREADY_INITIALIZED`): existing QA database is loaded and protected.');
+      return { ok: false, code: 'ALREADY_INITIALIZED' };
+    }
+
+    initInFlightRef.current = true;
+    concurrentInitBlockedRef.current = false;
+    setInitInFlight(true);
     const connectSeq = ++dbConnectSeqRef.current;
     setDbLoading(true);
     setDbError(null);
     try {
+      if (!allowOverwrite) {
+        try {
+          const existing = await baseAdapterState.adapter.loadState();
+          if (dbConnectSeqRef.current !== connectSeq) return { ok: false, code: 'STALE' };
+          setDbLoaded(existing);
+          setDbError(null);
+          setDbStatusMessage(
+            `Refused ordinary initialization (ALREADY_INITIALIZED): loaded existing disposable DB ${baseAdapterState.adapter.dbName} without overwrite.`
+          );
+          setSourceReloadNonce(n => n + 1);
+          return { ok: false, code: 'ALREADY_INITIALIZED' };
+        } catch (probeError) {
+          const confirmedMissing = probeError?.code === 'UNINITIALIZED' && probeError?.databaseMissing === true;
+          if (!confirmedMissing) {
+            if (dbConnectSeqRef.current !== connectSeq) return { ok: false, code: 'STALE' };
+            setDbLoaded(null);
+            setDbError({
+              code: probeError?.code || 'EXISTING_DB_PROTECTED',
+              message: probeError?.message || 'Existing IndexedDB database is already present on disk.',
+              databaseMissing: false
+            });
+            setDbStatusMessage(
+              `Refused ordinary initialization (EXISTING_DB_PROTECTED / ${probeError?.code || 'ERROR'}): existing QA database data was preserved.`
+            );
+            return { ok: false, code: 'EXISTING_DB_PROTECTED', existingCode: probeError?.code || 'ERROR' };
+          }
+        }
+      }
+
       await seedDisposableTextManagementDatabase({
         dbName: baseAdapterState.adapter.dbName,
         snapshot: preset.snapshot,
@@ -341,26 +423,34 @@ export default function TextDataManagementQaPreview() {
         extraMetaRecords: preset.extraMetaRecords
       });
       const loaded = await baseAdapterState.adapter.loadState();
-      if (dbConnectSeqRef.current !== connectSeq) return;
+      if (dbConnectSeqRef.current !== connectSeq) return { ok: false, code: 'STALE' };
       setDbLoaded(loaded);
       setDbError(null);
+      setOverwriteConfirmOpen(false);
+      setOverwriteAcknowledged(false);
       setDbStatusMessage(
-        `${allowOverwrite ? 'Explicitly re-seeded' : 'Initialized fresh'} ${baseAdapterState.adapter.dbName} with preset "${preset.label}" (v${loaded.dbVersion})`
+        `${allowOverwrite ? 'Explicitly overwrote' : 'Initialized fresh'} ${baseAdapterState.adapter.dbName} with preset "${preset.label}" (v${loaded.dbVersion})${concurrentInitBlockedRef.current ? ' · Duplicate click blocked (CONCURRENT_INIT)' : ''}`
       );
       setSourceReloadNonce(n => n + 1);
+      return { ok: true };
     } catch (error) {
-      if (dbConnectSeqRef.current !== connectSeq) return;
+      if (dbConnectSeqRef.current !== connectSeq) return { ok: false, code: 'STALE' };
       setDbLoaded(null);
       setDbError({
         code: error?.code || 'INITIALIZE_FAILED',
-        message: error?.message || 'Failed to initialize disposable database.'
+        message: error?.message || 'Failed to initialize disposable database.',
+        databaseMissing: error?.code === 'UNINITIALIZED' ? Boolean(error?.databaseMissing) : false
       });
+      setDbStatusMessage(`Initialization failed (${error?.code || 'INITIALIZE_FAILED'})`);
+      return { ok: false, code: error?.code || 'INITIALIZE_FAILED' };
     } finally {
+      initInFlightRef.current = false;
+      setInitInFlight(false);
       if (dbConnectSeqRef.current === connectSeq) {
         setDbLoading(false);
       }
     }
-  }, [isDisposableIdb, baseAdapterState.adapter, dbLoaded, preset]);
+  }, [isDisposableIdb, baseAdapterState.adapter, dbLoaded, overwriteAcknowledged, preset]);
 
   const handleSimulateConcurrentEdit = useCallback(async () => {
     if (!isDisposableIdb || !baseAdapterState.adapter) return;
@@ -423,6 +513,75 @@ export default function TextDataManagementQaPreview() {
       ? 'max-w-[375px] mx-auto border-x border-slate-300 dark:border-slate-700'
       : 'w-full';
 
+  const isMissingDisposableDb = Boolean(
+    isDisposableIdb
+    && baseAdapterState.adapter
+    && !baseAdapterState.error
+    && !dbLoaded
+    && dbError?.code === 'UNINITIALIZED'
+    && dbError?.databaseMissing === true
+  );
+  const isExistingUnreadableDb = Boolean(
+    isDisposableIdb
+    && baseAdapterState.adapter
+    && !baseAdapterState.error
+    && !dbLoaded
+    && dbError
+    && !isMissingDisposableDb
+  );
+  const hasProtectedExistingDb = Boolean(dbLoaded || isExistingUnreadableDb);
+
+  const renderOverwriteConfirmationPanel = () => (
+    overwriteConfirmOpen && hasProtectedExistingDb ? (
+      <div
+        role="region"
+        aria-label="Explicit Destructive QA Database Overwrite Confirmation"
+        data-dm-qa-overwrite-confirm-panel="true"
+        className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50/80 dark:bg-red-950/35 p-3 space-y-2 text-xs text-red-950 dark:text-red-100"
+      >
+        <p className="font-black">
+          Destructive QA Overwrite Confirmation Required
+        </p>
+        <p className="text-[11px] break-words">
+          Proceeding will clear all IndexedDB stores in disposable database <span className="font-mono font-bold break-all">{activeDbName}</span> and replace them with preset <span className="font-bold">"{preset.label}"</span>. Ordinary initialization blocks overwrite whenever any existing or corrupted database is detected; atomic cross-context <code className="font-mono">createOnly</code> tx enforcement awaits Codex service patch.
+        </p>
+        <label className="flex items-start gap-2 text-[11px] font-bold cursor-pointer">
+          <input
+            type="checkbox"
+            data-dm-qa-confirm-overwrite-checkbox="true"
+            checked={overwriteAcknowledged}
+            disabled={dbLoading || initInFlight}
+            onChange={e => setOverwriteAcknowledged(e.target.checked)}
+            className="mt-0.5 w-4 h-4 shrink-0 rounded border-red-400 text-red-600 focus-visible:outline-2 focus-visible:outline-indigo-600"
+          />
+          <span className="break-words">
+            I confirm overwriting existing data (if any) in disposable database "{activeDbName}" with "{preset.label}".
+          </span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-dm-qa-confirm-overwrite="true"
+            disabled={dbLoading || initInFlight || !overwriteAcknowledged}
+            onClick={() => handleInitializeDisposableDb({ allowOverwrite: true })}
+            className={`${DM_SMALL_BTN} border-red-700 bg-red-700 text-white`}
+          >
+            Confirm Overwrite DB
+          </button>
+          <button
+            type="button"
+            data-dm-qa-cancel-overwrite="true"
+            disabled={dbLoading || initInFlight}
+            onClick={() => { setOverwriteConfirmOpen(false); setOverwriteAcknowledged(false); }}
+            className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200`}
+          >
+            Cancel Overwrite
+          </button>
+        </div>
+      </div>
+    ) : null
+  );
+
   const qaHeaderControls = (
     <section
       aria-label="DEV QA Harness Controls"
@@ -430,11 +589,11 @@ export default function TextDataManagementQaPreview() {
       className="rounded-2xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/25 p-3 space-y-2.5"
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <p className="text-xs font-black text-indigo-900 dark:text-indigo-200">
+        <div className="min-w-0">
+          <p className="text-xs font-black text-indigo-900 dark:text-indigo-200 break-words">
             DEV QA Route — {isDisposableIdb ? `Disposable IndexedDB (${activeDbName})` : 'In-Memory Disposable Fixture Harness'} (No Canonical Persistence)
           </p>
-          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 break-words">
             {isDisposableIdb
               ? (dbStatusMessage || 'Connected through createTextDataManagementPersistenceAdapter (canonical prolingo_text_library blocked)')
               : `Session rev key #${seq} · Canonical DB/Schema v1 untouched (0 IndexedDB calls)`}
@@ -473,50 +632,56 @@ export default function TextDataManagementQaPreview() {
               <button
                 type="button"
                 data-dm-qa-connect-db="true"
-                disabled={dbLoading}
+                disabled={dbLoading || initInFlight}
                 onClick={() => connectDisposableDb({ reason: 'reload' })}
                 className={`${DM_SMALL_BTN} border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300`}
               >
                 Connect / Reload DB
               </button>
-              {!dbLoaded ? (
+              {isMissingDisposableDb && (
                 <button
                   type="button"
                   data-dm-qa-seed-db="true"
-                  disabled={dbLoading || Boolean(baseAdapterState.error)}
+                  disabled={dbLoading || initInFlight || Boolean(baseAdapterState.error)}
                   onClick={() => handleInitializeDisposableDb({ allowOverwrite: false })}
                   className={`${DM_SMALL_BTN} border-emerald-600 bg-emerald-600 text-white`}
                 >
                   Initialize Disposable DB from Preset
                 </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    data-dm-qa-simulate-conflict="true"
-                    disabled={dbLoading}
-                    onClick={handleSimulateConcurrentEdit}
-                    className={`${DM_SMALL_BTN} border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200`}
-                  >
-                    Simulate External DB Edit
-                  </button>
-                  <button
-                    type="button"
-                    data-dm-qa-reseed-db="true"
-                    disabled={dbLoading}
-                    onClick={() => handleInitializeDisposableDb({ allowOverwrite: true })}
-                    className={`${DM_SMALL_BTN} border-red-300 dark:border-red-800 bg-white dark:bg-slate-900 text-red-700 dark:text-red-300`}
-                  >
-                    Overwrite DB with Selected Preset
-                  </button>
-                </>
+              )}
+              {dbLoaded && (
+                <button
+                  type="button"
+                  data-dm-qa-simulate-conflict="true"
+                  disabled={dbLoading || initInFlight}
+                  onClick={handleSimulateConcurrentEdit}
+                  className={`${DM_SMALL_BTN} border-amber-400 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200`}
+                >
+                  Simulate External DB Edit
+                </button>
+              )}
+              {hasProtectedExistingDb && (
+                <button
+                  type="button"
+                  data-dm-qa-open-overwrite-confirm="true"
+                  disabled={dbLoading || initInFlight}
+                  onClick={() => {
+                    setOverwriteAcknowledged(false);
+                    setOverwriteConfirmOpen(v => !v);
+                  }}
+                  className={`${DM_SMALL_BTN} border-red-300 dark:border-red-800 bg-white dark:bg-slate-900 text-red-700 dark:text-red-300`}
+                >
+                  {isExistingUnreadableDb ? 'Overwrite Protected DB...' : 'Overwrite DB with Selected Preset...'}
+                </button>
               )}
             </>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      {!isExistingUnreadableDb && renderOverwriteConfirmationPanel()}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
           <span>QA Storage Engine</span>
           <select
@@ -698,15 +863,32 @@ export default function TextDataManagementQaPreview() {
           metaRecords={dbLoaded?.metaRecords ?? null}
           loading={hostLoading || dbLoading}
           connectionError={dbError}
-          connectionActions={dbError?.code === 'UNINITIALIZED' && !baseAdapterState.error ? (
+          connectionActions={isMissingDisposableDb ? (
             <button
               type="button"
               data-dm-connection-seed-db="true"
+              disabled={dbLoading || initInFlight}
               onClick={() => handleInitializeDisposableDb({ allowOverwrite: false })}
               className={`${DM_SMALL_BTN} border-emerald-600 bg-emerald-600 text-white`}
             >
               Initialize Disposable DB from "{preset.label}"
             </button>
+          ) : isExistingUnreadableDb ? (
+            <div className="w-full space-y-2">
+              <button
+                type="button"
+                data-dm-connection-open-overwrite-confirm="true"
+                disabled={dbLoading || initInFlight}
+                onClick={() => {
+                  setOverwriteAcknowledged(false);
+                  setOverwriteConfirmOpen(v => !v);
+                }}
+                className={`${DM_SMALL_BTN} border-red-300 dark:border-red-800 bg-white dark:bg-slate-900 text-red-700 dark:text-red-300`}
+              >
+                Explicitly Overwrite Protected DB...
+              </button>
+              {renderOverwriteConfirmationPanel()}
+            </div>
           ) : null}
           boundary={modeCfg.boundary}
           permissions={modeCfg.permissions}

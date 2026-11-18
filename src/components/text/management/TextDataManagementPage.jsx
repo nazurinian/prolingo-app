@@ -405,30 +405,38 @@ export default function TextDataManagementPage({
 
   // State 1b: Persistence Connection / Load Error (distinct from snapshot validation failure)
   if (connectionError) {
+    const isMissingDatabase = connectionError.code === 'UNINITIALIZED' && connectionError.databaseMissing === true;
+    const isProtectedExistingDb = !isMissingDatabase;
     return (
       <main
         data-dm-page="connection-error"
         data-dm-connection-error={connectionError.code || 'CONNECTION_ERROR'}
+        data-dm-database-missing={String(isMissingDatabase)}
+        data-dm-existing-db-protected={String(isProtectedExistingDb)}
         className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-3 sm:p-5 lg:p-6 overflow-x-clip"
       >
         <div className="max-w-7xl mx-auto space-y-4">
           {headerActions}
-          <section role="alert" className="max-w-4xl mx-auto rounded-2xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 p-5 space-y-3">
+          <section role="alert" className="max-w-4xl mx-auto rounded-2xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-slate-900 p-4 sm:p-5 space-y-3">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-6 h-6 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" aria-hidden="true" />
-              <div className="space-y-1">
-                <h1 className="text-base font-black text-amber-900 dark:text-amber-200">
-                  {connectionError.code || 'CONNECTION_ERROR'}: Disposable Database Not Ready
+              <div className="space-y-1 min-w-0">
+                <h1 className="text-base font-black text-amber-900 dark:text-amber-200 break-words">
+                  {isMissingDatabase
+                    ? `${connectionError.code}: Disposable Database Not Initialized Yet`
+                    : `${connectionError.code || 'CONNECTION_ERROR'}: Existing Disposable Database Protected`}
                 </h1>
-                <p className="text-xs text-slate-700 dark:text-slate-300">
+                <p className="text-xs text-slate-700 dark:text-slate-300 break-words">
                   {connectionError.message || 'Unable to load an authoritative state from the selected disposable database.'}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {explainReason(connectionError.code || 'UNINITIALIZED')} Canonical database (`prolingo_text_library`) remains untouched and existing databases are never overwritten automatically.
+                <p className="text-xs text-slate-500 dark:text-slate-400 break-words">
+                  {isMissingDatabase
+                    ? `${explainReason('UNINITIALIZED')} No database exists on disk yet — you may initialize cleanly or switch databases.`
+                    : `${explainReason(connectionError.code || 'EXISTING_DB_PROTECTED')} Ordinary initialization is blocked to prevent silently overwriting existing or corrupted data. Canonical database (prolingo_text_library) remains untouched.`}
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-1">
               {onReloadValidSource && (
                 <button
                   type="button"
@@ -436,7 +444,7 @@ export default function TextDataManagementPage({
                   onClick={onReloadValidSource}
                   className={`${DM_CONTROL_BTN} border-indigo-600 bg-indigo-600 text-white`}
                 >
-                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                  <RefreshCw className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   Reload Authoritative Source
                 </button>
               )}
@@ -584,13 +592,15 @@ export default function TextDataManagementPage({
           data-dm-boundary-banner="true"
           className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
-            <div className="space-y-1 min-w-0">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+            <div className="space-y-1.5 min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <Database className="w-5 h-5 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
-                <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white" style={{ textWrap: 'balance' }}>
-                  Structured Text Data Management
-                </h1>
+                <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                  <Database className="w-5 h-5 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+                  <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white break-words" style={{ textWrap: 'balance' }}>
+                    Structured Text Data Management
+                  </h1>
+                </span>
                 {isReadOnlyBoundary && effectiveBoundary === 'read-only' ? (
                   <span data-dm-mode-badge="read-only" className="inline-flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-black text-slate-700 dark:text-slate-200">
                     <Lock className="w-3 h-3" aria-hidden="true" /> Read-Only Default
@@ -602,7 +612,7 @@ export default function TextDataManagementPage({
                 )}
                 <span
                   data-dm-storage-badge={persistenceAdapter ? 'disposable-idb' : 'in-memory'}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-mono font-bold ${
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-mono font-bold [overflow-wrap:anywhere] max-w-full ${
                     persistenceAdapter
                       ? 'border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200'
                       : 'border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
@@ -619,12 +629,12 @@ export default function TextDataManagementPage({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400 [overflow-wrap:anywhere]">
                 Scope: <span className="font-mono font-bold text-slate-800 dark:text-slate-200" data-dm-current-selection={selectedLabel}>{selectedLabel}</span> · Permissions: <span className="font-mono font-bold" data-dm-effective-permissions={effectivePermissions.join(',') || 'none'}>{effectivePermissions.length ? effectivePermissions.join(', ') : 'none (read-only)'}</span> · Rev <span className="font-mono" data-dm-revision={revision}>{revision}</span> · Drafts <span className="font-mono" data-dm-draft-count={draftCount}>{draftCount}</span> · Canonical Writes: <span className="font-mono font-bold">false</span>
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2">
               <output
                 role="status"
                 aria-live="polite"

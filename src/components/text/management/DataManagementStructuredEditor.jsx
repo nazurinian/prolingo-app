@@ -362,7 +362,7 @@ export default function DataManagementStructuredEditor({
                         {rawBlock.metadata?.note ? ` · note: ${rawBlock.metadata.note}` : ''}
                       </p>
                       {cardOpaqueMeta.length > 0 && (
-                        <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                        <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400 break-all">
                           Preserved meta: {cardOpaqueMeta.map(e => `${e.key}=${e.summary}`).join(' · ')}
                         </p>
                       )}
@@ -441,22 +441,28 @@ export default function DataManagementStructuredEditor({
                         <button type="button" onClick={() => setEditingCardId(null)} className="text-xs text-slate-500">Close</button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <input
-                          aria-label={`Card title ${card.id}`}
-                          value={draftCardTitle}
-                          onChange={e => setDraft(cardTitleKey, e.target.value)}
-                          disabled={isPending}
-                          placeholder="Card title"
-                          className={DM_INPUT_CLASS}
-                        />
-                        <input
-                          aria-label={`Card note ${card.id}`}
-                          value={draftCardNote}
-                          onChange={e => setDraft(cardNoteKey, e.target.value)}
-                          disabled={isPending}
-                          placeholder="Card metadata.note"
-                          className={DM_INPUT_CLASS}
-                        />
+                        <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          <span>Card Title</span>
+                          <input
+                            aria-label={`Card title ${card.id}`}
+                            value={draftCardTitle}
+                            onChange={e => setDraft(cardTitleKey, e.target.value)}
+                            disabled={isPending}
+                            placeholder="Card title"
+                            className={DM_INPUT_CLASS}
+                          />
+                        </label>
+                        <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          <span>Card metadata.note</span>
+                          <input
+                            aria-label={`Card note ${card.id}`}
+                            value={draftCardNote}
+                            onChange={e => setDraft(cardNoteKey, e.target.value)}
+                            disabled={isPending}
+                            placeholder="Card metadata.note"
+                            className={DM_INPUT_CLASS}
+                          />
+                        </label>
                       </div>
                       <div className="flex justify-end gap-1.5">
                         <button type="submit" disabled={isPending} data-dm-card-save={card.id} className={`${DM_SMALL_BTN} border-indigo-600 bg-indigo-600 text-white`}>
@@ -503,72 +509,90 @@ export default function DataManagementStructuredEditor({
                           </div>
                           {card.blockType === 'conversation' && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <select
-                                aria-label={`New Turn speaker ${card.id}`}
-                                value={unitSpeakerChoice}
-                                onChange={e => setDraft(newUnitSpeakerKey, e.target.value)}
-                                disabled={isPending}
-                                className={DM_INPUT_CLASS}
-                              >
-                                <option value="__none__">Unassigned Speaker</option>
-                                {speakers.map(s => (
-                                  <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
-                                ))}
-                                <option value="__custom__">+ Custom Speaker Label...</option>
-                              </select>
-                              {unitSpeakerChoice === '__custom__' && (
-                                <input
-                                  aria-label={`Custom Turn speaker ${card.id}`}
-                                  value={unitCustomSpeaker}
-                                  onChange={e => setDraft(newUnitCustomSpkKey, e.target.value)}
+                              <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                <span>Speaker</span>
+                                <select
+                                  aria-label={`New Turn speaker ${card.id}`}
+                                  value={unitSpeakerChoice}
+                                  onChange={e => setDraft(newUnitSpeakerKey, e.target.value)}
                                   disabled={isPending}
-                                  placeholder="Custom speaker name"
                                   className={DM_INPUT_CLASS}
-                                />
+                                >
+                                  <option value="__none__">Unassigned Speaker</option>
+                                  {speakers.map(s => (
+                                    <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
+                                  ))}
+                                  <option value="__custom__">+ Custom Speaker Label...</option>
+                                </select>
+                              </label>
+                              {unitSpeakerChoice === '__custom__' && (
+                                <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                  <span>Custom Speaker Label</span>
+                                  <input
+                                    aria-label={`Custom Turn speaker ${card.id}`}
+                                    value={unitCustomSpeaker}
+                                    onChange={e => setDraft(newUnitCustomSpkKey, e.target.value)}
+                                    disabled={isPending}
+                                    placeholder="Custom speaker name"
+                                    className={DM_INPUT_CLASS}
+                                  />
+                                </label>
                               )}
                             </div>
                           )}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <select
-                              aria-label={`Insert unit position ${card.id}`}
-                              value={unitAfterId}
-                              onChange={e => setDraft(newUnitAfterKey, e.target.value)}
-                              disabled={isPending}
-                              className={DM_INPUT_CLASS}
-                            >
-                              <option value="">Append at end of Card</option>
-                              {persistentUnits.map((u, idx) => (
-                                <option key={u.id} value={u.id}>
-                                  After {u.kind === 'turn' ? `Turn #${idx + 1} (${u.speakerLabel || 'Unassigned'})` : `Section #${idx + 1}`} · {u.id}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              aria-label={`New Unit note ${card.id}`}
-                              value={unitNote}
-                              onChange={e => setDraft(newUnitNoteKey, e.target.value)}
-                              disabled={isPending}
-                              placeholder="Optional Unit metadata.note"
-                              className={DM_INPUT_CLASS}
-                            />
+                            <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                              <span>Insert Position</span>
+                              <select
+                                aria-label={`Insert unit position ${card.id}`}
+                                value={unitAfterId}
+                                onChange={e => setDraft(newUnitAfterKey, e.target.value)}
+                                disabled={isPending}
+                                className={DM_INPUT_CLASS}
+                              >
+                                <option value="">Append at end of Card</option>
+                                {persistentUnits.map((u, idx) => (
+                                  <option key={u.id} value={u.id}>
+                                    After {u.kind === 'turn' ? `Turn #${idx + 1} (${u.speakerLabel || 'Unassigned'})` : `Section #${idx + 1}`} · {u.id}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                              <span>Unit metadata.note</span>
+                              <input
+                                aria-label={`New Unit note ${card.id}`}
+                                value={unitNote}
+                                onChange={e => setDraft(newUnitNoteKey, e.target.value)}
+                                disabled={isPending}
+                                placeholder="Optional Unit metadata.note"
+                                className={DM_INPUT_CLASS}
+                              />
+                            </label>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <input
-                              aria-label={`New Unit first text ${card.id}`}
-                              value={unitInitText}
-                              onChange={e => setDraft(newUnitTextKey, e.target.value)}
-                              disabled={isPending}
-                              placeholder="Optional first Sentence EN (leave blank for Empty Unit)"
-                              className={DM_INPUT_CLASS}
-                            />
-                            <input
-                              aria-label={`New Unit first meaning ${card.id}`}
-                              value={unitInitMeaning}
-                              onChange={e => setDraft(newUnitMeaningKey, e.target.value)}
-                              disabled={isPending}
-                              placeholder="Optional first Sentence ID"
-                              className={DM_INPUT_CLASS}
-                            />
+                            <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                              <span>First Sentence Text (optional)</span>
+                              <input
+                                aria-label={`New Unit first text ${card.id}`}
+                                value={unitInitText}
+                                onChange={e => setDraft(newUnitTextKey, e.target.value)}
+                                disabled={isPending}
+                                placeholder="Optional first Sentence EN (leave blank for Empty Unit)"
+                                className={DM_INPUT_CLASS}
+                              />
+                            </label>
+                            <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                              <span>First Sentence Meaning (optional)</span>
+                              <input
+                                aria-label={`New Unit first meaning ${card.id}`}
+                                value={unitInitMeaning}
+                                onChange={e => setDraft(newUnitMeaningKey, e.target.value)}
+                                disabled={isPending}
+                                placeholder="Optional first Sentence ID"
+                                className={DM_INPUT_CLASS}
+                              />
+                            </label>
                           </div>
                           <div className="flex justify-end gap-1.5">
                             <button type="submit" disabled={isPending} data-dm-create-unit-submit={card.id} className={`${DM_SMALL_BTN} border-sky-600 bg-sky-600 text-white`}>
@@ -731,7 +755,7 @@ export default function DataManagementStructuredEditor({
                                   )}
                                 </div>
                                 {unitOpaqueMeta.length > 0 && (
-                                  <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                                  <p className="text-[10px] font-mono text-slate-500 dark:text-slate-400 break-all">
                                     Preserved meta: {unitOpaqueMeta.map(m => `${m.key}=${m.summary}`).join(' · ')}
                                   </p>
                                 )}
@@ -825,28 +849,34 @@ export default function DataManagementStructuredEditor({
                               >
                                 {unit.kind === 'turn' ? (
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <select
-                                      aria-label={`Unit speaker ${unit.id}`}
-                                      value={draftUnitSpk}
-                                      onChange={e => setDraft(unitSpkKey, e.target.value)}
-                                      disabled={isPending}
-                                      className={DM_INPUT_CLASS}
-                                    >
-                                      <option value="__none__">Unassigned (Reset speaker)</option>
-                                      {speakers.map(s => (
-                                        <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
-                                      ))}
-                                      <option value="__custom__">+ Custom Speaker Label...</option>
-                                    </select>
-                                    {draftUnitSpk === '__custom__' && (
-                                      <input
-                                        aria-label={`Custom unit speaker ${unit.id}`}
-                                        value={draftUnitCustom}
-                                        onChange={e => setDraft(unitCustomKey, e.target.value)}
+                                    <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                      <span>Turn Speaker</span>
+                                      <select
+                                        aria-label={`Unit speaker ${unit.id}`}
+                                        value={draftUnitSpk}
+                                        onChange={e => setDraft(unitSpkKey, e.target.value)}
                                         disabled={isPending}
-                                        placeholder="Speaker label"
                                         className={DM_INPUT_CLASS}
-                                      />
+                                      >
+                                        <option value="__none__">Unassigned (Reset speaker)</option>
+                                        {speakers.map(s => (
+                                          <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
+                                        ))}
+                                        <option value="__custom__">+ Custom Speaker Label...</option>
+                                      </select>
+                                    </label>
+                                    {draftUnitSpk === '__custom__' && (
+                                      <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                        <span>Custom Speaker Label</span>
+                                        <input
+                                          aria-label={`Custom unit speaker ${unit.id}`}
+                                          value={draftUnitCustom}
+                                          onChange={e => setDraft(unitCustomKey, e.target.value)}
+                                          disabled={isPending}
+                                          placeholder="Speaker label"
+                                          className={DM_INPUT_CLASS}
+                                        />
+                                      </label>
                                     )}
                                   </div>
                                 ) : (
@@ -854,14 +884,17 @@ export default function DataManagementStructuredEditor({
                                     Paragraph Section (speakers disabled on Sections).
                                   </p>
                                 )}
-                                <input
-                                  aria-label={`Unit note ${unit.id}`}
-                                  value={draftUnitNote}
-                                  onChange={e => setDraft(unitNoteKey, e.target.value)}
-                                  disabled={isPending}
-                                  placeholder="Unit metadata.note"
-                                  className={DM_INPUT_CLASS}
-                                />
+                                <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                  <span>Unit metadata.note</span>
+                                  <input
+                                    aria-label={`Unit note ${unit.id}`}
+                                    value={draftUnitNote}
+                                    onChange={e => setDraft(unitNoteKey, e.target.value)}
+                                    disabled={isPending}
+                                    placeholder="Unit metadata.note"
+                                    className={DM_INPUT_CLASS}
+                                  />
+                                </label>
                                 <div className="flex justify-end gap-1.5">
                                   <button type="button" onClick={() => setEditingUnitId(null)} className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}>
                                     Cancel
@@ -921,44 +954,56 @@ export default function DataManagementStructuredEditor({
                                 Add Sentence to {isVirtualUnit ? `Card ${card.id} (v1 omits unitId)` : unit.id}
                               </p>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <input
-                                  aria-label={`Add Sentence text ${addSegOwnerId}`}
-                                  value={addSegText}
-                                  onChange={e => setDraft(newSegTextKey, e.target.value)}
-                                  disabled={isPending || !canCreateSeg}
-                                  placeholder="New Sentence EN text"
-                                  className={DM_INPUT_CLASS}
-                                />
-                                <input
-                                  aria-label={`Add Sentence meaning ${addSegOwnerId}`}
-                                  value={addSegMean}
-                                  onChange={e => setDraft(newSegMeanKey, e.target.value)}
-                                  disabled={isPending || !canCreateSeg}
-                                  placeholder="Meaning / translation (optional)"
-                                  className={DM_INPUT_CLASS}
-                                />
+                                <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                  <span>Text (EN)</span>
+                                  <input
+                                    aria-label={`Add Sentence text ${addSegOwnerId}`}
+                                    value={addSegText}
+                                    onChange={e => setDraft(newSegTextKey, e.target.value)}
+                                    disabled={isPending || !canCreateSeg}
+                                    placeholder="New Sentence EN text"
+                                    className={DM_INPUT_CLASS}
+                                  />
+                                </label>
+                                <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                  <span>Meaning / Translation (optional)</span>
+                                  <input
+                                    aria-label={`Add Sentence meaning ${addSegOwnerId}`}
+                                    value={addSegMean}
+                                    onChange={e => setDraft(newSegMeanKey, e.target.value)}
+                                    disabled={isPending || !canCreateSeg}
+                                    placeholder="Meaning / translation (optional)"
+                                    className={DM_INPUT_CLASS}
+                                  />
+                                </label>
                               </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <select
-                                  aria-label={`Add Sentence joinAfter ${addSegOwnerId}`}
-                                  value={addSegJoin}
-                                  onChange={e => setDraft(newSegJoinKey, e.target.value)}
-                                  disabled={isPending || !canCreateSeg}
-                                  className={`${DM_INPUT_CLASS} w-auto min-w-28`}
-                                >
-                                  <option value="space">space</option>
-                                  <option value="line">line</option>
-                                  <option value="paragraph">paragraph</option>
-                                  <option value="none">none</option>
-                                </select>
-                                <input
-                                  aria-label={`Add Sentence note ${addSegOwnerId}`}
-                                  value={addSegNote}
-                                  onChange={e => setDraft(newSegNoteKey, e.target.value)}
-                                  disabled={isPending || !canCreateSeg}
-                                  placeholder="Optional metadata.note"
-                                  className={`${DM_INPUT_CLASS} flex-1 min-w-36`}
-                                />
+                              <div className="grid grid-cols-1 sm:grid-cols-[auto_minmax(0,1fr)_auto] gap-2 items-end">
+                                <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 min-w-0">
+                                  <span>joinAfter</span>
+                                  <select
+                                    aria-label={`Add Sentence joinAfter ${addSegOwnerId}`}
+                                    value={addSegJoin}
+                                    onChange={e => setDraft(newSegJoinKey, e.target.value)}
+                                    disabled={isPending || !canCreateSeg}
+                                    className={`${DM_INPUT_CLASS} w-full sm:w-auto sm:min-w-28`}
+                                  >
+                                    <option value="space">space</option>
+                                    <option value="line">line</option>
+                                    <option value="paragraph">paragraph</option>
+                                    <option value="none">none</option>
+                                  </select>
+                                </label>
+                                <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 min-w-0">
+                                  <span>metadata.note</span>
+                                  <input
+                                    aria-label={`Add Sentence note ${addSegOwnerId}`}
+                                    value={addSegNote}
+                                    onChange={e => setDraft(newSegNoteKey, e.target.value)}
+                                    disabled={isPending || !canCreateSeg}
+                                    placeholder="Optional metadata.note"
+                                    className={`${DM_INPUT_CLASS} w-full`}
+                                  />
+                                </label>
                                 <button
                                   type="submit"
                                   data-dm-add-sentence-submit={addSegOwnerId}

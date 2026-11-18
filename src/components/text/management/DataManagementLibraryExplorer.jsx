@@ -122,7 +122,7 @@ const WorkspaceNavList = ({
                     onClick={() => moveDoc(doc.id, -1)}
                     title={reorderReason ? explainReason(reorderReason) : 'Move Workspace up'}
                     aria-label={`Move Workspace ${doc.title || doc.id} up`}
-                    className="min-w-8 min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 disabled:opacity-30"
+                    className="min-w-11 min-h-11 sm:min-w-8 sm:min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:focus-visible:outline-indigo-400 inline-flex items-center justify-center disabled:opacity-30"
                   >
                     <ArrowUp className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
@@ -133,7 +133,7 @@ const WorkspaceNavList = ({
                     onClick={() => moveDoc(doc.id, 1)}
                     title={reorderReason ? explainReason(reorderReason) : 'Move Workspace down'}
                     aria-label={`Move Workspace ${doc.title || doc.id} down`}
-                    className="min-w-8 min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 disabled:opacity-30"
+                    className="min-w-11 min-h-11 sm:min-w-8 sm:min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:focus-visible:outline-indigo-400 inline-flex items-center justify-center disabled:opacity-30"
                   >
                     <ArrowDown className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
@@ -343,22 +343,28 @@ export default function DataManagementLibraryExplorer({
             className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/50 dark:bg-sky-950/20 p-2.5 space-y-2"
           >
             <p className="text-[11px] font-black text-sky-800 dark:text-sky-200">Create Collection (Library Scope)</p>
-            <input
-              aria-label="New Collection title"
-              value={newColTitle}
-              onChange={e => setDraft(newColTitleKey, e.target.value)}
-              disabled={isPending}
-              placeholder="Collection title"
-              className={DM_INPUT_CLASS}
-            />
-            <input
-              aria-label="New Collection note"
-              value={newColNote}
-              onChange={e => setDraft(newColNoteKey, e.target.value)}
-              disabled={isPending}
-              placeholder="Optional metadata.note"
-              className={DM_INPUT_CLASS}
-            />
+            <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Collection Title</span>
+              <input
+                aria-label="New Collection title"
+                value={newColTitle}
+                onChange={e => setDraft(newColTitleKey, e.target.value)}
+                disabled={isPending}
+                placeholder="Collection title"
+                className={DM_INPUT_CLASS}
+              />
+            </label>
+            <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Collection metadata.note</span>
+              <input
+                aria-label="New Collection note"
+                value={newColNote}
+                onChange={e => setDraft(newColNoteKey, e.target.value)}
+                disabled={isPending}
+                placeholder="Optional metadata.note"
+                className={DM_INPUT_CLASS}
+              />
+            </label>
             <div className="flex justify-end gap-1.5">
               <button type="button" onClick={() => setCreateCollectionOpen(false)} className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}>
                 Cancel
@@ -379,55 +385,70 @@ export default function DataManagementLibraryExplorer({
             <p className="text-[11px] font-black text-indigo-800 dark:text-indigo-200">
               Create Workspace in {targetCollectionId ? `Collection ${targetCollectionId}` : 'Root'}
             </p>
-            <input
-              aria-label="New Workspace title"
-              value={newWsTitle}
-              onChange={e => setDraft(newWsTitleKey, e.target.value)}
-              disabled={isPending}
-              placeholder="Workspace title"
-              className={DM_INPUT_CLASS}
-            />
-            <select
-              aria-label="New Workspace type"
-              value={newWsType}
-              onChange={e => setDraft(newWsTypeKey, e.target.value)}
-              disabled={isPending}
-              className={DM_INPUT_CLASS}
-            >
-              <option value="paragraph">Paragraph Workspace</option>
-              <option value="conversation" disabled={schemaVersion !== 2}>
-                Conversation Workspace {schemaVersion !== 2 ? '(Requires Schema v2)' : ''}
-              </option>
-              <option value="mixed" disabled={schemaVersion !== 2}>
-                Mixed Workspace {schemaVersion !== 2 ? '(Requires Schema v2)' : ''}
-              </option>
-            </select>
-            <div className="grid grid-cols-2 gap-1.5">
+            <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Workspace Title</span>
               <input
-                aria-label="New Workspace text language"
-                value={newWsTextLang}
-                onChange={e => setDraft(newWsTextLangKey, e.target.value)}
+                aria-label="New Workspace title"
+                value={newWsTitle}
+                onChange={e => setDraft(newWsTitleKey, e.target.value)}
                 disabled={isPending}
-                placeholder="en"
+                placeholder="Workspace title"
                 className={DM_INPUT_CLASS}
               />
-              <input
-                aria-label="New Workspace meaning language"
-                value={newWsMeanLang}
-                onChange={e => setDraft(newWsMeanLangKey, e.target.value)}
+            </label>
+            <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Workspace Type</span>
+              <select
+                aria-label="New Workspace type"
+                value={newWsType}
+                onChange={e => setDraft(newWsTypeKey, e.target.value)}
                 disabled={isPending}
-                placeholder="id"
                 className={DM_INPUT_CLASS}
-              />
+              >
+                <option value="paragraph">Paragraph Workspace</option>
+                <option value="conversation" disabled={schemaVersion !== 2}>
+                  Conversation Workspace {schemaVersion !== 2 ? '(Requires Schema v2)' : ''}
+                </option>
+                <option value="mixed" disabled={schemaVersion !== 2}>
+                  Mixed Workspace {schemaVersion !== 2 ? '(Requires Schema v2)' : ''}
+                </option>
+              </select>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                <span>Text Lang</span>
+                <input
+                  aria-label="New Workspace text language"
+                  value={newWsTextLang}
+                  onChange={e => setDraft(newWsTextLangKey, e.target.value)}
+                  disabled={isPending}
+                  placeholder="en"
+                  className={DM_INPUT_CLASS}
+                />
+              </label>
+              <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                <span>Meaning Lang</span>
+                <input
+                  aria-label="New Workspace meaning language"
+                  value={newWsMeanLang}
+                  onChange={e => setDraft(newWsMeanLangKey, e.target.value)}
+                  disabled={isPending}
+                  placeholder="id"
+                  className={DM_INPUT_CLASS}
+                />
+              </label>
             </div>
-            <input
-              aria-label="New Workspace note"
-              value={newWsNote}
-              onChange={e => setDraft(newWsNoteKey, e.target.value)}
-              disabled={isPending}
-              placeholder="Optional metadata.note"
-              className={DM_INPUT_CLASS}
-            />
+            <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+              <span>Workspace metadata.note</span>
+              <input
+                aria-label="New Workspace note"
+                value={newWsNote}
+                onChange={e => setDraft(newWsNoteKey, e.target.value)}
+                disabled={isPending}
+                placeholder="Optional metadata.note"
+                className={DM_INPUT_CLASS}
+              />
+            </label>
             <div className="flex justify-end gap-1.5">
               <button type="button" onClick={() => setCreateWorkspaceOpen(false)} className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}>
                 Cancel
@@ -524,7 +545,7 @@ export default function DataManagementLibraryExplorer({
                         onClick={() => handleReorderCollection(collection.id, -1)}
                         title={canReorderCol ? 'Move Collection up' : explainReason(capabilities['collection.reorder']?.reason)}
                         aria-label={`Move Collection ${collection.title || collection.id} up`}
-                        className="min-w-8 min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-sky-600 disabled:opacity-30"
+                        className="min-w-11 min-h-11 sm:min-w-8 sm:min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:focus-visible:outline-sky-400 inline-flex items-center justify-center disabled:opacity-30"
                       >
                         <ArrowUp className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
@@ -535,7 +556,7 @@ export default function DataManagementLibraryExplorer({
                         onClick={() => handleReorderCollection(collection.id, 1)}
                         title={canReorderCol ? 'Move Collection down' : explainReason(capabilities['collection.reorder']?.reason)}
                         aria-label={`Move Collection ${collection.title || collection.id} down`}
-                        className="min-w-8 min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-sky-600 disabled:opacity-30"
+                        className="min-w-11 min-h-11 sm:min-w-8 sm:min-h-8 p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-sky-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:focus-visible:outline-sky-400 inline-flex items-center justify-center disabled:opacity-30"
                       >
                         <ArrowDown className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>
@@ -582,21 +603,27 @@ export default function DataManagementLibraryExplorer({
                     data-dm-collection-edit={collection.id}
                     className="rounded-lg border border-sky-200 dark:border-sky-800 bg-white dark:bg-slate-900 p-2 space-y-2"
                   >
-                    <input
-                      aria-label={`Collection title ${collection.id}`}
-                      value={editTitle}
-                      onChange={e => setDraft(editTitleKey, e.target.value)}
-                      disabled={isPending}
-                      className={DM_INPUT_CLASS}
-                    />
-                    <input
-                      aria-label={`Collection note ${collection.id}`}
-                      value={editNote}
-                      onChange={e => setDraft(editNoteKey, e.target.value)}
-                      disabled={isPending}
-                      placeholder="Collection metadata.note"
-                      className={DM_INPUT_CLASS}
-                    />
+                    <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      <span>Collection Title</span>
+                      <input
+                        aria-label={`Collection title ${collection.id}`}
+                        value={editTitle}
+                        onChange={e => setDraft(editTitleKey, e.target.value)}
+                        disabled={isPending}
+                        className={DM_INPUT_CLASS}
+                      />
+                    </label>
+                    <label className="block space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      <span>Collection metadata.note</span>
+                      <input
+                        aria-label={`Collection note ${collection.id}`}
+                        value={editNote}
+                        onChange={e => setDraft(editNoteKey, e.target.value)}
+                        disabled={isPending}
+                        placeholder="Collection metadata.note"
+                        className={DM_INPUT_CLASS}
+                      />
+                    </label>
                     {opaqueKeys.length > 0 && (
                       <p className="text-[10px] text-slate-500">Preserved keys: {opaqueKeys.map(k => k.key).join(', ')}</p>
                     )}

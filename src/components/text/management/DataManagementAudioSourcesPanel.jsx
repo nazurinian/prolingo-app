@@ -87,7 +87,7 @@ export default function DataManagementAudioSourcesPanel({
           </div>
           <span
             data-dm-audio-readiness={audio?.readiness || 'not-evaluated'}
-            className="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+            className="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 break-all max-w-full"
           >
             readiness: {audio?.readiness || 'not-evaluated'}
           </span>
@@ -246,10 +246,10 @@ export default function DataManagementAudioSourcesPanel({
                 return (
                   <div key={att.attachmentId} data-dm-attachment-id={att.attachmentId} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2.5 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-xs font-black text-slate-900 dark:text-slate-100">
+                      <span className="text-xs font-black text-slate-900 dark:text-slate-100 break-all">
                         {att.packageId} ({att.attachmentId})
                       </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 break-all max-w-full">
                         scope: {att.scopeType} · docs: {ownedDocIds.length} · status: {att.status}
                       </span>
                     </div>
@@ -323,8 +323,8 @@ export default function DataManagementAudioSourcesPanel({
               {sources.externalImports.map(record => (
                 <div key={record.externalSourceKey} data-dm-external-record={record.externalSourceKey} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-2.5 space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-xs font-black text-slate-900 dark:text-slate-100">{record.externalSourceKey}</span>
-                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                    <span className="text-xs font-black text-slate-900 dark:text-slate-100 break-all">{record.externalSourceKey}</span>
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 break-all">
                       rev {record.revision ?? 1} · {record.documentId}
                     </span>
                   </div>

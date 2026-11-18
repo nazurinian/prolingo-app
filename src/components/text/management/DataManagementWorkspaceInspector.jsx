@@ -117,7 +117,7 @@ export default function DataManagementWorkspaceInspector({
               <span className={`px-2 py-0.5 rounded border text-[10px] font-black ${badge.cls}`}>
                 {badge.label}
               </span>
-              <span className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-600 dark:text-slate-300">
+              <span className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-[10px] font-mono text-slate-600 dark:text-slate-300 break-all max-w-full">
                 {doc.editorModel} · Schema v{schemaVersion}
               </span>
             </div>
@@ -206,7 +206,7 @@ export default function DataManagementWorkspaceInspector({
               </select>
             </label>
 
-            <div className="space-y-1 text-xs font-bold text-slate-700 dark:text-slate-300">
+            <label className="space-y-1 text-xs font-bold text-slate-700 dark:text-slate-300">
               <span>Workspace Type (Conversion Disabled)</span>
               <input
                 aria-label="Workspace Type Read-Only"
@@ -216,7 +216,7 @@ export default function DataManagementWorkspaceInspector({
                 title="Workspace kind conversion between Paragraph, Conversation, and Mixed is unsupported."
                 className={`${DM_INPUT_CLASS} bg-slate-100 dark:bg-slate-800/70`}
               />
-            </div>
+            </label>
 
             <label className="space-y-1 text-xs font-bold text-slate-700 dark:text-slate-300">
               <span>Text Language</span>
@@ -344,7 +344,7 @@ export default function DataManagementWorkspaceInspector({
             {workspace.speakers?.length > 0 && (
               <div className="flex flex-wrap gap-1.5" data-dm-speaker-uid-list="true">
                 {workspace.speakers.map(spk => (
-                  <span key={spk.id} className="text-[10px] font-mono px-2 py-0.5 rounded border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200">
+                  <span key={spk.id} className="text-[10px] font-mono px-2 py-0.5 rounded border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200 break-all max-w-full">
                     {spk.label} · {spk.id} · {spk.uid || 'no-uid'}
                   </span>
                 ))}
