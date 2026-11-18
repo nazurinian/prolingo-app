@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build:uat",
+  "outputDirectory": "dist-uat",
   "rewrites": [
     {
       "source": "/api/(.*)",

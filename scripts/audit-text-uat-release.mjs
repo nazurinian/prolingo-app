@@ -2,11 +2,34 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { assertTextUatBuild } from './text-uat-config.mjs';
 const good = { mode: 'text-uat', env: { VITE_ENABLE_TEXT_UAT: 'true' }, branch: 'test/text-v2-uat' };
+const preview = { ...good.env, VERCEL: '1', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: good.branch, TEXT_UAT_PROJECT: 'prolingo-app' };
 assert.equal(assertTextUatBuild(good), true);
-assert.equal(assertTextUatBuild({ ...good, mode: 'production' }), false);
-for (const args of [{ ...good, env: {} }, { ...good, branch: 'main' }, { ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'main', TEXT_UAT_PROJECT: 'prolingo-text-uat' } },
-  { ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'test/text-v2-uat', TEXT_UAT_PROJECT: 'other' } }]) assert.throws(() => assertTextUatBuild(args));
-assert.equal(assertTextUatBuild({ ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'test/text-v2-uat', TEXT_UAT_PROJECT: 'prolingo-text-uat' } }), true);
+for (const mode of ['production', 'stable-test', 'beta']) {
+  for (const branch of ['main', 'v6-beta', good.branch]) {
+    assert.equal(assertTextUatBuild({ mode, branch, env: { ...preview, VERCEL_GIT_COMMIT_REF: branch } }), false);
+  }
+}
+for (const branch of ['main', 'v6-beta', '', undefined]) {
+  assert.throws(() => assertTextUatBuild({ ...good, branch }));
+  assert.throws(() => assertTextUatBuild({ ...good, env: { ...preview, VERCEL_GIT_COMMIT_REF: branch } }));
+}
+for (const flag of [undefined, '', 'false', 'TRUE']) {
+  assert.throws(() => assertTextUatBuild({ ...good, env: { VITE_ENABLE_TEXT_UAT: flag } }));
+  assert.throws(() => assertTextUatBuild({ ...good, env: { ...preview, VITE_ENABLE_TEXT_UAT: flag } }));
+}
+for (const project of [undefined, '', 'other', 'prolingo-text-uat']) {
+  assert.throws(() => assertTextUatBuild({ ...good, env: { ...preview, TEXT_UAT_PROJECT: project } }));
+}
+for (const target of [undefined, 'production', 'development']) {
+  assert.throws(() => assertTextUatBuild({ ...good, env: { ...preview, VERCEL_ENV: target } }));
+}
+assert.equal(assertTextUatBuild({ ...good, env: preview }), true);
+const vercel = JSON.parse(await fs.readFile('vercel.json', 'utf8'));
+assert.equal(vercel.buildCommand, 'npm run build:uat');
+assert.equal(vercel.outputDirectory, 'dist-uat');
+assert.deepEqual(vercel.rewrites, [{ source: '/api/(.*)', destination: '/api/$1' }]);
+assert.equal(vercel.env, undefined);
+assert.equal(vercel.build?.env, undefined);
 const normal = await fs.readFile('dist/index.html', 'utf8'), uat = await fs.readFile('dist-uat/index.html', 'utf8');
 assert.ok(normal.includes('/manifest.json') && !normal.includes('/manifest-text-uat.json'));
 assert.ok(uat.includes('<title>ProLingo Text v2 UAT</title>') && uat.includes('/manifest-text-uat.json'));

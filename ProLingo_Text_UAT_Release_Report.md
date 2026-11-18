@@ -1,6 +1,8 @@
 # Text v2 UAT release preparation
 
-**CONDITIONAL GO for a separately protected online UAT deployment after user review. No deployment performed.**
+**Prepared for Preview on the existing `prolingo-app` project. No deployment performed.**
+
+The Preview configuration update starts from `787711dd`. See [Preview configuration report](ProLingo_Text_UAT_Preview_Configuration_Report.md) for the current target, environment scope and verification. The release-preparation and interrupted-session results below describe the earlier checkpoints.
 
 Version: **6.0.3-beta.9-uat.1**. Display: **ProLingo Text v2 UAT**. Channel: **Isolated Beta Testing**.
 Branch: **test/text-v2-uat**, created from exact clean accepted 8166ac68daa2adea693a99fdf551cf8e1e64149f in the existing integration worktree. The release checkpoint containing this report is pinned by the exact SHA in delivery; built public metadata displays the checked-out commit (or Vercel's public Git SHA).
@@ -12,7 +14,7 @@ Branch: **test/text-v2-uat**, created from exact clean accepted 8166ac68daa2adea
 - Package/lock root version and active app information updated; historical changelog/contracts/test expectations preserved.
 - Generated UAT-only manifest/title, independent application id/start URL and PNG icons. Stable manifest unchanged.
 - Whitelisted public version/label/channel/commit/time information in the UAT page. No entire environment object is serialized; an unused VITE secret canary is absent from client output.
-- Existing App.jsx, canonical lifecycle, database/schema constants, vercel.json, API functions, audio engine, Legacy/Table/AI Voice remain unchanged.
+- Existing App.jsx, canonical lifecycle, database/schema constants, API functions, audio engine, Legacy/Table/AI Voice remain unchanged. The later Preview update changes only build/output in this branch's vercel.json, preserving the API rewrite.
 
 ## Verification
 
@@ -32,7 +34,7 @@ The five historical Node source/hash/version failures were not edited or disguis
 
 ## Deployment boundary / limitations
 
-Use the companion **ProLingo_Text_UAT_Online_Deployment_Guide.md** for exact Vercel settings, build commands, DNS, authentication and UAT checklist. Target project prolingo-text-uat, source branch test/text-v2-uat, output dist-uat; custom domain text-uat.prolingo.web.id only after user DNS setup. Existing production/beta deployments and domains were not accessed or linked.
+Use the companion **ProLingo_Text_UAT_Online_Deployment_Guide.md** for current settings and the UAT checklist. Target **existing project prolingo-app**, **Preview branch test/text-v2-uat**, output **dist-uat**. The target **text-uat.prolingo.web.id → that Preview branch** remains deferred. No new project is needed. The Preview update only adds the two UAT variables scoped to this branch; existing Stable/Beta configuration and domains stay unchanged.
 
 The flag/project marker is not authentication. Hosting protection, custom-domain HTTPS, deployed API behavior and actual Edge TTS upstream synthesis remain unverified until user deployment. Existing Node API routing was preserved; local Browser TTS/ZIP pathways are independently usable. No server secret is required for public build identity; no new client secret was added.
 

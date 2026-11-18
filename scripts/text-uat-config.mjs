@@ -3,7 +3,8 @@ export const assertTextUatBuild = ({ mode, env, branch }) => {
   if (mode !== 'text-uat') return false;
   if (env.VITE_ENABLE_TEXT_UAT !== 'true') throw Error('UAT build requires explicit VITE_ENABLE_TEXT_UAT=true');
   if (env.VERCEL === '1') {
-    if (env.VERCEL_GIT_COMMIT_REF !== 'test/text-v2-uat' || env.TEXT_UAT_PROJECT !== 'prolingo-text-uat') throw Error('UAT enabled builds require Vercel branch test/text-v2-uat and TEXT_UAT_PROJECT=prolingo-text-uat');
+    if (env.VERCEL_ENV !== 'preview') throw Error('UAT builds require Vercel Preview environment');
+    if (env.VERCEL_GIT_COMMIT_REF !== 'test/text-v2-uat' || env.TEXT_UAT_PROJECT !== 'prolingo-app') throw Error('UAT enabled builds require Vercel branch test/text-v2-uat and TEXT_UAT_PROJECT=prolingo-app');
   } else if (branch !== 'test/text-v2-uat') throw Error('Local UAT builds require test/text-v2-uat');
   return true;
 };
