@@ -27,6 +27,17 @@ Before exposing any deployment, configure **Deployment Protection** (Vercel Auth
 
 No Vercel project was created, linked or deployed by this task. After review, the user pushes only test/text-v2-uat and configures the new project.
 
+From the integration worktree, after reviewing the local checkpoint:
+
+```powershell
+git switch test/text-v2-uat
+git status --short
+git rev-parse HEAD
+git push -u origin test/text-v2-uat
+```
+
+No force option is required. If the remote rejects the push, inspect the divergence instead of overwriting it. This preparation did not execute the push.
+
 ## Build and local preview
 
 PowerShell:

@@ -39,3 +39,11 @@ The flag/project marker is not authentication. Hosting protection, custom-domain
 Canonical DB/schema remain **1**. No canonical open/import/upgrade/write is introduced by the UAT entry. Persistence is isolated QA v2 within the current origin/profile; JSON has no binaries; transient ZIP bindings and unsaved drafts do not survive restart. Actual desktop/mobile visual/auditory acceptance and hosting authentication still require human verification.
 
 All prior branches/backups and the AI Voice worktree are preserved. Final checkpoint is local only; no push, deployment, stable merge, physical audio deletion or canonical v2 activation.
+
+## Interrupted-session recovery
+
+Recovered clean checkpoint **7b08aced5e17888c5d170396b81f22fd4fcabd66**, whose parent is the accepted 8166ac68daa2adea693a99fdf551cf8e1e64149f. All release implementation, documentation and prior focused IndexedDB results were intact; no branch or feature was recreated.
+
+Rebuilt normal and UAT artifacts from the recovered checkpoint and verified the public commit SHA, build guards, API method guards, artifact exclusion, secret canary exclusion and scoped ESLint. The browser rerun exposed a harness-only readiness race: immediately after navigation, document.body can still be null. Both readiness predicates now wait safely for body creation using their existing bounded animation-frame polling. Assertions and production source are unchanged.
+
+Two consecutive corrected browser runs each pass **8/8**, reload/new-process persistence, six DEV/production route checks, five actual build route checks, zero canonical access and 320/375px overflow checks. Resume evidence uses uat-resume-* logs in the same temporary evidence directory above. A local follow-up checkpoint contains this small harness correction and recovery documentation; its exact final SHA is supplied at delivery. Hosting authentication, DNS, upstream Edge TTS and human/device acceptance remain outstanding deployment prerequisites.

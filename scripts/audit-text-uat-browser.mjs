@@ -42,7 +42,7 @@ const launch = async () => {
   socket.onmessage = event => { const msg = JSON.parse(event.data), target = requests.get(msg.id); if (target) { requests.delete(msg.id); msg.error ? target.reject(Error(JSON.stringify(msg.error))) : target.resolve(msg.result); } };
   const evaluate = async expression => { const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (result.exceptionDetails) throw Error(JSON.stringify(result.exceptionDetails)); return result.result.value; };
   await call('Runtime.enable');
-  const navigate = async url => { await call('Page.navigate', { url: origin + url }); await evaluate('(async()=>{const end=performance.now()+15000;while(!window.tests && !document.querySelector("[data-structured-text-beta]") && !document.querySelector("[data-unified-text-demo]") && !document.body.textContent.includes("Safe production App stub")){if(performance.now()>end)throw Error("Load timeout");await new Promise(requestAnimationFrame)}})()'); };
+  const navigate = async url => { await call('Page.navigate', { url: origin + url }); await evaluate('(async()=>{const end=performance.now()+15000;while(!window.tests && !document.querySelector("[data-structured-text-beta]") && !document.querySelector("[data-unified-text-demo]") && !document.body?.textContent.includes("Safe production App stub")){if(performance.now()>end)throw Error("Load timeout");await new Promise(requestAnimationFrame)}})()'); };
   const close = async () => { const exiting = new Promise(r => processHandle.once('exit', r)); await call('Browser.close').catch(() => {}); socket.close(); await Promise.race([exiting, new Promise(r => setTimeout(r, 5000))]); };
   return { call, evaluate, navigate, close };
 };
@@ -72,7 +72,7 @@ try {
   for(const route of ['/uat?qa=text-beta','/uat','/uat?qa=data-management','/uat?qa=conversation-editor','/normal?qa=text-beta']) {
     await browser.call('Page.navigate',{url:origin+route});
     console.log('Built artifact gate: '+route);
-    await browser.evaluate('(async()=>{const end=performance.now()+15000;while(!document.querySelector("[data-structured-text-beta]")&&!document.body.textContent.includes("Open isolated Text v2 UAT")&&!document.body.textContent.includes("ProLingo")){if(performance.now()>end)throw Error("Artifact load timeout: "+document.body.textContent);await new Promise(requestAnimationFrame)}})()');
+    await browser.evaluate('(async()=>{const end=performance.now()+15000;while(!document.querySelector("[data-structured-text-beta]")&&!document.body?.textContent.includes("Open isolated Text v2 UAT")&&!document.body?.textContent.includes("ProLingo")){if(performance.now()>end)throw Error("Artifact load timeout: "+document.body?.textContent);await new Promise(requestAnimationFrame)}})()');
     const actual=await browser.evaluate('Boolean(document.querySelector("[data-structured-text-beta]"))');
     const opens=await browser.evaluate('window.qaOpens+window.canonicalTouches');
     if(actual!==(route==='/uat?qa=text-beta')||route.startsWith('/uat')&&opens!==0)throw Error('Built route isolation failed: '+route);
