@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.8-p9-hf4d';
+export const APP_VERSION = '6.0.3-beta.9-uat.1';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'V6.0.3-BETA8-P9-HF4D-PLAYER-NAVIGATION';
-export const APP_CHECKPOINT_LABEL = 'V6.0.3 beta.8 P9 HF4-D • Text Player Navigation';
-export const APP_RELEASE_NAME = 'beta.8 P9 HF4-D Text Player Navigation';
-export const APP_RELEASE_DATE = '2026-11-11';
+export const APP_CHECKPOINT_ID = 'TEXT-V2-UAT-1';
+export const APP_CHECKPOINT_LABEL = 'ProLingo Text v2 UAT - Isolated Beta Testing';
+export const APP_RELEASE_NAME = 'ProLingo Text v2 UAT - Isolated Beta Testing';
+export const APP_RELEASE_DATE = '2026-11-18';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: HF4-D fixes Full/ Split Prev/Next, resumes Text cursor after Stop, resets cursor on natural document completion, shuffles Cards rather than sentences, removes per-Card Split toggle, and shrinks EN/ID Play icons. P9 HF4-C R1 repairs blank Player Settings and quick-play ReferenceErrors; HF4-C refines Player/Audio UX on top of HF4-A, with one-shot EN/ID play, inline Full text highlights, tabbed settings and Audio Library; HF4-A adds a view-only Card expansion policy (Follow Playback, Expand All, Custom), preserves the last open Card after Stop, and restores Full active-Card feedback without changing audio playback or Text DB v1. P7 HF3 keeps P7 HF2 behavior and fixes the mobile header overflow and shared CSV picker. P7 HF2 closes the remaining beta.8 global-player contract gaps on top of boot-safe HF1: Split remains the default global representation, EN/ID local playback priority is truly app-global across Documents, TTS Only has one global source of truth, bottom Global Player exposes Split/Full + TTS state + effective voice order, normal/manual Edge defaults are Sonia EN and Tuti ID, Browser EN prefers UK Female, while Bulk EN remains Libby. Text DB remains v1 and Table is untouched.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Dedicated isolated Text v2 UAT; Paragraph, Conversation and Mixed readers, disposable v2 editing and JSON recovery. Not Stable. Canonical DB/schema remain v1.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  '6.0.3-beta.9-uat.1 prepares a separately gated online Text v2 UAT build. No canonical migration or production activation.',
   'HF4-D fixes Full / Split Prev+Next navigation with a durable in-session cursor, stops Full+Shuffle silently degrading into Split, shuffles Card groups without rearranging sentences, resets Document cursor to first on natural end while preserving manual Stop position, removes per-Card Split switch and uses the Global representation, and reduces EN/ID quick-play button prominence; Table, audio generation, Text DB and binary identities unchanged.',
   'HF4-C R1 fixes blank Player Settings from missing option constants, repairs one-shot EN/ID quick-play missing import, adds Stop audio to unlock controls in the settings modal, and simplifies paragraph/Card Play buttons to compact icon actions; no Text DB, Table, Edge TTS, or playback engine change',
   'HF4-C adds tabbed Player Settings, manual EN/ID one-time quick play, inline Full text highlighting, clearer Voice Priority, Audio sidebar Playback/Generate/Library navigation and unchanged beta.8 audio identities/IndexedDB schema.',

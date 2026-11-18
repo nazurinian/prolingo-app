@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import { assertTextUatBuild } from './text-uat-config.mjs';
+const good = { mode: 'text-uat', env: { VITE_ENABLE_TEXT_UAT: 'true' }, branch: 'test/text-v2-uat' };
+assert.equal(assertTextUatBuild(good), true);
+assert.equal(assertTextUatBuild({ ...good, mode: 'production' }), false);
+for (const args of [{ ...good, env: {} }, { ...good, branch: 'main' }, { ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'main', TEXT_UAT_PROJECT: 'prolingo-text-uat' } },
+  { ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'test/text-v2-uat', TEXT_UAT_PROJECT: 'other' } }]) assert.throws(() => assertTextUatBuild(args));
+assert.equal(assertTextUatBuild({ ...good, env: { ...good.env, VERCEL: '1', VERCEL_GIT_COMMIT_REF: 'test/text-v2-uat', TEXT_UAT_PROJECT: 'prolingo-text-uat' } }), true);
+const normal = await fs.readFile('dist/index.html', 'utf8'), uat = await fs.readFile('dist-uat/index.html', 'utf8');
+assert.ok(normal.includes('/manifest.json') && !normal.includes('/manifest-text-uat.json'));
+assert.ok(uat.includes('<title>ProLingo Text v2 UAT</title>') && uat.includes('/manifest-text-uat.json'));
+const manifest = JSON.parse(await fs.readFile('dist-uat/manifest-text-uat.json'));
+assert.equal(manifest.start_url, '/?qa=text-beta'); assert.equal(manifest.id, '/text-v2-uat');
+assert.deepEqual(JSON.parse(await fs.readFile('dist/manifest.json')), JSON.parse(await fs.readFile('public/manifest.json')));
+const files = await fs.readdir('dist/assets'), normalJs = (await Promise.all(files.filter(f => f.endsWith('.js')).map(f => fs.readFile('dist/assets/' + f, 'utf8')))).join('');
+assert.ok(!normalJs.includes('data-structured-text-beta'));
+assert.ok(!normalJs.includes('UAT_SECRET_CANARY'));
+const uatFiles = await fs.readdir('dist-uat/assets'), uatJs = (await Promise.all(uatFiles.filter(f => f.endsWith('.js')).map(f => fs.readFile('dist-uat/assets/' + f, 'utf8')))).join('');
+for (const forbidden of ['data-dm-qa-storage-mode', 'data-mixed-workspace-qa-preview', 'data-conversation-qa-preview', 'UAT_SECRET_CANARY']) assert.ok(!uatJs.includes(forbidden), forbidden);
+assert.ok(uatJs.includes('data-text-uat-info') && uatJs.includes('6.0.3-beta.9-uat.1'));
+console.log('PASS UAT flags/branch/project guards, artifact isolation, public metadata, secret canary exclusion and PWA identity');
+const health = (await import('../api/health.js')).default, tts = (await import('../api/tts.js')).default;
+const response = { status(code) { this.code = code; return this; }, json(data) { this.body = data; return this; }, setHeader() {} };
+health({}, response); assert.equal(response.code, 200);
+await tts({ method: 'GET' }, response); assert.equal(response.code, 405);
+console.log('PASS existing Node API modules load; health and TTS method guard execute without upstream synthesis');

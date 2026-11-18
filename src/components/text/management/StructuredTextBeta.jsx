@@ -1,3 +1,4 @@
+/* global __TEXT_UAT_METADATA__ */
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createTextDataManagementPersistenceAdapter, seedDisposableTextManagementDatabase,
   inspectStrictTextManagementBackup } from '../../../services/persistence/textDataManagementPersistenceService.js';
@@ -14,6 +15,7 @@ import StructuredWorkspacePlayer from '../presentation/StructuredWorkspacePlayer
 const CONTROL = 'min-h-11 border rounded px-3 py-2 disabled:opacity-40';
 const EMPTY_BINDINGS = Object.freeze({ runtimeAudioUrls: {}, runtimeFullAudio: {} });
 const DEFAULT_NAME = 'prolingo_text_library_d3b_qa_structured_beta';
+const UAT_METADATA = typeof __TEXT_UAT_METADATA__ === 'undefined' ? null : __TEXT_UAT_METADATA__;
 const blank = () => backfillTextContentUnits({ schemaVersion: 1, initialized: true, activeDocumentId: null, counters: {},
   collections: [], documents: [], blocks: [], segments: [], audioVariants: [] }).snapshot;
 const updateLocation = name => { const url = new URL(window.location.href); url.searchParams.set('db', name); window.history.replaceState(null, '', url); };
@@ -116,6 +118,11 @@ export default function StructuredTextBeta({ initialDbName = null, audioRuntimeH
     return next;
   });
   return <main data-structured-text-beta className="min-h-screen bg-white dark:bg-slate-950 dark:text-white p-4 space-y-4">
+    {UAT_METADATA && <aside data-text-uat-info className="text-xs border rounded p-3">
+      <strong>{UAT_METADATA.label}</strong> · {UAT_METADATA.version} · {UAT_METADATA.channel}
+      <p>Commit {UAT_METADATA.sha} · Built {UAT_METADATA.builtAt}</p>
+      <p>Database: isolated QA v2 · Canonical database: unchanged v1 · Not Stable</p>
+    </aside>}
     <h1 className="text-xl font-bold">Structured Text Beta — isolated persistent v2 QA</h1>
     <p>This environment never opens or upgrades your canonical library. QA edits persist locally in this browser. Export JSON backups; deleting browser storage removes QA data.</p>
     <label><input type="checkbox" aria-label="Opt in to isolated QA storage" disabled={pending || Boolean(connection)} checked={optIn} onChange={e => setOptIn(e.target.checked)} /> I choose isolated QA storage; this is not production activation.</label>
