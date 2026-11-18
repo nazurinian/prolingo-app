@@ -9,14 +9,12 @@ export const selectTextMainReaderPresentation = (snapshot, documentId) => {
   if (document.editorModel !== 'structured-v1') {
     return { presentation: null, reason: 'Shared Beta belum tersedia untuk Workspace Legacy.' };
   }
-  if (document.documentType !== 'paragraph') {
-    return { presentation: null, reason: 'Pilot Shared Beta hanya untuk Workspace Paragraph.' };
+  if (!['paragraph', 'conversation', 'mixed'].includes(document.documentType)
+    || (snapshot.schemaVersion !== 2 && document.documentType !== 'paragraph')) {
+    return { presentation: null, reason: 'Conversation/Mixed memerlukan snapshot v2 lengkap di lingkungan QA terisolasi.' };
   }
   try {
     const presentation = selectTextCardPresentation(snapshot, { documentId });
-    if (presentation.cards.some(card => card.blockType !== 'paragraph')) {
-      return { presentation: null, reason: 'Pilot Shared Beta hanya untuk Card Paragraph.' };
-    }
     return { presentation, reason: null };
   } catch {
     return { presentation: null, reason: 'Snapshot belum lengkap atau tidak valid untuk Shared Beta. Tampilan Lama tetap digunakan.' };

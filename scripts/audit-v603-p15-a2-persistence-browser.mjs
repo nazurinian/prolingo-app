@@ -26,7 +26,9 @@ const assets = await fs.readdir(path.join(root, 'dist/assets'));
 const cssName = assets.find(name => name.startsWith('index-') && name.endsWith('.css'));
 if (!cssName) throw new Error('Run npm run build before P15-A2 browser verification');
 const css = await fs.readFile(path.join(root, 'dist/assets', cssName));
-const bundle = await compile(process.argv.includes('--h3-s')
+const bundle = await compile(process.argv.includes('--r1')
+  ? 'scripts/fixtures/p15-integrated/reader-browser-cases.jsx'
+  : process.argv.includes('--h3-s')
   ? 'scripts/fixtures/p15-data-management/h3-safety-browser-cases.jsx'
   : process.argv.includes('--independent')
   ? 'scripts/fixtures/p15-data-management/a2-independent-browser-cases.jsx'

@@ -219,7 +219,7 @@ const StructuredPlayerCard = ({
     && (sharedPlaybackCursor.precision === 'card' && sharedPlaybackCursor.segmentId === null && sharedPlaybackCursor.unitId === null
       || sharedCursorSegment && sharedPlaybackCursor.unitId === (sharedCursorSegment.unitId ?? null))
     ? sharedPlaybackCursor : null;
-  const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && isParagraphCard && sharedCard);
+  const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && sharedCard);
 
   return (<>
     <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
@@ -333,7 +333,7 @@ const StructuredPlayerCard = ({
             </button>
           </div>
         </>}
-        {(!isParagraphCard || paragraphSentenceDetailsOpen) && segments.map((segment, segmentIndex) => {
+        {(!useEmbeddedSharedParagraph || isParagraphCard) && (!isParagraphCard || paragraphSentenceDetailsOpen) && segments.map((segment, segmentIndex) => {
           const active = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && segment.id === playingIndex && (isPlaying || isPaused);
           const display = resolveStructuredTextDisplayState({ displayMode, isActive: active });
           const textSpeaking = active && speakingPart === 'text';
