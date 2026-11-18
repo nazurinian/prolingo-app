@@ -99,7 +99,7 @@ const acquireQaWriteLock = safeDbName => {
  * H1-03: Mirrors canonical src/services/persistence/textLibraryIndexedDbService.js createStores
  * verbatim for v1 stores and indexes before applying dormant v2 additions.
  */
-const createV1BaseStores = db => {
+export const createV1BaseStores = db => {
   if (!db.objectStoreNames.contains(TEXT_LIBRARY_STORES.META)) {
     db.createObjectStore(TEXT_LIBRARY_STORES.META, { keyPath: 'key' });
   }

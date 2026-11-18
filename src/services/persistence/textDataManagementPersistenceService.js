@@ -35,6 +35,8 @@ import {
   assertDisposableQaDatabaseHandle,
   assertDisposableQaDatabaseName,
   openDisposableTextLibraryV2Database,
+  createV1BaseStores,
+  createTextLibraryContentUnitStores,
   TEXT_DISPOSABLE_QA_DB_PREFIX
 } from './textContentUnitPersistenceService.js';
 
@@ -115,6 +117,7 @@ const openExistingDisposableDb = async (safeName, version = null) => {
     const request = indexedDB.open(safeName);
     request.onupgradeneeded = () => {
       createdBlank = true;
+      request.transaction.abort();
     };
     request.onsuccess = () => {
       const db = request.result;
@@ -124,10 +127,7 @@ const openExistingDisposableDb = async (safeName, version = null) => {
           db.close?.();
           const error = new TextDataManagementError('UNINITIALIZED', `Disposable QA database "${safeName}" has not been initialized`);
           error.databaseMissing = createdBlank;
-          if (createdBlank) {
-            const cleanup = indexedDB.deleteDatabase(safeName);
-            cleanup.onsuccess = cleanup.onerror = () => reject(error);
-          } else reject(error);
+          reject(error);
           return;
         }
         if (version != null && db.version !== version) {
@@ -141,9 +141,32 @@ const openExistingDisposableDb = async (safeName, version = null) => {
         reject(error);
       }
     };
-    request.onerror = () => reject(request.error || new Error(`Failed to open database ${safeName}`));
+    request.onerror = () => {
+      if (createdBlank) {
+        const error = new TextDataManagementError('UNINITIALIZED', 'Disposable database does not exist');
+        error.databaseMissing = true; reject(error);
+      } else reject(request.error || new Error(`Failed to open database ${safeName}`));
+    };
   });
 };
+
+// Only the realm observing oldVersion=0 may initialize. Aborting a versionchange
+// on an existing DB preserves even empty/incompatible schemas without an upgrade.
+const openFreshDisposableDb = (safeName, version) => new Promise((resolve, reject) => {
+  let fresh = false, protection = null;
+  const request = indexedDB.open(safeName, version);
+  request.onupgradeneeded = event => {
+    fresh = event.oldVersion === 0;
+    if (!fresh) { protection = new TextDataManagementError('EXISTING_DB_PROTECTED', 'Initialize cannot modify an existing database'); request.transaction.abort(); return; }
+    if (version === TEXT_LIBRARY_V2_DB_VERSION) createTextLibraryContentUnitStores(request.result, request.transaction);
+    else createV1BaseStores(request.result);
+  };
+  request.onsuccess = () => {
+    if (!fresh) { request.result.close(); reject(new TextDataManagementError('EXISTING_DB_PROTECTED', 'Database already exists; Initialize never overwrites it')); }
+    else resolve(request.result);
+  };
+  request.onerror = () => reject(protection || request.error);
+});
 
 const resolveStoreNames = db => {
   const hasUnitsStore = Boolean(db?.objectStoreNames?.contains?.(TEXT_LIBRARY_CONTENT_UNIT_STORE));
@@ -404,6 +427,7 @@ export const seedDisposableTextManagementDatabase = async ({
   externalImports = [],
   extraMetaRecords = [],
   version = null,
+  createOnly = false,
   now = Date.now(),
   onBeforeCommit = null,
   ...restOptions
@@ -476,19 +500,39 @@ export const seedDisposableTextManagementDatabase = async ({
   const release = acquireWriteLock(safeName);
   let db;
   try {
-    db = await openDisposableTextLibraryV2Database({ dbName: safeName, version: targetVersion });
+    db = createOnly ? await openFreshDisposableDb(safeName, targetVersion)
+      : await openDisposableTextLibraryV2Database({ dbName: safeName, version: targetVersion });
     const { hasUnitsStore, storeNames } = resolveStoreNames(db);
     const tx = db.transaction(storeNames, 'readwrite');
     const completion = txDonePromise(tx);
     try {
-      stageFullReplaceOnTx({
+      const stage = () => { stageFullReplaceOnTx({
         tx,
         hasUnitsStore,
         snapshot: validatedSnapshot,
         metaRecords: effectiveMetaRecords,
         now
       });
-      onBeforeCommit?.({ tx, snapshot: validatedSnapshot, metaRecords: effectiveMetaRecords });
+      onBeforeCommit?.({ tx, snapshot: validatedSnapshot, metaRecords: effectiveMetaRecords }); };
+      if (createOnly) {
+        // Stage synchronously from the final count callback, inside the SAME
+        // readwrite transaction that will write all stores, including meta.
+        await new Promise((resolve, reject) => {
+          let remaining = storeNames.length, occupied = false;
+          for (const name of storeNames) {
+            const request = tx.objectStore(name).count();
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              occupied ||= request.result !== 0;
+              if (--remaining) return;
+              try {
+                if (occupied) typedFail('EXISTING_DB_PROTECTED', 'Another writer populated the database before Initialize');
+                stage(); resolve();
+              } catch (error) { reject(error); }
+            };
+          }
+        });
+      } else stage();
     } catch (error) {
       try { tx.abort(); } catch { /* ignore abort error */ }
       await completion.catch(() => {});

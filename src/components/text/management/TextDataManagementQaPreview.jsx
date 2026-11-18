@@ -416,6 +416,7 @@ export default function TextDataManagementQaPreview() {
       }
 
       await seedDisposableTextManagementDatabase({
+        createOnly: !allowOverwrite,
         dbName: baseAdapterState.adapter.dbName,
         snapshot: preset.snapshot,
         sourceAttachments: preset.sourceAttachments,
