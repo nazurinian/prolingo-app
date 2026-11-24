@@ -1,10 +1,10 @@
 # ProLingo Text v2 UAT — online deployment guide
 
-Release **6.0.3-beta.9-uat.1**, channel **Isolated Beta Testing**, branch **test/text-v2-uat**. Accepted parent: 8166ac68daa2adea693a99fdf551cf8e1e64149f. The release checkpoint is the commit containing this guide; its exact hash is supplied in the completion message and rendered by each UAT build. Use git rev-parse HEAD to pin it before pushing.
+Release **6.0.3-beta.9-uat.2**, channel **Isolated Beta Testing**, branch **test/text-v2-uat**. The accepted UAT-1 checkpoint is `787711ddbd53b8920953411bff753d9c0e7b6b08`. Use `git rev-parse HEAD` to pin the release checkpoint before pushing and compare its SHA with the deployed UAT information.
 
 ## Existing Vercel project, isolated Preview branch
 
-Use the **existing `prolingo-app`** project in team **`hikamseifs-projects`**, connected to `nazurinian/prolingo-app`. Project ID: `prj_FvB4rMUWZZ9aAsqEfHsiedjKXW4E`. Keep its Production branch, project-wide build/output settings, Stable/Beta projects, and existing domains unchanged. UAT is a **Preview deployment from `test/text-v2-uat`**; it is never this project's Production branch.
+Use the **existing `prolingo-app`** project in team **`hikamseifs-projects`**, connected to `nazurinian/prolingo-app`. Project ID `prj_FvB4rMUWZZ9aAsqEfHsiedjKXW4E`. The project serves several domains. The verified **`text-uat.prolingo.web.id`** domain follows Preview deployments from **`test/text-v2-uat`**. The build and output overrides come from that branch's committed `vercel.json` for each deployment.
 
 | Setting | Value |
 | --- | --- |
@@ -19,13 +19,13 @@ Use the **existing `prolingo-app`** project in team **`hikamseifs-projects`**, c
 | Server/build-only project marker | TEXT_UAT_PROJECT=prolingo-app; Preview, Git branch test/text-v2-uat only |
 | Required system variables | VERCEL=1, VERCEL_ENV=preview, VERCEL_GIT_COMMIT_REF=test/text-v2-uat |
 
-Both UAT variables have been configured on the existing project with `target=["preview"]` and `gitBranch="test/text-v2-uat"`. Do not add them to all Preview branches, Production, or Development, or put them in `vercel.json` under `env` / `build.env`. Existing environment variables remain untouched. Branch-scoped Preview values are supported by [Vercel environment variables](https://vercel.com/docs/environment-variables#preview-environment-variables).
+Both UAT variable values and their Preview-only branch scope were verified through Vercel on 24 November 2026. Leave those values scoped to that branch. [Vercel environment variables](https://vercel.com/docs/environment-variables#preview-environment-variables)
 
 A UAT build fails on the wrong branch, absent flag, incorrect project marker, or non-Preview Vercel environment. The branch's `vercel.json` overrides build/output for that deployment without changing dashboard defaults; see [Vercel configuration](https://vercel.com/docs/project-configuration/vercel-json). Keep this UAT configuration on `test/text-v2-uat`; do not merge/cherry-pick it into Stable/Beta. Normal `npm run build` remains `vite build` / `dist`. The marker and flag are deployment configuration checks, **not authentication**. Required Git/system variables must be exposed by the existing project; do not replace them with manually hardcoded branch values. See [system variables](https://vercel.com/docs/environment-variables/system-environment-variables).
 
 Hosting protection and online access acceptance remain a separate release decision. This preparation does not change authentication or project-wide protection settings. Do not add auth secrets as VITE_* variables. See [Deployment Protection documentation](https://vercel.com/docs/deployment-protection) for available controls.
 
-No Vercel project was created or linked; no deployment, push, or domain change was performed. Only the two branch-scoped UAT variables were added remotely. A future push can trigger a Git-integrated Preview deployment, so stop at the local commit until deployment is authorized.
+Deployment `dpl_6Dz5rdRCM9QaSyjm5nkJPmTiQUcY` was built from the earlier `787711dd` checkpoint. Its log shows `npm run build` and the standard `dist` output. The corrected release needs a new Git Preview deployment from the reviewed commit so Vercel reads the corrected branch configuration.
 
 For a later authorized release, review the checkpoint in this worktree:
 
@@ -35,7 +35,13 @@ git status --short
 git rev-parse HEAD
 ```
 
-After deployment is authorized, push only `test/text-v2-uat` with no force option and inspect any divergence. Do not use `--prod`, promote the Preview, or change the project's Production branch.
+After review, push the UAT branch to trigger a new Git Preview deployment.
+
+```powershell
+git push -u origin test/text-v2-uat
+```
+
+In Vercel, verify the new deployment's commit SHA and Preview branch. Its build log should show `npm run build:uat`, `vite build --mode text-uat`, and `dist-uat` output. Once Ready, load `https://text-uat.prolingo.web.id/?qa=text-beta` and confirm the UAT version and SHA. Rebuilding the old commit would reuse its old build configuration.
 
 ## Build and local preview
 
@@ -52,7 +58,7 @@ Normal npm run build still produces dist with QA excluded, even if VITE_ENABLE_T
 
 ## Routes, PWA and API
 
-- Online entry: **https://text-uat.prolingo.web.id/?qa=text-beta** after DNS/HTTPS setup.
+- Online entry after the corrected Preview deployment is Ready: **https://text-uat.prolingo.web.id/?qa=text-beta**.
 - Root / shows a safe UAT landing page and explicit entry link; it never starts the canonical App lifecycle.
 - Other QA queries in a UAT build show the same landing page; old development QA modules are not exposed.
 - Normal production builds cannot enable UAT via a query string.
@@ -62,11 +68,9 @@ Normal npm run build still produces dist with QA excluded, even if VITE_ENABLE_T
 
 ## DNS and origins
 
-Future target: **text-uat.prolingo.web.id → existing project prolingo-app → Preview Git branch test/text-v2-uat**. Domain assignment and DNS are intentionally deferred. When separately authorized, add only this domain to the existing project and explicitly assign it to that Preview branch. Use the exact DNS target Vercel displays; add a verification TXT record only if requested. Do not change apex/www/Stable/Beta records, nameservers, project assignments, or the Production branch. Wait for domain validation and HTTPS before online acceptance.
+Vercel reports **`text-uat.prolingo.web.id` verified** and assigned to **`test/text-v2-uat`** in **`prolingo-app`**. Use the existing DNS record and branch assignment. Verify HTTPS and the deployed build after the new Preview is Ready.
 
-Do not hardcode a historical Vercel CNAME target; [Vercel's custom-domain instructions](https://vercel.com/docs/domains/working-with-domains/add-a-domain) specify project-specific records.
-
-IndexedDB belongs to an origin/profile/device. Generated preview URLs and the eventual custom domain have separate QA storage. Export JSON before changing origins; use the explicit fresh-copy recovery workflow to move QA records. Original/canonical data is not copied automatically.
+IndexedDB belongs to an origin/profile/device. Generated Preview URLs and the custom domain have separate QA storage. Export JSON before changing origins and use the explicit fresh-copy recovery workflow to move QA records.
 
 ## Audio online
 

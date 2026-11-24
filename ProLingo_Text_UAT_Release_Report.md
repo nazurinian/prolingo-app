@@ -1,8 +1,29 @@
 # Text v2 UAT release preparation
 
-**Prepared for Preview on the existing `prolingo-app` project. No deployment performed.**
+**UAT-2 is prepared for Preview on the existing `prolingo-app` project.**
 
-The Preview configuration update starts from `787711dd`. See [Preview configuration report](ProLingo_Text_UAT_Preview_Configuration_Report.md) for the current target, environment scope and verification. The release-preparation and interrupted-session results below describe the earlier checkpoints.
+Active release **6.0.3-beta.9-uat.2**. See the [deployment guide](ProLingo_Text_UAT_Online_Deployment_Guide.md) for the verified branch-domain assignment and release steps.
+
+## UAT-2 verification on 24 November 2026
+
+The remote UAT branch was at the accepted `787711ddbd53b8920953411bff753d9c0e7b6b08`. The clean local worktree already contained its descendant `a74c095f0eac268b12874e38bd7c509141972d2e` with the branch's `vercel.json` overrides and the `prolingo-app` Preview guard. UAT-2 retains that commit, synchronizes package, lockfile, app and build metadata, and updates the deployment guide.
+
+The build log for `dpl_6Dz5rdRCM9QaSyjm5nkJPmTiQUcY` shows `npm run build` and `vite build`. Vercel readback confirmed the existing `text-uat.prolingo.web.id` domain is verified and assigned to `test/text-v2-uat`. Both environment values matched exactly under Preview for that branch: `VITE_ENABLE_TEXT_UAT=true` and `TEXT_UAT_PROJECT=prolingo-app`.
+
+| Check | Result |
+| --- | --- |
+| Normal build with the valid UAT Preview variables present | PASS, `dist` excludes UAT |
+| UAT build using the verified Preview values and expected system variables | PASS, `dist-uat` |
+| Actual builds with flag disabled, wrong branch, old project marker or Production target | All rejected |
+| Release audit | PASS for metadata, normal and UAT artifact isolation, distinct PWA identity, unchanged API rewrite, and DB/schema constants at 1 |
+| Existing API modules | Health GET response path returns 200, TTS GET returns 405 without synthesis |
+| Edge browser | 8/8, reload and browser restart, six DEV/production route checks and five built-artifact route checks |
+| Canonical storage and narrow viewports | Zero canonical accesses in isolated flows, no horizontal overflow at 320px and 375px |
+| Scoped ESLint and Git whitespace checks | PASS |
+
+The deployable source is ready for a new Git Preview after review. Online acceptance still requires checking the new build log, deployed SHA, branch-domain route and API responses. Existing online Edge TTS and device acceptance limits still apply. This checkpoint was prepared locally using read-only Vercel checks.
+
+## UAT-1 and original release evidence
 
 Version: **6.0.3-beta.9-uat.1**. Display: **ProLingo Text v2 UAT**. Channel: **Isolated Beta Testing**.
 Branch: **test/text-v2-uat**, created from exact clean accepted 8166ac68daa2adea693a99fdf551cf8e1e64149f in the existing integration worktree. The release checkpoint containing this report is pinned by the exact SHA in delivery; built public metadata displays the checked-out commit (or Vercel's public Git SHA).

@@ -1,5 +1,7 @@
 # Text v2 UAT: existing-project Preview configuration
 
+This report records the 18 November configuration checkpoint. See the [online deployment guide](ProLingo_Text_UAT_Online_Deployment_Guide.md) for the UAT-2 release and verified domain assignment.
+
 Prepared on **18 November 2026** from **787711ddbd53b8920953411bff753d9c0e7b6b08**, on **test/text-v2-uat**. The final local commit is supplied in the completion message.
 
 **Result: local build and isolation checks PASS. No push, deployment, new project, or domain change.**

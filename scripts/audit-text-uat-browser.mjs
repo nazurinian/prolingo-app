@@ -76,7 +76,7 @@ try {
     const actual=await browser.evaluate('Boolean(document.querySelector("[data-structured-text-beta]"))');
     const opens=await browser.evaluate('window.qaOpens+window.canonicalTouches');
     if(actual!==(route==='/uat?qa=text-beta')||route.startsWith('/uat')&&opens!==0)throw Error('Built route isolation failed: '+route);
-    if(actual&&!await browser.evaluate('document.querySelector("[data-text-uat-info]").textContent.includes("6.0.3-beta.9-uat.1")'))throw Error('UAT version missing');
+    if(actual&&!await browser.evaluate('document.querySelector("[data-text-uat-info]").textContent.includes("6.0.3-beta.9-uat.2")'))throw Error('UAT version missing');
     if(actual) {
       report.mobileWidths=[];
       for(const width of [375,320]) {

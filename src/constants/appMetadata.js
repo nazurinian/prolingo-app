@@ -1,15 +1,16 @@
-export const APP_VERSION = '6.0.3-beta.9-uat.1';
+export const APP_VERSION = '6.0.3-beta.9-uat.2';
 export const APP_VERSION_LABEL = `v${APP_VERSION}`;
-export const APP_CHECKPOINT_ID = 'TEXT-V2-UAT-1';
+export const APP_CHECKPOINT_ID = 'TEXT-V2-UAT-2';
 export const APP_CHECKPOINT_LABEL = 'ProLingo Text v2 UAT - Isolated Beta Testing';
 export const APP_RELEASE_NAME = 'ProLingo Text v2 UAT - Isolated Beta Testing';
-export const APP_RELEASE_DATE = '2026-11-18';
+export const APP_RELEASE_DATE = '2026-11-24';
 
 export const APP_READY_LOG = `Ready. ProLingo ${APP_VERSION_LABEL} (${APP_RELEASE_NAME}).`;
-export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Dedicated isolated Text v2 UAT; Paragraph, Conversation and Mixed readers, disposable v2 editing and JSON recovery. Not Stable. Canonical DB/schema remain v1.`;
+export const APP_DATA_MANAGER_RELEASE_NOTE = `${APP_VERSION_LABEL}: Isolated Text v2 UAT on the prolingo-app Preview branch, with Paragraph, Conversation and Mixed readers, disposable v2 editing and JSON recovery. Not Stable. Canonical DB/schema remain v1.`;
 export const APP_MANUAL_EDITOR_RELEASE_LABEL = `${APP_VERSION_LABEL} • SENTENCE-AUTHORING`;
 
 export const APP_CHANGELOG = Object.freeze([
+  '6.0.3-beta.9-uat.2 selects the isolated Text v2 UAT build for the existing prolingo-app Preview branch.',
   '6.0.3-beta.9-uat.1 prepares a separately gated online Text v2 UAT build. No canonical migration or production activation.',
   'HF4-D fixes Full / Split Prev+Next navigation with a durable in-session cursor, stops Full+Shuffle silently degrading into Split, shuffles Card groups without rearranging sentences, resets Document cursor to first on natural end while preserving manual Stop position, removes per-Card Split switch and uses the Global representation, and reduces EN/ID quick-play button prominence; Table, audio generation, Text DB and binary identities unchanged.',
   'HF4-C R1 fixes blank Player Settings from missing option constants, repairs one-shot EN/ID quick-play missing import, adds Stop audio to unlock controls in the settings modal, and simplifies paragraph/Card Play buttons to compact icon actions; no Text DB, Table, Edge TTS, or playback engine change',

@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { APP_VERSION } from '../src/constants/appMetadata.js';
 export const assertTextUatBuild = ({ mode, env, branch }) => {
   if (mode !== 'text-uat') return false;
   if (env.VITE_ENABLE_TEXT_UAT !== 'true') throw Error('UAT build requires explicit VITE_ENABLE_TEXT_UAT=true');
@@ -9,7 +10,7 @@ export const assertTextUatBuild = ({ mode, env, branch }) => {
   return true;
 };
 export const publicTextUatMetadata = () => ({
-  version: '6.0.3-beta.9-uat.1', label: 'ProLingo Text v2 UAT', channel: 'Isolated Beta Testing',
+  version: APP_VERSION, label: 'ProLingo Text v2 UAT', channel: 'Isolated Beta Testing',
   sha: /^[a-f0-9]{7,40}$/i.test(process.env.VERCEL_GIT_COMMIT_SHA || '')
     ? process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 8) : execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], { encoding: 'utf8' }).trim(),
   builtAt: new Date().toISOString()

@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { assertTextUatBuild } from './text-uat-config.mjs';
+import { APP_VERSION } from '../src/constants/appMetadata.js';
+import { TEXT_LIBRARY_DB_VERSION, TEXT_LIBRARY_SCHEMA_VERSION } from '../src/constants/textDatabaseConstants.js';
+
+const releaseVersion = '6.0.3-beta.9-uat.2';
+const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
+const lock = JSON.parse(await fs.readFile('package-lock.json', 'utf8'));
+assert.equal(APP_VERSION, releaseVersion);
+assert.equal(pkg.version, releaseVersion);
+assert.equal(lock.version, releaseVersion);
+assert.equal(lock.packages[''].version, releaseVersion);
+assert.equal(TEXT_LIBRARY_DB_VERSION, 1);
+assert.equal(TEXT_LIBRARY_SCHEMA_VERSION, 1);
 const good = { mode: 'text-uat', env: { VITE_ENABLE_TEXT_UAT: 'true' }, branch: 'test/text-v2-uat' };
 const preview = { ...good.env, VERCEL: '1', VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: good.branch, TEXT_UAT_PROJECT: 'prolingo-app' };
 assert.equal(assertTextUatBuild(good), true);
@@ -41,7 +53,7 @@ assert.ok(!normalJs.includes('data-structured-text-beta'));
 assert.ok(!normalJs.includes('UAT_SECRET_CANARY'));
 const uatFiles = await fs.readdir('dist-uat/assets'), uatJs = (await Promise.all(uatFiles.filter(f => f.endsWith('.js')).map(f => fs.readFile('dist-uat/assets/' + f, 'utf8')))).join('');
 for (const forbidden of ['data-dm-qa-storage-mode', 'data-mixed-workspace-qa-preview', 'data-conversation-qa-preview', 'UAT_SECRET_CANARY']) assert.ok(!uatJs.includes(forbidden), forbidden);
-assert.ok(uatJs.includes('data-text-uat-info') && uatJs.includes('6.0.3-beta.9-uat.1'));
+assert.ok(uatJs.includes('data-text-uat-info') && uatJs.includes(releaseVersion));
 console.log('PASS UAT flags/branch/project guards, artifact isolation, public metadata, secret canary exclusion and PWA identity');
 const health = (await import('../api/health.js')).default, tts = (await import('../api/tts.js')).default;
 const response = { status(code) { this.code = code; return this; }, json(data) { this.body = data; return this; }, setHeader() {} };
