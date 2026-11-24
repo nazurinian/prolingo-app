@@ -1,5 +1,97 @@
 import { buildTextStructuredRuntimeAudioKey } from '../../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../../domain/text/textStructuredAudioCoverageDomain.js';
+import { normalizeTextWorkspaceStyleState } from '../../../domain/text/textCardPresentationStateDomain.js';
+
+export const SHARED_WORKSPACE_ALIGNMENT_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'left',
+    label: 'Left',
+    description: 'Align Paragraph and Conversation reading text to the left edge'
+  }),
+  Object.freeze({
+    id: 'justify',
+    label: 'Justify',
+    description: 'Justify Paragraph and Conversation reading text across both EN and ID'
+  })
+]);
+
+export const SHARED_CONVERSATION_SPEAKER_LAYOUT_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'stacked',
+    label: 'Stacked',
+    description: 'Place the Speaker name above each Turn body'
+  }),
+  Object.freeze({
+    id: 'aligned',
+    label: 'Aligned',
+    description: 'Place the Speaker name in an independent leading column beside each Turn body'
+  }),
+  Object.freeze({
+    id: 'inline',
+    label: 'Inline',
+    description: 'Start each Turn body inline immediately after the Speaker name'
+  })
+]);
+
+export const PARAGRAPH_FIRST_LINE_INDENT_VALUE = '1.5em';
+
+/**
+ * Normalizes Workspace Style into reusable body typography and structural flags
+ * consumed across Paragraph Sections and Conversation Turns in all Reader modes.
+ */
+export const resolveWorkspaceStylePresentation = (workspaceStyle = null) => {
+  const style = normalizeTextWorkspaceStyleState(workspaceStyle);
+  const isJustified = style.textAlign === 'justify';
+  const bodyAlignClass = isJustified ? 'text-justify' : 'text-left';
+  const bodyAlignStyle = Object.freeze({
+    textAlign: style.textAlign,
+    overflowWrap: 'break-word',
+    ...(isJustified ? { hyphens: 'auto' } : {})
+  });
+  return Object.freeze({
+    style,
+    isJustified,
+    bodyAlignClass,
+    bodyAlignStyle,
+    paragraphIndent: style.paragraphIndent,
+    paragraphIndentValue: style.paragraphIndent ? PARAGRAPH_FIRST_LINE_INDENT_VALUE : '0',
+    speakerLayout: style.speakerLayout,
+    showAccents: style.showAccents
+  });
+};
+
+export const buildParagraphBodyStyle = ({
+  workspaceStyle = null,
+  isTitleRole = false,
+  allowIndent = true
+} = {}) => {
+  const presentation = resolveWorkspaceStylePresentation(workspaceStyle);
+  const indentApplied = Boolean(allowIndent && !isTitleRole && presentation.paragraphIndent);
+  return Object.freeze({
+    className: presentation.bodyAlignClass,
+    inlineStyle: Object.freeze({
+      ...presentation.bodyAlignStyle,
+      textIndent: indentApplied ? presentation.paragraphIndentValue : '0'
+    }),
+    indentApplied,
+    textAlign: presentation.style.textAlign,
+    showAccents: presentation.showAccents
+  });
+};
+
+export const buildConversationBodyStyle = ({ workspaceStyle = null } = {}) => {
+  const presentation = resolveWorkspaceStylePresentation(workspaceStyle);
+  return Object.freeze({
+    className: presentation.bodyAlignClass,
+    inlineStyle: Object.freeze({
+      ...presentation.bodyAlignStyle,
+      textIndent: '0'
+    }),
+    textAlign: presentation.style.textAlign,
+    speakerLayout: presentation.speakerLayout,
+    showAccents: presentation.showAccents
+  });
+};
 
 export const SHARED_BILINGUAL_LAYOUT_OPTIONS = Object.freeze([
   Object.freeze({

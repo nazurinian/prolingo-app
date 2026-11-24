@@ -1,7 +1,21 @@
 import assert from 'node:assert/strict';
 import { createA2V1CompatibilityParagraphFixture, createA2ParagraphReaderFixture } from './fixtures/shared-card-a2/paragraph-reader-fixture.js';
 import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from '../src/domain/text/textMainReaderDomain.js';
-import { loadTextMainReaderPreference, saveTextMainReaderPreference, normalizeTextMainReaderPreference, TEXT_MAIN_READER_PREFERENCE_KEY } from '../src/services/persistence/textMainReaderPreferenceService.js';
+import {
+  DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  isTextWorkspaceStyleDirty,
+  normalizeTextWorkspaceStyleState
+} from '../src/domain/text/textCardPresentationStateDomain.js';
+import {
+  loadTextMainReaderPreference,
+  saveTextMainReaderPreference,
+  normalizeTextMainReaderPreference,
+  resolveTextMainReaderPreferenceStorageKey,
+  resolveTextMainReaderWorkspaceStyle,
+  updateTextMainReaderWorkspaceStyle,
+  resetTextMainReaderWorkspaceStyle,
+  TEXT_MAIN_READER_PREFERENCE_KEY
+} from '../src/services/persistence/textMainReaderPreferenceService.js';
 
 let passed = 0;
 const test = (name, fn) => { fn(); console.log('PASS', name); passed++; };
@@ -73,13 +87,82 @@ test('pause keeps proven cursor and unavailable speech does not fabricate precis
   assert.equal(resolveTextMainReaderCursor({ ...session, isPaused: true }).state, 'paused');
   assert.equal(resolveTextMainReaderCursor({ ...session, status: { ...session.status, source: 'unavailable' } }).precision, 'none');
 });
-test('versioned preference defaults old reader; whitelists view only; invalid versions reset', () => {
+test('versioned preference defaults old reader; whitelists view and Workspace Style only; invalid versions reset', () => {
   assert.equal(normalizeTextMainReaderPreference().reader, 'legacy');
-  assert.equal(normalizeTextMainReaderPreference({ version: 2, reader: 'shared' }).reader, 'legacy');
-  const raw = { version: 1, reader: 'shared', view: { level: 'part', bilingualLayout: 'meaning-only', partLayout: 'horizontal-focus', voice: 'ignored' }, audio: 'ignored' };
+  assert.equal(normalizeTextMainReaderPreference({ version: 2, reader: 'shared', workspaceStyle: { textAlign: 'justify' } }).reader, 'legacy');
+  assert.deepEqual(normalizeTextMainReaderPreference({ version: 2, workspaceStyle: { textAlign: 'justify' } }).workspaceStyle, DEFAULT_TEXT_WORKSPACE_STYLE_STATE);
+  const raw = {
+    version: 1,
+    reader: 'shared',
+    view: { level: 'part', bilingualLayout: 'meaning-only', partLayout: 'horizontal-focus', voice: 'ignored' },
+    audio: 'ignored'
+  };
   const saved = normalizeTextMainReaderPreference(raw);
-  assert.deepEqual(Object.keys(saved), ['version', 'reader', 'view']);
+  assert.deepEqual(Object.keys(saved), ['version', 'reader', 'view', 'workspaceStyle', 'workspaceStyleOverrides']);
   assert.deepEqual(Object.keys(saved.view), ['level', 'bilingualLayout', 'partLayout']);
+  assert.deepEqual(saved.workspaceStyle, DEFAULT_TEXT_WORKSPACE_STYLE_STATE);
+  assert.deepEqual(saved.workspaceStyleOverrides, {});
+  assert.ok(Object.isFrozen(saved) && Object.isFrozen(saved.view) && Object.isFrozen(saved.workspaceStyle));
+});
+test('Workspace Style normalization, inheritance, workspace overrides, host isolation and scoped reset stay independent', () => {
+  const dirtyStyle = normalizeTextWorkspaceStyleState({ textAlign: 'justify', paragraphIndent: 'yes', speakerLayout: 'invalid', showAccents: false, voice: 'ignored' });
+  assert.deepEqual(dirtyStyle, { textAlign: 'justify', paragraphIndent: false, speakerLayout: 'stacked', showAccents: false });
+  assert.equal(isTextWorkspaceStyleDirty(DEFAULT_TEXT_WORKSPACE_STYLE_STATE), false);
+  assert.equal(isTextWorkspaceStyleDirty(dirtyStyle), true);
+
+  let pref = normalizeTextMainReaderPreference({
+    version: 1,
+    reader: 'shared',
+    view: { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' }
+  });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref).isDirty, false);
+
+  pref = updateTextMainReaderWorkspaceStyle(pref, { textAlign: 'justify', paragraphIndent: true });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref).isDirty, true);
+  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+  assert.equal(pref.reader, 'shared');
+
+  // Workspace-specific override inherits unspecified keys from Shared defaults and stays isolated per Workspace
+  pref = updateTextMainReaderWorkspaceStyle(pref, { speakerLayout: 'aligned' }, { workspaceKey: 'WS_ALPHA' });
+  const alpha = resolveTextMainReaderWorkspaceStyle(pref, 'WS_ALPHA');
+  const beta = resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA');
+  assert.deepEqual(alpha.effectiveStyle, { textAlign: 'justify', paragraphIndent: true, speakerLayout: 'aligned', showAccents: true });
+  assert.equal(alpha.hasWorkspaceOverride, true);
+  assert.equal(alpha.isDirty, true);
+  assert.deepEqual(beta.effectiveStyle, pref.workspaceStyle);
+  assert.equal(beta.hasWorkspaceOverride, false);
+  assert.equal(beta.isDirty, false);
+
+  // Returning override to match shared default prunes override and clears dirty state
+  pref = updateTextMainReaderWorkspaceStyle(pref, { speakerLayout: 'stacked' }, { workspaceKey: 'WS_ALPHA' });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_ALPHA').hasWorkspaceOverride, false);
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_ALPHA').isDirty, false);
+
+  // Workspace override reset clears only target Workspace; shared reset clears only shared Workspace Style
+  pref = updateTextMainReaderWorkspaceStyle(pref, { speakerLayout: 'inline' }, { workspaceKey: 'WS_ALPHA' });
+  pref = updateTextMainReaderWorkspaceStyle(pref, { showAccents: false }, { workspaceKey: 'WS_BETA' });
+  pref = resetTextMainReaderWorkspaceStyle(pref, { workspaceKey: 'WS_ALPHA' });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_ALPHA').hasWorkspaceOverride, false);
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA').effectiveStyle.showAccents, false);
+  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+
+  pref = resetTextMainReaderWorkspaceStyle(pref);
+  assert.deepEqual(pref.workspaceStyle, DEFAULT_TEXT_WORKSPACE_STYLE_STATE);
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref).isDirty, false);
+  assert.equal(pref.reader, 'shared');
+  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA').effectiveStyle.showAccents, false);
+
+  // Prototype pollution keys are stripped cleanly
+  const unsafe = normalizeTextMainReaderPreference({
+    version: 1,
+    workspaceStyleOverrides: JSON.parse('{"__proto__":{"textAlign":"justify"},"constructor":{"textAlign":"justify"},"WS_SAFE":{"textAlign":"justify"}}')
+  });
+  assert.deepEqual(Object.keys(unsafe.workspaceStyleOverrides), ['WS_SAFE']);
+
+  // Host-specific storage key isolation
+  assert.equal(resolveTextMainReaderPreferenceStorageKey(), TEXT_MAIN_READER_PREFERENCE_KEY);
+  assert.notEqual(resolveTextMainReaderPreferenceStorageKey({ hostId: 'uat4-qa' }), TEXT_MAIN_READER_PREFERENCE_KEY);
 });
 test('guarded view storage writes only the new key and tolerates denied/corrupt storage', () => {
   const writes = [];
@@ -87,6 +170,8 @@ test('guarded view storage writes only the new key and tolerates denied/corrupt 
   assert.equal(loadTextMainReaderPreference().reader, 'legacy');
   saveTextMainReaderPreference({ version: 1, reader: 'shared', view: { level: 'segment' } });
   assert.equal(writes.length, 1); assert.equal(writes[0][0], TEXT_MAIN_READER_PREFERENCE_KEY);
+  saveTextMainReaderPreference({ version: 1, reader: 'shared' }, { hostId: 'isolated-host' });
+  assert.equal(writes.length, 2); assert.equal(writes[1][0], resolveTextMainReaderPreferenceStorageKey({ hostId: 'isolated-host' }));
   globalThis.window = { get localStorage() { throw Error('denied'); } };
   assert.doesNotThrow(() => saveTextMainReaderPreference({ version: 1, reader: 'shared' }));
   assert.equal(loadTextMainReaderPreference().reader, 'legacy');

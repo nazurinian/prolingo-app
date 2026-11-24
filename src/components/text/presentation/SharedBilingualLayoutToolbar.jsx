@@ -1,24 +1,38 @@
 import React from 'react';
 import {
+  AlignJustify,
+  AlignLeft,
   BookOpen,
   Columns2,
   GalleryHorizontalEnd,
+  IndentIncrease,
   Languages,
   Layers,
   List,
+  PanelLeft,
   RotateCcw,
+  Rows2,
   Rows3,
-  Target
+  SlidersHorizontal,
+  Target,
+  WrapText
 } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
+  DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  isTextWorkspaceStyleDirty,
   normalizeTextCardPresentationState,
-  updateTextCardPresentationState
+  normalizeTextWorkspaceStyleState,
+  resetTextWorkspaceStyleState,
+  updateTextCardPresentationState,
+  updateTextWorkspaceStyleState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import {
   SHARED_BILINGUAL_LAYOUT_OPTIONS,
+  SHARED_CONVERSATION_SPEAKER_LAYOUT_OPTIONS,
   SHARED_LEVEL_OPTIONS,
   SHARED_PART_LAYOUT_OPTIONS,
+  SHARED_WORKSPACE_ALIGNMENT_OPTIONS,
   getSharedUnitTerms
 } from './sharedCardPresentationUtils.js';
 
@@ -41,10 +55,214 @@ const PART_LAYOUT_ICONS = {
   'vertical-list': List
 };
 
+const ALIGNMENT_ICONS = {
+  left: AlignLeft,
+  justify: AlignJustify
+};
+
+const SPEAKER_LAYOUT_ICONS = {
+  stacked: Rows2,
+  aligned: PanelLeft,
+  inline: WrapText
+};
+
+/**
+ * Reusable Workspace Style controls (Shared Alignment, Paragraph Indent, Conversation
+ * Speaker arrangement, Accent Lines, and independent Reset). Purely view-only: never
+ * mutates Reader Mode, bilingual layout, audio preferences, or active playback.
+ */
+export const SharedWorkspaceStyleBar = ({
+  workspaceStyle = null,
+  effectiveDefaults = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  onChangeWorkspaceStyle = null,
+  onResetWorkspaceStyle = null,
+  workspaceType = null,
+  scopeLabel = null,
+  standalone = false
+}) => {
+  const resolvedDefaults = normalizeTextWorkspaceStyleState(effectiveDefaults);
+  const activeStyle = normalizeTextWorkspaceStyleState(workspaceStyle, resolvedDefaults);
+  const isDirty = isTextWorkspaceStyleDirty(activeStyle, resolvedDefaults);
+  const showParagraphControls = workspaceType !== 'conversation';
+  const showConversationControls = workspaceType !== 'paragraph';
+
+  const emitStylePatch = patch => {
+    if (!onChangeWorkspaceStyle) return;
+    onChangeWorkspaceStyle(updateTextWorkspaceStyleState(activeStyle, patch, resolvedDefaults));
+  };
+
+  const handleReset = () => {
+    if (!isDirty) return;
+    if (onResetWorkspaceStyle) {
+      onResetWorkspaceStyle();
+      return;
+    }
+    onChangeWorkspaceStyle?.(resetTextWorkspaceStyleState(resolvedDefaults));
+  };
+
+  const wrapperClass = standalone
+    ? 'rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm transition-colors motion-reduce:transition-none'
+    : 'pt-2.5 border-t border-slate-100 dark:border-slate-800/80';
+
+  return (
+    <div
+      className={`${wrapperClass} flex flex-wrap items-center justify-between gap-2.5 text-left`}
+      data-shared-workspace-style-bar="true"
+      data-shared-workspace-style-align={activeStyle.textAlign}
+      data-shared-workspace-style-indent={activeStyle.paragraphIndent ? 'on' : 'off'}
+      data-shared-workspace-style-speaker={activeStyle.speakerLayout}
+      data-shared-workspace-style-accents={activeStyle.showAccents ? 'on' : 'off'}
+      data-shared-workspace-style-dirty={isDirty ? 'true' : 'false'}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0 w-full">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Style
+          </span>
+          {scopeLabel && (
+            <span
+              data-shared-workspace-style-scope={scopeLabel}
+              className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400"
+            >
+              {scopeLabel}
+            </span>
+          )}
+        </div>
+
+        {/* Shared Text Alignment: Left | Justify */}
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+            Align
+          </span>
+          <div
+            role="group"
+            aria-label="Shared reading text alignment (display only)"
+            className="inline-flex items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+          >
+            {SHARED_WORKSPACE_ALIGNMENT_OPTIONS.map(option => {
+              const active = activeStyle.textAlign === option.id;
+              const Icon = ALIGNMENT_ICONS[option.id] || AlignLeft;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => emitStylePatch({ textAlign: option.id })}
+                  title={option.description}
+                  data-shared-workspace-align-option={option.id}
+                  className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    active
+                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-600/80'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                  <span>{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Conversation Speaker Layout: Stacked | Aligned | Inline */}
+        {showConversationControls && (
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Speakers
+            </span>
+            <div
+              role="group"
+              aria-label="Conversation speaker arrangement (display only)"
+              className="inline-flex flex-wrap items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+            >
+              {SHARED_CONVERSATION_SPEAKER_LAYOUT_OPTIONS.map(option => {
+                const active = activeStyle.speakerLayout === option.id;
+                const Icon = SPEAKER_LAYOUT_ICONS[option.id] || Rows2;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => emitStylePatch({ speakerLayout: option.id })}
+                    title={option.description}
+                    data-shared-workspace-speaker-option={option.id}
+                    className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      active
+                        ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                    }`}
+                  >
+                    <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Paragraph First-line Indent & Accent Lines Toggles */}
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          {showParagraphControls && (
+            <button
+              type="button"
+              aria-pressed={activeStyle.paragraphIndent}
+              onClick={() => emitStylePatch({ paragraphIndent: !activeStyle.paragraphIndent })}
+              title="Toggle first-line indentation at the start of each Paragraph Section"
+              data-shared-workspace-indent-toggle="true"
+              className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                activeStyle.paragraphIndent
+                  ? 'border-teal-300 dark:border-teal-700 bg-teal-50/90 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              <IndentIncrease aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+              <span>Indent: {activeStyle.paragraphIndent ? 'On' : 'Off'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            aria-pressed={activeStyle.showAccents}
+            onClick={() => emitStylePatch({ showAccents: !activeStyle.showAccents })}
+            title="Show or hide Paragraph and Conversation accent lines (view only)"
+            data-shared-workspace-accents-toggle="true"
+            className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              activeStyle.showAccents
+                ? 'border-indigo-200 dark:border-indigo-700 bg-indigo-50/80 dark:bg-indigo-950/45 text-indigo-800 dark:text-indigo-200'
+                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`h-3 w-0.5 rounded-full ${activeStyle.showAccents ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-slate-300 dark:bg-slate-600'}`}
+            />
+            <span>Accents: {activeStyle.showAccents ? 'On' : 'Off'}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={!isDirty}
+            onClick={handleReset}
+            title="Restore Workspace Style defaults without changing Reader Mode, layout, or audio"
+            data-shared-workspace-style-reset="true"
+            className="min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <RotateCcw aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+            <span>Reset Style</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /**
  * View-only presentation toolbar controlling display level (Full / Part / Segment),
- * bilingual layout (Combined / Separated / EN Only / ID Only), and contextual Part
- * layout (Horizontal / Focus Stack / List). Never modifies audio configuration or playback.
+ * bilingual layout (Combined / Separated / EN Only / ID Only), contextual Part
+ * layout (Horizontal / Focus Stack / List), and optional Workspace Style controls.
+ * Never modifies audio configuration or playback.
  */
 export const SharedBilingualLayoutToolbar = ({
   presentationState = null,
@@ -52,6 +270,12 @@ export const SharedBilingualLayoutToolbar = ({
   onChangePresentationState = null,
   onChangeLayout = null,
   onResetView = null,
+  workspaceStyle = null,
+  effectiveWorkspaceStyleDefaults = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  onChangeWorkspaceStyle = null,
+  onResetWorkspaceStyle = null,
+  showWorkspaceStyle = false,
+  workspaceStyleScopeLabel = null,
   rightSlot = null,
   subtitle = null,
   unitKind = 'paragraph',
@@ -73,6 +297,9 @@ export const SharedBilingualLayoutToolbar = ({
     activeState.level !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.level
     || activeState.bilingualLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
     || (activeState.level === 'part' && activeState.partLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout)
+  );
+  const shouldShowWorkspaceStyle = Boolean(
+    showWorkspaceStyle || workspaceStyle !== null || onChangeWorkspaceStyle !== null
   );
 
   const emitPatch = patch => {
@@ -227,6 +454,17 @@ export const SharedBilingualLayoutToolbar = ({
             })}
           </div>
         </div>
+      )}
+
+      {shouldShowWorkspaceStyle && (
+        <SharedWorkspaceStyleBar
+          workspaceStyle={workspaceStyle}
+          effectiveDefaults={effectiveWorkspaceStyleDefaults}
+          onChangeWorkspaceStyle={onChangeWorkspaceStyle}
+          onResetWorkspaceStyle={onResetWorkspaceStyle}
+          workspaceType={workspaceType}
+          scopeLabel={workspaceStyleScopeLabel}
+        />
       )}
     </div>
   );
