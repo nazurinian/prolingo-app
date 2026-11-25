@@ -28,6 +28,7 @@ import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedBookPageView, SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
 import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
+import { WorkspaceReaderScrollContext } from './presentation/useWorkspaceReaderScroll.js';
 import { useSharedReaderSelectionStore } from './presentation/useSharedReaderSelectionStore.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -729,6 +730,7 @@ export const TextStructuredPlayer = ({
   }, []);
 
   const {
+    scroll: sharedReaderScroll,
     markUserNavigation: markSharedUserNavigation,
     resetUserNavigationGrace: resetSharedUserNavigationGrace,
     handleKeyDownNavigation: handleSharedKeyDownNavigation
@@ -736,6 +738,7 @@ export const TextStructuredPlayer = ({
     rootRef: playerRef,
     enabled: Boolean(useSharedCardReader),
     workspaceId: documentTree?.id || null,
+    workspaceKey: sharedWorkspaceKey,
     focusTarget,
     cursor: effectiveBookPlaybackCursor,
     followScrollBlocked: sharedFollowScrollBlocked,
@@ -765,6 +768,7 @@ export const TextStructuredPlayer = ({
     }
     if (normalized === TEXT_CARD_EXPANSION_MODES.FOLLOW) {
       sharedSelectionStore.clearAllManualSelections();
+      sharedSelectionStore.resumeViewportFollow();
       resetSharedUserNavigationGrace();
       userNavigationRef.current = 0;
     }
@@ -779,6 +783,7 @@ export const TextStructuredPlayer = ({
 
   const handleFollowSharedCardAudible = useCallback(cardId => {
     sharedSelectionStore.clearCardManualSelection(cardId);
+    sharedSelectionStore.resumeViewportFollow();
     resetSharedUserNavigationGrace();
     userNavigationRef.current = 0;
   }, [sharedSelectionStore, resetSharedUserNavigationGrace]);
@@ -792,6 +797,7 @@ export const TextStructuredPlayer = ({
   }, [useSharedCardReader, focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
 
   return (
+    <WorkspaceReaderScrollContext.Provider value={sharedReaderScroll}>
     <section
       ref={playerRef}
       onWheel={markSharedUserNavigation}
@@ -1062,6 +1068,7 @@ export const TextStructuredPlayer = ({
         />, document.body)}
       </div>
     </section>
+    </WorkspaceReaderScrollContext.Provider>
   );
 };
 

@@ -6,7 +6,12 @@ export const EMPTY_CARD_SELECTION_STATE = Object.freeze({
   dismissedFocusNonce: null
 });
 
-const EMPTY_BY_CARD_ID = Object.freeze({});
+const createWorkspaceSelection = (workspaceKey, generation = 0) => ({
+  workspaceKey,
+  generation,
+  byCardId: {},
+  manualBrowseSessionId: null
+});
 
 export const normalizeReaderSelectionWorkspaceKey = workspaceKey => {
   if (workspaceKey === null || workspaceKey === undefined) return 'default';
@@ -117,156 +122,109 @@ export const clearCardManualSelectionState = (cardState = EMPTY_CARD_SELECTION_S
  */
 export const useSharedReaderSelectionStore = workspaceKey => {
   const normalizedKey = normalizeReaderSelectionWorkspaceKey(workspaceKey);
-  const [store, setStore] = useState(() => ({
-    workspaceKey: normalizedKey,
-    byCardId: {},
-    manualBrowseSessionId: null
-  }));
+  const [store, setStore] = useState(() => createWorkspaceSelection(normalizedKey));
+  if (store.workspaceKey !== normalizedKey) {
+    // React retries this render before committing handlers for the new Workspace.
+    setStore(createWorkspaceSelection(normalizedKey, store.generation + 1));
+  }
 
-  const activeByCardId = store.workspaceKey === normalizedKey ? store.byCardId : EMPTY_BY_CARD_ID;
-  const activeManualBrowseSessionId = store.workspaceKey === normalizedKey
-    ? store.manualBrowseSessionId
-    : null;
+  const { generation, byCardId, manualBrowseSessionId } = store;
+  const updateCurrentWorkspace = useCallback(update => {
+    setStore(previous => (
+      previous.workspaceKey === normalizedKey && previous.generation === generation
+        ? update(previous)
+        : previous
+    ));
+  }, [normalizedKey, generation]);
 
   const getCardSelectionState = useCallback(cardId => (
-    (cardId && activeByCardId[cardId]) || EMPTY_CARD_SELECTION_STATE
-  ), [activeByCardId]);
+    (cardId && byCardId[cardId]) || EMPTY_CARD_SELECTION_STATE
+  ), [byCardId]);
 
-  const selectCardUnit = useCallback(({
-    card,
-    lookup,
-    unitViewKey,
-    focusTarget = null,
-    workspaceId = null,
-    activePlaybackSessionId = null
-  }) => {
+  const updateCardSelection = useCallback((applySelection, payload) => {
+    const { card, activePlaybackSessionId } = payload;
     const cardId = card?.id;
-    if (!cardId || !unitViewKey) return;
-    setStore(previous => {
-      const baseByCardId = previous.workspaceKey === normalizedKey ? previous.byCardId : {};
-      const currentCardState = baseByCardId[cardId] || EMPTY_CARD_SELECTION_STATE;
-      const nextCardState = applyUnitSelectionToCardState({
+    if (!cardId) return;
+    updateCurrentWorkspace(previous => {
+      const currentCardState = previous.byCardId[cardId] || EMPTY_CARD_SELECTION_STATE;
+      const nextCardState = applySelection({
+        ...payload,
         cardState: currentCardState,
-        workspaceKey: normalizedKey,
-        card,
-        lookup,
-        unitViewKey,
-        focusTarget,
-        workspaceId
+        workspaceKey: normalizedKey
       });
-      if (nextCardState === currentCardState && previous.workspaceKey === normalizedKey) {
-        return previous;
-      }
+      if (nextCardState === currentCardState) return previous;
       return {
-        workspaceKey: normalizedKey,
-        byCardId: {
-          ...baseByCardId,
-          [cardId]: nextCardState
-        },
+        ...previous,
+        byCardId: { ...previous.byCardId, [cardId]: nextCardState },
         manualBrowseSessionId: activePlaybackSessionId ?? previous.manualBrowseSessionId
       };
     });
-  }, [normalizedKey]);
+  }, [normalizedKey, updateCurrentWorkspace]);
 
-  const selectCardSegment = useCallback(({
-    card,
-    lookup,
-    segmentId,
-    focusTarget = null,
-    workspaceId = null,
-    activePlaybackSessionId = null
-  }) => {
-    const cardId = card?.id;
-    if (!cardId || !segmentId) return;
-    setStore(previous => {
-      const baseByCardId = previous.workspaceKey === normalizedKey ? previous.byCardId : {};
-      const currentCardState = baseByCardId[cardId] || EMPTY_CARD_SELECTION_STATE;
-      const nextCardState = applySegmentSelectionToCardState({
-        cardState: currentCardState,
-        workspaceKey: normalizedKey,
-        card,
-        lookup,
-        segmentId,
-        focusTarget,
-        workspaceId
-      });
-      if (nextCardState === currentCardState && previous.workspaceKey === normalizedKey) {
-        return previous;
-      }
-      return {
-        workspaceKey: normalizedKey,
-        byCardId: {
-          ...baseByCardId,
-          [cardId]: nextCardState
-        },
-        manualBrowseSessionId: activePlaybackSessionId ?? previous.manualBrowseSessionId
-      };
-    });
-  }, [normalizedKey]);
+  const selectCardUnit = useCallback(payload => {
+    if (payload.unitViewKey) updateCardSelection(applyUnitSelectionToCardState, payload);
+  }, [updateCardSelection]);
+
+  const selectCardSegment = useCallback(payload => {
+    if (payload.segmentId) updateCardSelection(applySegmentSelectionToCardState, payload);
+  }, [updateCardSelection]);
 
   const clearCardManualSelection = useCallback(cardId => {
     if (!cardId) return;
-    setStore(previous => {
-      const baseByCardId = previous.workspaceKey === normalizedKey ? previous.byCardId : {};
-      const currentCardState = baseByCardId[cardId];
-      if (!currentCardState?.manualAnchor && previous.manualBrowseSessionId === null) {
-        return previous;
-      }
-      const nextCardState = currentCardState
-        ? clearCardManualSelectionState(currentCardState)
-        : EMPTY_CARD_SELECTION_STATE;
+    updateCurrentWorkspace(previous => {
+      const currentCardState = previous.byCardId[cardId];
+      if (!currentCardState?.manualAnchor) return previous;
       return {
-        workspaceKey: normalizedKey,
-        byCardId: currentCardState
-          ? { ...baseByCardId, [cardId]: nextCardState }
-          : baseByCardId,
-        manualBrowseSessionId: null
+        ...previous,
+        byCardId: { ...previous.byCardId, [cardId]: clearCardManualSelectionState(currentCardState) }
       };
     });
-  }, [normalizedKey]);
+  }, [updateCurrentWorkspace]);
 
   const clearAllManualSelections = useCallback(() => {
-    setStore(previous => {
-      const baseByCardId = previous.workspaceKey === normalizedKey ? previous.byCardId : {};
+    updateCurrentWorkspace(previous => {
       const nextByCardId = {};
-      let changed = previous.manualBrowseSessionId !== null || previous.workspaceKey !== normalizedKey;
-      for (const [cardId, cardState] of Object.entries(baseByCardId)) {
+      let changed = false;
+      for (const [cardId, cardState] of Object.entries(previous.byCardId)) {
         const cleared = clearCardManualSelectionState(cardState);
         if (cleared !== cardState) changed = true;
         nextByCardId[cardId] = cleared;
       }
-      if (!changed) return previous;
-      return {
-        workspaceKey: normalizedKey,
-        byCardId: nextByCardId,
-        manualBrowseSessionId: null
-      };
+      return changed ? { ...previous, byCardId: nextByCardId } : previous;
     });
-  }, [normalizedKey]);
+  }, [updateCurrentWorkspace]);
+
+  const resumeViewportFollow = useCallback(() => {
+    updateCurrentWorkspace(previous => (
+      previous.manualBrowseSessionId === null ? previous : { ...previous, manualBrowseSessionId: null }
+    ));
+  }, [updateCurrentWorkspace]);
 
   const hasManualSelection = useCallback(cardId => Boolean(
-    cardId && activeByCardId[cardId]?.manualAnchor
-  ), [activeByCardId]);
+    cardId && byCardId[cardId]?.manualAnchor
+  ), [byCardId]);
 
   return useMemo(() => ({
     workspaceKey: normalizedKey,
-    byCardId: activeByCardId,
-    manualBrowseSessionId: activeManualBrowseSessionId,
+    byCardId,
+    manualBrowseSessionId,
     getCardSelectionState,
     selectCardUnit,
     selectCardSegment,
     clearCardManualSelection,
     clearAllManualSelections,
+    resumeViewportFollow,
     hasManualSelection
   }), [
     normalizedKey,
-    activeByCardId,
-    activeManualBrowseSessionId,
+    byCardId,
+    manualBrowseSessionId,
     getCardSelectionState,
     selectCardUnit,
     selectCardSegment,
     clearCardManualSelection,
     clearAllManualSelections,
+    resumeViewportFollow,
     hasManualSelection
   ]);
 };

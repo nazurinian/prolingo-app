@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { isPrefersReducedMotion, resolveSafeScrollContainer } from './sharedCardPresentationUtils.js';
+import { useWorkspaceReaderScroll } from './useWorkspaceReaderScroll.js';
 
 const USER_NAVIGATION_GRACE_MS = 1800;
 const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End']);
@@ -8,27 +8,6 @@ const escapeSelectorValue = value => {
   const raw = String(value ?? '');
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(raw);
   return raw.replace(/["\\]/g, '\\$&');
-};
-
-const ensureTargetVisible = (target, rootContainer, { explicit = false } = {}) => {
-  if (!target || typeof target.scrollIntoView !== 'function') return;
-  const behavior = isPrefersReducedMotion() ? 'auto' : 'smooth';
-  if (explicit) {
-    target.scrollIntoView({ behavior, block: 'center' });
-    return;
-  }
-  const scrollContainer = resolveSafeScrollContainer(target) || rootContainer;
-  const viewport = scrollContainer?.getBoundingClientRect?.();
-  const rect = target.getBoundingClientRect?.();
-  if (!rect) return;
-  const isMobileViewport = typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(max-width: 767px)').matches;
-  const winHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const safeTop = (viewport ? viewport.top : 0) + 16;
-  const safeBottom = (viewport ? Math.min(viewport.bottom, winHeight) : winHeight) - (isMobileViewport ? 104 : 24);
-  if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
-  target.scrollIntoView({ behavior, block: 'nearest' });
 };
 
 const findCardElement = (rootNode, cardId) => {
@@ -65,6 +44,7 @@ export const useCardPresentationFollow = ({
   rootRef,
   enabled = true,
   workspaceId = null,
+  workspaceKey = workspaceId,
   focusTarget = null,
   cursor = null,
   followScrollBlocked = false,
@@ -93,32 +73,54 @@ export const useCardPresentationFollow = ({
     }
   }, [onUserNavigation]);
 
+  const scroll = useWorkspaceReaderScroll({
+    rootRef,
+    workspaceKey,
+    enabled,
+    onUserNavigation: markUserNavigation
+  });
+  useEffect(() => {
+    internalNavRef.current = 0;
+  }, [workspaceKey]);
+
   useEffect(() => {
     if (!enabled || !rootRef?.current || !workspaceId || focusTarget?.documentId !== workspaceId) return undefined;
     if (!focusTarget?.blockId) {
-      const container = resolveSafeScrollContainer(rootRef.current) || rootRef.current;
-      container?.scrollTo?.({ top: 0, behavior: isPrefersReducedMotion() ? 'auto' : 'smooth' });
+      const cancelReveal = scroll.reveal({ origin: 'search' });
       const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1000);
-      return () => window.clearTimeout(timer);
+      return () => {
+        window.clearTimeout(timer);
+        cancelReveal?.();
+      };
     }
 
     onEnsureCardExpanded?.(focusTarget.blockId);
+    let cancelReveal;
     const frame = window.requestAnimationFrame(() => {
       const cardEl = findCardElement(rootRef.current, focusTarget.blockId);
       const target = focusTarget.segmentId
         ? findSegmentTarget({ rootNode: rootRef.current, cardEl, segmentId: focusTarget.segmentId })
         : cardEl;
-      ensureTargetVisible(target || cardEl, rootRef.current, { explicit: true });
+      if (!target && !cardEl) return;
+      const horizontalTrack = target?.closest('[data-shared-part-track="horizontal"]');
+      cancelReveal = scroll.reveal({
+        target: horizontalTrack || target || cardEl,
+        origin: 'search',
+        block: horizontalTrack ? 'nearest' : 'center'
+      });
     });
     const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1400);
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
+      cancelReveal?.();
     };
   }, [
     enabled,
     rootRef,
+    scroll,
     workspaceId,
+    workspaceKey,
     focusTarget?.documentId,
     focusTarget?.blockId,
     focusTarget?.segmentId,
@@ -139,32 +141,28 @@ export const useCardPresentationFollow = ({
     const lastNav = Math.max(internalNavRef.current || 0, lastUserNavigationAt || 0);
     if (lastNav && Date.now() - lastNav < USER_NAVIGATION_GRACE_MS) return undefined;
 
-    const frame = window.requestAnimationFrame(() => {
-      const cardEl = findCardElement(rootRef.current, cursorCardId);
-      if (!cardEl) return;
-      let target = cardEl;
-      if (cursorPrecision === 'segment' && cursorSegmentId) {
-        const segTarget = findSegmentTarget({
-          rootNode: rootRef.current,
-          cardEl,
-          segmentId: cursorSegmentId,
-          preferredChannel: cursorChannel
-        }) || cardEl.querySelector('[data-text-player-segment-active="true"]');
-        const inactiveHorizontalSlide = segTarget?.closest?.('[data-shared-part-slide]');
-        target = inactiveHorizontalSlide && inactiveHorizontalSlide.dataset.sharedPartActive !== 'true'
-          ? cardEl
-          : (segTarget || cardEl);
-      } else if (cursorPrecision === 'card' && cursorChannel) {
-        target = cardEl.querySelector(`[data-shared-card-flow="${escapeSelectorValue(cursorChannel)}"]`) || cardEl;
-      }
-      ensureTargetVisible(target, rootRef.current, { explicit: false });
-    });
-    return () => window.cancelAnimationFrame(frame);
+    const cardEl = findCardElement(rootRef.current, cursorCardId);
+    if (!cardEl) return undefined;
+    let target = cardEl;
+    if (cursorPrecision === 'segment' && cursorSegmentId) {
+      const segTarget = findSegmentTarget({
+        rootNode: rootRef.current,
+        cardEl,
+        segmentId: cursorSegmentId,
+        preferredChannel: cursorChannel
+      }) || cardEl.querySelector('[data-text-player-segment-active="true"]');
+      target = segTarget?.closest('[data-shared-part-track="horizontal"]') || segTarget || cardEl;
+    } else if (cursorPrecision === 'card' && cursorChannel) {
+      target = cardEl.querySelector(`[data-shared-card-flow="${escapeSelectorValue(cursorChannel)}"]`) || cardEl;
+    }
+    return scroll.reveal({ target, origin: 'playback' });
   }, [
     enabled,
     followScrollBlocked,
     rootRef,
+    scroll,
     workspaceId,
+    workspaceKey,
     focusTarget?.documentId,
     focusTarget?.blockId,
     cursorCardId,
@@ -176,6 +174,7 @@ export const useCardPresentationFollow = ({
   ]);
 
   return {
+    scroll,
     markUserNavigation,
     resetUserNavigationGrace,
     handleKeyDownNavigation

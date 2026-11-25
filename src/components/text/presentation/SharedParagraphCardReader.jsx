@@ -21,6 +21,7 @@ import SharedBilingualLayoutToolbar from './SharedBilingualLayoutToolbar.jsx';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import { SharedCardPartView, SharedCardSegmentView } from './SharedPartAndSegmentViews.jsx';
 import { useCardPresentationFollow } from './useCardPresentationFollow.js';
+import { WorkspaceReaderScrollContext } from './useWorkspaceReaderScroll.js';
 import {
   EMPTY_CARD_SELECTION_STATE,
   useSharedReaderSelectionStore
@@ -983,12 +984,14 @@ export const SharedParagraphWorkspaceReader = ({
   }, [onEnsureCardExpanded, managesCardVisibility, internalExpandedCardIds, effectiveVisibility, onCardVisibilityChange, workspaceKey]);
 
   const {
+    scroll,
     markUserNavigation,
     resetUserNavigationGrace,
     handleKeyDownNavigation
   } = useCardPresentationFollow({
     rootRef,
     workspaceId: presentation?.workspace?.id || null,
+    workspaceKey,
     focusTarget,
     cursor: playbackCursor,
     followScrollBlocked,
@@ -1003,6 +1006,7 @@ export const SharedParagraphWorkspaceReader = ({
     }
     if (normalized === TEXT_CARD_EXPANSION_MODES.FOLLOW) {
       selectionStore.clearAllManualSelections();
+      selectionStore.resumeViewportFollow();
       resetUserNavigationGrace();
     }
     if (onCardVisibilityChange) {
@@ -1035,6 +1039,7 @@ export const SharedParagraphWorkspaceReader = ({
 
   const handleFollowCardAudible = useCallback(cardId => {
     selectionStore.clearCardManualSelection(cardId);
+    selectionStore.resumeViewportFollow();
     resetUserNavigationGrace();
   }, [selectionStore, resetUserNavigationGrace]);
 
@@ -1064,6 +1069,7 @@ export const SharedParagraphWorkspaceReader = ({
   const cardsCollapsible = Boolean(onToggleCardExpanded || managesCardVisibility);
 
   return (
+    <WorkspaceReaderScrollContext.Provider value={scroll}>
     <section
       ref={rootRef}
       key={workspaceKey}
@@ -1210,6 +1216,7 @@ export const SharedParagraphWorkspaceReader = ({
         </div>
       )}
     </section>
+    </WorkspaceReaderScrollContext.Provider>
   );
 };
 

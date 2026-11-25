@@ -23,6 +23,7 @@ const gate4B2Only = process.argv.includes('--gate-4b2');
 const gateCHF1Only = process.argv.includes('--gate-chf1');
 const onlyCHF1 = process.argv.includes('--only-chf1');
 const onlyCHF2 = process.argv.includes('--only-chf2');
+const onlyCHF3 = process.argv.includes('--only-chf3');
 const evidenceDir = process.env.UAT4_PACKET_C_EVIDENCE_DIR
   || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-uat4-packet-c-evidence-'));
 await fs.mkdir(evidenceDir, { recursive: true });
@@ -108,6 +109,7 @@ import StructuredWorkspacePlayer, {
   STRUCTURED_UAT_PREFERENCE_HOST_ID
 } from './src/components/text/presentation/StructuredWorkspacePlayer.jsx';
 import TextStructuredPlayer from './src/components/text/TextStructuredPlayer.jsx';
+import { useSharedReaderSelectionStore } from './src/components/text/presentation/useSharedReaderSelectionStore.js';
 import {
   JOURNEY_TO_LONDON_CARDS_SPEC,
   createJourneyToLondonFixture,
@@ -376,7 +378,47 @@ function PacketCApp() {
   );
 }
 
-createRoot(document.getElementById('root')).render(<PacketCApp />);
+function SelectionLifecycleProbe() {
+  const [identity, setIdentity] = useState('a');
+  const store = useSharedReaderSelectionStore('DOC_000001:workspace-' + identity);
+  const retained = useRef([]);
+  const actionFor = (cardId, unitNumber, sessionId) => {
+    const unitViewKey = 'unit:' + identity + ':' + unitNumber;
+    const segmentId = 'SEGMENT_00000' + unitNumber;
+    const lookup = {
+      unitByViewKey: new Map([[unitViewKey, { id: 'UNIT_00000' + unitNumber, segments: [{ id: segmentId }] }]]),
+      entryBySegmentId: new Map([[segmentId, { unitViewKey }]])
+    };
+    return { card: { id: cardId }, lookup, unitViewKey, segmentId, activePlaybackSessionId: sessionId };
+  };
+  window.__packetCSelection = {
+    enter: setIdentity,
+    read: () => ({
+      identity,
+      session: store.manualBrowseSessionId,
+      cards: Object.fromEntries(Object.entries(store.byCardId).map(([id, state]) => [
+        id, { anchor: state.manualAnchor?.unitViewKey || null, memory: state.byUnitViewKey }
+      ]))
+    }),
+    select: (cardId, unitNumber, sessionId) => store.selectCardSegment(actionFor(cardId, unitNumber, sessionId)),
+    clearCard: store.clearCardManualSelection,
+    resume: store.resumeViewportFollow,
+    capture: () => {
+      const payload = actionFor('TEXT_000001', 1, 91);
+      retained.current = [
+        () => store.selectCardUnit(payload),
+        () => store.selectCardSegment(payload),
+        () => store.clearCardManualSelection(payload.card.id),
+        store.clearAllManualSelections,
+        store.resumeViewportFollow
+      ];
+    },
+    stale: index => retained.current[index]()
+  };
+  return null;
+}
+
+createRoot(document.getElementById('root')).render(<><PacketCApp /><SelectionLifecycleProbe /></>);
 `;
 
 const [compiledCss, compiledJs] = await Promise.all([
@@ -675,7 +717,7 @@ try {
   // =========================================================================
   // 4B2 INTERNAL ACCEPTANCE GATE — FOCUS MODE (VERTICAL & HORIZONTAL)
   // =========================================================================
-  if (!onlyCHF1 && !onlyCHF2) {
+  if (!onlyCHF1 && !onlyCHF2 && !onlyCHF3) {
   await run('4B2-1: Toolbar exposes Full | Card | Focus | Segment (no visible Part label) & Focus Vertical on full 4/11/37 London', async () => {
     await clickButtonText('Shared UI (Beta)');
     await until('document.querySelector("[data-shared-card-bilingual-toolbar]")', 'Shared toolbar ready');
@@ -1295,7 +1337,7 @@ try {
     // =========================================================================
     // C-HF1 — STABLE SELECTION OWNERSHIP, EXPLICIT MANUAL-FOLLOW & PAUSED CHANNEL
     // =========================================================================
-    if (!onlyCHF2) {
+    if (!onlyCHF2 && !onlyCHF3) {
     await run('C-HF1-1: Isolated UAT — P1 (SC1 SG3, SC2 SG2) & independent C1 selections survive Full/Card/Focus/collapse/layout/visibility/style round-trips', async () => {
       await call('Page.navigate', { url: `${origin}/?host=uat&doc=london` });
       await until('window.__packetC && document.querySelector("[data-structured-workspace-player]")', 'UAT host mounted for C-HF1-1');
@@ -1675,15 +1717,18 @@ try {
         'Main App C1 independent T2 SG2 selection must survive round-trips'
       );
 
-      // Spy on scrollIntoView calls to confirm single automatic scroll owner (0 competing scroll calls while manually pinned!)
+      // Count both native reveal APIs while manual browsing suppresses automatic following.
       await evaluate(`(() => {
         window.__chf1ScrollCalls = 0;
-        const orig = Element.prototype.scrollIntoView;
-        window.__chf1OrigScrollIntoView = orig;
-        Element.prototype.scrollIntoView = function(...args) {
-          window.__chf1ScrollCalls += 1;
-          return orig.apply(this, args);
-        };
+        const APIs = [[Element.prototype, 'scrollIntoView'], [Element.prototype, 'scrollTo'], [window, 'scrollTo']];
+        window.__chf1RestoreScroll = APIs.map(([owner, name]) => {
+          const orig = owner[name];
+          owner[name] = function(...args) {
+            window.__chf1ScrollCalls += 1;
+            return orig.apply(this, args);
+          };
+          return () => { owner[name] = orig; };
+        });
       })()`);
 
       // Simulate Main App playback advancing SG1 -> SG2 -> SG3 AFTER waiting >2,000 ms while manually pinned on SC2 SG2
@@ -1701,8 +1746,7 @@ try {
       assert.equal(mainHeld.focus, p1Sc2Sg2, 'Main App manual selection SC2 SG2 must survive >2000ms + cursor progression');
       assert.equal(mainHeld.scrollCallsWhileManuallyPinned, 0, 'Manually pinned browsing across open Cards must trigger zero competing automatic page scrolls');
 
-      // Restore scrollIntoView
-      await evaluate('if (window.__chf1OrigScrollIntoView) Element.prototype.scrollIntoView = window.__chf1OrigScrollIntoView;');
+      await evaluate('window.__chf1RestoreScroll.forEach(restore => restore())');
 
       // Return to Playing -> restores SC1 SG3
       await click(`[data-shared-card-id="${p1Id}"] [data-study-box-return-to-playing="true"]`);
@@ -1711,6 +1755,18 @@ try {
         await evaluate(`document.querySelector('[data-shared-card-id="${p1Id}"] [data-shared-segment-study-box]').dataset.sharedSegmentFocus`),
         p1Sc1Sg3
       );
+      assert.equal(
+        await evaluate(`document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-segment-study-box]').dataset.sharedSegmentFocus`),
+        c1T2Sg2,
+        'Card Return to Playing preserves the other Card anchor'
+      );
+      await click('[data-text-card-expansion-mode="follow"]');
+      await until('document.querySelectorAll("[data-shared-segment-study-box]").length === 1', 'explicit Follow Playback opens the playing Card only');
+      assert.equal(
+        await evaluate(`document.querySelector('[data-shared-card-id="${p1Id}"] [data-shared-segment-study-box]').dataset.sharedSegmentFocus`),
+        p1Sc1Sg3
+      );
+      await click('[data-text-card-expansion-mode="all"]');
 
       // Pause on EN -> switch to Card Separated to inspect both channels -> verify EN paused only, then ID paused only!
       await click('[data-shared-reader-mode-option="card"]');
@@ -1750,7 +1806,7 @@ try {
     // =========================================================================
     // C-HF2 — SWIPER HORIZONTAL CAROUSEL, SCROLL-DRIVEN VERTICAL FOCUS & A11Y
     // =========================================================================
-    if (!gateCHF1Only && !onlyCHF1) {
+    if (!gateCHF1Only && !onlyCHF1 && !onlyCHF3) {
       await run('C-HF2-1: Horizontal Focus (Swiper React) — First/Middle/Final midpoint centering (<=6px), real mouse drag, peeking neighbors & zero playback', async () => {
         // Verify guardrails on the prior tab and open a clean page target for gesture/scroll accuracy
         if (!onlyCHF2) {
@@ -1974,9 +2030,17 @@ try {
         await click(`[data-shared-card-id="${c1Id}"] [data-shared-focus-rail-unit-id="${c1T1}"]`);
         await click(`[data-shared-card-id="${c1Id}"] [data-shared-focus-rail-unit-id="${c1T3}"]`);
         await setViewport({ width: 390, height: 844, mobile: true });
-        await sleep(260);
         await evaluate(`document.querySelector('[data-shared-card-id="${c1Id}"]').scrollIntoView({ behavior: 'instant', block: 'center' })`);
-        await waitFrames();
+        const mobileTrackSettled = unitId => `(() => {
+          const track = document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-part-track="horizontal"]');
+          const swiper = track?.swiper;
+          const active = swiper?.slides[swiper.activeIndex];
+          if (swiper?.animating || active?.dataset.sharedPartSlideUnitId !== "${unitId}"
+            || active.dataset.sharedPartActive !== 'true' || track.scrollLeft !== 0) return false;
+          const a = active.getBoundingClientRect(), t = track.getBoundingClientRect();
+          return Math.abs((a.left + a.right - t.left - t.right) / 2) <= 6;
+        })()`;
+        await until(mobileTrackSettled(c1T3), 'mobile resized Swiper centers T3 before touch');
 
         // Real mobile touch swipe (Input.dispatchTouchEvent) on 390px emulated viewport: T3 -> T4!
         const mobileBox = await evaluate(`(() => {
@@ -1996,8 +2060,7 @@ try {
         assert.equal(mobileBox.noOverflow, true, 'Mobile 390px Horizontal Focus must have zero page overflow');
 
         await touchSwipe({ startX: mobileBox.startX, startY: mobileBox.y, endX: mobileBox.endX, endY: mobileBox.y });
-        await until(`document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-part-active="true"]').dataset.sharedPartSlideUnitId === "${c1T4}"`, 'Real mobile touch swipe advanced T3 -> T4');
-        await sleep(360);
+        await until(mobileTrackSettled(c1T4), 'real mobile touch swipe centers T4');
         const mobileAfterSwipe = await evaluate(`(() => {
           const track = document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-part-track="horizontal"]');
           const activeSlide = document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-part-slide][data-shared-part-active="true"]');
@@ -2059,10 +2122,15 @@ try {
         assert.equal(beforeScroll.activeUnitId, c1T1);
         assert.ok(beforeScroll.activeOpacity >= 0.99, 'Active Vertical Unit must be at full prominence');
         assert.ok(beforeScroll.neighborOpacity !== null && beforeScroll.neighborOpacity < 0.9, 'Neighbor Vertical Unit must be visually scaled down/quieter');
-        await captureElement(`[data-shared-card-id="${c1Id}"]`, 'chf2-05-vertical-scroll-before.png');
 
         // Dispatch REAL CDP mouseWheel scrolling down through C1 -> active Unit MUST change purely from scroll!
-        await wheelScroll({ x: 640, y: 450, deltaY: 620, steps: 8, stepMs: 40 });
+        const wheelPlan = await evaluate(`(() => {
+          const next = document.querySelector('[data-shared-focus-vertical-unit-id="${ids.units.C1_T2}"]');
+          const rect = next.getBoundingClientRect();
+          return { x: Math.round((rect.left + rect.right) / 2), y: Math.round(window.innerHeight * 0.42),
+            deltaY: Math.max(360, Math.ceil(rect.top - window.innerHeight * 0.42 + 80)) };
+        })()`);
+        await wheelScroll({ ...wheelPlan, steps: 8, stepMs: 40 });
         await until(`document.querySelector('[data-shared-card-id="${c1Id}"] [data-shared-part-active="true"]').dataset.sharedPartFocusedUnitId !== "${c1T1}"`, 'Real mouseWheel scroll changed Vertical Focus active Unit');
         await sleep(320);
 
@@ -2074,11 +2142,11 @@ try {
         assert.ok(afterWheel1.scrollY > beforeScroll.scrollY + 300, 'Ordinary document scrolling must advance freely over Vertical Focus Cards');
         assert.notEqual(afterWheel1.activeUnitId, c1T1, 'Wheel scroll must advance active Unit beyond T1');
         assert.equal(afterWheel1.zeroAudio, true, 'Scroll-driven focus change must trigger zero audio playback');
-        await captureElement(`[data-shared-card-id="${c1Id}"]`, 'chf2-06-vertical-scroll-after.png');
 
         // Continue real wheel scrolling further down to verify ordinary page scrolling reaches C2 cleanly with zero scroll trap!
         const scrollBeforeC2 = await evaluate('window.scrollY');
-        await wheelScroll({ x: 640, y: 450, deltaY: 1400, steps: 10, stepMs: 30 });
+        const distanceToC2 = await evaluate(`document.querySelector('[data-shared-card-id="${c2Id}"]').getBoundingClientRect().top`);
+        await wheelScroll({ x: wheelPlan.x, y: wheelPlan.y, deltaY: Math.max(650, distanceToC2 - 200), steps: 10, stepMs: 30 });
         await sleep(220);
         const reachedC2 = await evaluate(`(() => {
           const c2 = document.querySelector('[data-shared-card-id="${c2Id}"]');
@@ -2090,6 +2158,7 @@ try {
         })()`);
         assert.ok(reachedC2.scrollY > scrollBeforeC2 + 500 && reachedC2.c2VisibleOrNear, 'Ordinary page scrolling must reach lower Cards (C2) with zero nested scroll trap');
         assert.ok(c1T4);
+        await captureElement(`[data-shared-card-id="${c1Id}"]`, 'chf2-06-vertical-scroll-after.png');
       });
 
       await run('C-HF2-4: Oversized bilingual Unit (disposable derived probe) readable with zero clipping in BOTH Horizontal & Vertical Focus + Reduced Motion + joinAfter preview separators', async () => {
@@ -2200,6 +2269,391 @@ try {
     }
   }
 
+  if (!gate4B2Only && !gateCHF1Only && !onlyCHF1 && !onlyCHF2) {
+    const openFocusReader = async (host, orientation = 'vertical', mobile = false) => {
+      const prior = await evaluate('({ dbCalls: window.__packetCDbCalls, errors: window.__packetCErrors, unchanged: window.__packetC.getSnapshotsUnchanged() })');
+      assert.deepEqual(prior, { dbCalls: 0, errors: [], unchanged: true });
+      await openFreshPage();
+      await call('Page.navigate', { url: `${origin}/?host=${host}&doc=london` });
+      await call('Page.bringToFront');
+      await until(`window.__packetC && document.querySelector('[data-packet-c-host="${host}"]')`, 'fresh Reader host');
+      await setViewport(mobile ? { width: 390, height: 844, mobile: true } : { width: 1280, height: 900 });
+      if (host === 'main') await click('[data-main-host-reader="shared"]');
+      else await clickButtonText('Shared UI (Beta)');
+      await click('[data-shared-reader-mode-option="focus"]');
+      await click(`[data-shared-focus-orientation-option="${orientation}-focus"]`);
+      await click(host === 'main' ? '[data-text-card-expansion-mode="all"]' : '[data-shared-card-visibility-option="all"]');
+      await click('[data-shared-card-layout-option="separated"]');
+      const ids = await evaluate('window.__packetC.londonIds');
+      return ids;
+    };
+    const cardSelector = cardId => `[data-shared-card-id="${cardId}"]`;
+    const expressionFor = selector => `document.querySelector(${JSON.stringify(selector)})`;
+    const activeUnit = cardId => `${expressionFor(cardSelector(cardId) + ' [data-shared-part-active="true"]')}?.dataset.sharedPartFocusedUnitId`;
+    const alignInViewport = (unitId, offset = 24) => evaluate(`(() => {
+      const row = document.querySelector('[data-shared-focus-vertical-unit-id="${unitId}"]');
+      window.scrollTo({ top: window.scrollY + row.getBoundingClientRect().top - window.innerHeight * 0.42 - ${offset}, behavior: 'instant' });
+    })()`);
+    const viewportTop = () => evaluate('window.scrollY');
+    const scrollToTop = () => evaluate('window.scrollTo({ top: 0, behavior: "instant" })');
+    const reportProbe = (name, result) => console.log(`MEASURE ${name} ${JSON.stringify(result)}`);
+    const viewportSettled = async () => {
+      let previous = await viewportTop();
+      let stable = 0;
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline) {
+        await sleep(25);
+        const position = await viewportTop();
+        stable = position === previous ? stable + 1 : 0;
+        if (stable === 5) return position;
+        previous = position;
+      }
+      throw new Error('Viewport geometry did not settle');
+    };
+
+    await run('C-HF3-A: Mounted store rejects every stale callback across overlapping A → B → A and separates Card clearing from follow', async () => {
+      const read = () => evaluate('window.__packetCSelection.read()');
+      await evaluate('window.__packetCSelection.select("TEXT_000001", 1, 7)');
+      assert.equal((await read()).session, 7);
+      await evaluate('window.__packetCSelection.capture(); window.__packetCSelection.enter("b")');
+      await until('window.__packetCSelection.read().identity === "b"', 'Workspace B committed');
+      assert.deepEqual(await read(), { identity: 'b', session: null, cards: {} });
+      await evaluate('window.__packetCSelection.select("TEXT_000001", 1, null)');
+      const b = await read();
+      assert.equal(b.cards.TEXT_000001.anchor, 'unit:b:1');
+      assert.equal(b.session, null);
+      for (let index = 0; index < 5; index++) {
+        await evaluate(`window.__packetCSelection.stale(${index})`);
+        await waitFrames();
+        assert.deepEqual(await read(), b, `Workspace B changed after stale action ${index}`);
+      }
+
+      await evaluate('window.__packetCSelection.enter("a")');
+      await until('window.__packetCSelection.read().identity === "a"', 'new Workspace A generation');
+      assert.deepEqual(await read(), { identity: 'a', session: null, cards: {} });
+      await evaluate('window.__packetCSelection.select("TEXT_000001", 2, 8); window.__packetCSelection.select("TEXT_000002", 1, null)');
+      const currentA = await read();
+      for (let index = 0; index < 5; index++) {
+        await evaluate(`window.__packetCSelection.stale(${index})`);
+        await waitFrames();
+        assert.deepEqual(await read(), currentA, `New generation A changed after stale action ${index}`);
+      }
+      await evaluate('window.__packetCSelection.clearCard("TEXT_000001")');
+      const cleared = await read();
+      assert.equal(cleared.cards.TEXT_000001.anchor, null);
+      assert.deepEqual(cleared.cards.TEXT_000001.memory, currentA.cards.TEXT_000001.memory);
+      assert.deepEqual(cleared.cards.TEXT_000002, currentA.cards.TEXT_000002);
+      assert.equal(cleared.session, 8);
+      await evaluate('window.__packetCSelection.resume()');
+      assert.deepEqual(await read(), { ...cleared, session: null });
+    });
+
+    await run('C-HF3-B1: Fresh keyboard scrolling and actual scrollbar dragging drive only the focal Card', async () => {
+      for (const host of ['uat', 'main']) {
+        const ids = await openFocusReader(host);
+        await alignInViewport(ids.units.C1_T2);
+        await evaluate('document.activeElement.blur()');
+        const start = await viewportTop();
+        assert.equal(await evaluate(activeUnit(ids.cards.C1)), ids.units.C1_T1);
+        for (let index = 0; index < 3; index++) {
+          const beforeKey = await viewportTop();
+          await pressKey('ArrowDown', 'ArrowDown', 40);
+          await until(`window.scrollY > ${beforeKey}`, 'ArrowDown scroll started');
+          await viewportSettled();
+        }
+        await until(`${activeUnit(ids.cards.C1)} === "${ids.units.C1_T2}" && window.scrollY > ${start} + 30`, `${host} keyboard-only scroll selects T2`);
+        assert.equal(await evaluate(activeUnit(ids.cards.P1)), ids.units.P1_SC1);
+        reportProbe(host + ' ArrowDown', { scrollDelta: (await viewportTop()) - start, unit: 'C1 T2' });
+      }
+
+      for (const host of ['uat', 'main']) {
+        const ids = await openFocusReader(host);
+        const root = host === 'main' ? '[data-text-structured-player]' : '[data-shared-workspace-id]';
+        const scrollbar = await evaluate(`(() => {
+          const reader = ${expressionFor(root)};
+          reader.classList.add('hf3-test-scrollbar');
+          reader.style.cssText += ';height:610px;overflow-y:scroll;scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:auto';
+          const style = document.createElement('style');
+          style.textContent = '.hf3-test-scrollbar::-webkit-scrollbar{width:22px}.hf3-test-scrollbar::-webkit-scrollbar-track{background:#fff}.hf3-test-scrollbar::-webkit-scrollbar-thumb{background:#111}';
+          document.head.append(style);
+          window.scrollTo({ top: window.scrollY + reader.getBoundingClientRect().top - 50, behavior: 'instant' });
+          const bounds = reader.getBoundingClientRect();
+          const unit = document.querySelector('[data-shared-focus-vertical-unit-id="${ids.units.C1_T2}"]');
+          const targetTop = unit.getBoundingClientRect().top - bounds.top - reader.clientHeight * 0.42 + 45;
+          return {
+            x: Math.round(bounds.right - 10), y: Math.round(bounds.top + 24),
+            drag: Math.round(targetTop * reader.clientHeight / reader.scrollHeight),
+            gutter: reader.offsetWidth - reader.clientWidth
+          };
+        })()`);
+        assert.ok(scrollbar.gutter >= 20 && scrollbar.drag > 0, JSON.stringify({ host, scrollbar }));
+        await mouseDrag({
+          startX: scrollbar.x, endX: scrollbar.x,
+          startY: scrollbar.y, endY: scrollbar.y + scrollbar.drag
+        });
+        await until(`${activeUnit(ids.cards.C1)} === "${ids.units.C1_T2}"`, `${host} scrollbar dragged into C1 T2`);
+        const scrollTop = await evaluate('document.querySelector(".hf3-test-scrollbar").scrollTop');
+        assert.ok(scrollTop > 1000, 'Scrollbar moved the actual Reader scroll container');
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), 0);
+        reportProbe(host + ' scrollbar', { scrollTop, unit: 'C1 T2' });
+      }
+    });
+
+    await run('C-HF3-B2: A touch tap cannot authorize Vertical Focus changes but real touch scrolling can', async () => {
+      for (const host of ['uat', 'main']) {
+        const ids = await openFocusReader(host, 'vertical', true);
+        const root = host === 'main' ? '[data-text-structured-player]' : '[data-shared-workspace-id]';
+        const viewport = host === 'main' ? expressionFor(root) : 'window';
+        const position = `${viewport}.${host === 'main' ? 'scrollTop' : 'scrollY'}`;
+        if (host === 'main') {
+          // Give the standalone Main fixture the bounded scrollport used by the app shell.
+          await evaluate(`(() => {
+            const reader = ${viewport};
+            reader.style.height = 'calc(100dvh - 100px)';
+            window.scrollTo({ top: window.scrollY + reader.getBoundingClientRect().top - 30, behavior: 'instant' });
+          })()`);
+        }
+        const alignForTouch = offset => host !== 'main' ? alignInViewport(ids.units.C1_T2, offset) : evaluate(`(() => {
+          const reader = ${viewport};
+          const unit = document.querySelector('[data-shared-focus-vertical-unit-id="${ids.units.C1_T2}"]');
+          const distance = unit.getBoundingClientRect().top - reader.getBoundingClientRect().top;
+          reader.scrollTo({ top: reader.scrollTop + distance - reader.clientHeight * 0.42 - ${offset}, behavior: 'instant' });
+        })()`);
+        await alignForTouch(90);
+        await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+        const point = await evaluate(`(() => {
+          const reader = ${expressionFor(root)};
+          const point = { x: Math.ceil(reader.getBoundingClientRect().left) + 3, y: 700 };
+          if (!reader.contains(document.elementFromPoint(point.x, point.y))) throw Error('Tap must target Reader padding');
+          return point;
+        })()`);
+        await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+        await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        const tapTop = await evaluate(position);
+        await evaluate(`${viewport}.scrollBy({top: 120, behavior: "instant"})`);
+        await until(`${position} >= ${tapTop} + 100`, 'test-only positioning after tap');
+        await waitFrames();
+        assert.equal(await evaluate(activeUnit(ids.cards.C1)), ids.units.C1_T1);
+        await alignForTouch(65);
+        const beforeSwipe = await evaluate(position);
+        await touchSwipe({ startX: 195, endX: 195, startY: 700, endY: 465, steps: 10, stepMs: 24 });
+        await until(`${activeUnit(ids.cards.C1)} === "${ids.units.C1_T2}" && ${position} > ${beforeSwipe} + 65`, `${host} vertical browser touch scroll selects T2`);
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), 0);
+        reportProbe(host + ' touch scroll', { scrollDelta: (await evaluate(position)) - beforeSwipe, unit: 'C1 T2' });
+        await call('Emulation.setTouchEmulationEnabled', { enabled: false });
+      }
+    });
+
+    const setMainCursor = (ids, unit, segmentNumber = 1, state = 'playing') => evaluate(
+      `window.__packetCMain.setActivePlayback(${JSON.stringify({
+        sessionId: 803, state, cardId: ids.cards[unit.split('_')[0]], unitId: ids.units[unit],
+        segmentId: ids.segmentIdsByUnitKey[unit][segmentNumber - 1], channel: 'text', precision: 'segment'
+      })})`
+    );
+    const startUatCard = cardId => click(cardSelector(cardId) + ' [data-shared-card-play="true"]');
+    const stopUat = async () => {
+      await clickButtonText('Stop');
+      await evaluate('window.__packetC.finishLatestUatEvent("stopped")');
+      await until('document.querySelector("[data-unified-reader]")?.dataset.readerCursorPrecision === "none"', 'isolated session stopped');
+    };
+    const primeWheel = async firstUnitId => {
+      await alignInViewport(firstUnitId, -85);
+      const point = await evaluate(`(() => {
+        const rect = document.querySelector('[data-shared-focus-vertical-unit-id="${firstUnitId}"]').getBoundingClientRect();
+        return { x: Math.round((rect.left + rect.right) / 2), y: Math.round(rect.top + 35) };
+      })()`);
+      const start = await viewportTop();
+      await call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point, button: 'none', buttons: 0 });
+      await call('Input.dispatchMouseEvent', { type: 'mouseWheel', ...point, deltaX: 0, deltaY: 45 });
+      // Main Text's standalone harness can contain wheel chaining when its parent
+      // supplies no fixed height. A real key press also scrolls the page in that case.
+      await evaluate('document.activeElement.blur()');
+      await pressKey('ArrowDown', 'ArrowDown', 40);
+      await until(`window.scrollY > ${start}`, 'genuine input scrolled before automatic reveal');
+      await viewportSettled();
+    };
+
+    await run('C-HF3-B3: Search and playback reveal across multiple Cards preserve existing and unpinned selections in both hosts', async () => {
+      for (const host of ['main', 'uat']) {
+        const ids = await openFocusReader(host);
+        await click('[data-shared-reader-mode-option="segment"]');
+        await click(cardSelector(ids.cards.P1) + ' [data-shared-segment-pill="' + ids.segmentIdsByUnitKey.P1_SC1[2] + '"]');
+        await click('[data-shared-reader-mode-option="focus"]');
+        await primeWheel(ids.units.P1_SC1);
+        assert.equal(await evaluate(activeUnit(ids.cards.P1)), ids.units.P1_SC1);
+        assert.equal(await evaluate(activeUnit(ids.cards.C1)), ids.units.C1_T1);
+
+        if (host === 'main') {
+          const focus = { documentId: ids.documentId, blockId: ids.cards.C2, segmentId: ids.segmentIdsByUnitKey.C2_T4[1], nonce: 3001 };
+          await evaluate(`window.__packetCMain.setFocusTarget(${JSON.stringify(focus)})`);
+        } else {
+          const query = await evaluate(`window.__packetC.londonSpec[3].units[3].segments[1].text`);
+          await evaluate(`(() => {
+            const input = document.querySelector('input[aria-label="Find Sentence"]');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(query)});
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          })()`);
+          await clickButtonText('Find');
+        }
+        await until(`${activeUnit(ids.cards.C2)} === "${ids.units.C2_T4}" && window.scrollY > 1000`, `${host} search reveals C2 T4`);
+        await until(`${activeUnit(ids.cards.C2)} === "${ids.units.C2_T1}"`, `${host} search restores prior C2 selection`);
+        const searchTop = await viewportSettled();
+        assert.equal(await evaluate(activeUnit(ids.cards.P1)), ids.units.P1_SC1);
+        assert.equal(await evaluate(activeUnit(ids.cards.C1)), ids.units.C1_T1);
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), 0);
+
+        // Let the 1,800 ms viewport grace expire after search has settled.
+        // The search consumption timer and scroll completion do not measure that grace.
+        await sleep(1900);
+        await scrollToTop();
+        assert.equal(await viewportSettled(), 0, 'Cold start viewport is at the top');
+        if (host === 'main') await setMainCursor(ids, 'C2_T3');
+        else await startUatCard(ids.cards.C2);
+        const expected = host === 'main' ? ids.units.C2_T3 : ids.units.C2_T1;
+        const segmentId = ids.segmentIdsByUnitKey[host === 'main' ? 'C2_T3' : 'C2_T1'][0];
+        try {
+          await until(`(() => {
+            const target = document.querySelector('[data-text-player-segment="${segmentId}"][data-shared-card-channel="text"]');
+            const rect = target?.getBoundingClientRect();
+            return ${activeUnit(ids.cards.C2)} === "${expected}" && window.scrollY > 1000
+              && rect?.bottom > 0 && rect.top < window.innerHeight;
+          })()`, `${host} playback reveals C2 from above`);
+        } catch (error) {
+          reportProbe(host + ' failed playback reveal', {
+            top: await viewportTop(),
+            visibility: await evaluate('document.visibilityState'),
+            activeUnit: await evaluate(activeUnit(ids.cards.C2)),
+            cardTop: await evaluate(`${expressionFor(cardSelector(ids.cards.C2))}.getBoundingClientRect().top`),
+            playback: await evaluate(`({
+              playing: document.querySelector('[data-unified-reader]')?.dataset.readerCursorSegment,
+              status: ${expressionFor(cardSelector(ids.cards.C2) + ' [data-shared-card-status-pill]')}?.textContent,
+              events: window.__packetC.getPlaybackLog().length
+            })`)
+          });
+          throw error;
+        }
+        const playbackTop = await viewportSettled();
+        assert.equal(await evaluate(activeUnit(ids.cards.P1)), ids.units.P1_SC1);
+        assert.equal(await evaluate(activeUnit(ids.cards.C1)), ids.units.C1_T1);
+        if (host === 'main') await evaluate('window.__packetCMain.setActivePlayback(null)');
+        else await stopUat();
+        await click('[data-shared-reader-mode-option="segment"]');
+        const p1Box = expressionFor(cardSelector(ids.cards.P1) + ' [data-shared-segment-study-box]');
+        const c1Box = expressionFor(cardSelector(ids.cards.C1) + ' [data-shared-segment-study-box]');
+        assert.equal(await evaluate(`${p1Box}.dataset.sharedSegmentFocus`), ids.segmentIdsByUnitKey.P1_SC1[2]);
+        assert.equal(await evaluate(`${c1Box}.dataset.sharedSegmentFocus`), ids.segmentIdsByUnitKey.C1_T1[0]);
+        reportProbe(host + ' programmatic reveal', { searchTop, playbackTop, preserved: ['P1 SC1 SG3', 'C1 T1'] });
+      }
+    });
+
+    const horizontalMetrics = cardId => `(() => {
+      const element = ${expressionFor(cardSelector(cardId) + ' [data-shared-part-track="horizontal"]')};
+      const swiper = element?.swiper;
+      if (!swiper || swiper.destroyed) return null;
+      const slide = swiper.slides[swiper.activeIndex];
+      if (!slide) return null;
+      const active = element.querySelector('[data-shared-part-active="true"]');
+      const trackRect = element.getBoundingClientRect(), slideRect = slide.getBoundingClientRect();
+      return {
+        reactUnit: active?.dataset.sharedPartSlideUnitId,
+        swiperUnit: slide.dataset.sharedPartSlideUnitId,
+        animating: swiper.animating,
+        midpointDeltaPx: Math.round(Math.abs((trackRect.left + trackRect.right - slideRect.left - slideRect.right) / 2) * 10) / 10,
+        scrollLeft: element.scrollLeft,
+        top: trackRect.top,
+        bottom: trackRect.bottom
+      };
+    })()`;
+    const assertCentered = async (cardId, unitId, label) => {
+      const metrics = horizontalMetrics(cardId);
+      await until(`(() => {const m = ${metrics}; return m?.reactUnit === "${unitId}"
+        && m.swiperUnit === "${unitId}" && !m.animating && m.midpointDeltaPx <= 6 && m.scrollLeft === 0;})()`, label);
+      const result = await evaluate(metrics);
+      reportProbe(label, result);
+      return result;
+    };
+    const waitForHorizontalReveal = async (cardId, label) => {
+      await until(`(${horizontalMetrics(cardId)})?.top < window.innerHeight - 80`, label);
+      await viewportSettled();
+    };
+
+    await run('C-HF3-B4: Cold Horizontal playback follow and continuing playback preserve Swiper geometry in both hosts', async () => {
+      for (const host of ['main', 'uat']) {
+        const ids = await openFocusReader(host, 'horizontal');
+        const c1 = ids.cards.C1;
+        const initial = await assertCentered(c1, ids.units.C1_T1, host + ' initial T1');
+        assert.ok(initial.top >= 900, 'Cold C1 track starts below the viewport');
+        if (host === 'main') {
+          await setMainCursor(ids, 'C1_T2');
+          await waitForHorizontalReveal(c1, 'Main reveals playing C1 vertically');
+          await assertCentered(c1, ids.units.C1_T2, 'Main cold playing T2');
+          await setMainCursor(ids, 'C1_T3');
+          await waitForHorizontalReveal(c1, 'Main retains the playing Card in view');
+          await assertCentered(c1, ids.units.C1_T3, 'Main advancing T3');
+          await evaluate('window.__packetCMain.setActivePlayback(null)');
+          assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), 0);
+          continue;
+        }
+
+        const waitForUatSegment = segmentId => until(
+          `document.querySelector('[data-unified-reader]').dataset.readerCursorSegment === "${segmentId}"`, 'isolated playback step'
+        );
+        await startUatCard(c1);
+        await waitForUatSegment(ids.segmentIdsByUnitKey.C1_T1[0]);
+        await waitForHorizontalReveal(c1, 'isolated T1 reveal finished');
+        for (const segmentId of ids.segmentIdsByUnitKey.C1_T1.slice(1)) {
+          await evaluate('window.__packetC.finishLatestUatEvent("played")');
+          await waitForUatSegment(segmentId);
+        }
+        await viewportSettled();
+        await scrollToTop();
+        assert.equal(await viewportSettled(), 0, 'Cold swipe fixture is above C1');
+        assert.ok((await evaluate(horizontalMetrics(c1))).top >= 900);
+        await evaluate('window.__packetC.finishLatestUatEvent("played")');
+        await waitForUatSegment(ids.segmentIdsByUnitKey.C1_T2[0]);
+        await waitForHorizontalReveal(c1, 'isolated reveals the playing Card vertically');
+        await assertCentered(c1, ids.units.C1_T2, 'UAT cold playing T2');
+        for (const segmentId of [...ids.segmentIdsByUnitKey.C1_T2.slice(1), ids.segmentIdsByUnitKey.C1_T3[0]]) {
+          await evaluate('window.__packetC.finishLatestUatEvent("played")');
+          await waitForUatSegment(segmentId);
+        }
+        await waitForHorizontalReveal(c1, 'isolated retains the playing Card in view');
+        await assertCentered(c1, ids.units.C1_T3, 'UAT advancing T3');
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), 7, 'only the intended seven audio steps started');
+        await stopUat();
+      }
+    });
+
+    await run('C-HF3-B5: Genuine keyboard input interrupts reveal, and rapid resize/unmount cannot leave pending carousel work', async () => {
+      for (const host of ['main', 'uat']) {
+        const ids = await openFocusReader(host);
+        if (host === 'main') await setMainCursor(ids, 'C2_T4');
+        else await startUatCard(ids.cards.C2);
+        await until('window.scrollY > 100 && window.scrollY < 2200', `${host} automatic reveal is moving toward C2`);
+        await evaluate('document.activeElement.blur()');
+        await pressKey('ArrowUp', 'ArrowUp', 38);
+        const stoppedAt = await viewportSettled();
+        assert.ok(stoppedAt < 3000, 'actual keyboard input interrupted the programmatic move before it reached C2');
+        assert.ok(await evaluate(`${expressionFor(cardSelector(ids.cards.C2))}.getBoundingClientRect().top > window.innerHeight`));
+        const expectedAudioCalls = host === 'main' ? 0 : 1;
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), expectedAudioCalls);
+        reportProbe(host + ' keyboard interruption', { stoppedAt });
+        if (host === 'main') await evaluate('window.__packetCMain.setActivePlayback(null)');
+        else await stopUat();
+
+        await click('[data-shared-focus-orientation-option="horizontal-focus"]');
+        await click(cardSelector(ids.cards.C1) + ' [data-shared-focus-rail-unit-id="' + ids.units.C1_T4 + '"]');
+        await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+        await click('[data-shared-reader-mode-option="full"]');
+        await until('!document.querySelector("[data-shared-part-track]") && document.querySelector("[data-shared-book-page]")', `${host} horizontal carousels unmounted after resize`);
+        await setViewport({ width: 1280, height: 900, mobile: false });
+        await click('[data-shared-reader-mode-option="focus"]');
+        await assertCentered(ids.cards.C1, ids.units.C1_T4, host + ' remount after pending resize');
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().length'), expectedAudioCalls);
+      }
+    });
+  }
+
   const guardrails = await evaluate(`({
     dbCalls: window.__packetCDbCalls,
     errors: window.__packetCErrors,
@@ -2211,7 +2665,7 @@ try {
 
   const report = {
     status: 'PASS',
-    scope: gate4B2Only ? '4B2-GATE' : gateCHF1Only ? 'C-HF1-GATE' : 'PACKET-C',
+    scope: onlyCHF3 ? 'C-HF3' : gate4B2Only ? '4B2-GATE' : gateCHF1Only ? 'C-HF1-GATE' : 'PACKET-C',
     fixtureSummary,
     checksPassed: results.length,
     results,

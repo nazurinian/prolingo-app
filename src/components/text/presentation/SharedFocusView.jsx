@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Radio } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -468,6 +468,11 @@ export const SharedFocusView = ({
   onPlaySegment
 }) => {
   const effectiveOrientation = partLayout === 'horizontal-focus' ? 'horizontal-focus' : 'vertical-focus';
+  const verticalNavigationRef = useRef(null);
+  const navigateVertically = useCallback(viewKey => {
+    if (viewKey !== selection.selectedUnitViewKey) verticalNavigationRef.current = viewKey;
+    onSelectUnit?.(viewKey);
+  }, [onSelectUnit, selection.selectedUnitViewKey]);
 
   const renderUnitHeader = useCallback(headerProps => (
     <FocusUnitTopHeader
@@ -507,7 +512,7 @@ export const SharedFocusView = ({
         speakerAppearanceMap={speakerAppearanceMap}
         selection={selection}
         orientation={effectiveOrientation}
-        onSelectUnit={onSelectUnit}
+        onSelectUnit={effectiveOrientation === 'vertical-focus' ? navigateVertically : onSelectUnit}
         onFollowAudible={onFollowAudible}
       />
       {effectiveOrientation === 'horizontal-focus' ? (
@@ -544,6 +549,8 @@ export const SharedFocusView = ({
           disabled={disabled}
           selection={selection}
           onSelectUnit={onSelectUnit}
+          onNavigateUnit={navigateVertically}
+          navigationRef={verticalNavigationRef}
           onPlaySegment={onPlaySegment}
           renderUnitHeader={renderUnitHeader}
           isConsecutiveSpeakerTurn={isConsecutiveSpeakerTurn}

@@ -56,6 +56,8 @@ const resetHooks = () => {
 };
 const mockReact = {
   Fragment: Symbol('Fragment'),
+  createContext: value => ({ value }),
+  useContext: context => context.value,
   createElement: (type, props, ...children) => ({
     type,
     props: { ...(props || {}), children: children.length === 1 ? children[0] : children }
@@ -491,6 +493,63 @@ test('buildSharedSegmentRenderFlags styles paused channel strictly on actual pau
   assert.equal(idFlagsWhenIdPaused.dataAttributes['data-shared-segment-paused'], 'true');
   assert.equal(idFlagsWhenIdPaused.dataAttributes['data-shared-segment-selected'], 'true');
   assert.ok(idFlagsWhenIdPaused.className.includes('amber'));
+});
+
+test('selection mutations only affect their current Workspace generation and keep viewport follow explicit', () => {
+  resetHooks();
+  const workspaceA = 'DOC_000001:workspace-a';
+  const workspaceB = 'DOC_000001:workspace-b';
+  const renderStore = key => {
+    hookSlot = 0;
+    const state = selectionStoreHelpers.useSharedReaderSelectionStore(key);
+    if (hookValues[0].workspaceKey === state.workspaceKey && hookValues[0].byCardId !== state.byCardId) {
+      // The real hook retries its render immediately after the render-phase reset.
+      hookSlot = 0;
+      return selectionStoreHelpers.useSharedReaderSelectionStore(key);
+    }
+    return state;
+  };
+  const lookup = utils.buildCardUnitLookup(storyCard);
+  const segmentId = v2.ids.duplicateSeg2Id;
+  const payload = { card: storyCard, lookup, segmentId };
+  const firstA = renderStore(workspaceA);
+  firstA.selectCardSegment({ ...payload, activePlaybackSessionId: 41 });
+  assert.equal(renderStore(workspaceA).manualBrowseSessionId, 41);
+
+  const currentB = renderStore(workspaceB);
+  currentB.selectCardSegment(payload);
+  assert.equal(renderStore(workspaceB).manualBrowseSessionId, null);
+  const staleActions = [
+    () => firstA.selectCardUnit({ ...payload, unitViewKey: lookup.units[0].viewKey, activePlaybackSessionId: 93 }),
+    () => firstA.selectCardSegment({ ...payload, activePlaybackSessionId: 93 }),
+    () => firstA.clearCardManualSelection(storyCard.id),
+    () => firstA.clearAllManualSelections(),
+    () => firstA.resumeViewportFollow()
+  ];
+  const assertStaleActionsAreIgnored = key => {
+    const before = hookValues[0];
+    for (const action of staleActions) {
+      action();
+      assert.equal(hookValues[0], before, 'Stale callback must leave the entire state intact');
+    }
+    assert.equal(renderStore(key).getCardSelectionState(storyCard.id).manualAnchor.segmentId, segmentId);
+  };
+  assertStaleActionsAreIgnored(workspaceB);
+
+  const nextA = renderStore(workspaceA);
+  assert.equal(nextA.manualBrowseSessionId, null);
+  assert.equal(nextA.getCardSelectionState(storyCard.id).manualAnchor, null);
+  nextA.selectCardSegment({ ...payload, activePlaybackSessionId: 42 });
+  const otherCard = { ...storyCard, id: 'TEXT_OTHER' };
+  nextA.selectCardSegment({ ...payload, card: otherCard });
+  assertStaleActionsAreIgnored(workspaceA);
+  nextA.clearCardManualSelection(storyCard.id);
+  const returned = renderStore(workspaceA);
+  assert.equal(returned.getCardSelectionState(storyCard.id).manualAnchor, null);
+  assert.equal(returned.getCardSelectionState(otherCard.id).manualAnchor.segmentId, segmentId);
+  assert.equal(returned.manualBrowseSessionId, 42, 'Clearing one Card must preserve viewport suppression');
+  returned.resumeViewportFollow();
+  assert.equal(renderStore(workspaceA).manualBrowseSessionId, null);
 });
 
 test('useSharedReaderSelectionStore reducers preserve per-Unit memory, empty Units, and preview excerpts respect joinAfter', () => {

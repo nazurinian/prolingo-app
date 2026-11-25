@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { A11y } from 'swiper/modules';
 import 'swiper/css';
@@ -8,13 +8,13 @@ import {
   normalizeTextWorkspaceStyleState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
+import { WorkspaceReaderScrollContext } from './useWorkspaceReaderScroll.js';
 import {
   IDLE_SHARED_CURSOR,
   buildUnitPreviewExcerpt,
   getSharedUnitShortCode,
   getSharedUnitTerms,
   isPrefersReducedMotion,
-  resolveSafeScrollContainer,
   resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
 
@@ -25,12 +25,6 @@ const SWIPER_A11Y_CONFIG = Object.freeze({
   slideRole: 'group',
   scrollOnFocus: false
 });
-
-// Shared timestamp across open Vertical Focus Cards so one Card's programmatic
-// scrollIntoView (from Rail/Prev/Next click) never falsely triggers another
-// open Card's scroll-driven focal-band observer. Cleared immediately on real
-// user wheel or touch input so user gestures always interrupt cleanly.
-let globalProgrammaticVerticalScrollUntil = 0;
 
 const useReducedMotionPreference = () => {
   const [reduced, setReduced] = useState(() => isPrefersReducedMotion());
@@ -97,10 +91,11 @@ export const SharedHorizontalFocusCarousel = ({
   const programmaticTargetRef = useRef(null);
   const draggingRef = useRef(false);
   const dragReleaseTimerRef = useRef(null);
+  const resizeTimerRef = useRef(null);
   const mountedSyncRef = useRef(false);
   const lastTrackWidthRef = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     selectedUnitViewKeyRef.current = selection.selectedUnitViewKey;
     unitsRef.current = units;
     onSelectUnitRef.current = onSelectUnit;
@@ -108,6 +103,7 @@ export const SharedHorizontalFocusCarousel = ({
 
   useEffect(() => () => {
     window.clearTimeout(dragReleaseTimerRef.current);
+    window.clearTimeout(resizeTimerRef.current);
   }, []);
 
   const syncSwiperLayout = useCallback(() => {
@@ -227,8 +223,10 @@ export const SharedHorizontalFocusCarousel = ({
     const nextWidth = swiper.el?.clientWidth || 0;
     if (!nextWidth || Math.abs(nextWidth - lastTrackWidthRef.current) <= 1) return;
     lastTrackWidthRef.current = nextWidth;
-    window.setTimeout(() => {
-      if (!swiper || swiper.destroyed) return;
+    window.clearTimeout(resizeTimerRef.current);
+    resizeTimerRef.current = window.setTimeout(() => {
+      resizeTimerRef.current = null;
+      if (swiper.destroyed || swiperRef.current !== swiper) return;
       const found = unitsRef.current.findIndex(u => u.viewKey === selectedUnitViewKeyRef.current);
       const target = Math.max(0, Math.min(unitsRef.current.length - 1, found >= 0 ? found : swiper.activeIndex));
       swiper.updateSize();
@@ -426,178 +424,67 @@ export const SharedVerticalScrollFocusView = ({
   disabled = false,
   selection,
   onSelectUnit,
+  onNavigateUnit,
+  navigationRef,
   onPlaySegment,
   renderUnitHeader,
   isConsecutiveSpeakerTurn
 }) => {
   const resolvedStyle = normalizeTextWorkspaceStyleState(workspaceStyle);
-  const reducedMotion = useReducedMotionPreference();
+  const scroll = useContext(WorkspaceReaderScrollContext);
   const activeIndex = Math.max(0, Math.min(units.length - 1, selection.selectedUnitIndex >= 0 ? selection.selectedUnitIndex : 0));
   const cardTerms = getSharedUnitTerms(card);
 
   const flowRootRef = useRef(null);
   const unitNodeMapRef = useRef(new Map());
-  const selectedUnitViewKeyRef = useRef(selection.selectedUnitViewKey);
-  const unitsRef = useRef(units);
-  const onSelectUnitRef = useRef(onSelectUnit);
-  const prevSelectedKeyRef = useRef(selection.selectedUnitViewKey);
-  const lastScrollSelectedKeyRef = useRef(null);
-  const programmaticScrollUntilRef = useRef(0);
-  const userHasScrolledRef = useRef(false);
-
-  useEffect(() => {
-    selectedUnitViewKeyRef.current = selection.selectedUnitViewKey;
-    unitsRef.current = units;
-    onSelectUnitRef.current = onSelectUnit;
-  }, [selection.selectedUnitViewKey, units, onSelectUnit]);
-
   const setUnitNode = useCallback((viewKey, node) => {
     if (node) unitNodeMapRef.current.set(viewKey, node);
     else unitNodeMapRef.current.delete(viewKey);
   }, []);
 
-  // Scroll smoothly to the active Unit ONLY on explicit non-scroll selection changes
-  // (e.g., Rail chip, Prev/Next button, neighbor click), never fighting real user scroll.
   useEffect(() => {
-    const prevKey = prevSelectedKeyRef.current;
-    prevSelectedKeyRef.current = selection.selectedUnitViewKey;
-    if (!prevKey || prevKey === selection.selectedUnitViewKey) return;
-    if (lastScrollSelectedKeyRef.current === selection.selectedUnitViewKey) {
-      lastScrollSelectedKeyRef.current = null;
-      return;
-    }
-    if (selection.source !== 'manual') return;
+    const key = selection.selectedUnitViewKey;
+    const requestedKey = navigationRef.current;
+    navigationRef.current = null;
+    if (!requestedKey || requestedKey !== key || selection.source !== 'manual') return undefined;
 
-    const node = unitNodeMapRef.current.get(selection.selectedUnitViewKey);
-    if (!node || typeof node.getBoundingClientRect !== 'function') return;
-    const rect = node.getBoundingClientRect();
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
-    const comfortable = rect.top >= 48 && rect.bottom <= vh - 48;
-    if (!comfortable && typeof node.scrollIntoView === 'function') {
-      const guardUntil = Date.now() + (reducedMotion ? 120 : 560);
-      programmaticScrollUntilRef.current = guardUntil;
-      globalProgrammaticVerticalScrollUntil = Math.max(globalProgrammaticVerticalScrollUntil, guardUntil);
-      node.scrollIntoView({
-        behavior: reducedMotion ? 'auto' : 'smooth',
-        block: rect.height > vh * 0.75 ? 'start' : 'center'
-      });
-    }
-  }, [selection.selectedUnitViewKey, selection.source, reducedMotion]);
+    const target = unitNodeMapRef.current.get(key);
+    if (!target) return undefined;
+    return scroll?.reveal({ target, origin: 'unit', block: 'center' });
+  }, [scroll, navigationRef, selection.selectedUnitViewKey, selection.source]);
 
-  // Single viewport focal-band observer for real scroll/wheel-driven active Unit updates.
-  useEffect(() => {
-    const rootNode = flowRootRef.current;
-    if (!rootNode || typeof window === 'undefined' || units.length <= 1) return undefined;
+  useLayoutEffect(() => () => { navigationRef.current = null; }, [navigationRef]);
 
-    const scrollContainer = resolveSafeScrollContainer(rootNode);
-    const scrollTarget = scrollContainer || window;
-    let rafId = null;
-
-    const evaluateFocalUnit = () => {
-      rafId = null;
-      if (!flowRootRef.current) return;
-      if (!userHasScrolledRef.current) return;
-      const now = Date.now();
-      if (now < programmaticScrollUntilRef.current || now < globalProgrammaticVerticalScrollUntil) return;
-
-      const vpRect = scrollContainer
-        ? scrollContainer.getBoundingClientRect()
-        : { top: 0, bottom: window.innerHeight };
-      const vpHeight = Math.max(1, vpRect.bottom - vpRect.top);
-      const focalY = vpRect.top + vpHeight * 0.42;
-
-      const flowRect = flowRootRef.current.getBoundingClientRect();
-      // Multi-Card non-competition guard: only update this Card when it actually
-      // occupies the reading focal band, so open Cards never fight each other.
-      if (flowRect.bottom < focalY - 64 || flowRect.top > focalY + 64) {
-        return;
-      }
-
-      const currentUnits = unitsRef.current;
-      const atScrollBottom = scrollContainer
-        ? (scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 20)
-        : (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 20);
-      const atScrollTop = scrollContainer
-        ? scrollContainer.scrollTop <= 8
-        : window.scrollY <= 8;
-
-      if (atScrollTop && flowRect.top >= vpRect.top - 40 && flowRect.top <= focalY) {
-        const first = currentUnits[0];
-        if (first && first.viewKey !== selectedUnitViewKeyRef.current) {
-          lastScrollSelectedKeyRef.current = first.viewKey;
-          onSelectUnitRef.current?.(first.viewKey);
-        }
-        return;
-      }
-
-      if (atScrollBottom && flowRect.bottom >= vpRect.bottom - 120 && flowRect.bottom <= vpRect.bottom + 80) {
-        const last = currentUnits[currentUnits.length - 1];
-        if (last && last.viewKey !== selectedUnitViewKeyRef.current) {
-          lastScrollSelectedKeyRef.current = last.viewKey;
-          onSelectUnitRef.current?.(last.viewKey);
-        }
-        return;
-      }
-
-      let bestUnit = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-      let bestCenterDist = Number.POSITIVE_INFINITY;
-
-      for (const unit of currentUnits) {
-        const el = unitNodeMapRef.current.get(unit.viewKey);
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        // Skip units completely outside the viewport
-        if (rect.bottom < vpRect.top || rect.top > vpRect.bottom) continue;
-        const spansFocal = rect.top <= focalY && rect.bottom >= focalY;
-        const edgeDist = spansFocal
-          ? 0
-          : Math.min(Math.abs(rect.top - focalY), Math.abs(rect.bottom - focalY));
-        const centerDist = Math.abs((rect.top + rect.bottom) / 2 - focalY);
-        if (edgeDist < bestScore || (edgeDist === bestScore && centerDist < bestCenterDist)) {
-          bestScore = edgeDist;
-          bestCenterDist = centerDist;
-          bestUnit = unit;
+  useLayoutEffect(() => {
+    const root = flowRootRef.current;
+    if (!root || !scroll || units.length <= 1) return undefined;
+    return scroll.registerVerticalFocus(root, ({ top, bottom, focalY, scrollTop, maxScrollTop }) => {
+      const flowRect = root.getBoundingClientRect();
+      let nearest;
+      if (scrollTop <= 8 && flowRect.top >= top - 40 && flowRect.top <= focalY) {
+        nearest = units[0];
+      } else if (scrollTop >= maxScrollTop - 20 && flowRect.bottom >= bottom - 120 && flowRect.bottom <= bottom + 80) {
+        nearest = units[units.length - 1];
+      } else {
+        let nearestEdge = Infinity;
+        let nearestCenter = Infinity;
+        for (const unit of units) {
+          const rect = unitNodeMapRef.current.get(unit.viewKey)?.getBoundingClientRect();
+          if (!rect || rect.bottom < top || rect.top > bottom) continue;
+          const edge = Math.max(rect.top - focalY, focalY - rect.bottom, 0);
+          const center = Math.abs((rect.top + rect.bottom) / 2 - focalY);
+          if (edge < nearestEdge || (edge === nearestEdge && center < nearestCenter)) {
+            nearest = unit;
+            nearestEdge = edge;
+            nearestCenter = center;
+          }
         }
       }
-
-      if (bestUnit && bestUnit.viewKey !== selectedUnitViewKeyRef.current) {
-        lastScrollSelectedKeyRef.current = bestUnit.viewKey;
-        onSelectUnitRef.current?.(bestUnit.viewKey);
+      if (nearest && nearest.viewKey !== selection.selectedUnitViewKey) {
+        onSelectUnit?.(nearest.viewKey);
       }
-    };
-
-    const scheduleEvaluation = () => {
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(evaluateFocalUnit);
-    };
-
-    const markUserScrollIntent = () => {
-      userHasScrolledRef.current = true;
-      // Real wheel or touch input immediately interrupts programmatic scroll transitions.
-      programmaticScrollUntilRef.current = 0;
-      globalProgrammaticVerticalScrollUntil = 0;
-      scheduleEvaluation();
-    };
-
-    const handleScroll = () => {
-      const now = Date.now();
-      if (now < programmaticScrollUntilRef.current || now < globalProgrammaticVerticalScrollUntil) return;
-      if (!userHasScrolledRef.current) return;
-      scheduleEvaluation();
-    };
-
-    scrollTarget.addEventListener('scroll', handleScroll, { passive: true });
-    scrollTarget.addEventListener('wheel', markUserScrollIntent, { passive: true });
-    scrollTarget.addEventListener('touchstart', markUserScrollIntent, { passive: true });
-
-    return () => {
-      scrollTarget.removeEventListener('scroll', handleScroll);
-      scrollTarget.removeEventListener('wheel', markUserScrollIntent);
-      scrollTarget.removeEventListener('touchstart', markUserScrollIntent);
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
-    };
-  }, [units.length]);
+    });
+  }, [scroll, units, selection.selectedUnitViewKey, onSelectUnit]);
 
   return (
     <div
@@ -679,7 +566,7 @@ export const SharedVerticalScrollFocusView = ({
               {!isSelected && (
                 <button
                   type="button"
-                  onClick={() => onSelectUnit?.(unit.viewKey)}
+                  onClick={() => onNavigateUnit?.(unit.viewKey)}
                   data-shared-part-focus={unit.viewKey}
                   data-shared-part-focus-unit-id={unit.id || undefined}
                   aria-label={`Focus ${getSharedUnitShortCode(unit, unitIndex)}${speakerInfo ? ` ${speakerInfo.displayName}` : ''}`}
@@ -709,7 +596,7 @@ export const SharedVerticalScrollFocusView = ({
             ) : (
               <div
                 role="presentation"
-                onClick={() => onSelectUnit?.(unit.viewKey)}
+                onClick={() => onNavigateUnit?.(unit.viewKey)}
                 className="cursor-pointer"
               >
                 <div inert="" aria-hidden="true" className="pointer-events-none">
