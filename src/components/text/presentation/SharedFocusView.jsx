@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Radio } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -7,21 +7,17 @@ import {
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import {
+  SharedHorizontalFocusCarousel,
+  SharedVerticalScrollFocusView
+} from './SharedFocusCarousel.jsx';
+import {
   IDLE_SHARED_CURSOR,
-  buildUnitPreviewExcerpt,
   getSharedUnitHeading,
   getSharedUnitShortCode,
   getSharedUnitTerms,
-  isPrefersReducedMotion,
   resolveTurnSpeakerPresentation,
   stepCardUnitViewKey
 } from './sharedCardPresentationUtils.js';
-
-const escapeSelectorValue = value => {
-  const raw = String(value ?? '');
-  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(raw);
-  return raw.replace(/["\\]/g, '\\$&');
-};
 
 const isConsecutiveSpeakerTurn = (units, unitIndex, speakerAppearanceMap) => {
   const unit = units[unitIndex];
@@ -447,427 +443,11 @@ const FocusSingleUnitView = ({
 };
 
 /**
- * Vertical Focus View (4B2):
- * Active Unit at full prominence and adaptive natural height (no nested vertical scroll trap),
- * with smaller quieter Previous / Next neighbor previews that step focus silently on click.
- */
-const FocusVerticalView = ({
-  card,
-  units,
-  workspace,
-  speakerAppearanceMap,
-  bilingualLayout,
-  workspaceStyle,
-  playbackCursor,
-  focusSegmentId,
-  playableSegmentIds,
-  audioCoverageMap,
-  disabled,
-  selection,
-  onSelectUnit,
-  onPlaySegment
-}) => {
-  const resolvedStyle = normalizeTextWorkspaceStyleState(workspaceStyle);
-  const idx = Math.max(0, selection.selectedUnitIndex);
-  const prevUnit = idx > 0 ? units[idx - 1] : null;
-  const currentUnit = units[idx];
-  const nextUnit = idx < units.length - 1 ? units[idx + 1] : null;
-  const cardTerms = getSharedUnitTerms(card);
-
-  const activeStageRef = useRef(null);
-  const prevSelectedKeyRef = useRef(selection.selectedUnitViewKey);
-
-  useEffect(() => {
-    const prevKey = prevSelectedKeyRef.current;
-    prevSelectedKeyRef.current = selection.selectedUnitViewKey;
-    if (!prevKey || prevKey === selection.selectedUnitViewKey) return;
-    if (selection.source !== 'manual') return;
-    const node = activeStageRef.current;
-    if (!node || typeof node.getBoundingClientRect !== 'function') return;
-    const rect = node.getBoundingClientRect();
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 900;
-    const comfortable = rect.top >= 48 && rect.bottom <= vh - 48;
-    if (!comfortable && typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({
-        behavior: isPrefersReducedMotion() ? 'auto' : 'smooth',
-        block: 'nearest'
-      });
-    }
-  }, [selection.selectedUnitViewKey, selection.source]);
-
-  const renderNeighborPreview = ({ unit, unitIndex, roleLabel, testRole }) => {
-    const isAudible = unit.viewKey === selection.audibleUnitViewKey;
-    const isTurn = unit.kind === 'turn';
-    const speakerInfo = isTurn ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap }) : null;
-    const segCount = unit.segments?.length || 0;
-    const excerpt = buildUnitPreviewExcerpt(unit, bilingualLayout, 150);
-    const accentBorder = resolvedStyle.showAccents && isTurn
-      ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}`
-      : resolvedStyle.showAccents && !isTurn
-        ? 'border-l-4 border-l-teal-400/50 dark:border-l-teal-600/50'
-        : '';
-
-    return (
-      <div
-        key={unit.viewKey}
-        data-shared-part-neighbor={testRole}
-        data-shared-focus-preview={testRole}
-        data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
-        className="px-1.5 sm:px-5"
-      >
-        <button
-          type="button"
-          onClick={() => onSelectUnit?.(unit.viewKey)}
-          data-shared-part-focus={unit.viewKey}
-          aria-label={`Focus ${roleLabel.toLowerCase()} ${getSharedUnitTerms(unit).lower}: ${getSharedUnitShortCode(unit, unitIndex)}${speakerInfo ? ` ${speakerInfo.displayName}` : ''}`}
-          className={`w-full text-left rounded-xl border ${accentBorder} px-3.5 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 motion-reduce:transition-none scale-[0.985] hover:scale-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-            isAudible
-              ? 'border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/35 dark:bg-indigo-950/25 opacity-95 hover:opacity-100'
-              : 'border-slate-200/80 dark:border-slate-800/90 bg-slate-50/85 dark:bg-slate-900/55 opacity-75 hover:opacity-100 hover:border-indigo-300/80 dark:hover:border-indigo-700/80'
-          }`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-            <FocusUnitTopHeader
-              unit={unit}
-              unitIndex={unitIndex}
-              totalUnits={units.length}
-              speakerAppearanceMap={speakerAppearanceMap}
-              rolePrefix={roleLabel}
-              segCount={segCount}
-              isAudible={isAudible}
-              isRepeatedSpeaker={isConsecutiveSpeakerTurn(units, unitIndex, speakerAppearanceMap)}
-              showSpeakerInHeader={isTurn}
-            />
-            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 shrink-0">
-              View {getSharedUnitShortCode(unit, unitIndex)}
-            </span>
-          </div>
-          <p className="text-xs sm:text-[13px] leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-2 break-words">
-            {excerpt || `Empty ${getSharedUnitTerms(unit).lower} — no sentences yet.`}
-          </p>
-        </button>
-      </div>
-    );
-  };
-
-  const currentAudible = currentUnit.viewKey === selection.audibleUnitViewKey;
-  const currentIsTurn = currentUnit.kind === 'turn';
-  const currentSpeaker = currentIsTurn
-    ? resolveTurnSpeakerPresentation({ unit: currentUnit, appearanceMap: speakerAppearanceMap })
-    : null;
-
-  return (
-    <div
-      className="space-y-3"
-      data-shared-part-layout="vertical-focus"
-      data-shared-focus-orientation="vertical-focus"
-    >
-      {prevUnit ? (
-        renderNeighborPreview({ unit: prevUnit, unitIndex: idx - 1, roleLabel: 'Previous', testRole: 'previous' })
-      ) : (
-        <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1 text-left" data-shared-part-boundary="start">
-          Start of {cardTerms.cardLower} · {getSharedUnitShortCode(currentUnit, 0)} of {units.length}
-        </p>
-      )}
-
-      <div
-        ref={activeStageRef}
-        data-shared-part-focused={currentUnit.viewKey}
-        data-shared-part-focused-unit-id={currentUnit.id || undefined}
-        data-shared-part-active="true"
-        data-shared-part-audible={currentAudible ? 'true' : undefined}
-        data-shared-turn-speaker-palette={currentSpeaker?.palette?.id || undefined}
-        className={`rounded-2xl border-2 p-4 sm:p-6 shadow-md transition-all duration-200 motion-reduce:transition-none ${
-          currentAudible
-            ? 'border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 ring-2 ring-indigo-500/15'
-            : 'border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 ring-1 ring-indigo-400/15'
-        }`}
-      >
-        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 dark:border-slate-800/80">
-          <FocusUnitTopHeader
-            unit={currentUnit}
-            unitIndex={idx}
-            totalUnits={units.length}
-            speakerAppearanceMap={speakerAppearanceMap}
-            rolePrefix="Focused"
-            segCount={currentUnit.segments?.length || 0}
-            isAudible={currentAudible}
-            isRepeatedSpeaker={isConsecutiveSpeakerTurn(units, idx, speakerAppearanceMap)}
-            emphasize
-          />
-        </div>
-        <SharedBilingualUnitsBody
-          card={card}
-          unitsOverride={[currentUnit]}
-          workspace={workspace}
-          speakerAppearanceMap={speakerAppearanceMap}
-          bilingualLayout={bilingualLayout}
-          workspaceStyle={resolvedStyle}
-          playbackCursor={playbackCursor}
-          focusSegmentId={focusSegmentId}
-          playableSegmentIds={playableSegmentIds}
-          audioCoverageMap={audioCoverageMap}
-          disabled={disabled}
-          forceSectionHeaders={currentIsTurn}
-          onPlaySegment={onPlaySegment}
-        />
-      </div>
-
-      {nextUnit ? (
-        renderNeighborPreview({ unit: nextUnit, unitIndex: idx + 1, roleLabel: 'Next', testRole: 'next' })
-      ) : (
-        <p className="text-xs italic text-slate-400 dark:text-slate-500 px-1 text-left" data-shared-part-boundary="end">
-          End of {cardTerms.cardLower} · {getSharedUnitShortCode(currentUnit, units.length - 1)} of {units.length}
-        </p>
-      )}
-    </div>
-  );
-};
-
-/**
- * Horizontal Focus View (4B2):
- * Native CSS Scroll Snap carousel inspired by Expo Slider (centered active Unit, peeking
- * neighbor slides with subtle scale/opacity, dynamic active height without clipping or
- * vertical void inflation, touch swipe momentum, keyboard & button controls, zero page overflow).
- */
-const FocusHorizontalView = ({
-  card,
-  units,
-  workspace,
-  speakerAppearanceMap,
-  bilingualLayout,
-  workspaceStyle,
-  playbackCursor,
-  focusSegmentId,
-  playableSegmentIds,
-  audioCoverageMap,
-  disabled,
-  selection,
-  onSelectUnit,
-  onPlaySegment
-}) => {
-  const resolvedStyle = normalizeTextWorkspaceStyleState(workspaceStyle);
-  const trackRef = useRef(null);
-  const programmaticScrollRef = useRef(false);
-  const swipeTimerRef = useRef(null);
-  const settleResetTimerRef = useRef(null);
-  const mountedTrackRef = useRef(false);
-
-  const selectedUnitViewKeyRef = useRef(selection.selectedUnitViewKey);
-
-  const centerTrackOnUnit = useCallback((unitViewKey, { instant = false } = {}) => {
-    const track = trackRef.current;
-    if (!track || !unitViewKey) return;
-    const escaped = escapeSelectorValue(unitViewKey);
-    const slide = track.querySelector(`[data-shared-part-slide="${escaped}"]`);
-    if (!slide) return;
-    const maxScrollLeft = Math.max(0, track.scrollWidth - track.clientWidth);
-    const rawTargetLeft = Math.round(slide.offsetLeft - (track.clientWidth - slide.offsetWidth) / 2);
-    const targetLeft = Math.min(maxScrollLeft, Math.max(0, rawTargetLeft));
-    if (Math.abs(track.scrollLeft - targetLeft) <= 2) return;
-    programmaticScrollRef.current = true;
-    window.clearTimeout(settleResetTimerRef.current);
-    if (instant) {
-      const prevSnap = track.style.scrollSnapType;
-      track.style.scrollSnapType = 'none';
-      if (typeof track.scrollTo === 'function') {
-        track.scrollTo({ left: targetLeft, behavior: 'instant' });
-      } else {
-        track.scrollLeft = targetLeft;
-      }
-      void track.offsetWidth;
-      track.style.scrollSnapType = prevSnap;
-    } else if (typeof track.scrollTo === 'function') {
-      track.scrollTo({ left: targetLeft, behavior: 'smooth' });
-    } else {
-      track.scrollLeft = targetLeft;
-    }
-    settleResetTimerRef.current = window.setTimeout(() => {
-      programmaticScrollRef.current = false;
-    }, instant ? 120 : 420);
-  }, []);
-
-  useEffect(() => {
-    selectedUnitViewKeyRef.current = selection.selectedUnitViewKey;
-    const isInitialMount = !mountedTrackRef.current;
-    mountedTrackRef.current = true;
-    const instant = isInitialMount || isPrefersReducedMotion();
-    centerTrackOnUnit(selection.selectedUnitViewKey, { instant });
-    if (isInitialMount && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-      const frame = window.requestAnimationFrame(() => {
-        centerTrackOnUnit(selectedUnitViewKeyRef.current, { instant: true });
-      });
-      return () => window.cancelAnimationFrame(frame);
-    }
-    return undefined;
-  }, [selection.selectedUnitViewKey, units.length, centerTrackOnUnit]);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track || typeof ResizeObserver !== 'function') return undefined;
-    const observer = new ResizeObserver(() => {
-      centerTrackOnUnit(selectedUnitViewKeyRef.current, { instant: true });
-    });
-    observer.observe(track);
-    return () => observer.disconnect();
-  }, [centerTrackOnUnit]);
-
-  useEffect(() => () => {
-    window.clearTimeout(swipeTimerRef.current);
-    window.clearTimeout(settleResetTimerRef.current);
-  }, []);
-
-  const markManualTrackGesture = useCallback(() => {
-    programmaticScrollRef.current = false;
-    window.clearTimeout(settleResetTimerRef.current);
-  }, []);
-
-  const handleTrackScroll = useCallback(() => {
-    if (programmaticScrollRef.current || !trackRef.current || !units.length) return;
-    window.clearTimeout(swipeTimerRef.current);
-    swipeTimerRef.current = window.setTimeout(() => {
-      const track = trackRef.current;
-      if (!track || programmaticScrollRef.current) return;
-      const viewportCenter = (track.scrollLeft || 0) + (track.clientWidth || 0) / 2;
-      let nearest = units[0];
-      let nearestDist = Number.POSITIVE_INFINITY;
-      for (const unit of units) {
-        const slide = track.querySelector(`[data-shared-part-slide="${escapeSelectorValue(unit.viewKey)}"]`);
-        if (!slide) continue;
-        const slideCenter = slide.offsetLeft + slide.offsetWidth / 2;
-        const dist = Math.abs(slideCenter - viewportCenter);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearest = unit;
-        }
-      }
-      if (nearest?.viewKey && nearest.viewKey !== selection.selectedUnitViewKey) {
-        onSelectUnit?.(nearest.viewKey);
-      }
-    }, 90);
-  }, [units, selection.selectedUnitViewKey, onSelectUnit]);
-
-  return (
-    <div className="relative overflow-x-hidden -mx-1 px-1" data-shared-focus-horizontal-shell="true">
-      <div
-        ref={trackRef}
-        onTouchStart={markManualTrackGesture}
-        onPointerDown={markManualTrackGesture}
-        onWheel={markManualTrackGesture}
-        onScroll={handleTrackScroll}
-        data-shared-part-layout="horizontal-focus"
-        data-shared-focus-orientation="horizontal-focus"
-        data-shared-part-track="horizontal"
-        aria-label={`Horizontal ${getSharedUnitTerms(card).plural} focus carousel`}
-        className="relative flex items-start gap-3 sm:gap-4 overflow-x-auto overflow-y-visible snap-x snap-proximity overscroll-x-contain custom-scrollbar pb-2.5 px-3 sm:px-8"
-      >
-        {units.map((unit, unitIndex) => {
-          const isSelected = unit.viewKey === selection.selectedUnitViewKey;
-          const isAudible = unit.viewKey === selection.audibleUnitViewKey;
-          const segCount = unit.segments?.length || 0;
-          const isTurn = unit.kind === 'turn';
-          const speakerInfo = isTurn
-            ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
-            : null;
-          const repeated = isConsecutiveSpeakerTurn(units, unitIndex, speakerAppearanceMap);
-          const excerpt = !isSelected ? buildUnitPreviewExcerpt(unit, bilingualLayout, 180) : '';
-          const peekAccentBorder = !isSelected && resolvedStyle.showAccents
-            ? (isTurn
-                ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}`
-                : 'border-l-4 border-l-teal-400/55 dark:border-l-teal-600/55')
-            : '';
-
-          return (
-            <div
-              key={unit.viewKey}
-              data-shared-part-slide={unit.viewKey}
-              data-shared-part-slide-unit-id={unit.id || undefined}
-              data-shared-part-focused={isSelected ? unit.viewKey : undefined}
-              data-shared-part-focused-unit-id={isSelected ? (unit.id || undefined) : undefined}
-              data-shared-part-active={isSelected ? 'true' : undefined}
-              data-shared-part-audible={isAudible ? 'true' : undefined}
-              data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
-              className={`w-[90%] min-w-[90%] sm:w-[86%] sm:min-w-[86%] shrink-0 snap-center snap-always rounded-2xl border ${peekAccentBorder} transition-all duration-200 ease-out motion-reduce:transition-none ${
-                isSelected
-                  ? (isAudible
-                      ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 scale-100 opacity-100 z-10 p-4 sm:p-6'
-                      : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-md ring-1 ring-indigo-400/15 scale-100 opacity-100 z-10 p-4 sm:p-6')
-                  : 'border-slate-200/85 dark:border-slate-800 bg-slate-50/85 dark:bg-slate-900/55 scale-[0.95] opacity-70 hover:opacity-95 p-3.5 sm:p-5'
-              }`}
-            >
-              {isSelected ? (
-                <>
-                  <div className="mb-3.5 pb-2.5 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    <FocusUnitTopHeader
-                      unit={unit}
-                      unitIndex={unitIndex}
-                      totalUnits={units.length}
-                      speakerAppearanceMap={speakerAppearanceMap}
-                      rolePrefix="Focused"
-                      segCount={segCount}
-                      isAudible={isAudible}
-                      isRepeatedSpeaker={repeated}
-                      emphasize
-                    />
-                  </div>
-                  <SharedBilingualUnitsBody
-                    card={card}
-                    unitsOverride={[unit]}
-                    workspace={workspace}
-                    speakerAppearanceMap={speakerAppearanceMap}
-                    bilingualLayout={bilingualLayout}
-                    workspaceStyle={resolvedStyle}
-                    playbackCursor={playbackCursor}
-                    focusSegmentId={focusSegmentId}
-                    playableSegmentIds={playableSegmentIds}
-                    audioCoverageMap={audioCoverageMap}
-                    disabled={disabled}
-                    forceSectionHeaders={isTurn}
-                    onPlaySegment={onPlaySegment}
-                  />
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onSelectUnit?.(unit.viewKey)}
-                  data-shared-part-focus={unit.viewKey}
-                  data-shared-part-focus-unit-id={unit.id || undefined}
-                  data-shared-focus-peek="true"
-                  aria-label={`Focus ${getSharedUnitShortCode(unit, unitIndex)}${speakerInfo ? ` ${speakerInfo.displayName}` : ''}`}
-                  className="w-full text-left space-y-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xl"
-                >
-                  <div className="pb-2 border-b border-slate-200/70 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                    <FocusUnitTopHeader
-                      unit={unit}
-                      unitIndex={unitIndex}
-                      totalUnits={units.length}
-                      speakerAppearanceMap={speakerAppearanceMap}
-                      segCount={segCount}
-                      isAudible={isAudible}
-                      isRepeatedSpeaker={repeated}
-                      showSpeakerInHeader={isTurn}
-                    />
-                    <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 shrink-0">
-                      Focus
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-sm leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-4 break-words">
-                    {excerpt || `Empty ${getSharedUnitTerms(unit).lower} — no sentences yet.`}
-                  </p>
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-/**
- * 4B2 Focus Mode Surface: displays one active Content Unit (Paragraph Section or
- * Conversation Turn) per expanded Card with Vertical or Horizontal focus navigation.
- * Single-Unit Cards render cleanly without redundant carousel chrome.
+ * 4B2 / C-HF2 Focus Mode Surface: displays one active Content Unit (Paragraph Section
+ * or Conversation Turn) per expanded Card with:
+ * - Horizontal Focus: Swiper React centered carousel (`SharedHorizontalFocusCarousel`).
+ * - Vertical Focus: Document-flow scroll-driven prominence (`SharedVerticalScrollFocusView`).
+ * - Single-Unit Cards bypass all carousel/scroll mechanics completely.
  */
 export const SharedFocusView = ({
   card,
@@ -888,6 +468,13 @@ export const SharedFocusView = ({
   onPlaySegment
 }) => {
   const effectiveOrientation = partLayout === 'horizontal-focus' ? 'horizontal-focus' : 'vertical-focus';
+
+  const renderUnitHeader = useCallback(headerProps => (
+    <FocusUnitTopHeader
+      speakerAppearanceMap={speakerAppearanceMap}
+      {...headerProps}
+    />
+  ), [speakerAppearanceMap]);
 
   if (units.length === 1) {
     return (
@@ -924,7 +511,7 @@ export const SharedFocusView = ({
         onFollowAudible={onFollowAudible}
       />
       {effectiveOrientation === 'horizontal-focus' ? (
-        <FocusHorizontalView
+        <SharedHorizontalFocusCarousel
           card={card}
           units={units}
           workspace={workspace}
@@ -939,9 +526,11 @@ export const SharedFocusView = ({
           selection={selection}
           onSelectUnit={onSelectUnit}
           onPlaySegment={onPlaySegment}
+          renderUnitHeader={renderUnitHeader}
+          isConsecutiveSpeakerTurn={isConsecutiveSpeakerTurn}
         />
       ) : (
-        <FocusVerticalView
+        <SharedVerticalScrollFocusView
           card={card}
           units={units}
           workspace={workspace}
@@ -956,6 +545,8 @@ export const SharedFocusView = ({
           selection={selection}
           onSelectUnit={onSelectUnit}
           onPlaySegment={onPlaySegment}
+          renderUnitHeader={renderUnitHeader}
+          isConsecutiveSpeakerTurn={isConsecutiveSpeakerTurn}
         />
       )}
     </div>

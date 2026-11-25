@@ -91,6 +91,13 @@ const loadModule = absPath => {
       return mockReact;
     }
     if (specifier === 'lucide-react') return fakeIcons;
+    if (specifier.endsWith('.css') || specifier.startsWith('swiper/css')) return {};
+    if (specifier === 'swiper/modules') return { A11y: {} };
+    if (specifier === 'swiper/react') {
+      const Swiper = ({ children, ...rest }) => mockReact.createElement('div', rest, children);
+      const SwiperSlide = ({ children, ...rest }) => mockReact.createElement('div', rest, children);
+      return { Swiper, SwiperSlide };
+    }
     const base = path.dirname(normalized);
     for (const candidate of [specifier, `${specifier}.js`, `${specifier}.jsx`]) {
       const target = path.resolve(base, candidate);
@@ -144,6 +151,9 @@ const SharedBilingualLayoutToolbar = loadModule(
   path.join(root, 'src/components/text/presentation/SharedBilingualLayoutToolbar.jsx')
 ).default;
 const utils = loadModule(path.join(root, 'src/components/text/presentation/sharedCardPresentationUtils.js'));
+const selectionStoreHelpers = loadModule(
+  path.join(root, 'src/components/text/presentation/useSharedReaderSelectionStore.js')
+);
 
 let passed = 0;
 const test = (name, fn) => {
@@ -211,11 +221,12 @@ test('buildCardUnitLookup and Prev/Next step helpers preserve empty Section and 
   assert.equal(v1Lookup.units[0].identitySource, 'v1-paragraph-compat');
 });
 
-test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segment Audio, Cached Full Card, and Workspace isolation', () => {
+test('resolveEffectiveCardSelection enforces explicit manual-follow policy, transient search restoration, deleted-segment recovery, empty units, Full Card honesty, and Workspace isolation', () => {
   const lookup = utils.buildCardUnitLookup(storyCard);
   const s1ViewKey = lookup.units[0].viewKey;
   const s2ViewKey = lookup.units[1].viewKey;
   const s3EmptyViewKey = lookup.units[2].viewKey;
+  const wsKey = `${v2.ids.documentId}:uid`;
 
   const playingS1Cursor = {
     sessionId: 7,
@@ -226,7 +237,13 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
     channel: 'text'
   };
 
-  // Tier 1: Search focus wins over playing cursor and manual anchor
+  // Tier 1: Transient Search focus wins while active WITHOUT destroying prior manualAnchor
+  const priorManualAnchor = {
+    workspaceKey: wsKey,
+    unitViewKey: s2ViewKey,
+    segmentId: v2.ids.duplicateSeg2Id,
+    pinnedManual: true
+  };
   const searchSel = utils.resolveEffectiveCardSelection({
     card: storyCard,
     lookup,
@@ -238,14 +255,9 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
       nonce: 11
     },
     workspaceId: v2.ids.documentId,
-    workspaceKey: `${v2.ids.documentId}:uid`,
-    manualAnchor: {
-      workspaceKey: `${v2.ids.documentId}:uid`,
-      unitViewKey: s3EmptyViewKey,
-      segmentId: v2.ids.longSegId
-    },
-    dismissedFocusNonce: null,
-    manualGraceActive: true
+    workspaceKey: wsKey,
+    manualAnchor: priorManualAnchor,
+    dismissedFocusNonce: null
   });
   assert.equal(searchSel.source, 'search');
   assert.equal(searchSel.selectedUnitViewKey, s2ViewKey);
@@ -253,8 +265,23 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
   assert.equal(searchSel.audibleUnitViewKey, s1ViewKey);
   assert.equal(searchSel.unitDivergedFromAudible, true);
 
-  // Tier 2: Active manual grace holds Section 3 even while Section 1 audio is playing
-  const graceSel = utils.resolveEffectiveCardSelection({
+  // After search reveal is consumed (focusTarget becomes null), prior manual selection is restored intact!
+  const restoredAfterSearch = utils.resolveEffectiveCardSelection({
+    card: storyCard,
+    lookup,
+    cursor: playingS1Cursor,
+    focusTarget: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    manualAnchor: priorManualAnchor,
+    dismissedFocusNonce: null
+  });
+  assert.equal(restoredAfterSearch.source, 'manual');
+  assert.equal(restoredAfterSearch.selectedUnitViewKey, s2ViewKey);
+  assert.equal(restoredAfterSearch.selectedSegmentId, v2.ids.duplicateSeg2Id);
+
+  // Tier 2: Empty Unit manual selection NEVER borrows another Unit's Segment and flags divergence from playing audio
+  const emptyUnitManualSel = utils.resolveEffectiveCardSelection({
     card: storyCard,
     lookup,
     cursor: playingS1Cursor,
@@ -265,58 +292,95 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
       nonce: 11
     },
     workspaceId: v2.ids.documentId,
-    workspaceKey: `${v2.ids.documentId}:uid`,
+    workspaceKey: wsKey,
     manualAnchor: {
-      workspaceKey: `${v2.ids.documentId}:uid`,
+      workspaceKey: wsKey,
       unitViewKey: s3EmptyViewKey,
       segmentId: null,
-      playingKeyAtManual: '7:' + v2.ids.longSegId
+      pinnedManual: true
     },
-    dismissedFocusNonce: 11,
-    manualGraceActive: true
+    dismissedFocusNonce: 11
   });
-  assert.equal(graceSel.source, 'manual');
-  assert.equal(graceSel.selectedUnitViewKey, s3EmptyViewKey);
-  assert.equal(graceSel.unitDivergedFromAudible, true);
+  assert.equal(emptyUnitManualSel.source, 'manual');
+  assert.equal(emptyUnitManualSel.selectedUnitViewKey, s3EmptyViewKey);
+  assert.equal(emptyUnitManualSel.selectedSegmentId, null, 'Empty Unit must never borrow another Unit segment');
+  assert.equal(emptyUnitManualSel.unitDivergedFromAudible, true);
+  assert.equal(emptyUnitManualSel.segmentDivergedFromAudible, true);
 
-  // Same segment still held if user browsed away from it without changing grace vs song step
-  const sameSongHoldSel = utils.resolveEffectiveCardSelection({
+  // Explicit manual-follow policy: Playback advancing to a DIFFERENT Segment (even with manualGraceActive=false)
+  // MUST NOT steal the user's manual selection!
+  const advancingAudioHeldSel = utils.resolveEffectiveCardSelection({
     card: storyCard,
     lookup,
-    cursor: playingS1Cursor,
+    cursor: { ...playingS1Cursor, segmentId: v2.ids.duplicateSeg2Id },
     workspaceId: v2.ids.documentId,
-    workspaceKey: `${v2.ids.documentId}:uid`,
+    workspaceKey: wsKey,
     manualAnchor: {
-      workspaceKey: `${v2.ids.documentId}:uid`,
-      unitViewKey: s2ViewKey,
-      segmentId: v2.ids.duplicateSeg2Id,
-      playingKeyAtManual: '7:' + v2.ids.longSegId
+      workspaceKey: wsKey,
+      unitViewKey: s1ViewKey,
+      segmentId: v2.ids.longSegId,
+      pinnedManual: true
     },
     manualGraceActive: false
   });
-  assert.equal(sameSongHoldSel.source, 'manual');
-  assert.equal(sameSongHoldSel.selectedUnitViewKey, s2ViewKey);
-  assert.equal(sameSongHoldSel.selectedSegmentId, v2.ids.duplicateSeg2Id);
+  assert.equal(advancingAudioHeldSel.source, 'manual', 'Advancing audio must NEVER override explicit manual selection');
+  assert.equal(advancingAudioHeldSel.selectedUnitViewKey, s1ViewKey);
+  assert.equal(advancingAudioHeldSel.selectedSegmentId, v2.ids.longSegId);
+  assert.equal(advancingAudioHeldSel.audibleUnitViewKey, s2ViewKey);
+  assert.equal(advancingAudioHeldSel.audibleSegmentId, v2.ids.duplicateSeg2Id);
+  assert.equal(advancingAudioHeldSel.unitDivergedFromAudible, true);
+  assert.equal(advancingAudioHeldSel.segmentDivergedFromAudible, true);
 
-  // Tier 3: Audio advances to next Segment after grace expires -> follows active segment
+  // Tier 3: Explicit Return to Playing (manualAnchor cleared to null) immediately resumes following audible Segment
   const followedSel = utils.resolveEffectiveCardSelection({
     card: storyCard,
     lookup,
     cursor: { ...playingS1Cursor, segmentId: v2.ids.duplicateSeg2Id },
     workspaceId: v2.ids.documentId,
-    workspaceKey: `${v2.ids.documentId}:uid`,
-    manualAnchor: {
-      workspaceKey: `${v2.ids.documentId}:uid`,
-      unitViewKey: s1ViewKey,
-      segmentId: v2.ids.longSegId,
-      playingKeyAtManual: '7:' + v2.ids.longSegId
-    },
-    manualGraceActive: false
+    workspaceKey: wsKey,
+    manualAnchor: null
   });
   assert.equal(followedSel.source, 'audible');
   assert.equal(followedSel.selectedUnitViewKey, s2ViewKey);
   assert.equal(followedSel.selectedSegmentId, v2.ids.duplicateSeg2Id);
   assert.equal(followedSel.unitDivergedFromAudible, false);
+  assert.equal(followedSel.segmentDivergedFromAudible, false);
+
+  // Deleted Segment safe recovery: deleted Segment inside surviving Unit recovers to first valid Segment in that Unit
+  const deletedSegSel = utils.resolveEffectiveCardSelection({
+    card: storyCard,
+    lookup,
+    cursor: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    manualAnchor: {
+      workspaceKey: wsKey,
+      unitViewKey: s2ViewKey,
+      segmentId: 'deleted-segment-id',
+      pinnedManual: true
+    }
+  });
+  assert.equal(deletedSegSel.source, 'manual');
+  assert.equal(deletedSegSel.selectedUnitViewKey, s2ViewKey);
+  assert.equal(deletedSegSel.selectedSegmentId, v2.ids.s2FirstSegId, 'Deleted segment must safely recover to valid segment in surviving Unit');
+
+  // Deleted Unit AND deleted Segment recovers cleanly to default/first valid Unit without nonexistent IDs
+  const deletedBothSel = utils.resolveEffectiveCardSelection({
+    card: storyCard,
+    lookup,
+    cursor: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    manualAnchor: {
+      workspaceKey: wsKey,
+      unitViewKey: 'deleted-unit-key',
+      segmentId: 'deleted-segment-id',
+      pinnedManual: true
+    }
+  });
+  assert.equal(deletedBothSel.source, 'default');
+  assert.equal(deletedBothSel.selectedUnitViewKey, s1ViewKey);
+  assert.equal(deletedBothSel.selectedSegmentId, v2.ids.longSegId);
 
   // Tier 4/5: Cached Full Card playback NEVER spoofs an audible section or segment
   const fullCardSel = utils.resolveEffectiveCardSelection({
@@ -331,7 +395,7 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
       channel: 'text'
     },
     workspaceId: v2.ids.documentId,
-    workspaceKey: `${v2.ids.documentId}:uid`
+    workspaceKey: wsKey
   });
   assert.equal(fullCardSel.isCardPrecisionPlaying, true);
   assert.equal(fullCardSel.audibleUnitViewKey, null);
@@ -360,6 +424,130 @@ test('resolveEffectiveCardSelection separates Search, 1800ms Manual Grace, Segme
   assert.equal(isolatedSel.source, 'default');
   assert.equal(isolatedSel.selectedUnitViewKey, s1ViewKey);
   assert.equal(isolatedSel.selectedSegmentId, v2.ids.longSegId);
+});
+
+test('buildSharedSegmentRenderFlags styles paused channel strictly on actual paused channel and keeps selected/focused independent', () => {
+  const seg = storyCard.units[0].segments[0];
+  const enPausedCursor = {
+    sessionId: 12,
+    state: 'paused',
+    precision: 'segment',
+    cardId: storyCard.id,
+    segmentId: seg.id,
+    channel: 'text'
+  };
+  const enFlagsWhenEnPaused = utils.buildSharedSegmentRenderFlags({
+    segment: seg,
+    logicalIndex: 0,
+    channel: 'text',
+    cursor: enPausedCursor,
+    isSpeakingCard: true
+  });
+  const idFlagsWhenEnPaused = utils.buildSharedSegmentRenderFlags({
+    segment: seg,
+    logicalIndex: 0,
+    channel: 'meaning',
+    cursor: enPausedCursor,
+    isSpeakingCard: true
+  });
+  assert.equal(enFlagsWhenEnPaused.paused, true, 'EN channel must be paused when cursor.channel is text');
+  assert.equal(enFlagsWhenEnPaused.speaking, false);
+  assert.equal(enFlagsWhenEnPaused.dataAttributes['data-shared-segment-paused'], 'true');
+  assert.ok(enFlagsWhenEnPaused.className.includes('amber'), 'Paused EN span must carry amber paused highlight');
+
+  assert.equal(idFlagsWhenEnPaused.paused, false, 'ID channel must NOT be styled as paused when cursor.channel is text');
+  assert.equal(idFlagsWhenEnPaused.speaking, false);
+  assert.equal(idFlagsWhenEnPaused.dataAttributes['data-shared-segment-paused'], undefined);
+  assert.ok(!idFlagsWhenEnPaused.className.includes('amber'), 'Non-paused ID span must NOT receive amber paused classes');
+
+  const idPausedCursor = { ...enPausedCursor, channel: 'meaning' };
+  const enFlagsWhenIdPaused = utils.buildSharedSegmentRenderFlags({
+    segment: seg,
+    logicalIndex: 0,
+    channel: 'text',
+    cursor: idPausedCursor,
+    isSpeakingCard: true,
+    selectedSegmentId: seg.id,
+    focusSegmentId: seg.id
+  });
+  const idFlagsWhenIdPaused = utils.buildSharedSegmentRenderFlags({
+    segment: seg,
+    logicalIndex: 0,
+    channel: 'meaning',
+    cursor: idPausedCursor,
+    isSpeakingCard: true,
+    selectedSegmentId: seg.id,
+    focusSegmentId: seg.id
+  });
+  assert.equal(enFlagsWhenIdPaused.paused, false, 'EN channel must NOT be styled as paused when cursor.channel is meaning');
+  assert.equal(enFlagsWhenIdPaused.selected, true);
+  assert.equal(enFlagsWhenIdPaused.focused, true);
+  assert.equal(enFlagsWhenIdPaused.dataAttributes['data-shared-segment-paused'], undefined);
+  assert.equal(enFlagsWhenIdPaused.dataAttributes['data-shared-segment-selected'], 'true');
+  assert.ok(!enFlagsWhenIdPaused.className.includes('amber'));
+
+  assert.equal(idFlagsWhenIdPaused.paused, true, 'ID channel must be paused when cursor.channel is meaning');
+  assert.equal(idFlagsWhenIdPaused.selected, true);
+  assert.equal(idFlagsWhenIdPaused.dataAttributes['data-shared-segment-paused'], 'true');
+  assert.equal(idFlagsWhenIdPaused.dataAttributes['data-shared-segment-selected'], 'true');
+  assert.ok(idFlagsWhenIdPaused.className.includes('amber'));
+});
+
+test('useSharedReaderSelectionStore reducers preserve per-Unit memory, empty Units, and preview excerpts respect joinAfter', () => {
+  const lookup = utils.buildCardUnitLookup(storyCard);
+  const s1ViewKey = lookup.units[0].viewKey;
+  const s2ViewKey = lookup.units[1].viewKey;
+  const s3EmptyViewKey = lookup.units[2].viewKey;
+  const wsKey = `${v2.ids.documentId}:uid`;
+
+  let state = selectionStoreHelpers.EMPTY_CARD_SELECTION_STATE;
+  state = selectionStoreHelpers.applySegmentSelectionToCardState({
+    cardState: state,
+    workspaceKey: wsKey,
+    card: storyCard,
+    lookup,
+    segmentId: v2.ids.duplicateSeg2Id
+  });
+  assert.equal(state.manualAnchor.unitViewKey, s2ViewKey);
+  assert.equal(state.manualAnchor.segmentId, v2.ids.duplicateSeg2Id);
+  assert.equal(state.byUnitViewKey[s2ViewKey], v2.ids.duplicateSeg2Id);
+
+  // Switch to empty Section 3 -> segmentId must be null, NOT borrowed from Section 2
+  state = selectionStoreHelpers.applyUnitSelectionToCardState({
+    cardState: state,
+    workspaceKey: wsKey,
+    card: storyCard,
+    lookup,
+    unitViewKey: s3EmptyViewKey
+  });
+  assert.equal(state.manualAnchor.unitViewKey, s3EmptyViewKey);
+  assert.equal(state.manualAnchor.segmentId, null);
+
+  // Return to Section 2 -> restores remembered duplicateSeg2Id
+  state = selectionStoreHelpers.applyUnitSelectionToCardState({
+    cardState: state,
+    workspaceKey: wsKey,
+    card: storyCard,
+    lookup,
+    unitViewKey: s2ViewKey
+  });
+  assert.equal(state.manualAnchor.segmentId, v2.ids.duplicateSeg2Id);
+
+  // Return to Playing clears manualAnchor while retaining Unit segment memory
+  state = selectionStoreHelpers.clearCardManualSelectionState(state);
+  assert.equal(state.manualAnchor, null);
+  assert.equal(state.byUnitViewKey[s2ViewKey], v2.ids.duplicateSeg2Id);
+  assert.ok(s1ViewKey);
+
+  // buildUnitPreviewExcerpt preserves joinAfter=none and joinAfter=line
+  const excerpt = utils.buildUnitPreviewExcerpt({
+    segments: [
+      { text: 'Platform 4', joinAfter: 'none' },
+      { text: '—direct express service.', joinAfter: 'line' },
+      { text: 'Please board promptly.', joinAfter: 'space' }
+    ]
+  }, 'interlinear', 200);
+  assert.equal(excerpt, 'Platform 4—direct express service.\nPlease board promptly.');
 });
 
 test('resolveSegmentCoverageStatuses preserves HF1 accuracy (only READY counts as Ready)', () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Play, Radio } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -21,6 +21,10 @@ import SharedBilingualLayoutToolbar from './SharedBilingualLayoutToolbar.jsx';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import { SharedCardPartView, SharedCardSegmentView } from './SharedPartAndSegmentViews.jsx';
 import { useCardPresentationFollow } from './useCardPresentationFollow.js';
+import {
+  EMPTY_CARD_SELECTION_STATE,
+  useSharedReaderSelectionStore
+} from './useSharedReaderSelectionStore.js';
 import {
   IDLE_SHARED_CURSOR,
   buildCardSpeakerAppearanceMap,
@@ -338,6 +342,10 @@ export const SharedCardReadingSurface = ({
   onPlaySegmentChannel = null,
   onPlayContinueFromSegment = null,
   onManualNavigate = null,
+  cardSelectionState = null,
+  onSelectCardUnit = null,
+  onSelectCardSegment = null,
+  onFollowCardAudible = null,
   headerActionsSlot = null,
   footerSlot = null,
   variant = 'card'
@@ -380,22 +388,16 @@ export const SharedCardReadingSurface = ({
     [orderedSegments, audioCoverageMap]
   );
 
-  const [manualAnchor, setManualAnchor] = useState(null);
-  const [unitSegmentMemory, setUnitSegmentMemory] = useState(() => ({
-    workspaceKey,
-    byUnitViewKey: {}
-  }));
-  const [dismissedFocusNonce, setDismissedFocusNonce] = useState(null);
-  const [manualGraceActive, setManualGraceActive] = useState(false);
-  const graceTimerRef = useRef(null);
-
-  useEffect(() => () => window.clearTimeout(graceTimerRef.current), []);
-
-  const activeUnitSegmentMemory = useMemo(() => (
-    unitSegmentMemory.workspaceKey === workspaceKey
-      ? unitSegmentMemory.byUnitViewKey
-      : {}
-  ), [unitSegmentMemory, workspaceKey]);
+  const standaloneSelectionStore = useSharedReaderSelectionStore(workspaceKey);
+  const usesExternalSelectionOwner = Boolean(
+    cardSelectionState !== null
+    || typeof onSelectCardUnit === 'function'
+    || typeof onSelectCardSegment === 'function'
+    || typeof onFollowCardAudible === 'function'
+  );
+  const effectiveCardSelectionState = usesExternalSelectionOwner
+    ? (cardSelectionState || EMPTY_CARD_SELECTION_STATE)
+    : standaloneSelectionStore.getCardSelectionState(card?.id);
 
   const selection = useMemo(() => resolveEffectiveCardSelection({
     card,
@@ -404,67 +406,84 @@ export const SharedCardReadingSurface = ({
     focusTarget,
     workspaceId,
     workspaceKey,
-    manualAnchor,
-    dismissedFocusNonce,
-    manualGraceActive
-  }), [card, lookup, cursor, focusTarget, workspaceId, workspaceKey, manualAnchor, dismissedFocusNonce, manualGraceActive]);
+    manualAnchor: effectiveCardSelectionState.manualAnchor,
+    unitSegmentMemory: effectiveCardSelectionState.byUnitViewKey,
+    dismissedFocusNonce: effectiveCardSelectionState.dismissedFocusNonce
+  }), [
+    card,
+    lookup,
+    cursor,
+    focusTarget,
+    workspaceId,
+    workspaceKey,
+    effectiveCardSelectionState.manualAnchor,
+    effectiveCardSelectionState.byUnitViewKey,
+    effectiveCardSelectionState.dismissedFocusNonce
+  ]);
 
-  const triggerManualGrace = useCallback(() => {
-    window.clearTimeout(graceTimerRef.current);
-    setManualGraceActive(true);
-    graceTimerRef.current = window.setTimeout(() => {
-      setManualGraceActive(false);
-    }, 1800);
-    onManualNavigate?.();
-  }, [onManualNavigate]);
+  const activePlaybackSessionId = cursor.state === 'playing' || cursor.state === 'paused'
+    ? (cursor.sessionId ?? null)
+    : null;
 
   const handleSelectUnit = useCallback(unitViewKey => {
-    const unit = lookup.unitByViewKey.get(unitViewKey);
-    const unitSegments = unit?.segments || [];
-    const rememberedId = activeUnitSegmentMemory[unitViewKey] || null;
-    const validRememberedId = rememberedId && unitSegments.some(seg => seg.id === rememberedId)
-      ? rememberedId
-      : null;
-    const restoredSegmentId = validRememberedId || unitSegments[0]?.id || null;
-    if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
-      setDismissedFocusNonce(focusTarget.nonce);
-    }
-    setManualAnchor({
-      workspaceKey,
+    const payload = {
+      card,
+      lookup,
       unitViewKey,
-      segmentId: restoredSegmentId,
-      playingKeyAtManual: selection.audiblePlayingKey
-    });
-    triggerManualGrace();
-  }, [lookup, activeUnitSegmentMemory, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
+      focusTarget,
+      workspaceId,
+      activePlaybackSessionId
+    };
+    if (typeof onSelectCardUnit === 'function') {
+      onSelectCardUnit(payload);
+    } else {
+      standaloneSelectionStore.selectCardUnit(payload);
+    }
+    onManualNavigate?.();
+  }, [
+    card,
+    lookup,
+    focusTarget,
+    workspaceId,
+    activePlaybackSessionId,
+    onSelectCardUnit,
+    standaloneSelectionStore,
+    onManualNavigate
+  ]);
 
   const handleSelectSegment = useCallback(segmentId => {
-    const entry = lookup.entryBySegmentId.get(segmentId);
-    if (!entry) return;
-    if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
-      setDismissedFocusNonce(focusTarget.nonce);
-    }
-    setUnitSegmentMemory(previous => ({
-      workspaceKey,
-      byUnitViewKey: {
-        ...(previous.workspaceKey === workspaceKey ? previous.byUnitViewKey : {}),
-        [entry.unitViewKey]: segmentId
-      }
-    }));
-    setManualAnchor({
-      workspaceKey,
-      unitViewKey: entry.unitViewKey,
+    const payload = {
+      card,
+      lookup,
       segmentId,
-      playingKeyAtManual: selection.audiblePlayingKey
-    });
-    triggerManualGrace();
-  }, [lookup, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
+      focusTarget,
+      workspaceId,
+      activePlaybackSessionId
+    };
+    if (typeof onSelectCardSegment === 'function') {
+      onSelectCardSegment(payload);
+    } else {
+      standaloneSelectionStore.selectCardSegment(payload);
+    }
+    onManualNavigate?.();
+  }, [
+    card,
+    lookup,
+    focusTarget,
+    workspaceId,
+    activePlaybackSessionId,
+    onSelectCardSegment,
+    standaloneSelectionStore,
+    onManualNavigate
+  ]);
 
   const handleFollowAudible = useCallback(() => {
-    window.clearTimeout(graceTimerRef.current);
-    setManualGraceActive(false);
-    setManualAnchor(null);
-  }, []);
+    if (typeof onFollowCardAudible === 'function') {
+      onFollowCardAudible(card?.id);
+    } else {
+      standaloneSelectionStore.clearCardManualSelection(card?.id);
+    }
+  }, [onFollowCardAudible, card?.id, standaloneSelectionStore]);
 
   const activeSegmentNumber = cursor.precision === 'segment' && cursor.segmentId && lookup.entryBySegmentId.has(cursor.segmentId)
     ? lookup.entryBySegmentId.get(cursor.segmentId).logicalIndex + 1
@@ -928,17 +947,77 @@ export const SharedParagraphWorkspaceReader = ({
 
   const effectiveExpandedCardIds = expandedCardIds || (managesCardVisibility ? internalExpandedCardIds : null);
 
+  // Stable Workspace-level transient selection owner surviving mode transitions
+  // (Full <-> Card <-> Focus <-> Segment), Card collapse/reopen, layout, visibility,
+  // and Workspace Style changes with strict Workspace isolation.
+  const selectionStore = useSharedReaderSelectionStore(workspaceKey);
+
+  const isPlayingCardDiverged = Boolean(
+    managesCardVisibility
+    && !showBookPage
+    && activeCursorCardId
+    && effectiveVisibility === TEXT_CARD_EXPANSION_MODES.CUSTOM
+    && !internalExpandedCardIds.has(activeCursorCardId)
+  );
+  const followScrollBlocked = Boolean(
+    isPlayingCardDiverged
+    || (activeCursorCardId && selectionStore.hasManualSelection(activeCursorCardId))
+    || (
+      playbackCursor?.sessionId !== null
+      && playbackCursor?.sessionId !== undefined
+      && selectionStore.manualBrowseSessionId === playbackCursor.sessionId
+    )
+  );
+
+  const handleEnsureCardExpanded = useCallback(cardId => {
+    if (onEnsureCardExpanded) {
+      onEnsureCardExpanded(cardId);
+      return;
+    }
+    if (!managesCardVisibility || internalExpandedCardIds.has(cardId)) return;
+    setCustomExpandedState({ workspaceKey, ids: new Set([...internalExpandedCardIds, cardId]) });
+    if (effectiveVisibility !== TEXT_CARD_EXPANSION_MODES.CUSTOM) {
+      if (onCardVisibilityChange) onCardVisibilityChange(TEXT_CARD_EXPANSION_MODES.CUSTOM);
+      else setUncontrolledVisibility(TEXT_CARD_EXPANSION_MODES.CUSTOM);
+    }
+  }, [onEnsureCardExpanded, managesCardVisibility, internalExpandedCardIds, effectiveVisibility, onCardVisibilityChange, workspaceKey]);
+
+  const {
+    markUserNavigation,
+    resetUserNavigationGrace,
+    handleKeyDownNavigation
+  } = useCardPresentationFollow({
+    rootRef,
+    workspaceId: presentation?.workspace?.id || null,
+    focusTarget,
+    cursor: playbackCursor,
+    followScrollBlocked,
+    onEnsureCardExpanded: handleEnsureCardExpanded,
+    onFocusConsumed
+  });
+
   const handleVisibilityChange = useCallback(nextMode => {
     const normalized = normalizeTextCardExpansionMode(nextMode);
     if (normalized === TEXT_CARD_EXPANSION_MODES.CUSTOM && effectiveVisibility !== TEXT_CARD_EXPANSION_MODES.CUSTOM) {
       setCustomExpandedState({ workspaceKey, ids: new Set(internalExpandedCardIds) });
+    }
+    if (normalized === TEXT_CARD_EXPANSION_MODES.FOLLOW) {
+      selectionStore.clearAllManualSelections();
+      resetUserNavigationGrace();
     }
     if (onCardVisibilityChange) {
       onCardVisibilityChange(normalized);
     } else {
       setUncontrolledVisibility(normalized);
     }
-  }, [effectiveVisibility, internalExpandedCardIds, onCardVisibilityChange, workspaceKey]);
+  }, [
+    effectiveVisibility,
+    internalExpandedCardIds,
+    onCardVisibilityChange,
+    workspaceKey,
+    selectionStore,
+    resetUserNavigationGrace
+  ]);
 
   const handleToggleCard = useCallback(cardId => {
     if (onToggleCardExpanded) {
@@ -954,18 +1033,10 @@ export const SharedParagraphWorkspaceReader = ({
     }
   }, [onToggleCardExpanded, managesCardVisibility, internalExpandedCardIds, effectiveVisibility, onCardVisibilityChange, workspaceKey]);
 
-  const handleEnsureCardExpanded = useCallback(cardId => {
-    if (onEnsureCardExpanded) {
-      onEnsureCardExpanded(cardId);
-      return;
-    }
-    if (!managesCardVisibility || internalExpandedCardIds.has(cardId)) return;
-    setCustomExpandedState({ workspaceKey, ids: new Set([...internalExpandedCardIds, cardId]) });
-    if (effectiveVisibility !== TEXT_CARD_EXPANSION_MODES.CUSTOM) {
-      if (onCardVisibilityChange) onCardVisibilityChange(TEXT_CARD_EXPANSION_MODES.CUSTOM);
-      else setUncontrolledVisibility(TEXT_CARD_EXPANSION_MODES.CUSTOM);
-    }
-  }, [onEnsureCardExpanded, managesCardVisibility, internalExpandedCardIds, effectiveVisibility, onCardVisibilityChange, workspaceKey]);
+  const handleFollowCardAudible = useCallback(cardId => {
+    selectionStore.clearCardManualSelection(cardId);
+    resetUserNavigationGrace();
+  }, [selectionStore, resetUserNavigationGrace]);
 
   const handleChangePresentationState = useCallback(nextCandidate => {
     const next = updateTextCardPresentationState(activeViewState, nextCandidate);
@@ -988,24 +1059,8 @@ export const SharedParagraphWorkspaceReader = ({
     }
   }, [onReaderModeChange, onPresentationStateChange]);
 
-  const { markUserNavigation, handleKeyDownNavigation } = useCardPresentationFollow({
-    rootRef,
-    workspaceId: presentation?.workspace?.id || null,
-    focusTarget,
-    cursor: playbackCursor,
-    onEnsureCardExpanded: handleEnsureCardExpanded,
-    onFocusConsumed
-  });
-
   if (!presentation) return null;
 
-  const isPlayingCardDiverged = Boolean(
-    managesCardVisibility
-    && !showBookPage
-    && activeCursorCardId
-    && effectiveVisibility === TEXT_CARD_EXPANSION_MODES.CUSTOM
-    && !internalExpandedCardIds.has(activeCursorCardId)
-  );
   const cardsCollapsible = Boolean(onToggleCardExpanded || managesCardVisibility);
 
   return (
@@ -1145,6 +1200,10 @@ export const SharedParagraphWorkspaceReader = ({
                 onPlaySegmentChannel={onPlaySegmentChannel}
                 onPlayContinueFromSegment={onPlayContinueFromSegment}
                 onManualNavigate={markUserNavigation}
+                cardSelectionState={selectionStore.getCardSelectionState(card.id)}
+                onSelectCardUnit={selectionStore.selectCardUnit}
+                onSelectCardSegment={selectionStore.selectCardSegment}
+                onFollowCardAudible={handleFollowCardAudible}
               />
             );
           })}

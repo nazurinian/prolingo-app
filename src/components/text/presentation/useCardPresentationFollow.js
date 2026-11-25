@@ -54,14 +54,20 @@ const findSegmentTarget = ({ rootNode, cardEl, segmentId, preferredChannel = nul
 };
 
 /**
- * Coordinates search reveal and passive playback viewport following without stealing
- * keyboard focus or interrupting manual scroll/navigation within the grace window.
+ * Single Workspace-level automatic page-scroll owner. Coordinates search reveal
+ * and passive playback viewport following without stealing keyboard focus,
+ * mutating reading selection, or fighting manual browsing across open Cards.
+ *
+ * The 1,800 ms grace window regulates viewport scroll motion ONLY, never
+ * Unit/Segment selection ownership.
  */
 export const useCardPresentationFollow = ({
   rootRef,
+  enabled = true,
   workspaceId = null,
   focusTarget = null,
   cursor = null,
+  followScrollBlocked = false,
   lastUserNavigationAt = 0,
   onUserNavigation = null,
   onEnsureCardExpanded = null,
@@ -75,6 +81,10 @@ export const useCardPresentationFollow = ({
     onUserNavigation?.(now);
   }, [onUserNavigation]);
 
+  const resetUserNavigationGrace = useCallback(() => {
+    internalNavRef.current = 0;
+  }, []);
+
   const handleKeyDownNavigation = useCallback(event => {
     if (NAV_KEYS.has(event?.key)) {
       const now = Date.now();
@@ -84,7 +94,7 @@ export const useCardPresentationFollow = ({
   }, [onUserNavigation]);
 
   useEffect(() => {
-    if (!rootRef?.current || !workspaceId || focusTarget?.documentId !== workspaceId) return undefined;
+    if (!enabled || !rootRef?.current || !workspaceId || focusTarget?.documentId !== workspaceId) return undefined;
     if (!focusTarget?.blockId) {
       const container = resolveSafeScrollContainer(rootRef.current) || rootRef.current;
       container?.scrollTo?.({ top: 0, behavior: isPrefersReducedMotion() ? 'auto' : 'smooth' });
@@ -106,6 +116,7 @@ export const useCardPresentationFollow = ({
       window.clearTimeout(timer);
     };
   }, [
+    enabled,
     rootRef,
     workspaceId,
     focusTarget?.documentId,
@@ -123,7 +134,7 @@ export const useCardPresentationFollow = ({
   const cursorPrecision = cursor?.precision || 'none';
 
   useEffect(() => {
-    if (!rootRef?.current || cursorState !== 'playing' || !cursorCardId) return undefined;
+    if (!enabled || followScrollBlocked || !rootRef?.current || cursorState !== 'playing' || !cursorCardId) return undefined;
     if (workspaceId && focusTarget?.documentId === workspaceId && focusTarget?.blockId) return undefined;
     const lastNav = Math.max(internalNavRef.current || 0, lastUserNavigationAt || 0);
     if (lastNav && Date.now() - lastNav < USER_NAVIGATION_GRACE_MS) return undefined;
@@ -150,6 +161,8 @@ export const useCardPresentationFollow = ({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
+    enabled,
+    followScrollBlocked,
     rootRef,
     workspaceId,
     focusTarget?.documentId,
@@ -164,6 +177,7 @@ export const useCardPresentationFollow = ({
 
   return {
     markUserNavigation,
+    resetUserNavigationGrace,
     handleKeyDownNavigation
   };
 };

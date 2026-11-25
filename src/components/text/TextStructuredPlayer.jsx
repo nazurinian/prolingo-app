@@ -27,6 +27,8 @@ import { getTextParagraphCardRoleLabel, resolveTextParagraphCardRole, TEXT_PARAG
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedBookPageView, SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
+import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
+import { useSharedReaderSelectionStore } from './presentation/useSharedReaderSelectionStore.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -147,7 +149,12 @@ const StructuredPlayerCard = ({
   sharedPresentationState = null,
   sharedBilingualLayout = 'interlinear',
   sharedWorkspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
-  sharedPlaybackCursor = null
+  sharedPlaybackCursor = null,
+  sharedCardSelectionState = null,
+  onSelectSharedCardUnit = null,
+  onSelectSharedCardSegment = null,
+  onFollowSharedCardAudible = null,
+  onSharedManualNavigate = null
 }) => {
   const [audioPanelOpen, setAudioPanelOpen] = useState(false);
   const [segmentToolsId, setSegmentToolsId] = useState(null);
@@ -162,6 +169,10 @@ const StructuredPlayerCard = ({
 
 
   useEffect(() => {
+    // When the Shared Card Reader is active, automatic page scrolling and search
+    // reveal are owned by ONE Workspace-level useCardPresentationFollow hook in
+    // TextStructuredPlayer so open Cards never compete for viewport control.
+    if (useSharedCardReader) return undefined;
     if (!cardRef.current) return undefined;
     if (isFocusCard) {
       onEnsureCardExpanded?.(block.id);
@@ -184,7 +195,7 @@ const StructuredPlayerCard = ({
       ensureTextTargetVisible(target, cardRef.current?.closest('[data-text-structured-player]'));
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, onEnsureCardExpanded, block.id, userNavigationRef]);
+  }, [useSharedCardReader, isActiveCard, playingIndex, isFocusCard, isParagraphCard, focusTarget?.segmentId, focusTarget?.nonce, onFocusConsumed, onEnsureCardExpanded, block.id, userNavigationRef]);
 
   const manualSegmentChannelMode = resolveTextStructuredManualPlaybackProfile(playbackPreferences, 'segment').playbackChannelMode;
   const manualCardChannelMode = resolveTextStructuredManualPlaybackProfile(playbackPreferences, 'card').playbackChannelMode;
@@ -301,6 +312,11 @@ const StructuredPlayerCard = ({
               disabled={generationBusy}
               onPlayCard={onPlayCard}
               onPlaySegment={onPlaySegment}
+              onManualNavigate={onSharedManualNavigate}
+              cardSelectionState={sharedCardSelectionState}
+              onSelectCardUnit={onSelectSharedCardUnit}
+              onSelectCardSegment={onSelectSharedCardSegment}
+              onFollowCardAudible={onFollowSharedCardAudible}
             />
             {segments.length > 0 && (
               <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
@@ -681,33 +697,52 @@ export const TextStructuredPlayer = ({
     return sharedPlaybackCursor;
   }, [sharedPlaybackCursor, documentTree?.id, documentTree?.uid]);
 
-  useEffect(() => {
-    if (!showSharedBookPage || !playerRef.current) return undefined;
-    if (focusTarget?.documentId === documentTree?.id && (focusTarget?.segmentId || focusTarget?.blockId)) {
-      const frame = window.requestAnimationFrame(() => {
-        const target = (focusTarget.segmentId
-          ? playerRef.current?.querySelector(`[data-text-player-segment="${focusTarget.segmentId}"]`)
-          : null)
-          || (focusTarget.blockId
-            ? playerRef.current?.querySelector(`[data-text-player-card="${focusTarget.blockId}"]`)
-            : null);
-        ensureTextTargetVisible(target, playerRef.current, { explicit: true });
-      });
-      const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1400);
-      return () => {
-        window.cancelAnimationFrame(frame);
-        window.clearTimeout(timer);
-      };
-    }
-    if (!activeBlockId) return undefined;
-    if (userNavigationRef.current && Date.now() - userNavigationRef.current < 1800) return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      const target = playerRef.current?.querySelector('[data-text-player-segment-active="true"]')
-        || playerRef.current?.querySelector(`[data-text-player-card="${activeBlockId}"]`);
-      ensureTextTargetVisible(target, playerRef.current);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [showSharedBookPage, focusTarget?.documentId, focusTarget?.blockId, focusTarget?.segmentId, focusTarget?.nonce, documentTree?.id, activeBlockId, playingIndex, onFocusConsumed]);
+  const sharedWorkspaceKey = sharedPresentation?.workspace?.id
+    ? `${sharedPresentation.workspace.id}:${sharedPresentation.workspace.uid || ''}`
+    : (documentTree?.id ? `${documentTree.id}:${documentTree.uid || ''}` : 'default');
+  const sharedSelectionStore = useSharedReaderSelectionStore(sharedWorkspaceKey);
+
+  const onEnsureCardExpanded = useCallback((blockId) => {
+    if (expandedCardIds.has(blockId)) return;
+    setCustomExpandedIds(new Set([...expandedCardIds, blockId]));
+    if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
+  }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
+
+  const sharedPlayingCardCollapsed = Boolean(
+    !showSharedBookPage
+    && expansionMode === TEXT_CARD_EXPANSION_MODES.CUSTOM
+    && activeBlockId
+    && !expandedCardIds.has(activeBlockId)
+  );
+  const sharedFollowScrollBlocked = Boolean(
+    sharedPlayingCardCollapsed
+    || (activeBlockId && sharedSelectionStore.hasManualSelection(activeBlockId))
+    || (
+      effectiveBookPlaybackCursor?.sessionId !== null
+      && effectiveBookPlaybackCursor?.sessionId !== undefined
+      && sharedSelectionStore.manualBrowseSessionId === effectiveBookPlaybackCursor.sessionId
+    )
+  );
+
+  const handleSharedUserNavigation = useCallback(timestamp => {
+    userNavigationRef.current = timestamp || Date.now();
+  }, []);
+
+  const {
+    markUserNavigation: markSharedUserNavigation,
+    resetUserNavigationGrace: resetSharedUserNavigationGrace,
+    handleKeyDownNavigation: handleSharedKeyDownNavigation
+  } = useCardPresentationFollow({
+    rootRef: playerRef,
+    enabled: Boolean(useSharedCardReader),
+    workspaceId: documentTree?.id || null,
+    focusTarget,
+    cursor: effectiveBookPlaybackCursor,
+    followScrollBlocked: sharedFollowScrollBlocked,
+    onUserNavigation: handleSharedUserNavigation,
+    onEnsureCardExpanded,
+    onFocusConsumed
+  });
 
   useEffect(() => {
     if (!activeBlockId) {
@@ -728,8 +763,13 @@ export const TextStructuredPlayer = ({
     if (normalized === TEXT_CARD_EXPANSION_MODES.CUSTOM && expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) {
       setCustomExpandedIds(new Set(expandedCardIds));
     }
+    if (normalized === TEXT_CARD_EXPANSION_MODES.FOLLOW) {
+      sharedSelectionStore.clearAllManualSelections();
+      resetSharedUserNavigationGrace();
+      userNavigationRef.current = 0;
+    }
     onPlaybackFeelChange?.({ cardExpansionMode: normalized });
-  }, [expansionMode, expandedCardIds, onPlaybackFeelChange]);
+  }, [expansionMode, expandedCardIds, onPlaybackFeelChange, sharedSelectionStore, resetSharedUserNavigationGrace]);
 
   const onToggleCardExpanded = useCallback((blockId) => {
     // Manual control takes precedence over auto-follow; preserve every currently open card.
@@ -737,21 +777,32 @@ export const TextStructuredPlayer = ({
     if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
   }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
 
-  const onEnsureCardExpanded = useCallback((blockId) => {
-    if (expandedCardIds.has(blockId)) return;
-    setCustomExpandedIds(new Set([...expandedCardIds, blockId]));
-    if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
-  }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
+  const handleFollowSharedCardAudible = useCallback(cardId => {
+    sharedSelectionStore.clearCardManualSelection(cardId);
+    resetSharedUserNavigationGrace();
+    userNavigationRef.current = 0;
+  }, [sharedSelectionStore, resetSharedUserNavigationGrace]);
 
   useEffect(() => {
+    if (useSharedCardReader) return undefined;
     if (!playerRef.current || focusTarget?.documentId !== documentTree?.id || focusTarget?.blockId) return undefined;
     playerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     const timer = window.setTimeout(() => onFocusConsumed?.(focusTarget?.nonce), 1000);
     return () => window.clearTimeout(timer);
-  }, [focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
+  }, [useSharedCardReader, focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
 
   return (
-    <section ref={playerRef} onWheel={() => { userNavigationRef.current = Date.now(); }} onTouchStart={() => { userNavigationRef.current = Date.now(); }} onPointerDown={() => { userNavigationRef.current = Date.now(); }} className="h-full overflow-y-auto overscroll-contain pb-32 md:pb-4 scroll-smooth custom-scrollbar" data-text-structured-player="true" data-text-segment-auto-follow="true" data-text-auto-follow-user-grace-ms="1800">
+    <section
+      ref={playerRef}
+      onWheel={markSharedUserNavigation}
+      onTouchStart={markSharedUserNavigation}
+      onPointerDown={markSharedUserNavigation}
+      onKeyDown={useSharedCardReader ? handleSharedKeyDownNavigation : undefined}
+      className="h-full overflow-y-auto overscroll-contain pb-32 md:pb-4 scroll-smooth custom-scrollbar"
+      data-text-structured-player="true"
+      data-text-segment-auto-follow="true"
+      data-text-auto-follow-user-grace-ms="1800"
+    >
       <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
         <div className="flex flex-wrap items-center gap-2.5 p-2.5 sm:p-3">
           <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">
@@ -966,6 +1017,11 @@ export const TextStructuredPlayer = ({
           sharedBilingualLayout={effectiveSharedCardView.bilingualLayout}
           sharedWorkspaceStyle={resolvedSharedWorkspaceStyle}
           sharedPlaybackCursor={sharedPlaybackCursor}
+          sharedCardSelectionState={useSharedCardReader ? sharedSelectionStore.getCardSelectionState(block.id) : null}
+          onSelectSharedCardUnit={useSharedCardReader ? sharedSelectionStore.selectCardUnit : null}
+          onSelectSharedCardSegment={useSharedCardReader ? sharedSelectionStore.selectCardSegment : null}
+          onFollowSharedCardAudible={useSharedCardReader ? handleFollowSharedCardAudible : null}
+          onSharedManualNavigate={useSharedCardReader ? markSharedUserNavigation : null}
         />)}
         {bookAudioPanelBlock && typeof document !== 'undefined' && createPortal(<TextStructuredCardAudioPanel
           documentTree={documentTree}

@@ -347,7 +347,7 @@ export const buildSharedSegmentRenderFlags = ({
   disabled = false
 }) => {
   const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id;
-  const paused = active && cursor.state === 'paused';
+  const paused = active && cursor.state === 'paused' && cursor.channel === channel;
   const speaking = active && !paused && cursor.channel === channel;
   const focused = segment.id === focusSegmentId;
   const selected = Boolean(selectedSegmentId && segment.id === selectedSegmentId);
@@ -357,13 +357,16 @@ export const buildSharedSegmentRenderFlags = ({
 
   const visualStateClasses = [];
   if (paused && !fullChannelHighlighted) {
-    visualStateClasses.push('bg-amber-100/95 dark:bg-amber-950/60 text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/75 dark:ring-amber-600/75');
+    visualStateClasses.push('!bg-amber-100/95 dark:!bg-amber-950/60 !text-amber-950 dark:!text-amber-100 ring-1 ring-amber-400/75 dark:ring-amber-600/75');
+    if (!selected) {
+      visualStateClasses.push('!no-underline');
+    }
   }
   if (selected) {
     if (speaking || paused || fullChannelHighlighted) {
       visualStateClasses.push('underline decoration-sky-500 dark:decoration-sky-300 decoration-2 underline-offset-4');
     } else {
-      visualStateClasses.push('bg-sky-100/85 dark:bg-sky-900/45 text-slate-950 dark:text-sky-50 underline decoration-sky-500 dark:decoration-sky-400 decoration-2 underline-offset-4 ring-1 ring-sky-300/80 dark:ring-sky-700/80');
+      visualStateClasses.push('!bg-sky-100/85 dark:!bg-sky-900/45 !text-slate-950 dark:!text-sky-50 underline decoration-sky-500 dark:decoration-sky-400 decoration-2 underline-offset-4 ring-1 ring-sky-300/80 dark:ring-sky-700/80');
     }
   }
 
@@ -533,14 +536,20 @@ export const buildUnitPreviewExcerpt = (unit, bilingualLayout = 'interlinear', m
   const segments = unit?.segments || [];
   if (!segments.length) return '';
   const preferMeaning = bilingualLayout === 'meaning-only';
-  const parts = [];
+  const chunks = [];
+  let previousEmitted = null;
   for (const segment of segments) {
     const primary = normalizeSegmentDisplayText(preferMeaning ? segment?.meaning : segment?.text);
     const fallback = normalizeSegmentDisplayText(preferMeaning ? segment?.text : segment?.meaning);
     const chosen = primary || fallback;
-    if (chosen) parts.push(chosen);
+    if (!chosen) continue;
+    if (previousEmitted) {
+      chunks.push(resolveSegmentJoinSeparator(previousEmitted.joinAfter));
+    }
+    chunks.push(chosen);
+    previousEmitted = segment;
   }
-  const joined = parts.join(' ').trim();
+  const joined = chunks.join('').trim();
   if (!joined) return '';
   return joined.length > maxChars ? `${joined.slice(0, maxChars - 1).trimEnd()}…` : joined;
 };
@@ -613,12 +622,18 @@ export const stepCardSegmentId = ({ entries = [], currentSegmentId = null, delta
 };
 
 /**
- * Resolves visible Part and Segment focus deterministically from:
- * 1) undismissed Search focusTarget,
- * 2) manual browse selection during grace (or when not actively stepping Segment audio),
- * 3) authoritative playing Segment cursor (`precision === 'segment'`),
- * 4) validated manual/paused fallback,
- * 5) first available Section / Segment (or explicit empty state for zero-Unit cards).
+ * Resolves visible Unit and Segment selection deterministically under the explicit
+ * manual-follow policy:
+ * 1) Undismissed transient Search focusTarget (does NOT mutate manual selection;
+ *    once consumed, prior manual selection is restored automatically),
+ * 2) Validated explicit manual selection (`manualAnchor` — NEVER overridden by
+ *    elapsed timers or playback cursor advancement until explicitly cleared via
+ *    Return to Playing or Follow Playback),
+ * 3) Authoritative playing Segment cursor (`precision === 'segment'`),
+ * 4) Authoritative paused Segment cursor (`precision === 'segment'`),
+ * 5) First available Unit / Segment (or explicit empty state for zero-Unit cards;
+ *    empty Units always resolve `selectedSegmentId: null` and never borrow another
+ *    Unit's segment).
  */
 export const resolveEffectiveCardSelection = ({
   card,
@@ -628,11 +643,11 @@ export const resolveEffectiveCardSelection = ({
   workspaceId = null,
   workspaceKey = null,
   manualAnchor = null,
-  dismissedFocusNonce = null,
-  manualGraceActive = false
+  unitSegmentMemory = null,
+  dismissedFocusNonce = null
 }) => {
   const resolvedLookup = lookup || buildCardUnitLookup(card);
-  const { units, unitByViewKey, unitIndexByViewKey, entries, entryBySegmentId } = resolvedLookup;
+  const { units, unitByViewKey, unitIndexByViewKey, entryBySegmentId } = resolvedLookup;
   const cardId = card?.id || null;
 
   const isAudibleOnCard = Boolean(
@@ -664,23 +679,42 @@ export const resolveEffectiveCardSelection = ({
     ? (entryBySegmentId.get(focusTarget.segmentId) || null)
     : null;
 
-  const validManual = manualAnchor && (!workspaceKey || manualAnchor.workspaceKey === workspaceKey)
-    ? {
-        unitViewKey: manualAnchor.unitViewKey && unitByViewKey.has(manualAnchor.unitViewKey)
-          ? manualAnchor.unitViewKey
-          : null,
-        segmentId: manualAnchor.segmentId && entryBySegmentId.has(manualAnchor.segmentId)
-          ? manualAnchor.segmentId
-          : null,
-        playingKeyAtManual: manualAnchor.playingKeyAtManual || null
-      }
+  // Validate manual anchor against live Workspace, Card Units, and Segments.
+  // Deleted or replaced Segments recover safely within their surviving Unit (or
+  // fall through cleanly if both Unit and Segment were removed).
+  const manualWorkspaceMatches = Boolean(
+    manualAnchor
+    && (!workspaceKey || !manualAnchor.workspaceKey || manualAnchor.workspaceKey === workspaceKey)
+  );
+  const rawManualUnit = manualWorkspaceMatches && manualAnchor.unitViewKey && unitByViewKey.has(manualAnchor.unitViewKey)
+    ? unitByViewKey.get(manualAnchor.unitViewKey)
+    : null;
+  const rawManualSegEntry = manualWorkspaceMatches && manualAnchor.segmentId && entryBySegmentId.has(manualAnchor.segmentId)
+    ? entryBySegmentId.get(manualAnchor.segmentId)
     : null;
 
-  const shouldFollowPlayingAudio = Boolean(
-    audiblePlayingKey
-    && !manualGraceActive
-    && (!validManual || !validManual.playingKeyAtManual || validManual.playingKeyAtManual !== audiblePlayingKey)
-  );
+  const resolvedManualUnitViewKey = rawManualUnit?.viewKey || rawManualSegEntry?.unitViewKey || null;
+  const resolvedManualUnit = resolvedManualUnitViewKey
+    ? (unitByViewKey.get(resolvedManualUnitViewKey) || null)
+    : null;
+  const resolvedManualSegmentId = resolvedManualUnit
+    ? (
+        rawManualSegEntry && rawManualSegEntry.unitViewKey === resolvedManualUnitViewKey
+          ? rawManualSegEntry.segment.id
+          : null
+      )
+    : null;
+  const hasValidManual = Boolean(resolvedManualUnitViewKey);
+
+  const pickValidRememberedOrFirstSegment = unit => {
+    const unitSegments = unit?.segments || [];
+    if (!unitSegments.length) return null;
+    const rememberedId = unit?.viewKey && unitSegmentMemory ? unitSegmentMemory[unit.viewKey] : null;
+    if (rememberedId && unitSegments.some(segment => segment.id === rememberedId)) {
+      return rememberedId;
+    }
+    return unitSegments[0]?.id || null;
+  };
 
   let selectedUnitViewKey = units[0]?.viewKey || null;
   let source = units.length ? 'default' : 'empty';
@@ -688,12 +722,12 @@ export const resolveEffectiveCardSelection = ({
   if (focusMatchesCard) {
     selectedUnitViewKey = focusEntry?.unitViewKey || units[0]?.viewKey || null;
     source = 'search';
-  } else if (shouldFollowPlayingAudio && audibleUnitViewKey) {
+  } else if (hasValidManual) {
+    selectedUnitViewKey = resolvedManualUnitViewKey;
+    source = 'manual';
+  } else if (audiblePlayingKey && audibleUnitViewKey) {
     selectedUnitViewKey = audibleUnitViewKey;
     source = 'audible';
-  } else if (validManual?.unitViewKey) {
-    selectedUnitViewKey = validManual.unitViewKey;
-    source = 'manual';
   } else if (isAudibleOnCard && cursor?.state === 'paused' && audibleUnitViewKey) {
     selectedUnitViewKey = audibleUnitViewKey;
     source = 'paused-cursor';
@@ -703,21 +737,23 @@ export const resolveEffectiveCardSelection = ({
   const selectedUnitIndex = selectedUnitViewKey && unitIndexByViewKey.has(selectedUnitViewKey)
     ? unitIndexByViewKey.get(selectedUnitViewKey)
     : -1;
+  const selectedUnitSegments = selectedUnit?.segments || [];
 
-  let selectedSegmentId = entries[0]?.segment?.id || null;
-  if (focusMatchesCard) {
-    selectedSegmentId = focusEntry?.segment?.id
-      || selectedUnit?.segments?.[0]?.id
-      || entries[0]?.segment?.id
-      || null;
-  } else if (shouldFollowPlayingAudio && audibleSegmentId) {
-    selectedSegmentId = audibleSegmentId;
-  } else if (validManual?.segmentId) {
-    selectedSegmentId = validManual.segmentId;
-  } else if (validManual?.unitViewKey && selectedUnit?.segments?.[0]?.id) {
-    selectedSegmentId = selectedUnit.segments[0].id;
-  } else if (isAudibleOnCard && cursor?.state === 'paused' && audibleSegmentId) {
-    selectedSegmentId = audibleSegmentId;
+  let selectedSegmentId = null;
+  if (selectedUnitSegments.length > 0) {
+    if (focusMatchesCard) {
+      selectedSegmentId = (focusEntry && focusEntry.unitViewKey === selectedUnitViewKey)
+        ? focusEntry.segment.id
+        : (selectedUnitSegments[0]?.id || null);
+    } else if (hasValidManual) {
+      selectedSegmentId = resolvedManualSegmentId || pickValidRememberedOrFirstSegment(selectedUnit);
+    } else if (audiblePlayingKey && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
+      selectedSegmentId = audibleSegmentId;
+    } else if (isAudibleOnCard && cursor?.state === 'paused' && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
+      selectedSegmentId = audibleSegmentId;
+    } else {
+      selectedSegmentId = pickValidRememberedOrFirstSegment(selectedUnit);
+    }
   }
 
   const selectedEntry = selectedSegmentId ? (entryBySegmentId.get(selectedSegmentId) || null) : null;
@@ -725,11 +761,12 @@ export const resolveEffectiveCardSelection = ({
     audibleUnitViewKey && selectedUnitViewKey && audibleUnitViewKey !== selectedUnitViewKey
   );
   const segmentDivergedFromAudible = Boolean(
-    audibleSegmentId && selectedSegmentId && audibleSegmentId !== selectedSegmentId
+    audibleSegmentId && audibleSegmentId !== (selectedEntry?.segment?.id || null)
   );
 
   return {
     source,
+    hasManualOverride: hasValidManual,
     selectedUnit,
     selectedUnitViewKey,
     selectedUnitIndex,
