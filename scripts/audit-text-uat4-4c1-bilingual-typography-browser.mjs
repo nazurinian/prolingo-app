@@ -689,20 +689,63 @@ try {
             })()`, 'Swiper centered after Notebook measurement');
             await select('focus-orientation-option', 'vertical-focus');
             const ids = await evaluate('window.__uat4C1.londonIds');
-            const t2 = `document.querySelector('[data-shared-focus-vertical-unit-id="${ids.units.C1_T2}"]')`;
-            await until(t2);
-            await evaluate(`${t2}.scrollIntoView({ block: 'center', behavior: 'instant' })`);
-            await until(`${t2}.querySelector('[data-shared-notebook-unit]:not([data-shared-notebook-unit=pending])')`);
-            await evaluate(`(() => {
-              document.activeElement.blur();
-              window.scrollTo({top: window.scrollY + ${t2}.getBoundingClientRect().top - innerHeight * .42 - 25, behavior:'instant'});
-            })()`);
-            for (let index = 0; index < 3; index++) {
-              await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
-              await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+            const row = unitId => `document.querySelector('[data-shared-focus-vertical-unit-id="${unitId}"]')`;
+            const t1 = row(ids.units.C1_T1);
+            const t2 = row(ids.units.C1_T2);
+            const layout = row => `${row}.querySelector('[data-shared-notebook-unit]')?.dataset.sharedNotebookUnit`;
+            const active = row => `${row}.matches('[data-shared-part-active=true]')`;
+            const assertInactive = async row => {
+              const state = await evaluate(`(() => {
+                const row = ${row};
+                const notebook = row.querySelector('[data-shared-notebook-unit]');
+                const action = notebook.querySelector('button, [role="button"]');
+                const previous = document.activeElement;
+                action?.focus({preventScroll:true});
+                const bounds = row.getBoundingClientRect();
+                return {
+                  active: ${active(row)},
+                  inViewport: bounds.bottom > 0 && bounds.top < innerHeight,
+                  inert: notebook.closest('[inert]')?.inert === true,
+                  layout: notebook.dataset.sharedNotebookUnit,
+                  hasAction: Boolean(action),
+                  focusUnchanged: previous === document.activeElement
+                };
+              })()`);
+              console.log('MEASURE', host, 'inactive Notebook preview', JSON.stringify(state));
+              assert.deepEqual(state, {
+                active: false, inViewport: true, inert: true,
+                layout: 'pending', hasAction: true, focusUnchanged: true
+              });
+            };
+            const positionForKey = async (row, down) => {
+              await evaluate(`(() => {
+                document.activeElement.blur();
+                const bounds = ${row}.getBoundingClientRect();
+                const start = ${down ? 'bounds.top - 25' : 'bounds.bottom + 25'};
+                window.scrollTo({top: window.scrollY + start - innerHeight * .42, behavior:'instant'});
+              })()`);
               await waitFrames();
-            }
-            await until(`${t2}.matches('[data-shared-part-active=true]')`, 'Notebook follows keyboard-controlled vertical focus');
+            };
+            const activateWithKey = async (row, key, windowsVirtualKeyCode) => {
+              for (let index = 0; index < 3 && !(await evaluate(active(row))); index++) {
+                await call('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode });
+                await call('Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode });
+                await waitFrames();
+              }
+              await until(active(row), 'keyboard activated the Notebook Unit');
+              await until(`${layout(row)} === 'parallel'`, 'active Notebook measured without another input');
+              assert.equal(await evaluate(`Boolean(${row}.querySelector('[data-shared-notebook-unit]').closest('[inert]'))`), false);
+              console.log('MEASURE', host, key, 'Notebook layout', await evaluate(layout(row)));
+            };
+            await until(t2);
+            await evaluate(`${t1}.scrollIntoView({ block: 'center', behavior: 'instant' })`);
+            await until(`${active(t1)} && ${layout(t1)} === 'parallel'`, 'T1 measured before navigating away');
+            await positionForKey(t2, true);
+            await assertInactive(t2);
+            await activateWithKey(t2, 'ArrowDown', 40);
+            await positionForKey(t1, false);
+            await assertInactive(t1);
+            await activateWithKey(t1, 'ArrowUp', 38);
           }
         }
         await until('document.querySelectorAll("[data-shared-segment-study-box]").length === 4', 'exactly four Study Boxes');

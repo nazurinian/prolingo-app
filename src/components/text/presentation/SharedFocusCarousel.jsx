@@ -632,7 +632,7 @@ export const SharedVerticalScrollFocusView = ({
                 onClick={() => onNavigateUnit?.(unit.viewKey)}
                 className="cursor-pointer"
               >
-                <div inert="" aria-hidden="true" className="pointer-events-none">
+                <div inert aria-hidden="true" className="pointer-events-none">
                   <SharedBilingualUnitsBody
                     card={card}
                     unitsOverride={[unit]}
