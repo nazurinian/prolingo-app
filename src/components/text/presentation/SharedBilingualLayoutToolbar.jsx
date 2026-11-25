@@ -157,6 +157,7 @@ const AppearanceOptionRow = ({ label, ariaLabel, options, activeId, attrName, on
  */
 export const SharedAppearanceTypographyPanel = ({
   appearance,
+  showNotebook = false,
   onChangeAppearance,
   onResetAppearance
 }) => {
@@ -242,6 +243,27 @@ export const SharedAppearanceTypographyPanel = ({
           attrName="data-shared-appearance-spacing"
           onSelect={textSpacing => onChangeAppearance({ textSpacing })}
         />
+        {showNotebook && (
+          <>
+            <AppearanceOptionRow
+              label="Notebook Spacing"
+              ariaLabel="Notebook text spacing"
+              options={SHARED_APPEARANCE_SPACING_OPTIONS}
+              activeId={appearance.notebookSpacing}
+              attrName="data-shared-notebook-spacing-option"
+              onSelect={notebookSpacing => onChangeAppearance({ notebookSpacing })}
+            />
+            <label className="flex items-center gap-2 text-xs font-semibold">
+              <input
+                type="checkbox"
+                data-shared-notebook-guides-option="true"
+                checked={appearance.notebookGuideLines}
+                onChange={event => onChangeAppearance({ notebookGuideLines: event.target.checked })}
+              />
+              Notebook Guide Lines
+            </label>
+          </>
+        )}
       </div>
     </div>
   );
@@ -913,6 +935,7 @@ export const SharedBilingualLayoutToolbar = ({
       {appearanceOpen && (
         <SharedAppearanceTypographyPanel
           appearance={activeState.appearance}
+          showNotebook={bilingualResolution.effectiveRenderMode === 'notebook'}
           onChangeAppearance={handleChangeAppearance}
           onResetAppearance={handleResetAppearance}
         />

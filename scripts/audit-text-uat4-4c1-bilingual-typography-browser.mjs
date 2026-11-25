@@ -18,6 +18,8 @@ import {
 import { TEXT_LIBRARY_DB_VERSION, TEXT_LIBRARY_SCHEMA_VERSION } from '../src/constants/textDatabaseConstants.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const notebookLayoutOnly = process.argv.includes('--notebook-layout');
+const notebookOnly = process.argv.includes('--only-4c3');
 const evidenceDir = process.env.UAT4_4C1_EVIDENCE_DIR
   || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-uat4-4c1-evidence-'));
 await fs.mkdir(evidenceDir, { recursive: true });
@@ -26,11 +28,12 @@ assert.equal(TEXT_LIBRARY_DB_VERSION, 1, 'Canonical DB version must remain 1');
 assert.equal(TEXT_LIBRARY_SCHEMA_VERSION, 1, 'Canonical schema version must remain 1');
 
 const compileCss = async () => {
-  const [cssSource, swiperCss, focusCarouselCss, readerTypographyCss] = await Promise.all([
+  const [cssSource, swiperCss, focusCarouselCss, readerTypographyCss, notebookCss] = await Promise.all([
     fs.readFile(path.join(root, 'src/index.css'), 'utf8'),
     fs.readFile(path.join(root, 'node_modules/swiper/swiper.css'), 'utf8'),
     fs.readFile(path.join(root, 'src/components/text/presentation/sharedFocusCarousel.css'), 'utf8'),
-    fs.readFile(path.join(root, 'src/components/text/presentation/sharedReaderTypography.css'), 'utf8')
+    fs.readFile(path.join(root, 'src/components/text/presentation/sharedReaderTypography.css'), 'utf8'),
+    fs.readFile(path.join(root, 'src/components/text/presentation/sharedNotebookParallelFlow.css'), 'utf8')
   ]);
   const tailwindConfigModule = await import(pathToFileURL(path.join(root, 'tailwind.config.js')).href);
   const tailwindConfig = {
@@ -43,13 +46,16 @@ const compileCss = async () => {
   const result = await postcss([tailwindcss(tailwindConfig), autoprefixer]).process(cssSource, {
     from: path.join(root, 'src/index.css')
   });
-  return `${swiperCss}\n${result.css}\n${focusCarouselCss}\n${readerTypographyCss}`;
+  return `${swiperCss}\n${result.css}\n${focusCarouselCss}\n${readerTypographyCss}\n${notebookCss}`;
 };
 
 const harnessJsx = `
 import React, { useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { measureNotebookParallelFlow } from './src/components/text/presentation/notebookParallelFlowLayout.js';
+window.__measureNotebook = measureNotebookParallelFlow;
 import { selectTextMixedReaderState } from './src/domain/text/textMixedReaderDomain.js';
+import { applyTextLibraryCommand } from './src/domain/text/textLibraryCommandDomain.js';
 import {
   TEXT_MAIN_READER_PREFERENCE_KEY,
   TEXT_WORKSPACE_STYLE_SCOPES,
@@ -203,11 +209,12 @@ function Audit4C1App() {
   const [hostTab, setHostTab] = useState(() => params.get('host') || 'uat');
   const [whichDoc, setWhichDoc] = useState(() => params.get('doc') === 'stress' ? 'stress' : 'london');
   const [dark, setDark] = useState(false);
+  const [derived, setDerived] = useState(null);
   const playbackLogRef = useRef([]);
   const uatEventsRef = useRef([]);
   const uatCancelsRef = useRef(0);
 
-  const activeFixture = whichDoc === 'stress' ? fixtures.stress : fixtures.london;
+  const activeFixture = derived || (whichDoc === 'stress' ? fixtures.stress : fixtures.london);
 
   const audioRuntimeHooks = useMemo(() => ({
     speechSynth: {
@@ -232,6 +239,7 @@ function Audit4C1App() {
     UAT_STORAGE_KEY,
     londonIds: fixtures.london.ids,
     stressIds: fixtures.stress.ids,
+    getFixtureSegments: () => activeFixture.snapshot.segments,
     londonSpec: JOURNEY_TO_LONDON_CARDS_SPEC,
     getSnapshotsUnchanged: () => (
       JSON.stringify(fixtures.london.snapshot) === londonBefore
@@ -246,11 +254,31 @@ function Audit4C1App() {
       if (ev) ev.finish({ status: status || 'played' });
     },
     setWorkspace: next => {
+      setDerived(null);
       const target = next === 'stress' ? 'stress' : 'london';
       setWhichDoc(target);
       const url = new URL(window.location.href);
       url.searchParams.set('doc', target);
       window.history.replaceState(null, '', url);
+    },
+    extendLondon: () => {
+      const source = fixtures.london;
+      let snapshot = source.snapshot;
+      const apply = (type, payload) => {
+        snapshot = applyTextLibraryCommand(snapshot, { type, payload, now: 4001 }).snapshot;
+      };
+      for (let index = 0; index < 16; index++) {
+        apply('block.create', { documentId: source.ids.documentId, blockType: 'paragraph', title: 'Disposable ' + index });
+        const blockId = snapshot.blocks.at(-1).id;
+        const unitId = snapshot.contentUnits.find(unit => unit.blockId === blockId).id;
+        for (const segment of source.snapshot.segments.slice(0, 3)) {
+          apply('segment.create', { blockId, unitId, text: segment.text,
+            meaning: index === 15 ? 'overflow'.repeat(120) : segment.meaning,
+            joinAfter: segment.joinAfter });
+        }
+      }
+      setWhichDoc('large');
+      setDerived({ snapshot, ids: source.ids });
     },
     setDark: flag => {
       setDark(Boolean(flag));
@@ -354,6 +382,7 @@ const browser = spawn(
 );
 
 let socket;
+let closeBrowser;
 const results = [];
 const screenshots = [];
 
@@ -377,9 +406,17 @@ try {
   let nextId = 0;
   const call = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++nextId;
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`CDP timeout: ${method}`));
+    }, method === 'Browser.close' ? 3000 : 15000);
+    pending.set(id, {
+      resolve: value => { clearTimeout(timer); resolve(value); },
+      reject: error => { clearTimeout(timer); reject(error); }
+    });
     socket.send(JSON.stringify({ id, method, params }));
   });
+  closeBrowser = () => call('Browser.close');
   socket.onmessage = event => {
     const msg = JSON.parse(event.data);
     const entry = pending.get(msg.id);
@@ -473,10 +510,280 @@ try {
   await call('Page.navigate', { url: `${origin}/?host=uat&doc=london` });
   await until('window.__uat4C1 && document.querySelector("[data-structured-workspace-player]")', 'Isolated UAT host mounted');
 
+  if (notebookLayoutOnly || notebookOnly) {
+    await run('4C3 layout: Chromium shares and wraps primary lines, preserves text, and falls back locally', async () => {
+      const result = await evaluate(`(() => {
+        const mirror = document.createElement('div');
+        const primarySample = document.createElement('div');
+        const secondarySample = document.createElement('div');
+        primarySample.style.font = '16px/1.5 sans-serif';
+        secondarySample.style.font = '12px/1.5 sans-serif';
+        document.body.append(mirror, primarySample, secondarySample);
+        try {
+          const segments = [
+            { primary: 'Hello, there.', secondary: 'Halo, kamu.', separator: ' ' },
+            { primary: 'The evening train departs from the third platform in twenty minutes.', secondary: 'Kereta malam berangkat dari peron tiga dalam dua puluh menit.', separator: '\\n' },
+            { primary: 'Yes.', secondary: '', separator: '' }
+          ];
+          const measure = (input, width) => window.__measureNotebook({ mirror, primarySample, secondarySample, segments: input, width });
+          const layout = measure(segments, 218);
+          const reconstructed = segments.map((_, index) => layout.lines.flatMap(row => row.fragments)
+            .filter(fragment => fragment.index === index)
+            .reduce(([p, s], fragment) => [p + fragment.primary, s + fragment.secondary], ['', '']));
+          return {
+            reason: layout.reason, reconstructed, expected: segments.map(s => [s.primary, s.secondary]),
+            shared: layout.lines.some(row => row.fragments.length > 1),
+            wrapped: layout.lines.filter(row => row.fragments.some(f => f.index === 1)).length > 1,
+            hardBreak: layout.lines.at(-1)?.fragments[0]?.index === 2,
+            extreme: measure([{ ...segments[0], secondary: 'unbreakable'.repeat(20) }], 160).reason,
+            stillValid: !measure(segments.slice(2), 160).reason
+          };
+        } finally { mirror.remove(); primarySample.remove(); secondarySample.remove(); }
+      })()`);
+      assert.equal(result.reason, null, JSON.stringify(result));
+      assert.deepEqual(result.reconstructed, result.expected);
+      assert.ok(result.shared && result.wrapped && result.hardBreak && result.extreme && result.stillValid);
+    });
+  }
+
+  if (notebookOnly) {
+    const option = (attribute, value) => `[data-shared-${attribute}="${value}"]`;
+    const select = (attribute, value) => click(option(attribute, value));
+    const scan = async () => {
+      const count = await evaluate('document.querySelectorAll("[data-shared-notebook-unit]").length');
+      for (let index = 0; index < count; index++) {
+        const unit = `document.querySelectorAll('[data-shared-notebook-unit]')[${index}]`;
+        await evaluate(`${unit}.scrollIntoView({block:'center',behavior:'instant'})`);
+        await until(`${unit}.dataset.sharedNotebookUnit !== 'pending'`, 'visible Notebook unit measured');
+      }
+      return evaluate(`(() => {
+        const units = [...document.querySelectorAll('[data-shared-notebook-unit]')];
+        const authored = new Map(window.__uat4C1.getFixtureSegments().map(seg => [seg.id, seg]));
+        const text = new Map();
+        const errors = [];
+        let shared = 0, continued = 0;
+        for (const unit of units) {
+          shared += [...unit.querySelectorAll('[data-shared-notebook-line]')].filter(row => row.children.length > 1).length;
+          continued += unit.querySelectorAll('[data-shared-notebook-fragment="1"][data-shared-notebook-role="primary"]').length;
+          for (const target of unit.querySelectorAll('[data-shared-card-segment][data-shared-card-channel]')) {
+            const { sharedCardSegment: id, sharedCardChannel: channel } = target.dataset;
+            const key = id + ':' + channel;
+            text.set(key, (text.get(key) || '') + target.textContent);
+            if (!target.hasAttribute('data-shared-notebook-fragment') || !target.textContent.trim()) continue;
+            const range = document.createRange();
+            range.setStart(target.firstChild, 0);
+            range.setEnd(target.firstChild, target.textContent.trimEnd().length);
+            const rects = [...range.getClientRects()].filter(r => r.width > 0);
+            const slot = target.dataset.sharedNotebookRole === 'primary'
+              ? target.parentElement.getBoundingClientRect()
+              : target.getBoundingClientRect();
+            if (rects.some(rect => rect.left < slot.left - 2 || rect.right > slot.right + 2)) {
+              for (const word of target.textContent.matchAll(/\\S+/g)) {
+                range.setStart(target.firstChild, word.index);
+                range.setEnd(target.firstChild, word.index + word[0].length);
+                if ([...range.getClientRects()].some(rect => rect.left < slot.left - 2 || rect.right > slot.right + 2)) {
+                  errors.push(key + ' overflow: ' + word[0]);
+                }
+              }
+            }
+            if (target.dataset.sharedNotebookRole === 'primary' && rects.length !== 1) errors.push(key + ' rewrapped: ' + rects.length);
+          }
+        }
+        for (const [key, observed] of text) {
+          const [id, channel] = key.split(':');
+          if (observed !== authored.get(id)?.[channel]) errors.push(key + ' changed');
+        }
+        const ids = new Set([...text.keys()].map(key => key.split(':')[0]));
+        for (const id of ids) for (const channel of ['text', 'meaning']) {
+          if (authored.get(id)?.[channel] && !text.has(id + ':' + channel)) errors.push(id + ':' + channel + ' missing');
+        }
+        return { units: units.length, segments: ids.size, shared, continued, errors,
+          fallback: units.filter(node => node.dataset.sharedNotebookUnit === 'fallback').length };
+      })()`);
+    };
+    for (const host of ['uat', 'main']) {
+      await run(`4C3 ${host}: Notebook persists and renders in the shared Reader modes`, async () => {
+        await call('Page.navigate', { url: `${origin}/?host=${host}&doc=london` });
+        await until(`window.__uat4C1 && document.querySelector('${host === 'main' ? '[data-main-app-host-harness]' : '[data-structured-workspace-player]'}')`, 'host ready');
+        if (host === 'main') await click('[data-main-host-reader="shared"]');
+        else if (!(await evaluate('Boolean(document.querySelector("[data-shared-book-page]"))'))) await clickButtonText('Shared UI (Beta)');
+        await select('reader-mode-option', 'full');
+        await select('bilingual-style-option', 'notebook');
+        const london = await scan();
+        assert.equal(london.units, 11);
+        assert.equal(london.segments, 37);
+        assert.deepEqual(london.errors, []);
+        assert.ok(london.shared > 0 && london.continued > 0, JSON.stringify(london));
+        console.log('MEASURE', host, JSON.stringify(london));
+        assert.equal(await evaluate('document.querySelector("[data-shared-notebook-unit]").dataset.sharedNotebookSpacing'), 'compact');
+        await captureElement('[data-shared-book-card]', `4c3-${host}-full-notebook.png`);
+        await select('workspace-align-option', 'left');
+        for (const layout of ['stacked', 'inline', 'aligned']) {
+          await select('workspace-speaker-option', layout);
+          await until(`document.querySelector('[data-shared-turn-speaker-layout="${layout}"]')`);
+        }
+        assert.deepEqual((await scan()).errors, []);
+        const action = await evaluate(`(() => {
+          const button = document.querySelector('[data-notebook-action]');
+          button.focus({preventScroll:true});
+          return button.dataset.notebookAction;
+        })()`);
+        await setViewport({ width: 1100, height: 900, mobile: false });
+        await scan();
+        assert.equal(await evaluate('document.activeElement.dataset.notebookAction'), action, 'authored action stays focused on reflow');
+        await setViewport({ width: 1280, height: 900, mobile: false });
+        if (host === 'main') {
+          await scan();
+          const ids = await evaluate('window.__uat4C1.londonIds');
+          const id = ids.segmentIdsByUnitKey.P1_SC1[0];
+          const fields = { cardId: ids.cards.P1, unitId: ids.units.P1_SC1, precision: 'segment', segmentId: id, channel: 'meaning' };
+          const setCursor = next => evaluate(`window.__uat4C1Main.setActivePlayback(${JSON.stringify(next)})`);
+          const fragment = `[data-shared-notebook-fragment][data-shared-card-segment="${id}"]`;
+          await evaluate(`(() => {
+            window.__notebookMeasurements = 0;
+            window.__countNotebook = new MutationObserver(entries => {
+              for (const entry of entries) for (const node of entry.addedNodes) {
+                if (node.classList?.contains('prolingo-notebook-sample')) window.__notebookMeasurements++;
+              }
+            });
+            window.__countNotebook.observe(document.body, { childList: true });
+          })()`);
+          await setCursor({ ...fields, state: 'playing' });
+          await until(`document.querySelector('${fragment}[data-shared-card-channel=meaning][data-notebook-speaking]')`);
+          assert.equal(await evaluate(`document.querySelectorAll('${fragment}[data-shared-card-channel=text][data-notebook-speaking]').length`), 0);
+          await setCursor({ ...fields, state: 'paused' });
+          await until(`document.querySelector('${fragment}[data-shared-card-channel=meaning][data-shared-segment-paused]')`);
+          assert.equal(await evaluate(`document.querySelectorAll('${fragment}[data-shared-card-channel=text][data-shared-segment-paused]').length`), 0);
+          await setCursor({ ...fields, state: 'playing', segmentId: null, precision: 'card' });
+          await until(`document.querySelector('${fragment}[data-notebook-speaking]')`);
+          assert.equal(await evaluate('document.querySelectorAll("[data-shared-notebook-fragment][data-text-player-segment-active]").length'), 0);
+          await setCursor(null);
+          await until('!document.querySelector("[data-notebook-speaking]")');
+          assert.equal(await evaluate('window.__notebookMeasurements'), 0, 'cursor updates alone never remeasure Notebook');
+          await evaluate('window.__countNotebook.disconnect()');
+        }
+        await select('appearance-toggle', 'true');
+        await select('notebook-guides-option', 'true');
+        await select('notebook-spacing-option', 'relaxed');
+        await select('appearance-font-family', 'serif');
+        await select('reading-language-option', 'id-en');
+        await call('Page.reload');
+        await until('document.querySelector("[data-shared-notebook-guides=off][data-shared-notebook-spacing=relaxed]")', 'Notebook settings survived reload');
+        assert.equal(await evaluate('document.querySelector("[data-shared-bilingual-style=notebook]").dataset.sharedReadingLanguage'), 'id-en');
+        for (const mode of ['card', 'focus', 'segment']) {
+          await select('reader-mode-option', mode);
+          await until('document.querySelector("[data-shared-notebook-unit]")', mode);
+          if (mode === 'focus') {
+            await select('focus-orientation-option', 'horizontal-focus');
+            await until('document.querySelector("[data-shared-part-track=horizontal]")?.swiper');
+            await evaluate(`(() => {
+              const track = document.querySelector('[data-shared-part-track=horizontal]');
+              window.scrollBy({top:track.getBoundingClientRect().top - 110, behavior:'instant'});
+            })()`);
+            await until(`(() => {
+              const track = document.querySelector('[data-shared-part-track=horizontal]');
+              const slide = track?.swiper?.slides[track.swiper.activeIndex];
+              if (!slide || track.scrollLeft || !slide.querySelector('[data-shared-notebook-unit]:not([data-shared-notebook-unit=pending])')) return false;
+              const a = track.getBoundingClientRect(), b = slide.getBoundingClientRect();
+              return Math.abs((a.left + a.right - b.left - b.right) / 2) <= 6;
+            })()`, 'Swiper centered after Notebook measurement');
+            await select('focus-orientation-option', 'vertical-focus');
+            const ids = await evaluate('window.__uat4C1.londonIds');
+            const t2 = `document.querySelector('[data-shared-focus-vertical-unit-id="${ids.units.C1_T2}"]')`;
+            await until(t2);
+            await evaluate(`${t2}.scrollIntoView({ block: 'center', behavior: 'instant' })`);
+            await until(`${t2}.querySelector('[data-shared-notebook-unit]:not([data-shared-notebook-unit=pending])')`);
+            await evaluate(`(() => {
+              document.activeElement.blur();
+              window.scrollTo({top: window.scrollY + ${t2}.getBoundingClientRect().top - innerHeight * .42 - 25, behavior:'instant'});
+            })()`);
+            for (let index = 0; index < 3; index++) {
+              await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+              await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40 });
+              await waitFrames();
+            }
+            await until(`${t2}.matches('[data-shared-part-active=true]')`, 'Notebook follows keyboard-controlled vertical focus');
+          }
+        }
+        await until('document.querySelectorAll("[data-shared-segment-study-box]").length === 4', 'exactly four Study Boxes');
+        const segmentResult = await scan();
+        assert.deepEqual(segmentResult.errors, []);
+        const target = await evaluate(`(() => {
+          const target = document.querySelector('[data-shared-notebook-fragment][data-shared-segment-select-only]');
+          const id = target?.dataset.sharedCardSegment;
+          target?.click();
+          return id;
+        })()`);
+        assert.ok(target);
+        await until(`document.querySelector('[data-shared-segment-study-box][data-shared-segment-focus="${target}"]')`, 'context tap selected Study Box');
+        const keyboardTarget = await evaluate(`(() => {
+          const node = [...document.querySelectorAll('[data-notebook-action]')]
+            .find(button => button.dataset.notebookAction.endsWith(':meaning') && !button.dataset.notebookAction.startsWith('${target}:'));
+          if (!node) return null;
+          const actions = node.parentElement;
+          const keys = [...actions.querySelectorAll('[data-notebook-action]')].map(button => button.dataset.notebookAction);
+          if (keys.length !== new Set(keys).size || !actions.nextElementSibling.matches('[aria-hidden=true]')) return null;
+          actions.parentElement.scrollIntoView({block:'center', behavior:'instant'});
+          node.focus({preventScroll:true});
+          return document.activeElement === node ? node.dataset.notebookAction.split(':')[0] : null;
+        })()`);
+        assert.ok(keyboardTarget, 'one accessible action per authored Segment/channel');
+        await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+        await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        await until(`document.querySelector('[data-shared-segment-study-box][data-shared-segment-focus="${keyboardTarget}"]')`, 'keyboard selected the authored Segment');
+        assert.ok(await evaluate(`Boolean(document.querySelector('[data-shared-notebook-fragment][data-shared-card-segment="${keyboardTarget}"][data-shared-segment-selected]'))`));
+        assert.deepEqual(await evaluate('window.__uat4C1.getPlaybackLog()'), []);
+        await select('reader-mode-option', 'full');
+        await evaluate('window.__uat4C1.setWorkspace("stress"); window.__uat4C1.setDark(true)');
+        await setViewport({ width: 390, height: 844, mobile: true });
+        await until('document.querySelectorAll("[data-shared-book-card]").length === 3', 'complete stress fixture');
+        const stress = await scan();
+        assert.equal(stress.segments, 9);
+        assert.deepEqual(stress.errors, []);
+        assert.ok(await evaluate('document.documentElement.scrollWidth <= window.innerWidth'));
+        await captureFullPage(`4c3-${host}-mobile-stress.png`);
+        await call('Emulation.setPageScaleFactor', { pageScaleFactor: 1.25 });
+        await until('window.visualViewport.scale >= 1.2', 'mobile zoom applied');
+        assert.deepEqual((await scan()).errors, []);
+        await call('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+        await setViewport({ width: 1280, height: 900, mobile: false });
+        const guard = await evaluate('({ db: window.__uat4DbCalls, errors: window.__uat4Errors, unchanged: window.__uat4C1.getSnapshotsUnchanged() })');
+        assert.deepEqual(guard, { db: 0, errors: [], unchanged: true });
+        if (host === 'main') {
+          await evaluate('window.scrollTo(0,0); window.__uat4C1.extendLondon()');
+          await until('document.querySelectorAll("[data-shared-book-card]").length === 20', 'larger disposable fixture');
+          await until('document.querySelector("[data-shared-notebook-unit=parallel]")');
+          const pending = await evaluate('document.querySelectorAll("[data-shared-notebook-unit=pending]").length');
+          assert.ok(pending > 10, 'offscreen Units remain unmeasured');
+          const large = await scan();
+          assert.equal(large.units, 27);
+          assert.equal(large.segments, 85);
+          assert.deepEqual(large.errors, []);
+          assert.ok(large.fallback > 0 && large.fallback < large.units);
+          console.log('MEASURE large', JSON.stringify({ ...large, initiallyPending: pending }));
+        }
+        if (!(await evaluate('Boolean(document.querySelector("[data-shared-appearance-reset]"))'))) {
+          await select('appearance-toggle', 'true');
+        }
+        await select('appearance-reset', 'true');
+        await until('document.querySelector("[data-shared-notebook-guides=on][data-shared-notebook-spacing=compact]")');
+        assert.equal(await evaluate('document.querySelector("[data-shared-workspace-align-option=left]").getAttribute("aria-pressed")'), 'true');
+        for (const language of ['id-only', 'en-only']) {
+          await select('reading-language-option', language);
+          assert.equal(await evaluate('document.querySelectorAll("[data-shared-notebook-unit]").length'), 0);
+        }
+        await waitFrames();
+        assert.equal(await evaluate('document.querySelectorAll("body > .prolingo-notebook-sample").length'), 0);
+        assert.deepEqual(await evaluate('window.__uat4C1.getPlaybackLog()'), []);
+      });
+    }
+  }
+
+  if (!notebookLayoutOnly && !notebookOnly) {
   // ---------------------------------------------------------------------------
   // 1. Fresh-reader EN Only default, NO Notebook exposed, Legacy compatibility
   // ---------------------------------------------------------------------------
-  await run('4C1-1: Fresh reader defaults to EN Only, never exposes Notebook, and preserves legacy saved preferences', async () => {
+  await run('4C1-1: Fresh reader defaults to EN Only, keeps Notebook opt-in, and preserves legacy saved preferences', async () => {
     await clickButtonText('Shared UI (Beta)');
     await until('document.querySelector("[data-shared-book-page=true]")', 'Book Page rendered');
     await waitFrames();
@@ -493,7 +800,8 @@ try {
         effectiveStyle: toolbar.dataset.sharedBilingualStyleEffective,
         langOptions,
         styleOptions,
-        noNotebookText: !toolbar.textContent.toLowerCase().includes('notebook'),
+        notebookInactive: toolbar.querySelector('[data-shared-bilingual-style-option="notebook"]')?.getAttribute('aria-pressed') === 'false'
+          && !document.querySelector('[data-shared-notebook-unit]'),
         enExact37: JSON.stringify(enSegs) === JSON.stringify(window.__uat4C1.londonIds.segmentIds),
         idCount: idSegs.length,
         zeroPlayback: window.__uat4C1.getPlaybackLog().length === 0
@@ -502,8 +810,8 @@ try {
     assert.equal(fresh.readingLanguage, 'en-only', 'Fresh reader default must be EN Only');
     assert.equal(fresh.effectiveStyle, 'single');
     assert.deepEqual(fresh.langOptions, ['en-only', 'id-only', 'en-id', 'id-en']);
-    assert.deepEqual(fresh.styleOptions, ['separated', 'interlinear', 'contextual']);
-    assert.equal(fresh.noNotebookText, true, 'Notebook must not be exposed as a working option in 4C1');
+    assert.deepEqual(fresh.styleOptions, ['separated', 'interlinear', 'notebook', 'contextual']);
+    assert.equal(fresh.notebookInactive, true);
     assert.equal(fresh.enExact37, true);
     assert.equal(fresh.idCount, 0);
     assert.equal(fresh.zeroPlayback, true);
@@ -864,7 +1172,9 @@ try {
       fontFamily: 'serif',
       lineHeight: 'loose',
       translationContrast: 'high',
-      textSpacing: 'relaxed'
+      textSpacing: 'relaxed',
+      notebookSpacing: 'compact',
+      notebookGuideLines: true
     });
     assert.equal(persistedTypo.align, 'left');
     assert.ok(persistedTypo.fontFamily.toLowerCase().includes('georgia'));
@@ -1009,6 +1319,7 @@ try {
     assert.equal(guard.unchanged, true);
   });
 
+  }
   const report = {
     status: 'PASS',
     browserPath,
@@ -1017,16 +1328,30 @@ try {
     evidenceDir,
     screenshots
   };
-  await fs.writeFile(path.join(evidenceDir, 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
+  await fs.writeFile(path.join(evidenceDir, notebookOnly || notebookLayoutOnly ? 'uat4-4c3-report.json' : 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
-  await call('Browser.close').catch(() => {});
 } catch (error) {
   console.error('UAT-4 4C1 browser audit FAILED:', error);
   process.exitCode = 1;
 } finally {
+  await closeBrowser?.().catch(() => {});
   socket?.close();
-  browser.kill();
+  if (browser.exitCode === null && browser.signalCode === null) browser.kill();
   server.closeAllConnections();
   server.close();
-  console.log(`Evidence dir: ${evidenceDir} | Disposable profile: ${profile}`);
+  // Only remove the disposable directory allocated by this process.
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      await fs.rm(profile, { recursive: true, force: true });
+      console.log(`Evidence dir: ${evidenceDir} | Disposable profile removed`);
+      break;
+    } catch (error) {
+      if (attempt === 7) {
+        console.error(`Disposable profile cleanup failed: ${profile}`, error);
+        process.exitCode = 1;
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+  }
 }

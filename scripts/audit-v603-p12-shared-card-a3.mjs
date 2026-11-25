@@ -883,7 +883,8 @@ test('4C1 Per-Unit Separated, ID-EN reversal, single Workspace Contextual target
   }));
   assert.equal(collectNodes(segToolbarTree, n => Boolean(n.props?.['data-shared-reading-language-option'])).length, 4);
   const styleBtns = collectNodes(segToolbarTree, n => Boolean(n.props?.['data-shared-bilingual-style-option']));
-  assert.deepEqual(styleBtns.map(b => b.props['data-shared-bilingual-style-option']), ['separated', 'interlinear', 'contextual']);
+  assert.deepEqual(styleBtns.map(b => b.props['data-shared-bilingual-style-option']), ['separated', 'interlinear', 'notebook', 'contextual']);
+  assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'notebook').props.disabled, false);
   assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'separated').props.disabled, true);
   assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'contextual').props.disabled, true);
   assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'interlinear').props.disabled, false);

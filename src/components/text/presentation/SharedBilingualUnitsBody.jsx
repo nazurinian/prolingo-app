@@ -9,8 +9,10 @@ import {
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
+import SharedNotebookUnitsBody from './SharedNotebookUnitsBody.jsx';
 import {
   IDLE_SHARED_CURSOR,
+  SHARED_APPEARANCE_SPACING_OPTIONS,
   buildCardSegmentIndexMap,
   buildCardSpeakerAppearanceMap,
   buildConversationBodyStyle,
@@ -893,8 +895,12 @@ export const SharedBilingualUnitsBody = ({
   // ---------------------------------------------------------------------------
   // 1. SENTENCE INTERLINEAR — each Segment pairs primary directly above secondary
   // ---------------------------------------------------------------------------
-  if (renderMode === 'interlinear') {
-    const handleSegmentActivate = segmentId => {
+  if (renderMode === 'interlinear' || renderMode === 'notebook') {
+    const isNotebook = renderMode === 'notebook';
+    const notebookLetterSpacing = SHARED_APPEARANCE_SPACING_OPTIONS
+      .find(option => option.id === appearancePres.appearance.notebookSpacing)?.letterSpacing;
+    const handleSegmentActivate = (segmentId, channel) => {
+      if (isNotebook && channel !== primaryChannel && channel !== secondaryChannel) return;
       if (selectionOnly) onSelectSegment?.(segmentId);
       else onPlaySegment?.(segmentId);
     };
@@ -902,13 +908,20 @@ export const SharedBilingualUnitsBody = ({
     return (
       <div
         className={appearancePres.unitStackClass}
-        data-shared-card-interlinear="true"
+        data-shared-card-interlinear={!isNotebook ? 'true' : undefined}
         {...rootAttrs}
       >
         {units.map((unit, unitIndex) => {
           const meta = resolveUnitMeta(unit, unitIndex);
           const primaryBodyStyle = meta.isTurn ? conversationPrimaryStyle : paragraphNoIndentPrimaryStyle;
           const secondaryBodyStyle = meta.isTurn ? conversationSecondaryStyle : paragraphNoIndentSecondaryStyle;
+          const getFlags = (segment, channel) => buildSharedSegmentRenderFlags({
+            segment,
+            logicalIndex: indexById.get(segment.id) ?? 0,
+            channel, cursor, isSpeakingCard,
+            fullChannelHighlighted: channel === primaryChannel ? fullPrimaryHighlighted : fullSecondaryHighlighted,
+            focusSegmentId, selectedSegmentId, selectionOnly, playableSegmentIds, audioCoverageMap, disabled
+          });
 
           return (
             <SharedAuthoredUnitShell
@@ -922,43 +935,18 @@ export const SharedBilingualUnitsBody = ({
               showSectionHeaders={showSectionHeaders}
               workspaceStylePresentation={workspaceStylePresentation}
               isTitleRole={isTitleRole}
-              allowInlineLeadIn={false}
-              renderBody={() => (
+              allowInlineLeadIn={isNotebook}
+              renderBody={({ inlineLeadIn }) => {
+                const renderSentenceBody = () => (
                 <div className={appearancePres.pairGapClass}>
                   {meta.unitSegments.map((segment, localIdx) => {
                     const logicalIndex = indexById.get(segment.id) ?? 0;
-                    const primaryText = normalizeSegmentDisplayText(primaryChannel === 'meaning' ? segment.meaning : segment.text);
-                    const secondaryText = normalizeSegmentDisplayText(secondaryChannel === 'meaning' ? segment.meaning : segment.text);
-                    const primaryFlags = buildSharedSegmentRenderFlags({
-                      segment,
-                      logicalIndex,
-                      channel: primaryChannel,
-                      cursor,
-                      isSpeakingCard,
-                      fullChannelHighlighted: fullPrimaryHighlighted,
-                      focusSegmentId,
-                      selectedSegmentId,
-                      selectionOnly,
-                      playableSegmentIds,
-                      audioCoverageMap,
-                      disabled
-                    });
-                    const secondaryFlags = buildSharedSegmentRenderFlags({
-                      segment,
-                      logicalIndex,
-                      channel: secondaryChannel,
-                      cursor,
-                      isSpeakingCard,
-                      fullChannelHighlighted: fullSecondaryHighlighted,
-                      focusSegmentId,
-                      selectedSegmentId,
-                      selectionOnly,
-                      playableSegmentIds,
-                      audioCoverageMap,
-                      disabled
-                    });
-                    const isRowActive = primaryFlags.active || secondaryFlags.active;
-                    const isRowPaused = primaryFlags.paused || secondaryFlags.paused;
+                    const primaryText = isNotebook ? String(segment[primaryChannel] ?? '') : normalizeSegmentDisplayText(segment[primaryChannel]);
+                    const secondaryText = isNotebook ? String(segment[secondaryChannel] ?? '') : normalizeSegmentDisplayText(segment[secondaryChannel]);
+                    const primaryFlags = getFlags(segment, primaryChannel);
+                    const secondaryFlags = getFlags(segment, secondaryChannel);
+                    const isRowActive = !isNotebook && (primaryFlags.active || secondaryFlags.active);
+                    const isRowPaused = !isNotebook && (primaryFlags.paused || secondaryFlags.paused);
                     const isRowSelected = primaryFlags.selected || secondaryFlags.selected;
                     const isRowFocused = primaryFlags.focused || secondaryFlags.focused;
 
@@ -995,7 +983,7 @@ export const SharedBilingualUnitsBody = ({
                               data-shared-reading-align={primaryBodyStyle.textAlign}
                               data-shared-reading-size={appearancePres.appearance.primaryFontSize}
                               style={primaryBodyStyle.inlineStyle}
-                              className={`max-w-[66ch] break-words ${isTitleRole ? 'font-medium text-slate-900 dark:text-slate-50' : appearancePres.primaryTextClass} ${primaryBodyStyle.className}`}
+                              className={`max-w-[66ch] break-words ${isNotebook ? 'whitespace-pre-wrap' : ''} ${isTitleRole ? 'font-medium text-slate-900 dark:text-slate-50' : appearancePres.primaryTextClass} ${primaryBodyStyle.className}`}
                             >
                               {primaryText ? (
                                 <TextSegmentInteraction
@@ -1003,7 +991,7 @@ export const SharedBilingualUnitsBody = ({
                                   channel={primaryChannel}
                                   interactive
                                   disabled={primaryFlags.segmentDisabled}
-                                  active={primaryFlags.active}
+                                  active={isNotebook ? primaryFlags.speaking || primaryFlags.paused : primaryFlags.active}
                                   speaking={primaryFlags.speaking}
                                   focused={primaryFlags.focused}
                                   fullChannelHighlighted={primaryFlags.fullChannelHighlighted}
@@ -1011,7 +999,7 @@ export const SharedBilingualUnitsBody = ({
                                   accessibleLabel={primaryFlags.accessibleLabel}
                                   className={primaryFlags.className}
                                   dataAttributes={primaryFlags.dataAttributes}
-                                  onActivate={handleSegmentActivate}
+                                  onActivate={segmentId => handleSegmentActivate(segmentId, isNotebook ? primaryChannel : undefined)}
                                 >
                                   {primaryText}
                                 </TextSegmentInteraction>
@@ -1033,7 +1021,7 @@ export const SharedBilingualUnitsBody = ({
                               data-shared-reading-kind={meta.readingKind}
                               data-shared-reading-align={secondaryBodyStyle.textAlign}
                               style={secondaryBodyStyle.inlineStyle}
-                              className={`max-w-[66ch] break-words ${appearancePres.secondaryTextClass} ${secondaryBodyStyle.className}`}
+                              className={`max-w-[66ch] break-words ${isNotebook ? 'whitespace-pre-wrap' : ''} ${appearancePres.secondaryTextClass} ${secondaryBodyStyle.className}`}
                             >
                               {secondaryText ? (
                                 <TextSegmentInteraction
@@ -1041,7 +1029,7 @@ export const SharedBilingualUnitsBody = ({
                                   channel={secondaryChannel}
                                   interactive
                                   disabled={secondaryFlags.segmentDisabled}
-                                  active={secondaryFlags.active}
+                                  active={isNotebook ? secondaryFlags.speaking || secondaryFlags.paused : secondaryFlags.active}
                                   speaking={secondaryFlags.speaking}
                                   focused={secondaryFlags.focused}
                                   fullChannelHighlighted={secondaryFlags.fullChannelHighlighted}
@@ -1049,7 +1037,7 @@ export const SharedBilingualUnitsBody = ({
                                   accessibleLabel={secondaryFlags.accessibleLabel}
                                   className={secondaryFlags.className}
                                   dataAttributes={secondaryFlags.dataAttributes}
-                                  onActivate={handleSegmentActivate}
+                                  onActivate={segmentId => handleSegmentActivate(segmentId, isNotebook ? secondaryChannel : undefined)}
                                 >
                                   {secondaryText}
                                 </TextSegmentInteraction>
@@ -1069,7 +1057,35 @@ export const SharedBilingualUnitsBody = ({
                     );
                   })}
                 </div>
-              )}
+                );
+                if (!isNotebook) return renderSentenceBody();
+                return (
+                  <SharedNotebookUnitsBody
+                    key={`${workspace?.id || ''}:${workspace?.uid || ''}:${unit.viewKey}`}
+                    segments={meta.unitSegments.map(segment => ({
+                      id: segment.id,
+                      joinAfter: segment.joinAfter,
+                      separator: resolveSegmentJoinSeparator(segment.joinAfter),
+                      primary: String(segment[primaryChannel] ?? ''),
+                      secondary: String(segment[secondaryChannel] ?? '')
+                    }))}
+                    primaryChannel={primaryChannel}
+                    secondaryChannel={secondaryChannel}
+                    primaryStyle={{ ...(meta.isTurn ? conversationPrimaryStyle : paragraphPrimaryStyle).inlineStyle, letterSpacing: notebookLetterSpacing }}
+                    secondaryStyle={secondaryBodyStyle.inlineStyle}
+                    primaryClassName={isTitleRole ? 'font-medium text-slate-900 dark:text-slate-50' : appearancePres.primaryTextClass}
+                    secondaryClassName={appearancePres.secondaryTextClass}
+                    primaryLang={primaryMeta.lang}
+                    secondaryLang={secondaryMeta.lang}
+                    guides={appearancePres.appearance.notebookGuideLines}
+                    spacing={appearancePres.appearance.notebookSpacing}
+                    inlineLeadIn={inlineLeadIn}
+                    resolveFlags={(index, channel) => getFlags(meta.unitSegments[index], channel)}
+                    onActivate={handleSegmentActivate}
+                    renderFallback={renderSentenceBody}
+                  />
+                );
+              }}
             />
           );
         })}

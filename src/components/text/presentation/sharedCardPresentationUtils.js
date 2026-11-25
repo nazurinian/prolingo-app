@@ -51,6 +51,11 @@ export const SHARED_BILINGUAL_STYLE_OPTIONS = Object.freeze([
     description: 'Pair each sentence with its translation directly underneath in active reading order'
   }),
   Object.freeze({
+    id: 'notebook',
+    label: 'Notebook',
+    description: 'Flow primary text across lines with translation beneath corresponding fragments'
+  }),
+  Object.freeze({
     id: 'contextual',
     label: 'Contextual',
     legacyLayoutId: null,

@@ -489,8 +489,7 @@ test('4-mode Reader preference compatibility maps legacy Part layouts determinis
 });
 test('4C1 Reading Language, Bilingual Style, legacy preference mapping, non-destructive Segment fallback, and independent Appearance controls', () => {
   assert.deepEqual(TEXT_READING_LANGUAGE_MODES, ['en-only', 'id-only', 'en-id', 'id-en']);
-  assert.deepEqual(TEXT_BILINGUAL_STYLES, ['separated', 'interlinear', 'contextual']);
-  assert.equal(TEXT_BILINGUAL_STYLES.includes('notebook'), false, 'Notebook must stay deferred to 4C2-4C3');
+  assert.deepEqual(TEXT_BILINGUAL_STYLES, ['separated', 'interlinear', 'contextual', 'notebook']);
   assert.deepEqual(TEXT_CONTEXTUAL_PLACEMENTS, ['above', 'below', 'inline']);
 
   // Fresh reader default is EN Only (does not overwrite explicitly saved legacy settings)
@@ -518,20 +517,23 @@ test('4C1 Reading Language, Bilingual Style, legacy preference mapping, non-dest
     assert.equal(mapped.view.bilingualLayout, expectedLegacy, `Legacy ${oldLayout} -> derived mirror`);
   }
 
-  // Invalid / deferred Notebook style is rejected safely without breaking state
-  const rejectedNotebook = normalizeTextCardPresentationState({
+  const notebook = normalizeTextCardPresentationState({
     readingLanguage: 'id-en',
     bilingualStyle: 'notebook',
     contextualPlacement: 'floating',
     appearance: { primaryFontSize: 'xl', secondaryFontSize: 'huge', fontFamily: 'serif', voice: 'ignored' }
   });
-  assert.equal(rejectedNotebook.readingLanguage, 'id-en');
-  assert.equal(rejectedNotebook.bilingualStyle, 'interlinear');
-  assert.equal(rejectedNotebook.contextualPlacement, 'below');
-  assert.equal(rejectedNotebook.appearance.primaryFontSize, 'xl');
-  assert.equal(rejectedNotebook.appearance.secondaryFontSize, DEFAULT_TEXT_READER_APPEARANCE_STATE.secondaryFontSize);
-  assert.equal(rejectedNotebook.appearance.fontFamily, 'serif');
-  assert.equal('voice' in rejectedNotebook.appearance, false);
+  assert.equal(notebook.readingLanguage, 'id-en');
+  assert.equal(notebook.bilingualStyle, 'notebook');
+  assert.equal(notebook.contextualPlacement, 'below');
+  assert.equal(notebook.appearance.primaryFontSize, 'xl');
+  assert.equal(notebook.appearance.secondaryFontSize, DEFAULT_TEXT_READER_APPEARANCE_STATE.secondaryFontSize);
+  assert.equal(notebook.appearance.fontFamily, 'serif');
+  assert.equal(notebook.appearance.notebookSpacing, 'compact');
+  assert.equal(notebook.appearance.notebookGuideLines, true);
+  assert.equal('voice' in notebook.appearance, false);
+  assert.equal(resolveEffectiveBilingualPresentation({ readerMode: 'segment', view: notebook }).effectiveRenderMode, 'notebook');
+  assert.equal(normalizeTextCardPresentationState({ bilingualStyle: 'invalid' }).bilingualStyle, 'interlinear');
 
   // Mode capability rules: Full/Card/Focus allow Separated, Interlinear & Contextual;
   // Segment disallows Separated & Contextual with non-destructive primary-only fallback!
@@ -554,7 +556,7 @@ test('4C1 Reading Language, Bilingual Style, legacy preference mapping, non-dest
   assert.equal(segFallback.primaryChannel, 'meaning');
   assert.equal(segFallback.fallbackActive, true);
   assert.equal(segFallback.savedBilingualStyle, 'contextual', 'Segment fallback must preserve saved bilingualStyle');
-  assert.deepEqual(segFallback.allowedBilingualStyles, ['interlinear']);
+  assert.deepEqual(segFallback.allowedBilingualStyles, ['interlinear', 'notebook']);
   assert.deepEqual(segFallback.unavailableBilingualStyles, ['separated', 'contextual']);
   // Returning to Full immediately restores Contextual!
   assert.equal(resolveEffectiveBilingualPresentation({ readerMode: 'full', view: contextualView }).effectiveRenderMode, 'contextual');

@@ -3,7 +3,7 @@ export const TEXT_CARD_BILINGUAL_LAYOUTS = Object.freeze(['interlinear', 'separa
 export const TEXT_CARD_PART_LAYOUTS = Object.freeze(['horizontal-focus', 'vertical-focus', 'vertical-list']);
 
 export const TEXT_READING_LANGUAGE_MODES = Object.freeze(['en-only', 'id-only', 'en-id', 'id-en']);
-export const TEXT_BILINGUAL_STYLES = Object.freeze(['separated', 'interlinear', 'contextual']);
+export const TEXT_BILINGUAL_STYLES = Object.freeze(['separated', 'interlinear', 'contextual', 'notebook']);
 export const TEXT_CONTEXTUAL_PLACEMENTS = Object.freeze(['above', 'below', 'inline']);
 
 export const TEXT_APPEARANCE_PRIMARY_FONT_SIZES = Object.freeze(['sm', 'md', 'lg', 'xl']);
@@ -19,7 +19,9 @@ export const DEFAULT_TEXT_READER_APPEARANCE_STATE = Object.freeze({
   fontFamily: 'sans',
   lineHeight: 'relaxed',
   translationContrast: 'balanced',
-  textSpacing: 'normal'
+  textSpacing: 'normal',
+  notebookSpacing: 'compact',
+  notebookGuideLines: true
 });
 const TEXT_READER_APPEARANCE_KEYS = Object.freeze(Object.keys(DEFAULT_TEXT_READER_APPEARANCE_STATE));
 
@@ -65,7 +67,13 @@ export const normalizeTextReaderAppearanceState = candidate => Object.freeze({
     : DEFAULT_TEXT_READER_APPEARANCE_STATE.translationContrast,
   textSpacing: TEXT_APPEARANCE_TEXT_SPACINGS.includes(candidate?.textSpacing)
     ? candidate.textSpacing
-    : DEFAULT_TEXT_READER_APPEARANCE_STATE.textSpacing
+    : DEFAULT_TEXT_READER_APPEARANCE_STATE.textSpacing,
+  notebookSpacing: TEXT_APPEARANCE_TEXT_SPACINGS.includes(candidate?.notebookSpacing)
+    ? candidate.notebookSpacing
+    : DEFAULT_TEXT_READER_APPEARANCE_STATE.notebookSpacing,
+  notebookGuideLines: typeof candidate?.notebookGuideLines === 'boolean'
+    ? candidate.notebookGuideLines
+    : DEFAULT_TEXT_READER_APPEARANCE_STATE.notebookGuideLines
 });
 
 export const updateTextReaderAppearanceState = (current, patch) => {
@@ -232,7 +240,7 @@ export const resolveEffectiveBilingualPresentation = ({
   const secondaryChannel = primaryChannel === 'text' ? 'meaning' : 'text';
 
   const allowedBilingualStyles = isSegmentMode
-    ? Object.freeze(['interlinear'])
+    ? Object.freeze(['interlinear', 'notebook'])
     : TEXT_BILINGUAL_STYLES;
   const unavailableBilingualStyles = isSegmentMode
     ? Object.freeze(['separated', 'contextual'])
@@ -245,9 +253,9 @@ export const resolveEffectiveBilingualPresentation = ({
 
   if (isBilingual) {
     if (isSegmentMode) {
-      if (savedBilingualStyle === 'interlinear') {
-        effectiveRenderMode = 'interlinear';
-        effectiveBilingualStyle = 'interlinear';
+      if (allowedBilingualStyles.includes(savedBilingualStyle)) {
+        effectiveRenderMode = savedBilingualStyle;
+        effectiveBilingualStyle = savedBilingualStyle;
       } else {
         effectiveRenderMode = 'single';
         effectiveBilingualStyle = null;
