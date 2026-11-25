@@ -3801,7 +3801,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return runStructuredTextAudioGenerationBatch(jobs);
   }, [structuredTextAudioGenerationState.failedJobs, runStructuredTextAudioGenerationBatch]);
 
-  const resolveStructuredTextBlockChannelPlaybackPlan = ({ block, fullBlock = null, channel, allowFullArtifact = true, segmentIds = null } = {}) => {
+  const resolveStructuredTextBlockChannelPlaybackPlan = ({ block, fullBlock = null, channel, allowFullArtifact = true, segmentIds = null,
+    representationMode = textStructuredPreferences.playbackRepresentationMode } = {}) => {
     const targetBlock = fullBlock || block;
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const firstSegment = (block?.segments || []).find(segment => String(normalizedChannel === 'meaning' ? segment?.meaning : segment?.text || '').trim()) || block?.segments?.[0] || null;
@@ -3826,7 +3827,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       block: targetBlock,
       channel: normalizedChannel,
       segmentIds,
-      representationMode: textStructuredPreferences.playbackRepresentationMode,
+      representationMode,
       audioVariants: textLibrarySnapshot?.audioVariants || [],
       runtimeAudioUrls: structuredTextAudioRuntimeUrls,
       runtimeFullAudio: structuredTextFullAudioRuntimeUrls,
@@ -4190,6 +4191,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     startSegmentId = null,
     cursorSegmentId = null,
     blockId = null,
+    unitId,
+    virtualUnit,
+    workspaceId,
+    workspaceUid,
+    channel,
+    boundary,
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
     playbackChannelMode = textStructuredPreferences.playbackChannelMode,
     playbackOrderMode = textStructuredPreferences.playbackOrderMode,
@@ -4199,13 +4206,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     orderedListOverride = null
   } = {}) => {
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1' || !activeTextDocumentTree) return false;
-    setStructuredTextPlaybackSourceStatus(null);
-    // Remember an explicit manual Card/Segment target before the 120ms async
-    // transition. An immediate Stop must still resume at the chosen Card.
-    const requestedSegmentId = cursorSegmentId || startSegmentId
-      || (blockId ? activeTextDocumentTree.blocks?.find(block => block.id === blockId)?.segments?.[0]?.id : null);
-    const isManualUnitScope = scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
-      || scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD;
+    const isManualUnitScope = [TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT, TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD].includes(scope)
+      || (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE && [TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD].includes(boundary));
     const globalShuffleActive = textStructuredPreferences.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE;
     const preservedManualShuffleList = isManualUnitScope
       && globalShuffleActive
@@ -4213,21 +4215,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       && Array.isArray(structuredTextResumeCursorRef.current.orderedList)
       ? structuredTextResumeCursorRef.current.orderedList
       : null;
-    if (requestedSegmentId) {
-      structuredTextResumeCursorRef.current = {
-        documentId: activeTextDocumentTree.id,
-        segmentId: requestedSegmentId,
-        orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedListOverride)
-          ? [...orderedListOverride]
-          : preservedManualShuffleList
-      };
-    }
     return executeStructuredTextPlaybackSessionService({
       documentTree: activeTextDocumentTree,
       startSegmentId,
       cursorSegmentId,
       blockId,
+      unitId,
+      virtualUnit,
+      workspaceId,
+      workspaceUid,
+      channel,
       scope,
+      boundary,
       safePlayTransition,
       playbackSessionRef,
       playbackContextRef,
@@ -4244,9 +4243,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackChannelMode,
       playbackOrderMode,
       playbackRepresentationMode,
+      savedPlaybackRepresentationMode: textStructuredPreferences.playbackRepresentationMode,
       repeatMode,
       repeatCount,
       orderedListOverride,
+      onPlaybackAccepted: ({ segmentId }) => {
+        setStructuredTextPlaybackSourceStatus(null);
+        // Remember the validated target before the async transition, including
+        // when the user presses Stop before the first audio step.
+        if (cursorSegmentId || startSegmentId || blockId || unitId) {
+          structuredTextResumeCursorRef.current = {
+            documentId: activeTextDocumentTree.id, segmentId,
+            orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedListOverride)
+              ? [...orderedListOverride]
+              : preservedManualShuffleList
+          };
+        }
+      },
       onPlaybackCursor: ({ documentId, segmentId, orderedList }) => {
         if (documentId !== activeTextDocumentTree?.id || !segmentId) return;
         // Observe the existing host session; do not allocate a token or change audio.
@@ -4285,7 +4298,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const handleStructuredTextPlaySegment = (segmentId) => {
+  const handleStructuredTextPlaySegment = (segmentId, channel) => {
+    if (channel !== undefined) return startStructuredTextPlayback({
+      startSegmentId: segmentId, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT, channel,
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL
+    });
     const currentScope = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
       ? playbackContextRef.current?.scope
       : null;
@@ -4299,7 +4316,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT,
       playbackChannelMode: manual.playbackChannelMode,
       playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
-      playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
       repeatMode: manual.repeatMode,
       repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
     });
@@ -4324,8 +4340,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const handleStructuredTextStartFromSegment = (segmentId) => startStructuredTextPlayback({
     startSegmentId: segmentId,
-    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+    boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
   });
+
+  const handleStructuredTextPlayUnit = (target) => startStructuredTextPlayback({
+    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once'
+  });
+
+  const handleStructuredTextPlayContinue = (segmentId, { scope: boundary } = {}) => boundary
+    ? startStructuredTextPlayback({
+      startSegmentId: segmentId, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE, boundary, repeatMode: 'once'
+    }) : false;
 
   const handleStructuredTextPlayDocument = () => startStructuredTextPlayback({
     scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
@@ -4486,7 +4512,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           startStructuredTextPlayback({ scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT });
         }
       } else if (request.action === TEXT_LIBRARY_SEARCH_ACTIONS.START_HERE && segment?.id) {
-        startStructuredTextPlayback({ startSegmentId: segment.id, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE });
+        startStructuredTextPlayback({
+          startSegmentId: segment.id, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+          boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+        });
       }
     }
 
@@ -7633,6 +7662,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         onPlayDocument={handleStructuredTextPlayDocument}
         onPlayCard={handleStructuredTextPlayCard}
         onPlaySegment={handleStructuredTextPlaySegment}
+        onPlaySegmentChannel={handleStructuredTextPlaySegment}
+        onPlayUnit={handleStructuredTextPlayUnit}
+        onPlayContinueFromSegment={handleStructuredTextPlayContinue}
         onStartFromSegment={handleStructuredTextStartFromSegment}
         audioRuntimeStatusMap={structuredTextAudioRuntimeStatusMap}
         runtimeFullAudio={structuredTextFullAudioRuntimeUrls}

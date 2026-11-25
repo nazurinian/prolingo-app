@@ -4,12 +4,14 @@ import {
   TEXT_STRUCTURED_ORDER_MODES,
   TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES,
   TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES,
-  TEXT_STRUCTURED_REPEAT_MODES
+  TEXT_STRUCTURED_REPEAT_MODES,
+  hasStructuredTextPlayableChannel
 } from './textStructuredPlaybackPreferenceDomain.js';
 
 export const TEXT_STRUCTURED_PLAYBACK_CONTEXT = 'text-structured';
 export const TEXT_STRUCTURED_PLAYBACK_SCOPES = Object.freeze({
   SEGMENT: 'segment',
+  UNIT: 'unit',
   CARD: 'card',
   FROM_HERE: 'from-here',
   DOCUMENT: 'document'
@@ -51,47 +53,103 @@ export const resolveStructuredTextPlaybackList = documentTree => {
         isStructured: false
       };
     });
-  }).filter(item => item.text);
+  }).filter(item => item.text || item.meaning);
 };
 
 export const resolveStructuredTextPlaybackScopeList = ({
   documentTree,
+  workspaceId,
+  workspaceUid,
   startSegmentId = null,
   cursorSegmentId = null,
   blockId = null,
-  scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE
+  unitId = null,
+  virtualUnit = false,
+  scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+  boundary
 }) => {
   const fullList = resolveStructuredTextPlaybackList(documentTree);
-  if (!fullList.length) return { fullList, playbackList: [], startIndex: -1 };
-  const cursorId = cursorSegmentId || startSegmentId || null;
+  const invalid = { fullList, playbackList: [], startIndex: -1 };
+  const { DOCUMENT, CARD, UNIT, SEGMENT, FROM_HERE } = TEXT_STRUCTURED_PLAYBACK_SCOPES;
+  if (!documentTree?.id || (workspaceId !== undefined && workspaceId !== documentTree.id)
+    || (workspaceUid !== undefined && workspaceUid !== (documentTree.uid ?? null))
+    || !Object.values(TEXT_STRUCTURED_PLAYBACK_SCOPES).includes(scope)) return invalid;
 
-  if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT) {
-    const cursorIndex = cursorId ? fullList.findIndex(item => item.id === cursorId) : 0;
-    return { fullList, playbackList: fullList, startIndex: cursorIndex >= 0 ? cursorIndex : 0 };
+  const continuing = scope === FROM_HERE;
+  const target = continuing ? boundary : scope;
+  if (continuing && (![DOCUMENT, CARD, UNIT].includes(boundary) || startSegmentId == null)) return invalid;
+  if (target === SEGMENT && startSegmentId == null && cursorSegmentId == null) return invalid;
+  const start = fullList.find(item => item.id === startSegmentId);
+  const cursor = fullList.find(item => item.id === cursorSegmentId);
+  if ((startSegmentId != null && !start) || (cursorSegmentId != null && !cursor)) return invalid;
+  if (target === SEGMENT && start && cursor && start !== cursor) return invalid;
+
+  const blocks = documentTree.blocks || [];
+  const targetBlockId = blockId ?? start?.blockId ?? cursor?.blockId
+    ?? (unitId != null ? blocks.find(block => block.units?.some(unit => unit.id === unitId))?.id : null);
+  const block = blocks.find(candidate => candidate.id === targetBlockId);
+  if ((blockId != null || target === CARD || target === UNIT || unitId != null || virtualUnit) && !block) return invalid;
+  if ((blockId != null || target === CARD || target === UNIT || unitId != null || virtualUnit)
+    && [start, cursor].some(item => item && item.blockId !== block.id)) return invalid;
+
+  const targetUnitId = unitId ?? (target === UNIT ? start?.unitId ?? cursor?.unitId ?? null : null);
+  const useVirtualUnit = targetUnitId == null && (virtualUnit || (continuing && target === UNIT))
+    && block?.blockType === 'paragraph' && !Array.isArray(block.units);
+  if (virtualUnit && !useVirtualUnit) return invalid;
+  if (targetUnitId != null && (!block?.units?.some(unit => unit.id === targetUnitId)
+    || [start, cursor].some(item => item && item.unitId !== targetUnitId))) return invalid;
+  if (target === UNIT && targetUnitId == null && !useVirtualUnit) return invalid;
+  if (useVirtualUnit && [start, cursor].some(item => item?.unitId != null)) return invalid;
+
+  let playbackList = fullList;
+  if (target === SEGMENT) playbackList = [start || cursor];
+  if (target === CARD) playbackList = fullList.filter(item => item.blockId === block.id);
+  if (target === UNIT) {
+    playbackList = fullList.filter(item => item.blockId === block.id
+      && (useVirtualUnit ? item.unitId == null : item.unitId === targetUnitId));
   }
-
-  if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD) {
-    const targetBlockId = blockId || fullList.find(item => item.id === (startSegmentId || cursorId))?.blockId || null;
-    const playbackList = fullList.filter(item => item.blockId === targetBlockId);
-    const cursorIndex = cursorId ? playbackList.findIndex(item => item.id === cursorId) : 0;
-    return { fullList, playbackList, startIndex: playbackList.length ? (cursorIndex >= 0 ? cursorIndex : 0) : -1 };
+  if (continuing) {
+    const startIndex = playbackList.indexOf(start);
+    if (startIndex < 0) return invalid;
+    playbackList = playbackList.slice(startIndex);
   }
+  const anchor = cursor || start;
+  const startIndex = anchor ? playbackList.indexOf(anchor) : (playbackList.length ? 0 : -1);
+  return startIndex < 0 ? invalid : { fullList, playbackList, startIndex: scope === UNIT ? 0 : startIndex };
+};
 
-  if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT) {
-    const requestedIndex = cursorId ? fullList.findIndex(item => item.id === cursorId) : 0;
-    const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
-    const item = fullList[safeIndex];
-    return { fullList, playbackList: item ? [item] : [], startIndex: item ? 0 : -1 };
-  }
+/** Resolve once before changing the owned session or its saved resume target. */
+export const resolveStructuredTextPlaybackCommand = ({
+  channel,
+  playbackChannelMode = TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
+  playbackRepresentationMode = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
+  ...target
+}) => {
+  if (channel !== undefined && (!['text', 'meaning'].includes(channel)
+    || target.scope !== TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT)) return null;
+  const effectiveChannelMode = channel === 'text' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY
+    : channel === 'meaning' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY : playbackChannelMode;
+  if (!Object.values(TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES).includes(effectiveChannelMode)) return null;
+  const resolved = resolveStructuredTextPlaybackScopeList(target);
+  const playable = item => hasStructuredTextPlayableChannel(item, effectiveChannelMode);
+  const scopedList = resolved.playbackList.filter(playable);
+  const requestedCursorId = target.cursorSegmentId ?? target.startSegmentId ?? null;
+  if (!scopedList.length || [requestedCursorId, target.startSegmentId]
+    .some(id => id != null && !scopedList.some(item => item.id === id))) return null;
 
-  const requestedIndex = startSegmentId ? fullList.findIndex(item => item.id === startSegmentId) : 0;
-  const safeIndex = requestedIndex >= 0 ? requestedIndex : 0;
-  const playbackList = fullList.slice(safeIndex);
-  const cursorIndex = cursorId ? playbackList.findIndex(item => item.id === cursorId) : 0;
+  const { FROM_HERE, SEGMENT, UNIT, CARD } = TEXT_STRUCTURED_PLAYBACK_SCOPES;
+  const split = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT;
+  const full = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
+  const requestedRepresentation = playbackRepresentationMode === full ? full : split;
+  const scopeIds = new Set(resolved.playbackList.map(item => item.id));
+  const partialCardIds = new Set(resolved.fullList.filter(item => !scopeIds.has(item.id)).map(item => item.blockId));
+  const unitTarget = target.scope === UNIT || (target.scope === FROM_HERE && target.boundary === UNIT);
+  const cursorId = target.scope === UNIT ? null : requestedCursorId;
+  const partialCard = target.scope === FROM_HERE && target.boundary === CARD && partialCardIds.has(scopedList[0].blockId);
   return {
-    fullList,
-    playbackList,
-    startIndex: playbackList.length ? (cursorIndex >= 0 ? cursorIndex : 0) : -1
+    ...resolved, scopedList, cursorId, partialCardIds,
+    playbackChannelMode: effectiveChannelMode, requestedRepresentation,
+    commandRepresentation: target.scope === SEGMENT || unitTarget || partialCard ? split : requestedRepresentation
   };
 };
 

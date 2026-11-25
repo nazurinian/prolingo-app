@@ -254,9 +254,9 @@ export const SharedHorizontalFocusCarousel = ({
     }, 0);
   }, []);
 
-  const safePlaySegment = useCallback(segmentId => {
+  const safePlaySegment = useCallback((segmentId, channel) => {
     if (draggingRef.current) return;
-    onPlaySegment?.(segmentId);
+    onPlaySegment?.(segmentId, channel);
   }, [onPlaySegment]);
 
   const handlePeekClick = useCallback(unitViewKey => {

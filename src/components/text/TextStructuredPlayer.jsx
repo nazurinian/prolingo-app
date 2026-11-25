@@ -26,6 +26,7 @@ import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx
 import { getTextParagraphCardRoleLabel, resolveTextParagraphCardRole, TEXT_PARAGRAPH_CARD_ROLES } from '../../domain/text/textParagraphRoleDomain.js';
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedBookPageView, SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
+import { SharedUnitPlaybackContext } from './presentation/SharedUnitPlaybackContext.js';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
 import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
 import { WorkspaceReaderScrollContext } from './presentation/useWorkspaceReaderScroll.js';
@@ -110,6 +111,8 @@ const StructuredPlayerCard = ({
   onCardPlaybackOrderChange,
   onPlayCard,
   onPlaySegment,
+  onPlaySegmentChannel,
+  onPlayContinueFromSegment,
   onStartFromSegment,
   audioRuntimeStatusMap,
   audioCoverageMap,
@@ -325,6 +328,8 @@ const StructuredPlayerCard = ({
               disabled={generationBusy}
               onPlayCard={onPlayCard}
               onPlaySegment={onPlaySegment}
+              onPlaySegmentChannel={onPlaySegmentChannel}
+              onPlayContinueFromSegment={onPlayContinueFromSegment}
               onManualNavigate={onSharedManualNavigate}
               cardSelectionState={sharedCardSelectionState}
               onSelectCardUnit={onSelectSharedCardUnit}
@@ -540,6 +545,9 @@ export const TextStructuredPlayer = ({
   onPlayDocument,
   onPlayCard,
   onPlaySegment,
+  onPlayUnit,
+  onPlaySegmentChannel,
+  onPlayContinueFromSegment,
   onStartFromSegment,
   audioRuntimeStatusMap,
   audioCoverageMap,
@@ -869,6 +877,7 @@ export const TextStructuredPlayer = ({
   }, [useSharedCardReader, focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
 
   return (
+    <SharedUnitPlaybackContext.Provider value={useSharedCardReader ? onPlayUnit : null}>
     <WorkspaceReaderScrollContext.Provider value={sharedReaderScroll}>
     <section
       ref={playerRef}
@@ -1053,6 +1062,8 @@ export const TextStructuredPlayer = ({
           onCardPlaybackOrderChange={onCardPlaybackOrderChange}
           onPlayCard={onPlayCard}
           onPlaySegment={onPlaySegment}
+          onPlaySegmentChannel={onPlaySegmentChannel}
+          onPlayContinueFromSegment={onPlayContinueFromSegment}
           onStartFromSegment={onStartFromSegment}
           audioRuntimeStatusMap={audioRuntimeStatusMap}
           audioCoverageMap={audioCoverageMap}
@@ -1150,6 +1161,7 @@ export const TextStructuredPlayer = ({
       </div>
     </section>
     </WorkspaceReaderScrollContext.Provider>
+    </SharedUnitPlaybackContext.Provider>
   );
 };
 

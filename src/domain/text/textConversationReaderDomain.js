@@ -27,8 +27,10 @@ export const resolveTextConversationReaderCursor = ({ presentation, audioPlaybac
 
 /** Explicit reader actions delegate to the existing D5 host, never to browse/view state. */
 export const createTextConversationReaderActions = ({ presentation, audioPlayback, disabled = false } = {}) => Object.freeze({
-  onPlaySegment: segmentId => {
-    if (!disabled && presentation?.segmentById[segmentId]) return audioPlayback?.playSentence?.(segmentId);
+  onPlaySegment: (segmentId, channel) => {
+    if (!disabled && presentation?.segmentById[segmentId]) {
+      return channel === undefined ? audioPlayback?.playSentence?.(segmentId) : audioPlayback?.playSentence?.(segmentId, channel);
+    }
   },
   onPlayCard: (cardId, options = {}) => {
     if (disabled || !presentation?.cardById[cardId]) return;

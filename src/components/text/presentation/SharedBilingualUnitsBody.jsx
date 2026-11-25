@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { Languages, Radio, X } from 'lucide-react';
 import './sharedReaderTypography.css';
 import {
@@ -10,6 +10,7 @@ import {
 import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedNotebookUnitsBody from './SharedNotebookUnitsBody.jsx';
+import { SharedUnitPlaybackContext } from './SharedUnitPlaybackContext.js';
 import {
   IDLE_SHARED_CURSOR,
   SHARED_APPEARANCE_SPACING_OPTIONS,
@@ -260,6 +261,15 @@ const ContextualReturnToPlayingButton = ({ audibleTarget, onFollowContextualAudi
   );
 };
 
+const ContextualTranslationText = ({ text, segmentId, channel, onPlaySegment, disabled }) => (
+  <TextSegmentInteraction segmentId={segmentId} channel={channel}
+    interactive={Boolean(onPlaySegment)} disabled={disabled}
+    accessibleLabel={channel === 'meaning' ? 'Play Indonesian translation' : 'Play English text'}
+    dataAttributes={{ 'data-shared-card-segment': segmentId, 'data-shared-card-channel': channel }}
+    onActivate={() => onPlaySegment?.(segmentId, channel)}
+  >{text}</TextSegmentInteraction>
+);
+
 const ContextualBlockCallout = ({
   placement,
   target,
@@ -269,6 +279,8 @@ const ContextualBlockCallout = ({
   appearancePres,
   divergedFromAudible,
   audibleTarget,
+  onPlaySegment,
+  disabled,
   onFollowContextualAudible,
   onDismissContextualTarget
 }) => {
@@ -327,7 +339,10 @@ const ContextualBlockCallout = ({
         style={bodyStyle.inlineStyle}
         className={`max-w-[66ch] break-words whitespace-pre-line ${appearancePres.secondaryTextClass} ${bodyStyle.className}`}
       >
-        {secondaryText || (
+        {secondaryText ? (
+          <ContextualTranslationText text={secondaryText} segmentId={target.segmentId} channel={secondaryChannel}
+            onPlaySegment={onPlaySegment} disabled={disabled} />
+        ) : (
           <span className="italic text-slate-400 dark:text-slate-500">
             {secMeta.missingNotice}
           </span>
@@ -395,7 +410,7 @@ const UnitChannelStream = ({
     if (selectionOnly) {
       onSelectSegment?.(segmentId);
     } else {
-      onPlaySegment?.(segmentId);
+      onPlaySegment?.(segmentId, channel);
     }
   };
 
@@ -457,7 +472,7 @@ const UnitChannelStream = ({
           focusSegmentId,
           selectedSegmentId: effectiveSelectedId,
           selectionOnly,
-          playableSegmentIds,
+          playableSegmentIds: selectionOnly ? playableSegmentIds : null,
           audioCoverageMap,
           disabled
         });
@@ -543,7 +558,10 @@ const UnitChannelStream = ({
                 }}
                 className={`inline align-baseline mx-1 px-1.5 py-0.5 rounded-md border ${appearancePres.contextualBoxClass} ${appearancePres.secondaryTextClass}`}
               >
-                {inlineSecondaryText || (
+                {inlineSecondaryText ? (
+                  <ContextualTranslationText text={inlineSecondaryText} segmentId={segment.id} channel={secondaryChannel}
+                    onPlaySegment={onPlaySegment} disabled={disabled} />
+                ) : (
                   <span className="italic text-slate-400 dark:text-slate-500">
                     {secMeta.missingNotice}
                   </span>
@@ -575,6 +593,7 @@ const SharedAuthoredUnitShell = ({
   workspaceStylePresentation,
   isTitleRole,
   renderBody,
+  unitPlayButton,
   allowInlineLeadIn = true
 }) => {
   const isTurn = unit.kind === 'turn';
@@ -639,6 +658,7 @@ const SharedAuthoredUnitShell = ({
             showAccents={showAccents}
           />
           <div className="min-w-0" data-shared-turn-body-column="true">
+            {unitPlayButton}
             {renderBody({ inlineLeadIn: null })}
           </div>
         </div>
@@ -665,6 +685,7 @@ const SharedAuthoredUnitShell = ({
             <InlineSpeakerLeadIn unit={unit} speakerInfo={speakerInfo} />
           </div>
         )}
+        {unitPlayButton}
         {renderBody({ inlineLeadIn })}
       </section>
     );
@@ -684,6 +705,7 @@ const SharedAuthoredUnitShell = ({
           compact
         />
       )}
+      {unitPlayButton}
       {renderBody({ inlineLeadIn: null })}
     </section>
   );
@@ -730,6 +752,7 @@ export const SharedBilingualUnitsBody = ({
   onDismissContextualTarget = null
 }) => {
   const units = unitsOverride || card?.units || [];
+  const onPlayUnit = useContext(SharedUnitPlaybackContext);
   const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
@@ -889,6 +912,16 @@ export const SharedBilingualUnitsBody = ({
   const fullPrimaryHighlighted = isSpeakingCard && cursor.precision === 'card' && cursor.channel === primaryChannel;
   const fullSecondaryHighlighted = isSpeakingCard && cursor.precision === 'card' && cursor.channel === secondaryChannel;
   const activeContextualTarget = renderMode === 'contextual' ? (contextualState?.target || null) : null;
+  const renderUnitPlay = unit => onPlayUnit && !disabled && unit.segments?.some(item =>
+    normalizeSegmentDisplayText(item.text) || normalizeSegmentDisplayText(item.meaning)) && (
+    <button type="button" data-shared-unit-play={unit.viewKey}
+      className="mb-1 min-h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium"
+      onClick={() => onPlayUnit({
+        blockId: card.id, unitId: unit.id, virtualUnit: unit.identitySource === 'v1-paragraph-compat',
+        workspaceId: workspace?.id, workspaceUid: workspace?.uid
+      })}
+    >Play {unit.kind === 'turn' ? 'Turn' : 'Section'}</button>
+  );
   const contextualDiverged = Boolean(renderMode === 'contextual' && contextualState?.divergedFromAudible);
   const contextualAudibleTarget = renderMode === 'contextual' ? (contextualState?.audibleTarget || null) : null;
 
@@ -900,9 +933,8 @@ export const SharedBilingualUnitsBody = ({
     const notebookLetterSpacing = SHARED_APPEARANCE_SPACING_OPTIONS
       .find(option => option.id === appearancePres.appearance.notebookSpacing)?.letterSpacing;
     const handleSegmentActivate = (segmentId, channel) => {
-      if (isNotebook && channel !== primaryChannel && channel !== secondaryChannel) return;
       if (selectionOnly) onSelectSegment?.(segmentId);
-      else onPlaySegment?.(segmentId);
+      else onPlaySegment?.(segmentId, channel);
     };
 
     return (
@@ -920,7 +952,8 @@ export const SharedBilingualUnitsBody = ({
             logicalIndex: indexById.get(segment.id) ?? 0,
             channel, cursor, isSpeakingCard,
             fullChannelHighlighted: channel === primaryChannel ? fullPrimaryHighlighted : fullSecondaryHighlighted,
-            focusSegmentId, selectedSegmentId, selectionOnly, playableSegmentIds, audioCoverageMap, disabled
+            focusSegmentId, selectedSegmentId, selectionOnly, playableSegmentIds: selectionOnly ? playableSegmentIds : null,
+            audioCoverageMap, disabled
           });
 
           return (
@@ -935,6 +968,7 @@ export const SharedBilingualUnitsBody = ({
               showSectionHeaders={showSectionHeaders}
               workspaceStylePresentation={workspaceStylePresentation}
               isTitleRole={isTitleRole}
+              unitPlayButton={renderUnitPlay(unit)}
               allowInlineLeadIn={isNotebook}
               renderBody={({ inlineLeadIn }) => {
                 const renderSentenceBody = () => (
@@ -999,7 +1033,7 @@ export const SharedBilingualUnitsBody = ({
                                   accessibleLabel={primaryFlags.accessibleLabel}
                                   className={primaryFlags.className}
                                   dataAttributes={primaryFlags.dataAttributes}
-                                  onActivate={segmentId => handleSegmentActivate(segmentId, isNotebook ? primaryChannel : undefined)}
+                                  onActivate={segmentId => handleSegmentActivate(segmentId, primaryChannel)}
                                 >
                                   {primaryText}
                                 </TextSegmentInteraction>
@@ -1037,7 +1071,7 @@ export const SharedBilingualUnitsBody = ({
                                   accessibleLabel={secondaryFlags.accessibleLabel}
                                   className={secondaryFlags.className}
                                   dataAttributes={secondaryFlags.dataAttributes}
-                                  onActivate={segmentId => handleSegmentActivate(segmentId, isNotebook ? secondaryChannel : undefined)}
+                                  onActivate={segmentId => handleSegmentActivate(segmentId, secondaryChannel)}
                                 >
                                   {secondaryText}
                                 </TextSegmentInteraction>
@@ -1122,6 +1156,7 @@ export const SharedBilingualUnitsBody = ({
               showSectionHeaders={showSectionHeaders}
               workspaceStylePresentation={workspaceStylePresentation}
               isTitleRole={isTitleRole}
+              unitPlayButton={renderUnitPlay(unit)}
               allowInlineLeadIn
               renderBody={({ inlineLeadIn }) => (
                 <div data-shared-unit-separated={unit.viewKey}>
@@ -1254,6 +1289,7 @@ export const SharedBilingualUnitsBody = ({
             showSectionHeaders={showSectionHeaders}
             workspaceStylePresentation={workspaceStylePresentation}
             isTitleRole={isTitleRole}
+            unitPlayButton={renderUnitPlay(unit)}
             allowInlineLeadIn
             renderBody={({ inlineLeadIn }) => (
               <>
@@ -1267,6 +1303,8 @@ export const SharedBilingualUnitsBody = ({
                     appearancePres={appearancePres}
                     divergedFromAudible={contextualDiverged}
                     audibleTarget={contextualAudibleTarget}
+                    onPlaySegment={onPlaySegment}
+                    disabled={disabled}
                     onFollowContextualAudible={onFollowContextualAudible}
                     onDismissContextualTarget={onDismissContextualTarget}
                   />
@@ -1316,6 +1354,8 @@ export const SharedBilingualUnitsBody = ({
                     appearancePres={appearancePres}
                     divergedFromAudible={contextualDiverged}
                     audibleTarget={contextualAudibleTarget}
+                    onPlaySegment={onPlaySegment}
+                    disabled={disabled}
                     onFollowContextualAudible={onFollowContextualAudible}
                     onDismissContextualTarget={onDismissContextualTarget}
                   />

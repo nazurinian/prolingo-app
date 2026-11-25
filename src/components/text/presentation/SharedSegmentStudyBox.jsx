@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Target } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -57,6 +57,7 @@ export const SharedSegmentStudyBox = ({
   onPlaySegmentChannel = null,
   onPlayContinueFromSegment = null
 }) => {
+  const [continueScope, setContinueScope] = useState('card');
   const units = lookup?.units || card?.units || [];
   const entries = lookup?.entries || [];
   const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
@@ -662,10 +663,26 @@ export const SharedSegmentStudyBox = ({
               <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
               <span>Play Segment</span>
             </button>
+            {supportsContinuePlay && (
+              <label className="inline-flex items-center gap-1 text-xs">
+                Continue through
+                <select
+                  data-study-box-continue-scope="true"
+                  className="min-h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2"
+                  value={continueScope}
+                  disabled={disabled}
+                  onChange={event => setContinueScope(event.target.value)}
+                >
+                  <option value="unit">{activeUnitIsTurn ? 'Turn' : 'Section'}</option>
+                  <option value="card">Card</option>
+                  <option value="document">Workspace</option>
+                </select>
+              </label>
+            )}
             <button
               type="button"
               disabled={playContinueDisabled}
-              onClick={() => supportsContinuePlay && segment && onPlayContinueFromSegment(segment.id, { scope: 'card' })}
+              onClick={() => supportsContinuePlay && segment && onPlayContinueFromSegment(segment.id, { scope: continueScope })}
               data-study-box-action="play-continue"
               data-study-box-pending-callback={!supportsContinuePlay ? 'onPlayContinueFromSegment' : undefined}
               title={supportsContinuePlay

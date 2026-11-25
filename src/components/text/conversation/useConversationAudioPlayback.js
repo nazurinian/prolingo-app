@@ -700,31 +700,36 @@ export const useConversationAudioPlayback = ({
   const startSession = useCallback(({
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
     blockId = null,
+    unitId,
+    virtualUnit,
+    workspaceId,
+    workspaceUid,
+    boundary,
+    channel,
     startSegmentId = null,
     cursorSegmentId = null,
     playbackChannelMode = normalizedConfig.playbackChannelMode,
-    playbackRepresentationMode = normalizedConfig.playbackRepresentationMode
+    playbackRepresentationMode = normalizedConfig.playbackRepresentationMode,
+    repeatMode = normalizedConfig.repeatMode
   } = {}) => {
     if (!documentTree) return false;
-    setPlaybackSourceStatus(null);
-    const requestedCursor = cursorSegmentId || startSegmentId
-      || (blockId ? documentTree.blocks?.find(b => b.id === blockId)?.segments?.[0]?.id : null);
-    if (requestedCursor) {
-      setResumeCursorSegmentId(requestedCursor);
-      setCurrentIndex(requestedCursor);
-    }
-    if (blockId) setActiveBlockId(blockId);
-
     return executeStructuredTextPlaybackSessionService({
       documentTree,
       startSegmentId,
       cursorSegmentId,
       blockId,
+      unitId,
+      virtualUnit,
+      workspaceId,
+      workspaceUid,
+      boundary,
+      channel,
       scope,
       playbackChannelMode,
       playbackOrderMode: normalizedConfig.playbackOrderMode,
       playbackRepresentationMode,
-      repeatMode: normalizedConfig.repeatMode,
+      savedPlaybackRepresentationMode: normalizedConfig.playbackRepresentationMode,
+      repeatMode,
       safePlayTransition,
       playbackSessionRef,
       playbackContextRef,
@@ -742,6 +747,14 @@ export const useConversationAudioPlayback = ({
       resolveBlockChannelPlaybackPlan: buildBlockPlan,
       playStructuredFullStep,
       forceStopAll,
+      onPlaybackAccepted: ({ segmentId }) => {
+        setPlaybackSourceStatus(null);
+        if (cursorSegmentId || startSegmentId || blockId || unitId) {
+          setResumeCursorSegmentId(segmentId);
+          setCurrentIndex(segmentId);
+        }
+        if (blockId) setActiveBlockId(blockId);
+      },
       onPlaybackCursor: ({ documentId: activeDocId, segmentId, blockId: cursorBlockId }) => {
         if (activeDocId !== documentTree?.id) return;
         if (segmentId) setResumeCursorSegmentId(segmentId);
@@ -791,11 +804,11 @@ export const useConversationAudioPlayback = ({
     });
   }, [forceStopAll, startSession]);
 
-  const playSentence = useCallback(segmentId => {
+  const playSentence = useCallback((segmentId, channel) => {
     const scopeNow = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
       ? playbackContextRef.current?.scope
       : null;
-    if ((isPlayingRef.current || isPausedRef.current)
+    if (channel === undefined && (isPlayingRef.current || isPausedRef.current)
       && scopeNow === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
       && playbackContextRef.current?.cursorSegmentId === segmentId) {
       forceStopAll();
@@ -804,14 +817,19 @@ export const useConversationAudioPlayback = ({
     return startSession({
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT,
       startSegmentId: segmentId,
-      playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT
+      channel
     });
   }, [forceStopAll, startSession]);
 
-  const playFromSentence = useCallback(segmentId => startSession({
-    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
-    startSegmentId: segmentId
+  const playUnit = useCallback(target => startSession({
+    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once'
   }), [startSession]);
+
+  const playFromSentence = useCallback((segmentId, boundary) => startSession({
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+    startSegmentId: segmentId, boundary: boundary === undefined ? TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT : boundary,
+    repeatMode: boundary === undefined ? normalizedConfig.repeatMode : 'once'
+  }), [startSession, normalizedConfig.repeatMode]);
 
   const pausePlayback = useCallback(() => {
     executePausePlayback({
@@ -845,6 +863,7 @@ export const useConversationAudioPlayback = ({
     if (resumeCursorSegmentId) {
       return startSession({
         scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
+        boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
         startSegmentId: resumeCursorSegmentId
       });
     }
@@ -899,6 +918,7 @@ export const useConversationAudioPlayback = ({
     playWorkspace,
     playScene,
     playSentence,
+    playUnit,
     playFromSentence,
     pausePlayback,
     resumePlayback,
@@ -921,6 +941,7 @@ export const useConversationAudioPlayback = ({
     playWorkspace,
     playScene,
     playSentence,
+    playUnit,
     playFromSentence,
     pausePlayback,
     resumePlayback,

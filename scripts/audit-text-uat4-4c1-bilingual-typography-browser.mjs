@@ -20,6 +20,7 @@ import { TEXT_LIBRARY_DB_VERSION, TEXT_LIBRARY_SCHEMA_VERSION } from '../src/con
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const notebookLayoutOnly = process.argv.includes('--notebook-layout');
 const notebookOnly = process.argv.includes('--only-4c3');
+const commandsOnly = process.argv.includes('--only-4e1');
 const evidenceDir = process.env.UAT4_4C1_EVIDENCE_DIR
   || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-uat4-4c1-evidence-'));
 await fs.mkdir(evidenceDir, { recursive: true });
@@ -56,6 +57,8 @@ import { measureNotebookParallelFlow } from './src/components/text/presentation/
 window.__measureNotebook = measureNotebookParallelFlow;
 import { selectTextMixedReaderState } from './src/domain/text/textMixedReaderDomain.js';
 import { applyTextLibraryCommand } from './src/domain/text/textLibraryCommandDomain.js';
+import { useConversationAudioPlayback } from './src/components/text/conversation/useConversationAudioPlayback.js';
+import { resolveTextConversationReaderCursor } from './src/domain/text/textConversationReaderDomain.js';
 import {
   TEXT_MAIN_READER_PREFERENCE_KEY,
   TEXT_WORKSPACE_STYLE_SCOPES,
@@ -99,7 +102,8 @@ const londonBefore = JSON.stringify(fixtures.london.snapshot);
 const stressBefore = JSON.stringify(fixtures.stress.snapshot);
 const UAT_STORAGE_KEY = resolveTextMainReaderPreferenceStorageKey({ hostId: STRUCTURED_UAT_PREFERENCE_HOST_ID });
 
-function LiveMainAppHostHarness({ activeFixture, playbackLogRef }) {
+const COMMAND_AUDIO_CONFIG = { playbackRepresentationMode: 'full', playbackChannelMode: 'text-meaning' };
+function LiveMainAppHostHarness({ activeFixture, playbackLogRef, commandRuntime = null }) {
   const [pref, setPref] = useState(() => loadTextMainReaderPreference());
   const [scope, setScope] = useState(TEXT_WORKSPACE_STYLE_SCOPES.SHARED);
   const [cardExpansionMode, setCardExpansionMode] = useState('all');
@@ -110,6 +114,10 @@ function LiveMainAppHostHarness({ activeFixture, playbackLogRef }) {
     () => selectTextMixedReaderState(activeFixture.snapshot, { documentId: activeFixture.ids.documentId }),
     [activeFixture]
   );
+  const audio = useConversationAudioPlayback({
+    snapshot: activeFixture.snapshot, documentTree: commandRuntime ? selected.documentTree : null,
+    audioConfig: COMMAND_AUDIO_CONFIG, audioRuntimeHooks: commandRuntime
+  });
   const activeWorkspaceKey = useMemo(
     () => normalizeTextWorkspacePreferenceKey(selected.presentation.workspace),
     [selected.presentation.workspace]
@@ -145,10 +153,13 @@ function LiveMainAppHostHarness({ activeFixture, playbackLogRef }) {
     setReader: reader => updatePref({ reader }),
     setActivePlayback: next => setActivePlayback(next),
     setFocusTarget: next => setFocusTarget(next),
+    readNowPlaying: audio.readNowPlaying,
+    stopPlayback: audio.stopPlayback,
     getFocusTarget: () => focusTarget
   };
 
-  const sharedCursor = activePlayback ? {
+  const sharedCursor = commandRuntime ? resolveTextConversationReaderCursor({ presentation: selected.presentation, audioPlayback: audio })
+    : activePlayback ? {
     workspaceId: selected.presentation.workspace.id,
     workspaceUid: selected.presentation.workspace.uid,
     sessionId: activePlayback.sessionId ?? 101,
@@ -196,9 +207,12 @@ function LiveMainAppHostHarness({ activeFixture, playbackLogRef }) {
         playbackRepresentationMode={activePlayback?.precision === 'card' ? 'full' : 'split'}
         playbackPreferences={{ cardExpansionMode, playbackOrderMode: 'sequential', repeatMode: 'off' }}
         onPlaybackFeelChange={patch => { if (patch.cardExpansionMode) setCardExpansionMode(patch.cardExpansionMode); }}
-        onPlayDocument={() => playbackLogRef.current.push(['main:playDocument', activeFixture.ids.documentId])}
-        onPlayCard={(cardId, opts) => playbackLogRef.current.push(['main:playCard', cardId, opts || null])}
-        onPlaySegment={segId => playbackLogRef.current.push(['main:playSegment', segId])}
+        onPlayDocument={commandRuntime ? audio.playWorkspace : () => playbackLogRef.current.push(['main:playDocument', activeFixture.ids.documentId])}
+        onPlayCard={commandRuntime ? audio.playScene : (cardId, opts) => playbackLogRef.current.push(['main:playCard', cardId, opts || null])}
+        onPlaySegment={commandRuntime ? audio.playSentence : segId => playbackLogRef.current.push(['main:playSegment', segId])}
+        onPlaySegmentChannel={commandRuntime ? audio.playSentence : undefined}
+        onPlayUnit={commandRuntime ? audio.playUnit : undefined}
+        onPlayContinueFromSegment={commandRuntime ? (id, options) => audio.playFromSentence(id, options.scope) : undefined}
       />
     </div>
   );
@@ -309,7 +323,8 @@ function Audit4C1App() {
             audioRuntimeHooks={audioRuntimeHooks}
           />
         ) : (
-          <LiveMainAppHostHarness key={whichDoc} activeFixture={activeFixture} playbackLogRef={playbackLogRef} />
+          <LiveMainAppHostHarness key={whichDoc} activeFixture={activeFixture} playbackLogRef={playbackLogRef}
+            commandRuntime={params.get('audit') === '4e1' ? audioRuntimeHooks : null} />
         )}
       </div>
     </div>
@@ -822,7 +837,126 @@ try {
     }
   }
 
-  if (!notebookLayoutOnly && !notebookOnly) {
+  if (commandsOnly) {
+    for (const host of ['uat', 'main']) {
+      await run(`4E1 ${host}: exact Reader and Study Box actions reach the owned session`, async () => {
+        await call('Page.navigate', { url: `${origin}/?host=${host}&doc=london&audit=4e1` });
+        await until('window.__uat4C1');
+        if (host === 'main') {
+          await until('window.__uat4C1Main');
+          await click('[data-main-host-reader="shared"]');
+        } else {
+          if (!(await evaluate('Boolean(document.querySelector("[data-shared-book-page]"))'))) await clickButtonText('Shared UI (Beta)');
+          for (const [name, value] of [['Audio representation', 'full'], ['Audio channel', 'text-meaning']]) {
+            await evaluate(`(() => {
+              const select = document.querySelector('select[aria-label="${name}"]');
+              select.value = "${value}"; select.dispatchEvent(new Event('change', { bubbles: true }));
+            })()`);
+          }
+        }
+        const ids = await evaluate('window.__uat4C1.londonIds');
+        const [p1First] = ids.segmentIdsByUnitKey.P1_SC1;
+        const [turnFirst, turnSecond, turnThird] = ids.segmentIdsByUnitKey.C1_T1;
+        const c1 = `[data-shared-card-id="${ids.cards.C1}"]`;
+        const fragment = (id, channel) => `[data-shared-card-segment="${id}"][data-shared-card-channel="${channel}"]`;
+        const count = () => evaluate('window.__uat4C1.getUatEvents().length');
+        const idle = host === 'main' ? 'window.__uat4C1Main.readNowPlaying().state === "idle"'
+          : 'document.querySelector("[data-unified-reader]")?.dataset.readerCursorPrecision === "none"';
+        const finish = () => evaluate('window.__uat4C1.finishLatestUatEvent("played")');
+        const event = async (n, id, channel) => {
+          await until(`window.__uat4C1.getUatEvents().length === ${n}`, 'next owned step');
+          const actual = await evaluate(`(() => {
+            const a = window.__uat4C1.getUatEvents().at(-1).args;
+            return [a.item?.id ?? null, a.channel];
+          })()`);
+          assert.deepEqual(actual, [id, channel]);
+        };
+        const checkPlay = async (selector, steps) => {
+          const initial = await count();
+          await click(selector);
+          for (const [index, [id, channel]] of steps.entries()) {
+            await event(initial + index + 1, id, channel);
+            if (host === 'main' && id) {
+              const now = await evaluate('window.__uat4C1Main.readNowPlaying()');
+              assert.deepEqual([now.segment.id, now.channel, now.savedRepresentation, now.commandRepresentation, now.actualRepresentation, now.representationFallback],
+                [id, channel, 'full', 'split', 'split', false]);
+            }
+            await finish();
+          }
+          await until(idle, 'one-shot command finished');
+          assert.equal(await count(), initial + steps.length);
+        };
+        const mode = value => click(`[data-shared-reader-mode-option="${value}"]`);
+        const style = value => click(`[data-shared-bilingual-style-option="${value}"]`);
+        await mode('full');
+        await click('[data-shared-reading-language-option="en-id"]');
+        await style('separated');
+        await checkPlay(fragment(p1First, 'text'), [[p1First, 'text']]);
+        await checkPlay(fragment(p1First, 'meaning'), [[p1First, 'meaning']]);
+        await style('interlinear');
+        await checkPlay(fragment(p1First, 'meaning'), [[p1First, 'meaning']]);
+        await style('contextual');
+        await click(`[data-shared-contextual-select="${p1First}"]`);
+        await checkPlay(`[data-shared-contextual-panel] ${fragment(p1First, 'meaning')}`, [[p1First, 'meaning']]);
+        await style('notebook');
+        const notebook = `[data-shared-notebook-fragment]${fragment(p1First, 'meaning')}`;
+        await until(`document.querySelector(${JSON.stringify(notebook)})`, 'Notebook fragment measured');
+        await checkPlay(notebook, [[p1First, 'meaning']]);
+        await mode('card');
+        await style('interlinear');
+        await checkPlay(`${c1} ${fragment(turnFirst, 'text')}`, [[turnFirst, 'text']]);
+        await mode('focus');
+        await click('[data-shared-focus-orientation-option="horizontal-focus"]');
+        await checkPlay(`${c1} [data-shared-part-active="true"] ${fragment(turnFirst, 'meaning')}`, [[turnFirst, 'meaning']]);
+        await checkPlay(`${c1} [data-shared-part-active="true"] [data-shared-unit-play]`,
+          ids.segmentIdsByUnitKey.C1_T1.flatMap(id => [[id, 'text'], [id, 'meaning']]));
+
+        await mode('segment');
+        await style('interlinear');
+        const beforeSelect = await count();
+        await click(`${c1} [data-shared-segment-context] ${fragment(turnSecond, 'meaning')}`);
+        await until(`document.querySelector('[data-shared-segment-study-box][data-shared-segment-focus="${turnSecond}"]')`);
+        assert.equal(await count(), beforeSelect);
+        const box = action => `${c1} [data-study-box-action="${action}"]`;
+        await checkPlay(box('play-en'), [[turnSecond, 'text']]);
+        await checkPlay(box('play-id'), [[turnSecond, 'meaning']]);
+        await checkPlay(box('play-segment'), [[turnSecond, 'text'], [turnSecond, 'meaning']]);
+        const boundary = `${c1} [data-study-box-continue-scope]`;
+        assert.equal(await evaluate(`document.querySelector(${JSON.stringify(boundary)}).value`), 'card');
+        const pickBoundary = value => evaluate(`(() => {
+          const select = document.querySelector(${JSON.stringify(boundary)});
+          select.value = "${value}"; select.dispatchEvent(new Event('change', { bubbles:true }));
+        })()`);
+        await pickBoundary('unit');
+        await checkPlay(box('play-continue'), [[turnSecond, 'text'], [turnSecond, 'meaning'], [turnThird, 'text'], [turnThird, 'meaning']]);
+        for (const value of ['card', 'document']) {
+          await pickBoundary(value);
+          const initial = await count();
+          await click(box('play-continue'));
+          await event(initial + 1, turnSecond, 'text');
+          if (host === 'main') {
+            const now = await evaluate('window.__uat4C1Main.readNowPlaying()');
+            assert.deepEqual([now.scope, now.boundary, now.commandRepresentation, now.representationFallback],
+              ['from-here', value, 'split', false]);
+            await evaluate('window.__uat4C1Main.stopPlayback()');
+          } else {
+            await clickButtonText('Stop');
+          }
+          await finish();
+          await until(idle, 'bounded continuation stopped');
+          assert.equal(await count(), initial + 1);
+        }
+        if (host === 'uat') {
+          assert.deepEqual(await evaluate(`['Audio representation','Audio channel'].map(name => document.querySelector('select[aria-label="'+name+'"]').value)`),
+            ['full', 'text-meaning']);
+        }
+        const guard = await evaluate('({ db: window.__uat4DbCalls, errors: window.__uat4Errors, unchanged: window.__uat4C1.getSnapshotsUnchanged() })');
+        assert.deepEqual(guard, { db: 0, errors: [], unchanged: true });
+      });
+    }
+  }
+
+  if (!notebookLayoutOnly && !notebookOnly && !commandsOnly) {
   // ---------------------------------------------------------------------------
   // 1. Fresh-reader EN Only default, NO Notebook exposed, Legacy compatibility
   // ---------------------------------------------------------------------------
@@ -1371,7 +1505,7 @@ try {
     evidenceDir,
     screenshots
   };
-  await fs.writeFile(path.join(evidenceDir, notebookOnly || notebookLayoutOnly ? 'uat4-4c3-report.json' : 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
+  await fs.writeFile(path.join(evidenceDir, commandsOnly ? 'uat4-4e1-report.json' : notebookOnly || notebookLayoutOnly ? 'uat4-4c3-report.json' : 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   console.error('UAT-4 4C1 browser audit FAILED:', error);

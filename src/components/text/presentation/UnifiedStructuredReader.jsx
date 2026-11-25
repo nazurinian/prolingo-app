@@ -4,6 +4,7 @@ import { resolveTextConversationReaderCursor, createTextConversationReaderAction
 import { DEFAULT_TEXT_WORKSPACE_STYLE_STATE } from '../../../domain/text/textCardPresentationStateDomain.js';
 import SharedWorkspaceReader from './SharedParagraphCardReader.jsx';
 import TextParagraphUnifiedReading from '../TextParagraphUnifiedReading.jsx';
+import { SharedUnitPlaybackContext } from './SharedUnitPlaybackContext.js';
 
 /** Read-only classic/Shared adapter. Playback remains entirely in the supplied host. */
 export default function UnifiedStructuredReader({
@@ -43,7 +44,8 @@ export default function UnifiedStructuredReader({
     if (target) { target.scrollIntoView({ block: 'center', behavior: 'auto' }); onFocusConsumed?.(focusTarget.nonce); }
   }, [mode, focusTarget, documentId, onFocusConsumed]);
   if (selected.error) return <p role="alert">{selected.error.message}</p>;
-  return <section ref={root} data-unified-reader={mode} data-reader-cursor-precision={cursor.precision}
+  return <SharedUnitPlaybackContext.Provider value={mode === 'shared' && !disabled ? audioPlayback?.playUnit : null}>
+    <section ref={root} data-unified-reader={mode} data-reader-cursor-precision={cursor.precision}
     data-reader-cursor-segment={cursor.segmentId || ''} data-reader-cursor-card={cursor.cardId || ''}>
     {mode === 'shared' ? (
       <SharedWorkspaceReader
@@ -68,6 +70,10 @@ export default function UnifiedStructuredReader({
         disabled={disabled}
         focusTarget={focusTarget}
         onFocusConsumed={onFocusConsumed}
+        onPlaySegmentChannel={audioPlayback?.playSentence ? actions.onPlaySegment : null}
+        onPlayContinueFromSegment={audioPlayback?.playFromSentence ? (segmentId, { scope } = {}) => {
+          if (!disabled && scope && presentation.segmentById[segmentId]) return audioPlayback.playFromSentence(segmentId, scope);
+        } : null}
         {...actions}
       />
     ) : (
@@ -91,5 +97,5 @@ export default function UnifiedStructuredReader({
         </article>)}
       </div>
     )}
-  </section>;
+  </section></SharedUnitPlaybackContext.Provider>;
 }

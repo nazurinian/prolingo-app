@@ -5,7 +5,8 @@ const STRUCTURED = 'text-structured';
 const IDLE = Object.freeze({
   owner: null, domain: null, sessionId: null, state: 'idle', precision: 'none',
   workspace: null, card: null, unit: null, segment: null, speaker: null, item: null,
-  channel: null, requestedRepresentation: null, actualRepresentation: null,
+  channel: null, savedRepresentation: null, requestedRepresentation: null, commandRepresentation: null,
+  actualRepresentation: null, representationFallback: null, boundary: null,
   source: null, provider: null, voice: null, rate: null, scope: null, queue: null, timeline: null
 });
 
@@ -126,13 +127,23 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
   const structure = domain === 'structured-text' ? readStructuredIdentity(context.documentTree, target) : {};
   const item = readItem(target?.item, target?.part, domain);
   const rate = runtime?.media?.playbackRate ?? runtime?.rate;
+  const structured = domain === 'structured-text';
+  const commandRepresentation = structured
+    ? (target && context.temporarySplitCardIds?.includes(target.cardId) ? 'split' : context.playbackRepresentationMode ?? null)
+    : null;
+  const actualRepresentation = target?.representation ?? null;
   return Object.freeze({
     ...IDLE, owner, domain, sessionId, state: refs.pauseStateRef?.current ? 'paused' : 'playing',
     precision: item ? (domain === 'table' ? 'word' : 'item') : 'none',
     ...structure, item,
     channel: domain === 'structured-text' ? target?.channel ?? null : domain === 'table' ? tableChannel(target?.part) : null,
-    requestedRepresentation: domain === 'structured-text' ? context.playbackRepresentationMode ?? null : null,
-    actualRepresentation: target?.representation ?? null,
+    savedRepresentation: structured ? context.savedPlaybackRepresentationMode ?? null : null,
+    requestedRepresentation: structured ? context.requestedRepresentation ?? context.playbackRepresentationMode ?? null : null,
+    commandRepresentation,
+    actualRepresentation,
+    representationFallback: commandRepresentation && actualRepresentation
+      ? commandRepresentation === 'full' && actualRepresentation === 'split' : null,
+    boundary: context.boundary ?? null,
     source: runtime?.source ?? null, provider: runtime?.provider ?? null, voice: runtime?.voice ?? null,
     rate: Number.isFinite(rate) && rate > 0 ? rate : null,
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
