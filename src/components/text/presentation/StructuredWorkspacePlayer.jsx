@@ -10,6 +10,7 @@ import {
   updateTextMainReaderWorkspaceStyle
 } from '../../../services/persistence/textMainReaderPreferenceService.js';
 import { useConversationAudioPlayback } from '../conversation/useConversationAudioPlayback.js';
+import { NowPlayingContext } from '../../playback/NowPlayingContext.js';
 import UnifiedStructuredReader from './UnifiedStructuredReader.jsx';
 
 const EMPTY = Object.freeze({});
@@ -111,7 +112,7 @@ export default function StructuredWorkspacePlayer({
     if (entry) setFocus({ documentId, blockId: selected.presentation.locationBySegmentId[entry.id].cardId, segmentId: entry.id, nonce: Date.now() });
   };
 
-  return <section data-structured-workspace-player={documentId} className="space-y-3">
+  return <NowPlayingContext.Provider value={audio.readNowPlaying}><section data-structured-workspace-player={documentId} className="space-y-3">
     <fieldset className="flex flex-wrap gap-2" aria-label="Reader presentation">
       <button type="button" className="min-h-11 border rounded px-3" aria-pressed={mode === 'classic'} onClick={() => handleModeChange('classic')}>Tampilan Lama</button>
       <button type="button" className="min-h-11 border rounded px-3" aria-pressed={mode === 'shared'} onClick={() => handleModeChange('shared')}>Shared UI (Beta)</button>
@@ -156,5 +157,5 @@ export default function StructuredWorkspacePlayer({
         onFocusConsumed={consume}
       />
     )}
-  </section>;
+  </section></NowPlayingContext.Provider>;
 }

@@ -4,6 +4,8 @@ export const executeStructuredTextRuntimeAudioPlaybackService = ({
   playbackResolveRef,
   stopSignalRef,
   playbackRate = 1,
+  onNowPlaying = null,
+  sourceEvidence = null,
   addLog,
   label = 'Structured Text audio'
 }) => new Promise(resolve => {
@@ -21,6 +23,10 @@ export const executeStructuredTextRuntimeAudioPlaybackService = ({
     if (currentAudioObjRef.current === audio) currentAudioObjRef.current = null;
     audio.onended = null;
     audio.onerror = null;
+    if (onNowPlaying) {
+      audio.onplaying = null;
+      onNowPlaying(null);
+    }
     if (playbackResolveRef.current === settleFromExternal) playbackResolveRef.current = null;
   };
 
@@ -33,6 +39,9 @@ export const executeStructuredTextRuntimeAudioPlaybackService = ({
 
   const settleFromExternal = () => finish('stopped');
   playbackResolveRef.current = settleFromExternal;
+  if (onNowPlaying) audio.onplaying = () => {
+    if (!settled) onNowPlaying({ ...sourceEvidence, media: audio });
+  };
   audio.onended = () => finish('played');
   audio.onerror = () => {
     addLog?.('Warn', `${label} failed. Falling back to Browser TTS.`);

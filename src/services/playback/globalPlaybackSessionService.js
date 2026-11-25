@@ -194,13 +194,13 @@ export const executeGlobalPlaybackSessionService = ({
                   if (!delayCompleted) break;
                 }
 
-                await playSource(textToPlay, item, sourcePart);
+                await playSource(textToPlay, item, sourcePart, { queueIndex: index });
                 playedAnyPartThisLoop = true;
               }
             }
           } else {
             setSpeakingPart('full');
-            await playSource(item.text, item, 'full');
+            await playSource(item.text, item, 'full', { queueIndex: index });
             playedAnyPartThisLoop = true;
           }
           if (l < loops - 1) {

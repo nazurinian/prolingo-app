@@ -16,7 +16,8 @@ export const executeBrowserTtsPlaybackService = ({
   rateRef,
   rate,
   pitch,
-  onError = null
+  onError = null,
+  onNowPlaying = null
 }) => {
     return new Promise((resolve) => {
       // When getVoices() exposes no named voice, let the device/browser use
@@ -40,6 +41,7 @@ export const executeBrowserTtsPlaybackService = ({
           if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
           currentUtteranceRef.current = null;
           if (ttsReplayRef?.current?.finish === finish) ttsReplayRef.current = null;
+          onNowPlaying?.(null);
           resolve();
       };
 
@@ -71,6 +73,13 @@ export const executeBrowserTtsPlaybackService = ({
           utterance.pitch = Number(pitch) || 1;
           utterance.onend = event => handleUtteranceDone(event, generation);
           utterance.onerror = event => handleUtteranceDone(event, generation);
+          if (onNowPlaying) utterance.onstart = () => {
+            if (settled || generation !== utteranceGeneration || ttsReplayRef?.current?.suspended) return;
+            onNowPlaying({
+              source: 'tts', provider: 'browser-tts',
+              voice: utterance.voice?.name || null, rate: utterance.rate
+            });
+          };
 
           if (synth.paused && typeof synth.resume === 'function') synth.resume();
           try {
@@ -145,19 +154,23 @@ export const executeAudioSourcePlaybackService = ({
   resolveAudioFallbackVoice,
   selectedIndonesianVoiceRef,
   playTTS,
-  addLog
+  addLog,
+  onNowPlaying = null
 }) => {
     const fallbackToBrowserTts = () => {
       if (stopSignalRef.current) return Promise.resolve();
       const fallbackVoice = resolveAudioFallbackVoice(part, selectedIndonesianVoiceRef.current);
-      return playTTS(textToRead, fallbackVoice);
+      return playTTS(textToRead, fallbackVoice, onNowPlaying);
     };
 
     if (stopSignalRef.current || !String(textToRead || '').trim()) return Promise.resolve();
 
     // C3.4.1: a local source can now be a lazy ZIP entry. Folder URLs remain
     // synchronous, while ZIP URLs resolve only when the requested audio is played.
-    const localSource = preferLocalAudio ? getLocalAudioUrl(item, part) : null;
+    let sourceEvidence = { source: 'local', provider: null, voice: null };
+    const localSource = preferLocalAudio ? getLocalAudioUrl(item, part, evidence => {
+      sourceEvidence = evidence;
+    }) : null;
     return Promise.resolve(localSource)
       .catch(error => {
         addLog?.('Warn', `Audio source resolve fail ${item?.vocabId || item?.displayId}/${part}: ${error?.message || error}. Fallback TTS.`);
@@ -177,6 +190,10 @@ export const executeAudioSourcePlaybackService = ({
               if (currentAudioObjRef.current === audio) currentAudioObjRef.current = null;
               audio.onended = null;
               audio.onerror = null;
+              if (onNowPlaying) {
+                audio.onplaying = null;
+                onNowPlaying(null);
+              }
               if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
           };
 
@@ -199,6 +216,9 @@ export const executeAudioSourcePlaybackService = ({
           };
 
           playbackResolveRef.current = finish;
+          if (onNowPlaying) audio.onplaying = () => {
+            if (!settled) onNowPlaying({ ...sourceEvidence, media: audio });
+          };
           audio.onended = finish;
           audio.onerror = () => {
             addLog("Warn", `Audio fail ${item.vocabId || item.displayId}/${part}. Fallback TTS.`);

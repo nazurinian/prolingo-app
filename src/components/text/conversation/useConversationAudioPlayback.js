@@ -31,6 +31,7 @@ import {
 } from '../../../services/playback/playbackRuntimeControlService.js';
 import { executeStructuredTextRuntimeAudioPlaybackService } from '../../../services/playback/textStructuredAudioRuntimeService.js';
 import { executeStructuredTextPlaybackSessionService } from '../../../services/playback/textStructuredPlaybackSessionService.js';
+import { bindNowPlayingRuntime, readOwnedNowPlaying } from '../../../domain/playback/nowPlayingDomain.js';
 
 const EMPTY_MAP = Object.freeze({});
 
@@ -111,6 +112,16 @@ export const useConversationAudioPlayback = ({
   const isPlayingRef = useRef(false);
   const isPausedRef = useRef(false);
   const objectUrlsByBlobRef = useRef(new Map());
+  const bindRuntime = useCallback((status) => bindNowPlayingRuntime(
+    { playbackContextRef, playbackSessionRef, stopSignalRef },
+    {
+      cardId: status.blockId,
+      segmentId: status.segmentId,
+      channel: status.channel,
+      representation: status.segmentId ? 'split' : 'full'
+    },
+    status.sessionId
+  ), []);
 
   const [isPlaying, setIsPlayingState] = useState(false);
   const [isPaused, setIsPausedState] = useState(false);
@@ -400,8 +411,10 @@ export const useConversationAudioPlayback = ({
       voiceResolution
     });
 
+    const onNowPlaying = bindRuntime(nextStatus);
     if (typeof audioRuntimeHooks?.executeBrowserTts === 'function') {
       try {
+        onNowPlaying?.({ source: 'tts', provider: 'browser-tts', voice: matchedVoice?.name || null, rate: effectiveRate });
         const result = await audioRuntimeHooks.executeBrowserTts({
           textToRead,
           overrideVoice: matchedVoice,
@@ -420,6 +433,7 @@ export const useConversationAudioPlayback = ({
         });
         if (result?.status === 'error') onSpeechError(result.error || 'speech-error');
       } catch (error) { onSpeechError(error?.message || 'speech-error'); }
+      finally { onNowPlaying?.(null); }
       return;
     }
 
@@ -441,11 +455,12 @@ export const useConversationAudioPlayback = ({
       rateRef: null,
       rate: effectiveRate,
       pitch: 1,
-      onError: onSpeechError
+      onError: onSpeechError,
+      onNowPlaying
     });
-  }, [documentTree, normalizedConfig.preferences, installedVoices, synth, audioRuntimeHooks, waitWhilePaused, addLog]);
+  }, [documentTree, normalizedConfig.preferences, installedVoices, synth, audioRuntimeHooks, waitWhilePaused, addLog, bindRuntime]);
 
-  const playRuntimeUrl = useCallback(async ({ url, playbackRate = 1, label = 'Conversation audio', step = null, item = null, statusMeta = {} }) => {
+  const playRuntimeUrl = useCallback(async ({ url, playbackRate = 1, label = 'Conversation audio', step = null, item = null, statusMeta = {}, sourceEvidence }) => {
     setPlaybackSourceStatus(statusMeta);
     audioRuntimeHooks?.onPlaybackStep?.({
       ...statusMeta,
@@ -453,17 +468,23 @@ export const useConversationAudioPlayback = ({
       step,
       item
     });
+    const onNowPlaying = bindRuntime(statusMeta);
     if (typeof audioRuntimeHooks?.executeRuntimeAudio === 'function') {
-      return audioRuntimeHooks.executeRuntimeAudio({
-        url,
-        playbackRate,
-        label,
-        step,
-        item,
-        currentAudioObjRef,
-        playbackResolveRef,
-        stopSignalRef
-      });
+      onNowPlaying?.({ ...sourceEvidence, rate: playbackRate });
+      try {
+        return await audioRuntimeHooks.executeRuntimeAudio({
+          url,
+          playbackRate,
+          label,
+          step,
+          item,
+          currentAudioObjRef,
+          playbackResolveRef,
+          stopSignalRef
+        });
+      } finally {
+        onNowPlaying?.(null);
+      }
     }
     return executeStructuredTextRuntimeAudioPlaybackService({
       url,
@@ -471,10 +492,12 @@ export const useConversationAudioPlayback = ({
       playbackResolveRef,
       stopSignalRef,
       playbackRate,
+      onNowPlaying,
+      sourceEvidence,
       addLog,
       label
     });
-  }, [audioRuntimeHooks, addLog]);
+  }, [audioRuntimeHooks, addLog, bindRuntime]);
 
   const playStructuredChannel = useCallback(async (textToRead, item, channel, options = {}) => {
     const playbackSessionId = playbackSessionRef.current;
@@ -530,7 +553,12 @@ export const useConversationAudioPlayback = ({
         label: `Conversation ${fullBlock?.id || 'Scene'}/${item?.speaker || 'Narrator'}`,
         step,
         item,
-        statusMeta
+        statusMeta,
+        sourceEvidence: {
+          source: step.runtimeAudio.variant?.source === 'generated' ? 'generated' : 'local-rf',
+          provider: step.runtimeAudio.variant?.engine || null,
+          voice: step.runtimeAudio.variant?.voiceId || null
+        }
       });
       if (!playbackStillCurrent() || result.status === 'played' || result.status === 'stopped') return;
       markFailedVariant(runtimeVariantId);
@@ -620,7 +648,12 @@ export const useConversationAudioPlayback = ({
         label: `Conversation Full ${block?.id || 'Scene'}/${normalizedChannel}`,
         step,
         item,
-        statusMeta
+        statusMeta,
+        sourceEvidence: {
+          source: 'full-artifact',
+          provider: composed ? null : runtimeFull?.profile?.engine || null,
+          voice: composed ? null : runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null
+        }
       });
       if (!playbackStillCurrent() || result.status === 'played' || result.status === 'stopped') return;
     }
@@ -843,8 +876,14 @@ export const useConversationAudioPlayback = ({
     });
   }, [snapshot, workspaceKey, documentTree?.id, documentTree?.uid, runtimeAudioUrls, runtimeFullAudio, normalizedConfig]);
 
+  const readNowPlaying = useCallback(() => {
+    const scope = readPresentationPlaybackScope();
+    return readOwnedNowPlaying({ playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef }, 'isolated-uat', scope);
+  }, [readPresentationPlaybackScope]);
+
   return useMemo(() => ({
     readPresentationPlaybackScope,
+    readNowPlaying,
     isPlaying,
     isPaused,
     playingContext,
@@ -866,6 +905,7 @@ export const useConversationAudioPlayback = ({
     stopPlayback
   }), [
     readPresentationPlaybackScope,
+    readNowPlaying,
     isPlaying,
     isPaused,
     playingContext,

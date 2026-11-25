@@ -96,6 +96,8 @@ import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readT
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService, isBrowserTtsSpeechSupported } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
+import { bindNowPlayingRuntime, readOwnedNowPlaying } from './domain/playback/nowPlayingDomain.js';
+import { NowPlayingContext } from './components/playback/NowPlayingContext.js';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
@@ -1874,7 +1876,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleMenuToggle = (rowId) => executeMenuToggle({ rowId, setActiveMenuId });
 
   // --- AUDIO ENGINE v5.8 ---
-  const getLocalAudioUrl = async (item, part) => {
+  const nowPlayingRefs = { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef };
+  const readNowPlaying = () => readOwnedNowPlaying(nowPlayingRefs, 'main', { isPlaying });
+  const getLocalAudioUrl = async (item, part, onResolvedVariant) => {
     if (mode !== 'table') return resolveLocalAudioUrl({ mode, item, part, localAudioMapTable, localAudioMapText });
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const itemScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
@@ -1885,6 +1889,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       variants,
       voiceMode: tableLocalAudioVoiceMode,
       voicePriority: tableAudioVoicePriority
+    });
+    if (selectedVariant) onResolvedVariant?.({
+      source: selectedVariant.sourceType === 'generated' || selectedVariant.engine === 'edge' ? 'generated' : 'local',
+      provider: selectedVariant.engine || null,
+      voice: selectedVariant.voiceId || null
     });
     if (selectedVariant?.url) return selectedVariant.url;
     if (selectedVariant?.sourceType === 'staging') return getAudioStagingObjectUrl(selectedVariant.stagingId);
@@ -1906,7 +1915,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     durationMs, sessionId, playbackSessionRef, waitWhilePaused, stopSignalRef, pauseStateRef
   });
 
-  const playTTS = (textToRead, overrideVoice = null) => {
+  const playTTS = (textToRead, overrideVoice = null, onNowPlaying = null) => {
     return executeBrowserTtsPlaybackService({
       textToRead,
       overrideVoice,
@@ -1919,11 +1928,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackResolveRef,
       rateRef,
       rate,
-      pitch
+      pitch,
+      onNowPlaying
     });
   };
 
-  const playSource = (textToRead, item, part) => {
+  const playSource = (textToRead, item, part, { queueIndex } = {}) => {
     return executeAudioSourcePlaybackService({
       textToRead,
       item,
@@ -1940,7 +1950,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       resolveAudioFallbackVoice,
       selectedIndonesianVoiceRef,
       playTTS,
-      addLog
+      addLog,
+      onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, { item, part, queueIndex })
     });
   };
 
@@ -3914,7 +3925,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackResolveRef,
       rateRef: null,
       rate: resolveStructuredTextItemPlaybackRate(item, normalizedChannel),
-      pitch: 1
+      pitch: 1,
+      onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+        cardId: blockId, segmentId, channel: normalizedChannel,
+        representation: segmentId ? 'split' : 'full'
+      }, resolvedSessionId)
     });
   };
 
@@ -3953,6 +3968,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (runtimeUrl) {
         const origin = runtime?.zipBacked ? 'ZIP' : runtime?.stagingBacked ? 'Staging' : runtime?.folderBacked ? 'Folder (legacy)' : 'Local';
         const localVoiceId = runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null;
+        const composed = Array.isArray(runtimeFull?.artifact?.descriptor?.composition);
         setStructuredTextPlaybackSourceStatus({
           documentId: resolvedDocumentId,
           sessionId: playbackSessionId,
@@ -3975,6 +3991,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           playbackResolveRef,
           stopSignalRef,
           playbackRate: resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
+          onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+            cardId: block?.id, channel: normalizedChannel, representation: 'full'
+          }, playbackSessionId),
+          sourceEvidence: {
+            source: 'full-artifact',
+            provider: composed ? null : runtimeFull?.profile?.engine || null,
+            voice: composed ? null : localVoiceId
+          },
           addLog,
           label: `Full Text ${block?.id || 'card'}/${normalizedChannel}`
         });
@@ -4129,6 +4153,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             playbackResolveRef,
             stopSignalRef,
             playbackRate: resolveStructuredTextItemPlaybackRate(item, channel),
+            onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+              cardId: block?.id || item?.blockId,
+              segmentId: item?.segmentId || item?.id,
+              channel: normalizedChannel, representation: 'split'
+            }, playbackSessionId),
+            sourceEvidence: {
+              source: runtimeAudio.variant?.source === 'generated' ? 'generated' : 'local-rf',
+              provider: runtimeAudio.variant?.engine || null,
+              voice: runtimeAudio.variant?.voiceId || null
+            },
             addLog,
             label: `Text Player ${runtimeAudio.variant.id}/${channel}`
           });
@@ -7737,7 +7771,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     </div>
   ) : renderPlaylistContent();
 
-  return renderMainAppShellView({
+  return <NowPlayingContext.Provider value={readNowPlaying}>{renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
     isSystemBusy, savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit,
     currentDeckName, setCurrentDeckName, handleSaveDeck, mode, isCsvDirty,
@@ -7792,7 +7826,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
     structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
-  });
+  })}</NowPlayingContext.Provider>;
 };
 
 // --- APP WRAPPER (Theme & View Logic) ---
