@@ -43,3 +43,62 @@ export const toggleTextCardExpandedId = (expandedIds, blockId) => {
   else next.add(blockId);
   return next;
 };
+
+export const TEXT_CARD_EXPANSION_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: TEXT_CARD_EXPANSION_MODES.FOLLOW,
+    label: 'Follow Playback',
+    description: 'Automatically keep the active playing card open while keeping browsing independent'
+  }),
+  Object.freeze({
+    id: TEXT_CARD_EXPANSION_MODES.ALL,
+    label: 'Expand All',
+    description: 'Keep every card expanded in authored order'
+  }),
+  Object.freeze({
+    id: TEXT_CARD_EXPANSION_MODES.CUSTOM,
+    label: 'Custom',
+    description: 'Manually expand or collapse any combination of cards without affecting audio'
+  })
+]);
+
+export const resolveActiveCardIdFromCursor = ({ cards = [], playbackCursor = null } = {}) => {
+  if (!playbackCursor || (playbackCursor.state !== 'playing' && playbackCursor.state !== 'paused')) {
+    return null;
+  }
+  const cardId = playbackCursor.cardId || null;
+  if (!cardId) return null;
+  return (cards || []).some(card => card?.id === cardId) ? cardId : null;
+};
+
+/**
+ * View-only Card Visibility resolution for Shared Reader Card Mode.
+ * Supports Follow Playback, Expand All, and Custom (multiple open Cards allowed)
+ * without mutating playback sessions or active audio cursors.
+ */
+export const resolveSharedReaderExpandedCardIds = ({
+  mode = TEXT_CARD_EXPANSION_MODES.ALL,
+  cards = [],
+  activeCardId = null,
+  lastActiveCardId = null,
+  customExpandedIds = new Set(),
+  fallbackFirstWhenIdle = true
+} = {}) => {
+  const normalized = normalizeTextCardExpansionMode(mode);
+  const validIds = (cards || []).map(card => card?.id).filter(Boolean);
+  const validSet = new Set(validIds);
+
+  if (normalized === TEXT_CARD_EXPANSION_MODES.ALL) {
+    return new Set(validIds);
+  }
+  if (normalized === TEXT_CARD_EXPANSION_MODES.CUSTOM) {
+    return new Set([...(customExpandedIds || [])].filter(id => validSet.has(id)));
+  }
+
+  const target = (activeCardId && validSet.has(activeCardId))
+    ? activeCardId
+    : (lastActiveCardId && validSet.has(lastActiveCardId))
+      ? lastActiveCardId
+      : (fallbackFirstWhenIdle && validIds[0] ? validIds[0] : null);
+  return new Set(target ? [target] : []);
+};

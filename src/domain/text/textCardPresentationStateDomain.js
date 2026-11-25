@@ -6,9 +6,9 @@ export const DEFAULT_TEXT_CARD_PRESENTATION_STATE = Object.freeze({ level: 'full
 export const TEXT_WORKSPACE_STYLE_ALIGNMENTS = Object.freeze(['left', 'justify']);
 export const TEXT_WORKSPACE_STYLE_SPEAKER_LAYOUTS = Object.freeze(['stacked', 'aligned', 'inline']);
 export const DEFAULT_TEXT_WORKSPACE_STYLE_STATE = Object.freeze({
-  textAlign: 'left',
-  paragraphIndent: false,
-  speakerLayout: 'stacked',
+  textAlign: 'justify',
+  paragraphIndent: true,
+  speakerLayout: 'aligned',
   showAccents: true
 });
 const TEXT_WORKSPACE_STYLE_KEYS = Object.freeze(Object.keys(DEFAULT_TEXT_WORKSPACE_STYLE_STATE));

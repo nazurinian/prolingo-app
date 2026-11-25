@@ -47,7 +47,15 @@ import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
 import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
 import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
 import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from './domain/text/textMainReaderDomain.js';
-import { loadTextMainReaderPreference, saveTextMainReaderPreference } from './services/persistence/textMainReaderPreferenceService.js';
+import {
+  TEXT_WORKSPACE_STYLE_SCOPES,
+  loadTextMainReaderPreference,
+  normalizeTextWorkspacePreferenceKey,
+  resetTextMainReaderWorkspaceStyle,
+  resolveTextMainReaderWorkspaceStyle,
+  saveTextMainReaderPreference,
+  updateTextMainReaderWorkspaceStyle
+} from './services/persistence/textMainReaderPreferenceService.js';
 import { renderPlaylistViewport } from './components/table/PlaylistViewport';
 import { DEFAULT_ROW_HEIGHT_MOBILE, DEFAULT_ROW_HEIGHT_PC, OVERSCAN, V510_SOURCE_KEYS, V510_SOURCE_LABELS, V58_CANONICAL_HEADERS } from './constants/datasetConstants';
 import { V5116_CONTROL_SECTIONS, V5116_CONTROL_SECTION_KEYS, V511_DEFAULT_DELAYS, V511_DELAY_OPTIONS, V511_PLAYBACK_PARTS, V511_PLAYBACK_PRESETS } from './constants/playbackConstants';
@@ -851,6 +859,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const activeTextEditorModel = textLibrarySnapshot?.documents?.find(document => document.id === activeTextDocumentId)?.editorModel || null;
   const [textMainReaderPreference, setTextMainReaderPreference] = useState(loadTextMainReaderPreference);
+  const [textWorkspaceStyleScope, setTextWorkspaceStyleScope] = useState(TEXT_WORKSPACE_STYLE_SCOPES.SHARED);
   const textMainReaderProvenanceRef = useRef(null);
   const textMainReader = useMemo(
     () => selectTextMainReaderPresentation(textLibrarySnapshot, activeTextDocumentId),
@@ -863,6 +872,42 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
   const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
+  const activeTextWorkspacePreferenceKey = useMemo(
+    () => normalizeTextWorkspacePreferenceKey(textMainReader.presentation?.workspace || activeTextDocument || null),
+    [textMainReader.presentation?.workspace, activeTextDocument]
+  );
+  const effectiveTextWorkspaceStyleScope = textWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE && activeTextWorkspacePreferenceKey
+    ? TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
+    : TEXT_WORKSPACE_STYLE_SCOPES.SHARED;
+  const activeTextWorkspaceStyleResolution = useMemo(
+    () => resolveTextMainReaderWorkspaceStyle(
+      textMainReaderPreference,
+      activeTextWorkspacePreferenceKey
+        ? { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: activeTextWorkspacePreferenceKey }
+        : { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED }
+    ),
+    [textMainReaderPreference, activeTextWorkspacePreferenceKey]
+  );
+  const sharedTextWorkspaceStyleResolution = useMemo(
+    () => resolveTextMainReaderWorkspaceStyle(textMainReaderPreference, { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED }),
+    [textMainReaderPreference]
+  );
+  const updateTextMainReaderWorkspaceStylePreference = patch => {
+    const target = effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
+      ? { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: activeTextWorkspacePreferenceKey }
+      : { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED };
+    setTextMainReaderPreference(previous => saveTextMainReaderPreference(
+      updateTextMainReaderWorkspaceStyle(previous, patch, target)
+    ));
+  };
+  const resetTextMainReaderWorkspaceStylePreference = () => {
+    const target = effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
+      ? { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: activeTextWorkspacePreferenceKey }
+      : { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED };
+    setTextMainReaderPreference(previous => saveTextMainReaderPreference(
+      resetTextMainReaderWorkspaceStyle(previous, target)
+    ));
+  };
   const textLibrarySearchResults = useMemo(
     () => resolveTextLibrarySearchResults(textLibrarySnapshot, textLibrarySearchQuery),
     [textLibrarySnapshot, textLibrarySearchQuery]
@@ -7515,6 +7560,25 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         sharedPresentation={textMainReader.presentation}
         sharedPresentationState={textMainReaderPreference.view}
         onSharedPresentationStateChange={view => updateTextMainReaderPreference({ view })}
+        sharedReaderMode={textMainReaderPreference.readerMode}
+        onSharedReaderModeChange={readerMode => updateTextMainReaderPreference({ readerMode })}
+        sharedWorkspaceStyle={activeTextWorkspaceStyleResolution.effectiveStyle}
+        sharedWorkspaceStyleControlValue={
+          effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
+            ? activeTextWorkspaceStyleResolution.effectiveStyle
+            : sharedTextWorkspaceStyleResolution.sharedStyle
+        }
+        sharedWorkspaceStyleDefaults={
+          effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
+            ? activeTextWorkspaceStyleResolution.effectiveDefaults
+            : sharedTextWorkspaceStyleResolution.effectiveDefaults
+        }
+        sharedWorkspaceStyleScope={effectiveTextWorkspaceStyleScope}
+        onSharedWorkspaceStyleScopeChange={setTextWorkspaceStyleScope}
+        sharedWorkspaceStyleHasOverride={activeTextWorkspaceStyleResolution.hasWorkspaceOverride}
+        sharedWorkspaceStyleCanOverride={Boolean(activeTextWorkspacePreferenceKey)}
+        onSharedWorkspaceStyleChange={updateTextMainReaderWorkspaceStylePreference}
+        onResetSharedWorkspaceStyle={resetTextMainReaderWorkspaceStylePreference}
         sharedPlaybackCursor={sharedTextPlaybackCursor}
         isPlaying={isPlaying}
         isPaused={isPaused}

@@ -1,12 +1,36 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { selectTextUnifiedReader } from '../../../domain/text/textUnifiedReaderDomain.js';
 import { resolveTextConversationReaderCursor, createTextConversationReaderActions } from '../../../domain/text/textConversationReaderDomain.js';
+import { DEFAULT_TEXT_WORKSPACE_STYLE_STATE } from '../../../domain/text/textCardPresentationStateDomain.js';
 import SharedWorkspaceReader from './SharedParagraphCardReader.jsx';
 import TextParagraphUnifiedReading from '../TextParagraphUnifiedReading.jsx';
 
 /** Read-only classic/Shared adapter. Playback remains entirely in the supplied host. */
-export default function UnifiedStructuredReader({ snapshot, documentId, audioPlayback, mode = 'classic',
-  view, onViewChange, focusTarget = null, onFocusConsumed, disabled = false }) {
+export default function UnifiedStructuredReader({
+  snapshot,
+  documentId,
+  audioPlayback,
+  mode = 'classic',
+  readerMode = null,
+  onReaderModeChange = null,
+  cardVisibility = null,
+  onCardVisibilityChange = null,
+  view,
+  onViewChange,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  workspaceStyleControlValue = null,
+  effectiveWorkspaceStyleDefaults = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  workspaceStyleScope = 'shared',
+  onWorkspaceStyleScopeChange = null,
+  hasWorkspaceStyleOverride = false,
+  canOverrideWorkspaceStyle = false,
+  onWorkspaceStyleChange = null,
+  onResetWorkspaceStyle = null,
+  showWorkspaceStyle = false,
+  focusTarget = null,
+  onFocusConsumed,
+  disabled = false
+}) {
   const root = useRef(null);
   const selected = useMemo(() => { try { return selectTextUnifiedReader(snapshot, documentId); } catch (error) { return { error }; } }, [snapshot, documentId]);
   const presentation = selected.presentation;
@@ -21,9 +45,33 @@ export default function UnifiedStructuredReader({ snapshot, documentId, audioPla
   if (selected.error) return <p role="alert">{selected.error.message}</p>;
   return <section ref={root} data-unified-reader={mode} data-reader-cursor-precision={cursor.precision}
     data-reader-cursor-segment={cursor.segmentId || ''} data-reader-cursor-card={cursor.cardId || ''}>
-    {mode === 'shared' ? <SharedWorkspaceReader presentation={presentation} presentationState={view} onPresentationStateChange={onViewChange}
-      playbackCursor={cursor} disabled={disabled} focusTarget={focusTarget} onFocusConsumed={onFocusConsumed} {...actions} />
-      : <div className="space-y-4">
+    {mode === 'shared' ? (
+      <SharedWorkspaceReader
+        presentation={presentation}
+        presentationState={view}
+        onPresentationStateChange={onViewChange}
+        readerMode={readerMode}
+        onReaderModeChange={onReaderModeChange}
+        cardVisibility={cardVisibility}
+        onCardVisibilityChange={onCardVisibilityChange}
+        workspaceStyle={workspaceStyle}
+        workspaceStyleControlValue={workspaceStyleControlValue}
+        effectiveWorkspaceStyleDefaults={effectiveWorkspaceStyleDefaults}
+        workspaceStyleScope={workspaceStyleScope}
+        onWorkspaceStyleScopeChange={onWorkspaceStyleScopeChange}
+        hasWorkspaceStyleOverride={hasWorkspaceStyleOverride}
+        canOverrideWorkspaceStyle={canOverrideWorkspaceStyle}
+        onWorkspaceStyleChange={onWorkspaceStyleChange}
+        onResetWorkspaceStyle={onResetWorkspaceStyle}
+        showWorkspaceStyle={showWorkspaceStyle}
+        playbackCursor={cursor}
+        disabled={disabled}
+        focusTarget={focusTarget}
+        onFocusConsumed={onFocusConsumed}
+        {...actions}
+      />
+    ) : (
+      <div className="space-y-4">
         {presentation.workspace.documentType !== 'paragraph' && <p className="text-sm">Tampilan Lama — compatible Turn adapter; not the former flat Sentence list.</p>}
         {!presentation.cards.length && <p>No Cards yet.</p>}
         {presentation.cards.map(card => <article key={card.id} data-classic-card={card.id} className="border rounded-xl p-4 space-y-3">
@@ -41,6 +89,7 @@ export default function UnifiedStructuredReader({ snapshot, documentId, audioPla
               onPlayChannel={channel => actions.onPlayCard(card.id, { playbackChannelMode: channel === 'meaning' ? 'meaning-only' : 'text-only' })} />
           </section>)}
         </article>)}
-      </div>}
+      </div>
+    )}
   </section>;
 }

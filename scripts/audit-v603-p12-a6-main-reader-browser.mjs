@@ -169,8 +169,17 @@ try {
     await click('[aria-label="Close audio settings"]');
     check(before === await evaluate('window.a6Writes.length'), 'Opening controls wrote content or audio');
   });
-  await run('Full/Part/Segment, four bilingual layouts and three Part layouts remain view-only', async () => {
+  await run('Full Book Page, Card Mode, Part/Segment, bilingual layouts and Workspace Style remain view-only', async () => {
     const before = await evaluate('JSON.stringify({ writes: window.a6Writes.length, speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1") })');
+    check(await evaluate('Boolean(document.querySelector("[data-shared-book-page=true]"))'), 'Default Shared view is not continuous Book Page');
+    await click('[data-shared-reader-mode-option="card"]');
+    await until('!document.querySelector("[data-shared-book-page=true]") && Boolean(document.querySelector("[data-text-card-expansion-toolbar=true]"))');
+    await click('[data-shared-workspace-align-option="left"]');
+    await click('[data-shared-workspace-indent-toggle="true"]');
+    await click('[data-shared-workspace-accents-toggle="true"]');
+    check(await evaluate('document.querySelector("[data-shared-workspace-style-reset]").disabled === false'), 'Reset Style did not enable when dirty');
+    await click('[data-shared-workspace-style-reset="true"]');
+    check(await evaluate('document.querySelector("[data-shared-workspace-style-reset]").disabled === true'), 'Reset Style did not disable after reset');
     for (const level of ['full', 'part', 'segment']) {
       await click(`[data-shared-card-level-option="${level}"]`);
       await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-level="${level}"]')`);

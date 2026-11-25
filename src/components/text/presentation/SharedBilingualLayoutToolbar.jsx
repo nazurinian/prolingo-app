@@ -68,8 +68,8 @@ const SPEAKER_LAYOUT_ICONS = {
 
 /**
  * Reusable Workspace Style controls (Shared Alignment, Paragraph Indent, Conversation
- * Speaker arrangement, Accent Lines, and independent Reset). Purely view-only: never
- * mutates Reader Mode, bilingual layout, audio preferences, or active playback.
+ * Speaker arrangement, Accent Lines, explicit Shared vs Workspace scope, and independent Reset).
+ * Purely view-only: never mutates Reader Mode, bilingual layout, audio preferences, or active playback.
  */
 export const SharedWorkspaceStyleBar = ({
   workspaceStyle = null,
@@ -77,6 +77,10 @@ export const SharedWorkspaceStyleBar = ({
   onChangeWorkspaceStyle = null,
   onResetWorkspaceStyle = null,
   workspaceType = null,
+  workspaceStyleScope = 'shared',
+  onChangeWorkspaceStyleScope = null,
+  canOverrideWorkspace = false,
+  hasWorkspaceOverride = false,
   scopeLabel = null,
   standalone = false
 }) => {
@@ -85,6 +89,7 @@ export const SharedWorkspaceStyleBar = ({
   const isDirty = isTextWorkspaceStyleDirty(activeStyle, resolvedDefaults);
   const showParagraphControls = workspaceType !== 'conversation';
   const showConversationControls = workspaceType !== 'paragraph';
+  const isWorkspaceScope = workspaceStyleScope === 'workspace';
 
   const emitStylePatch = patch => {
     if (!onChangeWorkspaceStyle) return;
@@ -108,6 +113,8 @@ export const SharedWorkspaceStyleBar = ({
     <div
       className={`${wrapperClass} flex flex-wrap items-center justify-between gap-2.5 text-left`}
       data-shared-workspace-style-bar="true"
+      data-shared-workspace-style-scope={workspaceStyleScope}
+      data-shared-workspace-style-has-override={hasWorkspaceOverride ? 'true' : 'false'}
       data-shared-workspace-style-align={activeStyle.textAlign}
       data-shared-workspace-style-indent={activeStyle.paragraphIndent ? 'on' : 'off'}
       data-shared-workspace-style-speaker={activeStyle.speakerLayout}
@@ -115,17 +122,69 @@ export const SharedWorkspaceStyleBar = ({
       data-shared-workspace-style-dirty={isDirty ? 'true' : 'false'}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0 w-full">
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
           <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Style
           </span>
-          {scopeLabel && (
+          {onChangeWorkspaceStyleScope ? (
+            <div
+              role="group"
+              aria-label="Workspace style target scope (display only)"
+              className="inline-flex items-center gap-0.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 p-0.5"
+            >
+              <button
+                type="button"
+                aria-pressed={!isWorkspaceScope}
+                onClick={() => onChangeWorkspaceStyleScope('shared')}
+                title="Edit Shared Reader default style inherited by Workspaces without overrides"
+                data-shared-workspace-style-scope-option="shared"
+                className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  !isWorkspaceScope
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                Shared
+              </button>
+              <button
+                type="button"
+                disabled={!canOverrideWorkspace}
+                aria-pressed={isWorkspaceScope}
+                onClick={() => canOverrideWorkspace && onChangeWorkspaceStyleScope('workspace')}
+                title={canOverrideWorkspace
+                  ? 'Override Workspace Style for this Workspace only'
+                  : 'Select a valid Workspace to create a Workspace-specific override'}
+                data-shared-workspace-style-scope-option="workspace"
+                className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  isWorkspaceScope
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <span>This Workspace</span>
+                {hasWorkspaceOverride && (
+                  <span
+                    aria-hidden="true"
+                    className={`h-1.5 w-1.5 rounded-full ${isWorkspaceScope ? 'bg-white' : 'bg-indigo-500 dark:bg-indigo-400'}`}
+                  />
+                )}
+              </button>
+            </div>
+          ) : scopeLabel ? (
             <span
-              data-shared-workspace-style-scope={scopeLabel}
+              data-shared-workspace-style-scope-label={scopeLabel}
               className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400"
             >
               {scopeLabel}
+            </span>
+          ) : null}
+          {!isWorkspaceScope && hasWorkspaceOverride && (
+            <span
+              data-shared-workspace-override-indicator="true"
+              className="rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/70 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200"
+            >
+              Workspace override active
             </span>
           )}
         </div>
@@ -245,12 +304,14 @@ export const SharedWorkspaceStyleBar = ({
             type="button"
             disabled={!isDirty}
             onClick={handleReset}
-            title="Restore Workspace Style defaults without changing Reader Mode, layout, or audio"
+            title={isWorkspaceScope
+              ? 'Clear this Workspace override and inherit Shared Reader defaults without changing Reader Mode, layout, or audio'
+              : 'Restore Shared Workspace Style defaults without changing Reader Mode, layout, or audio'}
             data-shared-workspace-style-reset="true"
             className="min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <RotateCcw aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-            <span>Reset Style</span>
+            <span>{isWorkspaceScope ? 'Reset Override' : 'Reset Style'}</span>
           </button>
         </div>
       </div>
@@ -259,9 +320,9 @@ export const SharedWorkspaceStyleBar = ({
 };
 
 /**
- * View-only presentation toolbar controlling display level (Full / Part / Segment),
- * bilingual layout (Combined / Separated / EN Only / ID Only), contextual Part
- * layout (Horizontal / Focus Stack / List), and optional Workspace Style controls.
+ * View-only presentation toolbar controlling Reader Mode (Full Book Page / Card),
+ * display level (Part / Segment), bilingual layout (Combined / Separated / EN Only / ID Only),
+ * contextual Part layout, and optional Workspace Style controls.
  * Never modifies audio configuration or playback.
  */
 export const SharedBilingualLayoutToolbar = ({
@@ -270,10 +331,16 @@ export const SharedBilingualLayoutToolbar = ({
   onChangePresentationState = null,
   onChangeLayout = null,
   onResetView = null,
+  readerMode = null,
+  onChangeReaderMode = null,
   workspaceStyle = null,
   effectiveWorkspaceStyleDefaults = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   onChangeWorkspaceStyle = null,
   onResetWorkspaceStyle = null,
+  workspaceStyleScope = 'shared',
+  onChangeWorkspaceStyleScope = null,
+  canOverrideWorkspaceStyle = false,
+  hasWorkspaceStyleOverride = false,
   showWorkspaceStyle = false,
   workspaceStyleScopeLabel = null,
   rightSlot = null,
@@ -293,10 +360,14 @@ export const SharedBilingualLayoutToolbar = ({
         bilingualLayout: bilingualLayout || DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
       });
 
+  const supportsBookAndCardModes = Boolean(onChangeReaderMode);
+  const resolvedReaderMode = readerMode === 'card' ? 'card' : 'full';
+
   const isCustomView = (
     activeState.level !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.level
     || activeState.bilingualLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
     || (activeState.level === 'part' && activeState.partLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout)
+    || (supportsBookAndCardModes && resolvedReaderMode !== 'full')
   );
   const shouldShowWorkspaceStyle = Boolean(
     showWorkspaceStyle || workspaceStyle !== null || onChangeWorkspaceStyle !== null
@@ -312,47 +383,129 @@ export const SharedBilingualLayoutToolbar = ({
     }
   };
 
+  const handleSelectMode = ({ nextReaderMode = null, nextLevel = 'full' }) => {
+    if (supportsBookAndCardModes && nextReaderMode) {
+      onChangeReaderMode(nextReaderMode);
+    }
+    if (nextLevel !== activeState.level) {
+      emitPatch({ level: nextLevel });
+    }
+  };
+
   return (
     <div
       className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm transition-colors motion-reduce:transition-none space-y-2.5"
       data-shared-card-bilingual-toolbar="true"
       data-shared-card-toolbar-level={activeState.level}
+      data-shared-reader-mode={supportsBookAndCardModes ? (activeState.level === 'full' ? resolvedReaderMode : activeState.level) : activeState.level}
     >
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex flex-wrap items-center gap-2.5 min-w-0 w-full lg:w-auto">
-          {/* Display Level Selector: Full | Part | Segment */}
+          {/* Reader Mode / Display Level Selector */}
           <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              View
+              {supportsBookAndCardModes ? 'Mode' : 'View'}
             </span>
-            <div
-              role="group"
-              aria-label="Reading view level (display only)"
-              className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
-            >
-              {SHARED_LEVEL_OPTIONS.map(option => {
-                const active = activeState.level === option.id;
-                const Icon = LEVEL_ICONS[option.id] || BookOpen;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => emitPatch({ level: option.id })}
-                    title={describe(option)}
-                    data-shared-card-level-option={option.id}
-                    className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                      active
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
-                    }`}
-                  >
-                    <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                    <span>{option.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {supportsBookAndCardModes ? (
+              <div
+                role="group"
+                aria-label="Reader mode (display only)"
+                className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+              >
+                {[
+                  {
+                    id: 'full',
+                    label: 'Full',
+                    icon: BookOpen,
+                    active: activeState.level === 'full' && resolvedReaderMode === 'full',
+                    title: 'Read the entire Workspace as one continuous book presentation',
+                    levelAttr: 'full',
+                    modeAttr: 'full',
+                    onClick: () => handleSelectMode({ nextReaderMode: 'full', nextLevel: 'full' })
+                  },
+                  {
+                    id: 'card',
+                    label: 'Card',
+                    icon: Rows3,
+                    active: activeState.level === 'full' && resolvedReaderMode === 'card',
+                    title: `Read individual expandable ${terms.cardLower}s containing all their ${terms.plural}`,
+                    levelAttr: null,
+                    modeAttr: 'card',
+                    onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'full' })
+                  },
+                  {
+                    id: 'part',
+                    label: 'Part',
+                    icon: Layers,
+                    active: activeState.level === 'part',
+                    title: describe(SHARED_LEVEL_OPTIONS.find(o => o.id === 'part')),
+                    levelAttr: 'part',
+                    modeAttr: null,
+                    onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'part' })
+                  },
+                  {
+                    id: 'segment',
+                    label: 'Segment',
+                    icon: Target,
+                    active: activeState.level === 'segment',
+                    title: describe(SHARED_LEVEL_OPTIONS.find(o => o.id === 'segment')),
+                    levelAttr: 'segment',
+                    modeAttr: null,
+                    onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'segment' })
+                  }
+                ].map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      aria-pressed={item.active}
+                      onClick={item.onClick}
+                      title={item.title}
+                      data-shared-card-level-option={item.levelAttr || undefined}
+                      data-shared-reader-mode-option={item.modeAttr || undefined}
+                      className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        item.active
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                      }`}
+                    >
+                      <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                role="group"
+                aria-label="Reading view level (display only)"
+                className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+              >
+                {SHARED_LEVEL_OPTIONS.map(option => {
+                  const active = activeState.level === option.id;
+                  const Icon = LEVEL_ICONS[option.id] || BookOpen;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => emitPatch({ level: option.id })}
+                      title={describe(option)}
+                      data-shared-card-level-option={option.id}
+                      className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                        active
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                      }`}
+                    >
+                      <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                      <span>{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <span aria-hidden="true" className="hidden sm:inline-block h-5 w-px bg-slate-200 dark:bg-slate-800" />
@@ -397,7 +550,7 @@ export const SharedBilingualLayoutToolbar = ({
               type="button"
               onClick={onResetView}
               className="min-h-11 sm:min-h-9 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 inline-flex items-center gap-1 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-              title="Restore default Full Combined view without changing audio"
+              title="Restore default Full Combined view without changing Workspace Style or audio"
               data-shared-card-reset-view="true"
             >
               <RotateCcw aria-hidden="true" className="w-3.5 h-3.5" />
@@ -463,6 +616,10 @@ export const SharedBilingualLayoutToolbar = ({
           onChangeWorkspaceStyle={onChangeWorkspaceStyle}
           onResetWorkspaceStyle={onResetWorkspaceStyle}
           workspaceType={workspaceType}
+          workspaceStyleScope={workspaceStyleScope}
+          onChangeWorkspaceStyleScope={onChangeWorkspaceStyleScope}
+          canOverrideWorkspace={canOverrideWorkspaceStyle}
+          hasWorkspaceOverride={hasWorkspaceStyleOverride}
           scopeLabel={workspaceStyleScopeLabel}
         />
       )}

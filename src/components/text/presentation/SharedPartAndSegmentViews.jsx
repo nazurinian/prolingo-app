@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Play, Radio } from 'lucide-react';
-import { DEFAULT_TEXT_CARD_PRESENTATION_STATE } from '../../../domain/text/textCardPresentationStateDomain.js';
+import {
+  DEFAULT_TEXT_CARD_PRESENTATION_STATE,
+  DEFAULT_TEXT_WORKSPACE_STYLE_STATE
+} from '../../../domain/text/textCardPresentationStateDomain.js';
+import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
 import {
   IDLE_SHARED_CURSOR,
   buildCardSpeakerAppearanceMap,
+  buildParagraphBodyStyle,
   buildSharedSegmentRenderFlags,
   getSharedUnitHeading,
   getSharedUnitTerms,
@@ -271,6 +276,7 @@ const PartHorizontalFocusView = ({
   workspace,
   speakerAppearanceMap,
   bilingualLayout,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor,
   focusSegmentId,
   playableSegmentIds,
@@ -406,6 +412,7 @@ const PartHorizontalFocusView = ({
               workspace={workspace}
               speakerAppearanceMap={speakerAppearanceMap}
               bilingualLayout={bilingualLayout}
+              workspaceStyle={workspaceStyle}
               playbackCursor={playbackCursor}
               focusSegmentId={focusSegmentId}
               playableSegmentIds={playableSegmentIds}
@@ -427,6 +434,7 @@ const PartVerticalFocusView = ({
   workspace,
   speakerAppearanceMap,
   bilingualLayout,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor,
   focusSegmentId,
   playableSegmentIds,
@@ -493,6 +501,7 @@ const PartVerticalFocusView = ({
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
           bilingualLayout={bilingualLayout}
+          workspaceStyle={workspaceStyle}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
           playableSegmentIds={playableSegmentIds}
@@ -550,6 +559,7 @@ const PartVerticalFocusView = ({
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
           bilingualLayout={bilingualLayout}
+          workspaceStyle={workspaceStyle}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
           playableSegmentIds={playableSegmentIds}
@@ -577,6 +587,7 @@ const PartVerticalListView = ({
   workspace,
   speakerAppearanceMap,
   bilingualLayout,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor,
   focusSegmentId,
   playableSegmentIds,
@@ -649,6 +660,7 @@ const PartVerticalListView = ({
             workspace={workspace}
             speakerAppearanceMap={speakerAppearanceMap}
             bilingualLayout={bilingualLayout}
+            workspaceStyle={workspaceStyle}
             playbackCursor={playbackCursor}
             focusSegmentId={focusSegmentId}
             playableSegmentIds={playableSegmentIds}
@@ -672,6 +684,7 @@ export const SharedCardPartView = ({
   workspace = null,
   partLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
   playableSegmentIds = null,
@@ -718,6 +731,7 @@ export const SharedCardPartView = ({
         workspace={workspace}
         speakerAppearanceMap={speakerAppearanceMap}
         bilingualLayout={bilingualLayout}
+        workspaceStyle={workspaceStyle}
         playbackCursor={playbackCursor}
         focusSegmentId={focusSegmentId}
         playableSegmentIds={playableSegmentIds}
@@ -740,6 +754,7 @@ export const SharedCardSegmentView = ({
   lookup,
   workspace = null,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
+  workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
   playableSegmentIds = null,
@@ -813,6 +828,11 @@ export const SharedCardSegmentView = ({
   const atEnd = logicalIndex >= entries.length - 1;
   const coverageStatuses = resolveSegmentCoverageStatuses({ segment, audioCoverageMap });
   const textLang = workspace?.textLanguage || 'en';
+  const segmentBodyStyle = buildParagraphBodyStyle({
+    workspaceStyle,
+    isTitleRole: card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE,
+    allowIndent: false
+  });
   const meaningLang = workspace?.meaningLanguage || 'id';
   const isV1Compat = entry.unit?.identitySource === 'v1-paragraph-compat';
 
@@ -927,7 +947,11 @@ export const SharedCardSegmentView = ({
               )}
               <div
                 lang={textLang}
-                className="text-left break-words whitespace-pre-line text-xl sm:text-[1.4375rem] font-medium leading-[1.6] text-slate-900 dark:text-slate-50"
+                data-shared-reading-body="true"
+                data-shared-reading-channel="text"
+                data-shared-reading-align={segmentBodyStyle.textAlign}
+                style={segmentBodyStyle.inlineStyle}
+                className={`break-words whitespace-pre-line text-xl sm:text-[1.4375rem] font-medium leading-[1.6] text-slate-900 dark:text-slate-50 ${segmentBodyStyle.className}`}
               >
                 {textContent ? (
                   <TextSegmentInteraction
@@ -970,7 +994,11 @@ export const SharedCardSegmentView = ({
               )}
               <div
                 lang={meaningLang}
-                className="text-left break-words whitespace-pre-line text-base sm:text-[1.15rem] leading-[1.68] text-slate-600 dark:text-slate-300"
+                data-shared-reading-body="true"
+                data-shared-reading-channel="meaning"
+                data-shared-reading-align={segmentBodyStyle.textAlign}
+                style={segmentBodyStyle.inlineStyle}
+                className={`break-words whitespace-pre-line text-base sm:text-[1.15rem] leading-[1.68] text-slate-600 dark:text-slate-300 ${segmentBodyStyle.className}`}
               >
                 {meaningContent ? (
                   <TextSegmentInteraction
