@@ -1,0 +1,35 @@
+/* Shared Reader Typography & Narrow-Viewport Readability Safeguards (4C1) */
+
+[data-shared-reading-body="true"] {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-spacing: normal;
+  text-align-last: start;
+}
+
+[data-shared-reading-body="true"][data-shared-reading-align="justify"] {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-justify: inter-word;
+}
+
+@media (max-width: 480px) {
+  [data-shared-reading-body="true"][data-shared-reading-align="justify"] {
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    hyphenate-limit-chars: 6 3 2;
+    overflow-wrap: break-word;
+    word-spacing: normal;
+    text-wrap: pretty;
+  }
+
+  [data-shared-reading-body="true"][data-shared-reading-kind="paragraph"][data-shared-reading-size="lg"],
+  [data-shared-reading-body="true"][data-shared-reading-kind="paragraph"][data-shared-reading-size="xl"] {
+    text-indent: var(--prolingo-mobile-indent, 1em) !important;
+  }
+}
+
+[data-shared-contextual-panel="inline"] {
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

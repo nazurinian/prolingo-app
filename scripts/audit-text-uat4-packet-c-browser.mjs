@@ -1052,6 +1052,8 @@ try {
       await evaluate('window.__packetC.clearPlaybackLog()');
       await click('[data-shared-reader-mode-option="segment"]');
       await until('document.querySelectorAll("[data-shared-segment-study-box]").length === 4', '4 Study Boxes rendered');
+      // 4B2-5 seeded legacy interlinear; switch to natural primary EN context for 4B3 natural-flow checks
+      await click('[data-shared-card-layout-option="text-only"]');
       await waitFrames();
 
       const segOverview = await evaluate(`(() => {
@@ -1246,8 +1248,8 @@ try {
       assert.equal(idContextCheck.hasEnInBox, true);
       assert.equal(idContextCheck.hasIdInBox, true);
 
-      // Restore default Combined/EN context and capture 390px mobile + dark theme screenshot
-      await click('[data-shared-card-layout-option="interlinear"]');
+      // Restore natural EN primary context and capture 390px mobile + dark theme screenshot
+      await click('[data-shared-card-layout-option="text-only"]');
       await setViewport({ width: 390, height: 844, mobile: true });
       await evaluate('window.__packetC.setDark(true)');
       await waitFrames();
@@ -1400,9 +1402,9 @@ try {
       await click(`[data-shared-card-toggle="${p1Id}"]`);
       await until(`document.querySelector('[data-shared-card-id="${p1Id}"]').dataset.sharedCardExpanded === "true"`, 'P1 reopened');
 
-      // Round-trip 5: Bilingual layout changes + Card Visibility changes + Workspace Style changes
-      await click('[data-shared-card-layout-option="separated"]');
+      // Round-trip 5: Permitted Segment reading language/style changes + Card Visibility + Workspace Style
       await click('[data-shared-card-layout-option="meaning-only"]');
+      await click('[data-shared-card-layout-option="text-only"]');
       await click('[data-shared-card-layout-option="interlinear"]');
       await click('[data-shared-card-visibility-option="all"]');
       await click('[data-shared-workspace-align-option="left"]');
@@ -1692,7 +1694,7 @@ try {
       await click(`[data-text-player-card="${p1Id}"] button[aria-label="Expand card"]`);
       await until(`document.querySelector('[data-shared-card-id="${p1Id}"] [data-shared-segment-study-box]')`, 'Main App P1 reopened');
 
-      await click('[data-shared-card-layout-option="separated"]');
+      await click('[data-shared-card-layout-option="meaning-only"]');
       await click('[data-shared-card-layout-option="interlinear"]');
       await click('[data-text-card-expansion-mode="all"]');
       await click('[data-shared-workspace-align-option="left"]');

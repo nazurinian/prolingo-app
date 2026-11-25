@@ -354,16 +354,21 @@ const FocusSingleUnitView = ({
   unit,
   workspace,
   speakerAppearanceMap,
+  presentationState = null,
   bilingualLayout,
   workspaceStyle,
   partLayout,
   playbackCursor,
   focusSegmentId,
+  contextualState = null,
   playableSegmentIds,
   audioCoverageMap,
   disabled,
   selection,
-  onPlaySegment
+  onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null
 }) => {
   const resolvedStyle = normalizeTextWorkspaceStyleState(workspaceStyle);
   const isTurn = unit.kind === 'turn';
@@ -427,15 +432,21 @@ const FocusSingleUnitView = ({
           unitsOverride={[unit]}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
+          presentationState={presentationState}
           bilingualLayout={bilingualLayout}
+          readerMode="focus"
           workspaceStyle={resolvedStyle}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
+          contextualState={contextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           forceSectionHeaders={isTurn}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={onSelectContextualSegment}
+          onFollowContextualAudible={onFollowContextualAudible}
+          onDismissContextualTarget={onDismissContextualTarget}
         />
       </div>
     </div>
@@ -454,18 +465,23 @@ export const SharedFocusView = ({
   units,
   workspace = null,
   speakerAppearanceMap,
+  presentationState = null,
   partLayout = 'vertical-focus',
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
   selection,
   onSelectUnit,
   onFollowAudible,
-  onPlaySegment
+  onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null
 }) => {
   const effectiveOrientation = partLayout === 'horizontal-focus' ? 'horizontal-focus' : 'vertical-focus';
   const verticalNavigationRef = useRef(null);
@@ -489,16 +505,21 @@ export const SharedFocusView = ({
           unit={units[0]}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
+          presentationState={presentationState}
           bilingualLayout={bilingualLayout}
           workspaceStyle={workspaceStyle}
           partLayout={effectiveOrientation}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
+          contextualState={contextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           selection={selection}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={onSelectContextualSegment}
+          onFollowContextualAudible={onFollowContextualAudible}
+          onDismissContextualTarget={onDismissContextualTarget}
         />
       </div>
     );
@@ -521,16 +542,21 @@ export const SharedFocusView = ({
           units={units}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
+          presentationState={presentationState}
           bilingualLayout={bilingualLayout}
           workspaceStyle={workspaceStyle}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
+          contextualState={contextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           selection={selection}
           onSelectUnit={onSelectUnit}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={onSelectContextualSegment}
+          onFollowContextualAudible={onFollowContextualAudible}
+          onDismissContextualTarget={onDismissContextualTarget}
           renderUnitHeader={renderUnitHeader}
           isConsecutiveSpeakerTurn={isConsecutiveSpeakerTurn}
         />
@@ -540,10 +566,12 @@ export const SharedFocusView = ({
           units={units}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
+          presentationState={presentationState}
           bilingualLayout={bilingualLayout}
           workspaceStyle={workspaceStyle}
           playbackCursor={playbackCursor}
           focusSegmentId={focusSegmentId}
+          contextualState={contextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
@@ -552,6 +580,9 @@ export const SharedFocusView = ({
           onNavigateUnit={navigateVertically}
           navigationRef={verticalNavigationRef}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={onSelectContextualSegment}
+          onFollowContextualAudible={onFollowContextualAudible}
+          onDismissContextualTarget={onDismissContextualTarget}
           renderUnitHeader={renderUnitHeader}
           isConsecutiveSpeakerTurn={isConsecutiveSpeakerTurn}
         />

@@ -1,6 +1,227 @@
 import { buildTextStructuredRuntimeAudioKey } from '../../../domain/text/textStructuredAudioRuntimeDomain.js';
 import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../../domain/text/textStructuredAudioCoverageDomain.js';
-import { normalizeTextWorkspaceStyleState } from '../../../domain/text/textCardPresentationStateDomain.js';
+import {
+  normalizeTextReaderAppearanceState,
+  normalizeTextWorkspaceStyleState
+} from '../../../domain/text/textCardPresentationStateDomain.js';
+
+export const SHARED_READING_LANGUAGE_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'en-only',
+    label: 'EN Only',
+    shortLabel: 'EN',
+    legacyLayoutId: 'text-only',
+    description: 'Display English text only without changing audio playback'
+  }),
+  Object.freeze({
+    id: 'id-only',
+    label: 'ID Only',
+    shortLabel: 'ID',
+    legacyLayoutId: 'meaning-only',
+    description: 'Display Indonesian text only without changing audio playback'
+  }),
+  Object.freeze({
+    id: 'en-id',
+    label: 'EN–ID',
+    shortLabel: 'EN–ID',
+    legacyLayoutId: null,
+    description: 'Display English primary text with Indonesian secondary translation (display order only)'
+  }),
+  Object.freeze({
+    id: 'id-en',
+    label: 'ID–EN',
+    shortLabel: 'ID–EN',
+    legacyLayoutId: null,
+    description: 'Display Indonesian primary text with English secondary translation (display order only)'
+  })
+]);
+
+export const SHARED_BILINGUAL_STYLE_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'separated',
+    label: 'Separated',
+    legacyLayoutId: 'separated',
+    description: 'Show complete primary text followed by complete secondary text inside each authored Section or Turn'
+  }),
+  Object.freeze({
+    id: 'interlinear',
+    label: 'Sentence Interlinear',
+    shortLabel: 'Interlinear',
+    legacyLayoutId: 'interlinear',
+    description: 'Pair each sentence with its translation directly underneath in active reading order'
+  }),
+  Object.freeze({
+    id: 'contextual',
+    label: 'Contextual',
+    legacyLayoutId: null,
+    description: 'Keep all primary text visible and reveal only the active sentence translation (Above, Below, or Inline)'
+  })
+]);
+
+export const SHARED_CONTEXTUAL_PLACEMENT_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'above',
+    label: 'Above',
+    description: 'Reveal active sentence translation in-flow above the active Section or Turn'
+  }),
+  Object.freeze({
+    id: 'below',
+    label: 'Below',
+    description: 'Reveal active sentence translation in-flow below the active Section or Turn'
+  }),
+  Object.freeze({
+    id: 'inline',
+    label: 'Inline',
+    description: 'Reveal active sentence translation inline directly after the active sentence'
+  })
+]);
+
+export const SHARED_APPEARANCE_PRIMARY_SIZE_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'sm', label: 'S', fontSize: '1rem', titleFontSize: '1.125rem' }),
+  Object.freeze({ id: 'md', label: 'M', fontSize: '1.09375rem', titleFontSize: '1.25rem' }),
+  Object.freeze({ id: 'lg', label: 'L', fontSize: '1.21875rem', titleFontSize: '1.375rem' }),
+  Object.freeze({ id: 'xl', label: 'XL', fontSize: '1.34375rem', titleFontSize: '1.5rem' })
+]);
+
+export const SHARED_APPEARANCE_SECONDARY_SIZE_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'xs', label: 'XS', fontSize: '0.875rem', titleFontSize: '0.9375rem' }),
+  Object.freeze({ id: 'sm', label: 'S', fontSize: '0.96875rem', titleFontSize: '1.03125rem' }),
+  Object.freeze({ id: 'md', label: 'M', fontSize: '1.0625rem', titleFontSize: '1.125rem' }),
+  Object.freeze({ id: 'lg', label: 'L', fontSize: '1.1875rem', titleFontSize: '1.25rem' })
+]);
+
+export const SHARED_APPEARANCE_FONT_FAMILY_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'sans',
+    label: 'Sans',
+    cssValue: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  }),
+  Object.freeze({
+    id: 'serif',
+    label: 'Serif',
+    cssValue: 'Georgia, Cambria, "Times New Roman", Times, serif'
+  }),
+  Object.freeze({
+    id: 'humanist',
+    label: 'Humanist',
+    cssValue: '"Segoe UI", "Trebuchet MS", Optima, Candara, "Noto Sans", system-ui, sans-serif'
+  })
+]);
+
+export const SHARED_APPEARANCE_LINE_HEIGHT_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'compact', label: 'Compact', cssValue: 1.52 }),
+  Object.freeze({ id: 'normal', label: 'Normal', cssValue: 1.66 }),
+  Object.freeze({ id: 'relaxed', label: 'Relaxed', cssValue: 1.8 }),
+  Object.freeze({ id: 'loose', label: 'Loose', cssValue: 2.0 })
+]);
+
+export const SHARED_APPEARANCE_CONTRAST_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'subtle',
+    label: 'Subtle',
+    secondaryTextClass: 'text-slate-500 dark:text-slate-400',
+    contextualBoxClass: 'bg-slate-50/90 dark:bg-slate-800/75 border-slate-200/90 dark:border-slate-700/80'
+  }),
+  Object.freeze({
+    id: 'balanced',
+    label: 'Balanced',
+    secondaryTextClass: 'text-slate-700 dark:text-slate-300',
+    contextualBoxClass: 'bg-indigo-50/65 dark:bg-indigo-950/45 border-indigo-200/85 dark:border-indigo-800/75'
+  }),
+  Object.freeze({
+    id: 'high',
+    label: 'High',
+    secondaryTextClass: 'text-slate-900 dark:text-slate-100',
+    contextualBoxClass: 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-300 dark:border-indigo-700'
+  })
+]);
+
+export const SHARED_APPEARANCE_SPACING_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: 'compact',
+    label: 'Compact',
+    unitStackClass: 'space-y-3.5',
+    pairGapClass: 'space-y-1.5',
+    separatedGapClass: 'mt-2 pt-2',
+    letterSpacing: '0em'
+  }),
+  Object.freeze({
+    id: 'normal',
+    label: 'Normal',
+    unitStackClass: 'space-y-5',
+    pairGapClass: 'space-y-2.5',
+    separatedGapClass: 'mt-3 pt-2.5',
+    letterSpacing: '0em'
+  }),
+  Object.freeze({
+    id: 'relaxed',
+    label: 'Relaxed',
+    unitStackClass: 'space-y-7',
+    pairGapClass: 'space-y-3.5',
+    separatedGapClass: 'mt-4 pt-3.5',
+    letterSpacing: '0.012em'
+  })
+]);
+
+export const resolveReaderAppearancePresentation = (appearance = null) => {
+  const normalized = normalizeTextReaderAppearanceState(appearance);
+  const primarySpec = SHARED_APPEARANCE_PRIMARY_SIZE_OPTIONS.find(item => item.id === normalized.primaryFontSize)
+    || SHARED_APPEARANCE_PRIMARY_SIZE_OPTIONS[1];
+  const secondarySpec = SHARED_APPEARANCE_SECONDARY_SIZE_OPTIONS.find(item => item.id === normalized.secondaryFontSize)
+    || SHARED_APPEARANCE_SECONDARY_SIZE_OPTIONS[1];
+  const fontSpec = SHARED_APPEARANCE_FONT_FAMILY_OPTIONS.find(item => item.id === normalized.fontFamily)
+    || SHARED_APPEARANCE_FONT_FAMILY_OPTIONS[0];
+  const lineSpec = SHARED_APPEARANCE_LINE_HEIGHT_OPTIONS.find(item => item.id === normalized.lineHeight)
+    || SHARED_APPEARANCE_LINE_HEIGHT_OPTIONS[2];
+  const contrastSpec = SHARED_APPEARANCE_CONTRAST_OPTIONS.find(item => item.id === normalized.translationContrast)
+    || SHARED_APPEARANCE_CONTRAST_OPTIONS[1];
+  const spacingSpec = SHARED_APPEARANCE_SPACING_OPTIONS.find(item => item.id === normalized.textSpacing)
+    || SHARED_APPEARANCE_SPACING_OPTIONS[1];
+
+  const primaryInlineStyle = Object.freeze({
+    fontSize: primarySpec.fontSize,
+    fontFamily: fontSpec.cssValue,
+    lineHeight: String(lineSpec.cssValue),
+    letterSpacing: spacingSpec.letterSpacing
+  });
+  const titlePrimaryInlineStyle = Object.freeze({
+    fontSize: primarySpec.titleFontSize,
+    fontFamily: fontSpec.cssValue,
+    lineHeight: String(Math.max(1.4, Number((lineSpec.cssValue - 0.08).toFixed(2)))),
+    letterSpacing: spacingSpec.letterSpacing
+  });
+  const secondaryInlineStyle = Object.freeze({
+    fontSize: secondarySpec.fontSize,
+    fontFamily: fontSpec.cssValue,
+    lineHeight: String(lineSpec.cssValue),
+    letterSpacing: spacingSpec.letterSpacing
+  });
+  const titleSecondaryInlineStyle = Object.freeze({
+    fontSize: secondarySpec.titleFontSize,
+    fontFamily: fontSpec.cssValue,
+    lineHeight: String(lineSpec.cssValue),
+    letterSpacing: spacingSpec.letterSpacing
+  });
+
+  return Object.freeze({
+    appearance: normalized,
+    primaryFontSize: primarySpec.fontSize,
+    secondaryFontSize: secondarySpec.fontSize,
+    fontFamily: fontSpec.cssValue,
+    lineHeight: lineSpec.cssValue,
+    letterSpacing: spacingSpec.letterSpacing,
+    primaryTextClass: 'text-slate-900 dark:text-slate-100',
+    secondaryTextClass: contrastSpec.secondaryTextClass,
+    contextualBoxClass: contrastSpec.contextualBoxClass,
+    unitStackClass: spacingSpec.unitStackClass,
+    pairGapClass: spacingSpec.pairGapClass,
+    separatedGapClass: spacingSpec.separatedGapClass,
+    primaryInlineStyle,
+    titlePrimaryInlineStyle,
+    secondaryInlineStyle,
+    titleSecondaryInlineStyle
+  });
+};
 
 export const SHARED_WORKSPACE_ALIGNMENT_OPTIONS = Object.freeze([
   Object.freeze({
@@ -45,7 +266,9 @@ export const resolveWorkspaceStylePresentation = (workspaceStyle = null) => {
   const bodyAlignClass = isJustified ? 'text-justify' : 'text-left';
   const bodyAlignStyle = Object.freeze({
     textAlign: style.textAlign,
+    textAlignLast: 'start',
     overflowWrap: 'break-word',
+    wordSpacing: 'normal',
     ...(isJustified ? { hyphens: 'auto' } : {})
   });
   return Object.freeze({
@@ -62,15 +285,24 @@ export const resolveWorkspaceStylePresentation = (workspaceStyle = null) => {
 
 export const buildParagraphBodyStyle = ({
   workspaceStyle = null,
+  appearance = null,
+  channelRole = 'primary',
   isTitleRole = false,
   allowIndent = true
 } = {}) => {
   const presentation = resolveWorkspaceStylePresentation(workspaceStyle);
+  const appearancePres = appearance ? resolveReaderAppearancePresentation(appearance) : null;
   const indentApplied = Boolean(allowIndent && !isTitleRole && presentation.paragraphIndent);
+  const typoStyle = appearancePres
+    ? (channelRole === 'secondary'
+        ? (isTitleRole ? appearancePres.titleSecondaryInlineStyle : appearancePres.secondaryInlineStyle)
+        : (isTitleRole ? appearancePres.titlePrimaryInlineStyle : appearancePres.primaryInlineStyle))
+    : null;
   return Object.freeze({
     className: presentation.bodyAlignClass,
     inlineStyle: Object.freeze({
       ...presentation.bodyAlignStyle,
+      ...(typoStyle || {}),
       textIndent: indentApplied ? presentation.paragraphIndentValue : '0'
     }),
     indentApplied,
@@ -79,12 +311,23 @@ export const buildParagraphBodyStyle = ({
   });
 };
 
-export const buildConversationBodyStyle = ({ workspaceStyle = null } = {}) => {
+export const buildConversationBodyStyle = ({
+  workspaceStyle = null,
+  appearance = null,
+  channelRole = 'primary'
+} = {}) => {
   const presentation = resolveWorkspaceStylePresentation(workspaceStyle);
+  const appearancePres = appearance ? resolveReaderAppearancePresentation(appearance) : null;
+  const typoStyle = appearancePres
+    ? (channelRole === 'secondary'
+        ? appearancePres.secondaryInlineStyle
+        : appearancePres.primaryInlineStyle)
+    : null;
   return Object.freeze({
     className: presentation.bodyAlignClass,
     inlineStyle: Object.freeze({
       ...presentation.bodyAlignStyle,
+      ...(typoStyle || {}),
       textIndent: '0'
     }),
     textAlign: presentation.style.textAlign,
@@ -532,10 +775,17 @@ export const getSharedUnitShortCode = (unit, index) => (
   unit?.kind === 'turn' ? `T${index + 1}` : `SC${index + 1}`
 );
 
-export const buildUnitPreviewExcerpt = (unit, bilingualLayout = 'interlinear', maxChars = 140) => {
+export const buildUnitPreviewExcerpt = (unit, viewOrLayout = 'interlinear', maxChars = 140) => {
   const segments = unit?.segments || [];
   if (!segments.length) return '';
-  const preferMeaning = bilingualLayout === 'meaning-only';
+  const preferMeaning = typeof viewOrLayout === 'string'
+    ? (viewOrLayout === 'meaning-only' || viewOrLayout === 'id-only' || viewOrLayout === 'id-en')
+    : Boolean(
+        viewOrLayout?.primaryChannel === 'meaning'
+        || viewOrLayout?.readingLanguage === 'id-only'
+        || viewOrLayout?.readingLanguage === 'id-en'
+        || viewOrLayout?.bilingualLayout === 'meaning-only'
+      );
   const chunks = [];
   let previousEmitted = null;
   for (const segment of segments) {
@@ -793,5 +1043,136 @@ export const resolveSegmentCoverageStatuses = ({ segment, audioCoverageMap = nul
   return {
     text: hasText ? coverageLabelFor(audioCoverageMap[buildTextStructuredRuntimeAudioKey(segment.id, 'text')]?.status) : null,
     meaning: hasMeaning ? coverageLabelFor(audioCoverageMap[buildTextStructuredRuntimeAudioKey(segment.id, 'meaning')]?.status) : null
+  };
+};
+
+/**
+ * Resolves the SINGLE unambiguous Contextual translation target within the active Workspace.
+ *
+ * Precedence (explicit manual-follow policy, zero fabricated Full Audio segment):
+ * 1) Active undismissed Search focusTarget (transient — never destroys prior manual selection;
+ *    when focusTarget is consumed, prior manual target restores intact),
+ * 2) Validated explicit manual Contextual selection (`activeContextualSelection`),
+ * 3) Authoritative playing or paused Segment cursor (`cursor.precision === 'segment'`).
+ * Untimed Full Audio (`cursor.precision === 'card'`) NEVER fabricates an active Segment.
+ */
+export const resolveWorkspaceContextualTarget = ({
+  cards = [],
+  cursor = null,
+  focusTarget = null,
+  workspaceId = null,
+  workspaceKey = null,
+  activeContextualSelection = null,
+  dismissedFocusNonce = null
+} = {}) => {
+  const safeCards = Array.isArray(cards) ? cards : [];
+  const locateSegment = (cardId, segmentId) => {
+    if (!segmentId) return null;
+    for (let cardIndex = 0; cardIndex < safeCards.length; cardIndex += 1) {
+      const card = safeCards[cardIndex];
+      if (cardId && card?.id !== cardId) continue;
+      const units = card?.units || [];
+      for (let unitIndex = 0; unitIndex < units.length; unitIndex += 1) {
+        const unit = units[unitIndex];
+        const segs = unit?.segments || [];
+        const localIndex = segs.findIndex(item => item.id === segmentId);
+        if (localIndex >= 0) {
+          return {
+            card,
+            cardIndex,
+            cardId: card.id,
+            unit,
+            unitIndex,
+            unitViewKey: unit.viewKey,
+            unitShortCode: getSharedUnitShortCode(unit, unitIndex),
+            speakerLabel: unit.kind === 'turn' ? normalizeSegmentDisplayText(unit.speakerLabel) : '',
+            segment: segs[localIndex],
+            segmentId: segs[localIndex].id,
+            localIndex,
+            localSegmentNumber: localIndex + 1
+          };
+        }
+      }
+    }
+    return null;
+  };
+
+  const isSpeakingWorkspace = Boolean(
+    cursor
+    && (cursor.state === 'playing' || cursor.state === 'paused')
+    && (!workspaceId || !cursor.workspaceId || cursor.workspaceId === workspaceId)
+  );
+  const isCardPrecisionPlaying = Boolean(isSpeakingWorkspace && cursor?.precision === 'card');
+  const audibleLocation = isSpeakingWorkspace && cursor?.precision === 'segment' && cursor?.segmentId
+    ? locateSegment(cursor.cardId || null, cursor.segmentId)
+    : null;
+
+  const searchMatchesWorkspace = Boolean(
+    focusTarget
+    && workspaceId
+    && focusTarget.documentId === workspaceId
+    && focusTarget.segmentId
+    && focusTarget.nonce !== dismissedFocusNonce
+  );
+  const searchLocation = searchMatchesWorkspace
+    ? locateSegment(focusTarget.blockId || null, focusTarget.segmentId)
+    : null;
+
+  const manualWorkspaceMatches = Boolean(
+    activeContextualSelection
+    && activeContextualSelection.segmentId
+    && (!workspaceKey || !activeContextualSelection.workspaceKey || activeContextualSelection.workspaceKey === workspaceKey)
+  );
+  const manualLocation = manualWorkspaceMatches
+    ? locateSegment(activeContextualSelection.cardId || null, activeContextualSelection.segmentId)
+    : null;
+
+  let resolved = null;
+  let source = 'none';
+
+  if (searchLocation) {
+    resolved = searchLocation;
+    source = 'search';
+  } else if (manualLocation) {
+    resolved = manualLocation;
+    source = 'manual';
+  } else if (audibleLocation) {
+    resolved = audibleLocation;
+    source = cursor?.state === 'paused' ? 'paused-cursor' : 'audible';
+  }
+
+  const divergedFromAudible = Boolean(
+    audibleLocation
+    && (!resolved || resolved.segmentId !== audibleLocation.segmentId || resolved.cardId !== audibleLocation.cardId)
+  );
+
+  return {
+    source,
+    target: resolved
+      ? {
+          cardId: resolved.cardId,
+          unitViewKey: resolved.unitViewKey,
+          unitShortCode: resolved.unitShortCode,
+          speakerLabel: resolved.speakerLabel,
+          segmentId: resolved.segmentId,
+          segment: resolved.segment,
+          localSegmentNumber: resolved.localSegmentNumber,
+          source
+        }
+      : null,
+    audibleTarget: audibleLocation
+      ? {
+          cardId: audibleLocation.cardId,
+          unitViewKey: audibleLocation.unitViewKey,
+          unitShortCode: audibleLocation.unitShortCode,
+          speakerLabel: audibleLocation.speakerLabel,
+          segmentId: audibleLocation.segmentId,
+          localSegmentNumber: audibleLocation.localSegmentNumber,
+          state: cursor?.state || 'playing'
+        }
+      : null,
+    divergedFromAudible,
+    isCardPrecisionPlaying,
+    hasManualOverride: Boolean(manualLocation)
   };
 };

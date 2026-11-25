@@ -2,10 +2,20 @@ import assert from 'node:assert/strict';
 import { createA2V1CompatibilityParagraphFixture, createA2ParagraphReaderFixture } from './fixtures/shared-card-a2/paragraph-reader-fixture.js';
 import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from '../src/domain/text/textMainReaderDomain.js';
 import {
+  DEFAULT_TEXT_CARD_PRESENTATION_STATE,
+  DEFAULT_TEXT_READER_APPEARANCE_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  TEXT_BILINGUAL_STYLES,
+  TEXT_CONTEXTUAL_PLACEMENTS,
+  TEXT_READING_LANGUAGE_MODES,
+  isTextReaderAppearanceDirty,
   isTextWorkspaceStyleDirty,
+  normalizeTextCardPresentationState,
   normalizeTextWorkspaceStyleState,
-  resolveTextReaderModeFromState
+  resetTextCardAppearanceInPresentationState,
+  resolveEffectiveBilingualPresentation,
+  resolveTextReaderModeFromState,
+  updateTextCardPresentationState
 } from '../src/domain/text/textCardPresentationStateDomain.js';
 import {
   DEFAULT_SHARED_CARD_VISIBILITY,
@@ -123,10 +133,13 @@ test('versioned preference defaults old reader; whitelists view and Workspace St
   };
   const saved = normalizeTextMainReaderPreference(raw);
   assert.deepEqual(Object.keys(saved), ['version', 'reader', 'readerMode', 'cardVisibility', 'view', 'workspaceStyle', 'workspaceStyleOverrides']);
-  assert.deepEqual(Object.keys(saved.view), ['level', 'bilingualLayout', 'partLayout']);
+  assert.deepEqual(Object.keys(saved.view), ['level', 'bilingualLayout', 'partLayout', 'readingLanguage', 'bilingualStyle', 'contextualPlacement', 'appearance']);
+  assert.equal(saved.view.readingLanguage, 'id-only');
+  assert.equal(saved.view.bilingualLayout, 'meaning-only');
+  assert.deepEqual(saved.view.appearance, DEFAULT_TEXT_READER_APPEARANCE_STATE);
   assert.deepEqual(saved.workspaceStyle, DEFAULT_TEXT_WORKSPACE_STYLE_STATE);
   assert.deepEqual(saved.workspaceStyleOverrides, {});
-  assert.ok(Object.isFrozen(saved) && Object.isFrozen(saved.view) && Object.isFrozen(saved.workspaceStyle));
+  assert.ok(Object.isFrozen(saved) && Object.isFrozen(saved.view) && Object.isFrozen(saved.view.appearance) && Object.isFrozen(saved.workspaceStyle));
 });
 test('Workspace Style normalization, inheritance, safe workspace identity, unbounded valid overrides, host isolation and scoped reset stay independent', () => {
   const dirtyStyle = normalizeTextWorkspaceStyleState({ textAlign: 'left', paragraphIndent: 'yes', speakerLayout: 'invalid', showAccents: false, voice: 'ignored' });
@@ -141,11 +154,12 @@ test('Workspace Style normalization, inheritance, safe workspace identity, unbou
     cardVisibility: 'custom',
     view: { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' }
   });
+  const expectedSeparatedView = normalizeTextCardPresentationState({ level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref).isDirty, false);
 
   pref = updateTextMainReaderWorkspaceStyle(pref, { textAlign: 'left', paragraphIndent: false }, { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED });
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref).isDirty, true);
-  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+  assert.deepEqual(pref.view, expectedSeparatedView);
   assert.equal(pref.reader, 'shared');
   assert.equal(pref.readerMode, 'card');
   assert.equal(pref.cardVisibility, 'custom');
@@ -192,7 +206,7 @@ test('Workspace Style normalization, inheritance, safe workspace identity, unbou
   pref = resetTextMainReaderWorkspaceStyle(pref, { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: 'WS_ALPHA' });
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_ALPHA').hasWorkspaceOverride, false);
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA').effectiveStyle.showAccents, false);
-  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+  assert.deepEqual(pref.view, expectedSeparatedView);
 
   pref = resetTextMainReaderWorkspaceStyle(pref, { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED });
   assert.deepEqual(pref.workspaceStyle, DEFAULT_TEXT_WORKSPACE_STYLE_STATE);
@@ -200,7 +214,7 @@ test('Workspace Style normalization, inheritance, safe workspace identity, unbou
   assert.equal(pref.reader, 'shared');
   assert.equal(pref.readerMode, 'card');
   assert.equal(pref.cardVisibility, 'custom');
-  assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
+  assert.deepEqual(pref.view, expectedSeparatedView);
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA').effectiveStyle.showAccents, false);
 
   // More than 250 valid Workspace overrides are preserved without arbitrary eviction; updating one preserves all others
@@ -472,5 +486,101 @@ test('4-mode Reader preference compatibility maps legacy Part layouts determinis
   });
   assert.equal(threeModeLegacy.effectiveLevel, 'part');
   assert.equal(threeModeLegacy.effectivePartLayout, 'vertical-list');
+});
+test('4C1 Reading Language, Bilingual Style, legacy preference mapping, non-destructive Segment fallback, and independent Appearance controls', () => {
+  assert.deepEqual(TEXT_READING_LANGUAGE_MODES, ['en-only', 'id-only', 'en-id', 'id-en']);
+  assert.deepEqual(TEXT_BILINGUAL_STYLES, ['separated', 'interlinear', 'contextual']);
+  assert.equal(TEXT_BILINGUAL_STYLES.includes('notebook'), false, 'Notebook must stay deferred to 4C2-4C3');
+  assert.deepEqual(TEXT_CONTEXTUAL_PLACEMENTS, ['above', 'below', 'inline']);
+
+  // Fresh reader default is EN Only (does not overwrite explicitly saved legacy settings)
+  const freshPref = normalizeTextMainReaderPreference();
+  assert.equal(freshPref.view.readingLanguage, 'en-only');
+  assert.equal(freshPref.view.bilingualLayout, 'text-only');
+  assert.deepEqual(freshPref.view.appearance, DEFAULT_TEXT_READER_APPEARANCE_STATE);
+  assert.equal(isTextReaderAppearanceDirty(freshPref.view.appearance), false);
+
+  // Deterministic backward-compatible mapping of all four old bilingualLayout preferences
+  const legacyCases = [
+    ['interlinear', 'en-id', 'interlinear', 'interlinear'],
+    ['separated', 'en-id', 'separated', 'separated'],
+    ['text-only', 'en-only', 'interlinear', 'text-only'],
+    ['meaning-only', 'id-only', 'interlinear', 'meaning-only']
+  ];
+  for (const [oldLayout, expectedLang, expectedStyle, expectedLegacy] of legacyCases) {
+    const mapped = normalizeTextMainReaderPreference({
+      version: 1,
+      reader: 'shared',
+      view: { level: 'full', bilingualLayout: oldLayout, partLayout: 'vertical-list' }
+    });
+    assert.equal(mapped.view.readingLanguage, expectedLang, `Legacy ${oldLayout} -> readingLanguage`);
+    assert.equal(mapped.view.bilingualStyle, expectedStyle, `Legacy ${oldLayout} -> bilingualStyle`);
+    assert.equal(mapped.view.bilingualLayout, expectedLegacy, `Legacy ${oldLayout} -> derived mirror`);
+  }
+
+  // Invalid / deferred Notebook style is rejected safely without breaking state
+  const rejectedNotebook = normalizeTextCardPresentationState({
+    readingLanguage: 'id-en',
+    bilingualStyle: 'notebook',
+    contextualPlacement: 'floating',
+    appearance: { primaryFontSize: 'xl', secondaryFontSize: 'huge', fontFamily: 'serif', voice: 'ignored' }
+  });
+  assert.equal(rejectedNotebook.readingLanguage, 'id-en');
+  assert.equal(rejectedNotebook.bilingualStyle, 'interlinear');
+  assert.equal(rejectedNotebook.contextualPlacement, 'below');
+  assert.equal(rejectedNotebook.appearance.primaryFontSize, 'xl');
+  assert.equal(rejectedNotebook.appearance.secondaryFontSize, DEFAULT_TEXT_READER_APPEARANCE_STATE.secondaryFontSize);
+  assert.equal(rejectedNotebook.appearance.fontFamily, 'serif');
+  assert.equal('voice' in rejectedNotebook.appearance, false);
+
+  // Mode capability rules: Full/Card/Focus allow Separated, Interlinear & Contextual;
+  // Segment disallows Separated & Contextual with non-destructive primary-only fallback!
+  const contextualView = updateTextCardPresentationState(DEFAULT_TEXT_CARD_PRESENTATION_STATE, {
+    readingLanguage: 'id-en',
+    bilingualStyle: 'contextual',
+    contextualPlacement: 'above'
+  });
+  for (const mode of ['full', 'card', 'focus']) {
+    const res = resolveEffectiveBilingualPresentation({ readerMode: mode, view: contextualView });
+    assert.equal(res.effectiveRenderMode, 'contextual');
+    assert.equal(res.isContextualActive, true);
+    assert.equal(res.primaryChannel, 'meaning');
+    assert.equal(res.secondaryChannel, 'text');
+    assert.equal(res.fallbackActive, false);
+  }
+  const segFallback = resolveEffectiveBilingualPresentation({ readerMode: 'segment', view: contextualView });
+  assert.equal(segFallback.effectiveRenderMode, 'single');
+  assert.equal(segFallback.isContextualActive, false);
+  assert.equal(segFallback.primaryChannel, 'meaning');
+  assert.equal(segFallback.fallbackActive, true);
+  assert.equal(segFallback.savedBilingualStyle, 'contextual', 'Segment fallback must preserve saved bilingualStyle');
+  assert.deepEqual(segFallback.allowedBilingualStyles, ['interlinear']);
+  assert.deepEqual(segFallback.unavailableBilingualStyles, ['separated', 'contextual']);
+  // Returning to Full immediately restores Contextual!
+  assert.equal(resolveEffectiveBilingualPresentation({ readerMode: 'full', view: contextualView }).effectiveRenderMode, 'contextual');
+
+  // Segment allows optional Sentence Interlinear
+  const segInterlinearView = updateTextCardPresentationState(contextualView, { bilingualStyle: 'interlinear' });
+  const segInterlinear = resolveEffectiveBilingualPresentation({ readerMode: 'segment', view: segInterlinearView });
+  assert.equal(segInterlinear.effectiveRenderMode, 'interlinear');
+  assert.equal(segInterlinear.fallbackActive, false);
+
+  // Independent Appearance reset never mutates readingLanguage, bilingualStyle, contextualPlacement, or Workspace Style
+  const customAppearanceView = updateTextCardPresentationState(contextualView, {
+    appearance: {
+      primaryFontSize: 'xl',
+      secondaryFontSize: 'lg',
+      fontFamily: 'serif',
+      lineHeight: 'loose',
+      translationContrast: 'high',
+      textSpacing: 'relaxed'
+    }
+  });
+  assert.equal(isTextReaderAppearanceDirty(customAppearanceView.appearance), true);
+  const afterAppearanceReset = resetTextCardAppearanceInPresentationState(customAppearanceView);
+  assert.equal(isTextReaderAppearanceDirty(afterAppearanceReset.appearance), false);
+  assert.equal(afterAppearanceReset.readingLanguage, 'id-en');
+  assert.equal(afterAppearanceReset.bilingualStyle, 'contextual');
+  assert.equal(afterAppearanceReset.contextualPlacement, 'above');
 });
 console.log(`${passed} A6 Node checks PASS`);

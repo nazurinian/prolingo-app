@@ -770,5 +770,126 @@ test('Segment Study Box keeps primary reading context, bilingual Study Box, HF1 
   assert.equal(collectNodes(emptySegTree, n => n.props?.['data-shared-segment-empty'] === 'true').length, 1);
 });
 
+test('4C1 Per-Unit Separated, ID-EN reversal, single Workspace Contextual target, Segment capability rules, and Appearance typography', () => {
+  // 1. Per-Unit Separated renders primary -> secondary WITHIN each authored Unit (not card-level separated)
+  resetHooks();
+  const sepTree = renderTree(mockReact.createElement(SharedCardReadingSurface, {
+    card: storyCard,
+    index: 1,
+    workspace: v2Pres.workspace,
+    presentationState: {
+      level: 'full',
+      readingLanguage: 'id-en',
+      bilingualStyle: 'separated',
+      appearance: {
+        primaryFontSize: 'lg',
+        secondaryFontSize: 'md',
+        fontFamily: 'serif',
+        lineHeight: 'loose',
+        translationContrast: 'high',
+        textSpacing: 'relaxed'
+      }
+    }
+  }));
+  const unitBlocks = collectNodes(sepTree, n => Boolean(n.props?.['data-shared-unit-separated']));
+  assert.equal(unitBlocks.length, 2, 'Two non-empty Sections must each render their own per-Unit separated block');
+  const firstUnitBodies = collectNodes(unitBlocks[0], n => n.props?.['data-shared-reading-body'] === 'true');
+  assert.equal(firstUnitBodies.length, 2, 'Each authored Unit has primary followed by secondary');
+  assert.equal(firstUnitBodies[0].props['data-shared-reading-channel'], 'meaning', 'ID-EN puts ID primary first inside Unit 1');
+  assert.equal(firstUnitBodies[1].props['data-shared-reading-channel'], 'text', 'ID-EN puts EN secondary second inside Unit 1');
+  assert.ok(String(firstUnitBodies[0].props.style?.fontFamily).includes('Georgia'), 'Serif font family must apply');
+  assert.equal(firstUnitBodies[0].props.style?.lineHeight, '2', 'Loose line height must apply');
+
+  // 2. resolveWorkspaceContextualTarget maintains ONE target, restores prior manual after transient Search,
+  //    ignores untimed Full Audio, and flags divergence from Split playback
+  const wsKey = `${v2.ids.documentId}:uid`;
+  const manualSel = {
+    workspaceKey: wsKey,
+    cardId: storyCard.id,
+    unitViewKey: storyCard.units[0].viewKey,
+    segmentId: v2.ids.longSegId,
+    pinnedManual: true
+  };
+  const splitPlayingCursor = {
+    workspaceId: v2.ids.documentId,
+    sessionId: 19,
+    state: 'playing',
+    precision: 'segment',
+    cardId: storyCard.id,
+    segmentId: v2.ids.duplicateSeg2Id,
+    channel: 'text'
+  };
+  // Transient search reveals searched segment without mutating manualSel
+  const ctxSearch = utils.resolveWorkspaceContextualTarget({
+    cards: v2Pres.cards,
+    cursor: splitPlayingCursor,
+    focusTarget: { documentId: v2.ids.documentId, blockId: storyCard.id, segmentId: v2.ids.missingMeaningSegId, nonce: 77 },
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    activeContextualSelection: manualSel
+  });
+  assert.equal(ctxSearch.source, 'search');
+  assert.equal(ctxSearch.target.segmentId, v2.ids.missingMeaningSegId);
+  assert.equal(ctxSearch.divergedFromAudible, true);
+
+  // Consuming search restores prior manual selection intact even while Split audio plays elsewhere
+  const ctxRestored = utils.resolveWorkspaceContextualTarget({
+    cards: v2Pres.cards,
+    cursor: splitPlayingCursor,
+    focusTarget: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    activeContextualSelection: manualSel
+  });
+  assert.equal(ctxRestored.source, 'manual');
+  assert.equal(ctxRestored.target.segmentId, v2.ids.longSegId);
+  assert.equal(ctxRestored.divergedFromAudible, true);
+  assert.equal(ctxRestored.audibleTarget.segmentId, v2.ids.duplicateSeg2Id);
+
+  // Clearing manual selection (Return to Playing) follows Split audio immediately
+  const ctxAudible = utils.resolveWorkspaceContextualTarget({
+    cards: v2Pres.cards,
+    cursor: splitPlayingCursor,
+    focusTarget: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    activeContextualSelection: null
+  });
+  assert.equal(ctxAudible.source, 'audible');
+  assert.equal(ctxAudible.target.segmentId, v2.ids.duplicateSeg2Id);
+  assert.equal(ctxAudible.divergedFromAudible, false);
+
+  // Untimed Full Audio (precision='card') NEVER fabricates an active Segment
+  const ctxFullAudio = utils.resolveWorkspaceContextualTarget({
+    cards: v2Pres.cards,
+    cursor: { ...splitPlayingCursor, precision: 'card', segmentId: null },
+    focusTarget: null,
+    workspaceId: v2.ids.documentId,
+    workspaceKey: wsKey,
+    activeContextualSelection: null
+  });
+  assert.equal(ctxFullAudio.isCardPrecisionPlaying, true);
+  assert.equal(ctxFullAudio.target, null, 'Untimed Full Audio must never fabricate a Contextual Segment');
+  assert.equal(ctxFullAudio.audibleTarget, null);
+
+  // 3. Toolbar exposes Reading Language (4) & Bilingual Style (3, NO Notebook) and disables Separated/Contextual in Segment Mode
+  resetHooks();
+  const segToolbarTree = renderTree(mockReact.createElement(SharedBilingualLayoutToolbar, {
+    readerMode: 'segment',
+    presentationState: { level: 'segment', readingLanguage: 'en-id', bilingualStyle: 'contextual', contextualPlacement: 'above' },
+    onChangePresentationState: () => {},
+    onChangeReaderMode: () => {},
+    onResetView: () => {}
+  }));
+  assert.equal(collectNodes(segToolbarTree, n => Boolean(n.props?.['data-shared-reading-language-option'])).length, 4);
+  const styleBtns = collectNodes(segToolbarTree, n => Boolean(n.props?.['data-shared-bilingual-style-option']));
+  assert.deepEqual(styleBtns.map(b => b.props['data-shared-bilingual-style-option']), ['separated', 'interlinear', 'contextual']);
+  assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'separated').props.disabled, true);
+  assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'contextual').props.disabled, true);
+  assert.equal(styleBtns.find(b => b.props['data-shared-bilingual-style-option'] === 'interlinear').props.disabled, false);
+  assert.equal(collectNodes(segToolbarTree, n => n.props?.['data-shared-bilingual-fallback-notice'] === 'true').length, 1);
+  assert.equal(collectNodes(segToolbarTree, n => n.props?.['data-shared-contextual-placement-bar'] === 'true').length, 0);
+});
+
 assert.equal(dbCalls, 0);
 console.log(`ALL A3 NODE CHECKS PASSED (${passed}/${passed})`);

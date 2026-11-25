@@ -5,6 +5,7 @@ import {
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   normalizeTextCardPresentationState,
   normalizeTextWorkspaceStyleState,
+  resolveEffectiveBilingualPresentation,
   resolveTextReaderModeFromState,
   updateTextCardPresentationState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
@@ -34,6 +35,7 @@ import {
   normalizeSegmentDisplayText,
   resolveCardChannelAvailability,
   resolveEffectiveCardSelection,
+  resolveWorkspaceContextualTarget,
   resolveWorkspaceStylePresentation,
   summarizeCardPresentationCoverage,
   summarizeSceneSpeakers
@@ -55,7 +57,8 @@ const resolveCardTypeOrdinal = (cards, cardIndex) => {
  * Continuous Book-Page Full Mode renderer displaying the entire Workspace as one
  * cohesive reading page in authored order without repeated outer Card boxes.
  * Preserves Title Card semantics, persistent Card/Unit/Segment identities, Workspace
- * Style, active audio highlights, and existing playback / card-management callbacks.
+ * Style, active audio highlights, shared selection store Contextual bindings,
+ * and existing playback / card-management callbacks.
  */
 export const SharedBookPageView = ({
   presentation,
@@ -63,12 +66,16 @@ export const SharedBookPageView = ({
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusTarget = null,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
   embedded = false,
   onPlayCard,
   onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null,
   renderCardActions = null
 }) => {
   const viewState = useMemo(() => (
@@ -296,14 +303,20 @@ export const SharedBookPageView = ({
                     card={card}
                     workspace={workspace}
                     speakerAppearanceMap={speakerAppearanceMap}
+                    presentationState={viewState}
                     bilingualLayout={viewState.bilingualLayout}
+                    readerMode="full"
                     workspaceStyle={stylePresentation.style}
                     playbackCursor={cursor}
                     focusSegmentId={effectiveFocusSegmentId}
+                    contextualState={contextualState}
                     playableSegmentIds={playableSegmentIds}
                     audioCoverageMap={audioCoverageMap}
                     disabled={disabled}
                     onPlaySegment={onPlaySegment}
+                    onSelectContextualSegment={onSelectContextualSegment}
+                    onFollowContextualAudible={onFollowContextualAudible}
+                    onDismissContextualTarget={onDismissContextualTarget}
                   />
                 </div>
               </section>
@@ -326,11 +339,13 @@ export const SharedCardReadingSurface = ({
   workspace = null,
   presentationState = null,
   bilingualLayout = null,
+  readerMode = null,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusTarget = null,
   focusSegmentId = null,
   isFocusCard = false,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   cardPlayable = true,
@@ -347,6 +362,9 @@ export const SharedCardReadingSurface = ({
   onSelectCardUnit = null,
   onSelectCardSegment = null,
   onFollowCardAudible = null,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null,
   headerActionsSlot = null,
   footerSlot = null,
   variant = 'card'
@@ -493,10 +511,61 @@ export const SharedCardReadingSurface = ({
   const effectiveFocusSegmentId = focusSegmentId ?? (isFocusCard ? focusTarget?.segmentId : null);
 
   const firstVisiblePreview = useMemo(() => {
-    const pickMeaning = viewState.bilingualLayout === 'meaning-only';
+    const pickMeaning = viewState.readingLanguage === 'id-only'
+      || viewState.readingLanguage === 'id-en'
+      || viewState.bilingualLayout === 'meaning-only';
     const first = orderedSegments.find(item => normalizeSegmentDisplayText(pickMeaning ? item.meaning : item.text));
     return first ? normalizeSegmentDisplayText(pickMeaning ? first.meaning : first.text) : '';
-  }, [orderedSegments, viewState.bilingualLayout]);
+  }, [orderedSegments, viewState.readingLanguage, viewState.bilingualLayout]);
+
+  const effectiveStandaloneContextualState = useMemo(() => {
+    if (contextualState) return contextualState;
+    return resolveWorkspaceContextualTarget({
+      cards: card ? [card] : [],
+      cursor,
+      focusTarget,
+      workspaceId,
+      workspaceKey,
+      activeContextualSelection: standaloneSelectionStore.activeContextualTarget,
+      dismissedFocusNonce: standaloneSelectionStore.dismissedContextualFocusNonce
+    });
+  }, [
+    contextualState,
+    card,
+    cursor,
+    focusTarget,
+    workspaceId,
+    workspaceKey,
+    standaloneSelectionStore.activeContextualTarget,
+    standaloneSelectionStore.dismissedContextualFocusNonce
+  ]);
+
+  const handleEffectiveSelectContextualSegment = useCallback((targetCard, segmentId) => {
+    if (typeof onSelectContextualSegment === 'function') {
+      onSelectContextualSegment(targetCard, segmentId);
+      return;
+    }
+    handleSelectSegment(segmentId);
+  }, [onSelectContextualSegment, handleSelectSegment]);
+
+  const handleEffectiveFollowContextualAudible = useCallback(() => {
+    if (typeof onFollowContextualAudible === 'function') {
+      onFollowContextualAudible();
+      return;
+    }
+    handleFollowAudible();
+  }, [onFollowContextualAudible, handleFollowAudible]);
+
+  const handleEffectiveDismissContextualTarget = useCallback(() => {
+    if (typeof onDismissContextualTarget === 'function') {
+      onDismissContextualTarget();
+      return;
+    }
+    standaloneSelectionStore.clearContextualSelection();
+  }, [onDismissContextualTarget, standaloneSelectionStore]);
+
+  const resolvedSurfaceMode = readerMode
+    || (viewState.level === 'segment' ? 'segment' : viewState.level === 'part' ? 'focus' : 'card');
 
   const bodyNode = (
     <div data-shared-card-measure="true">
@@ -505,11 +574,13 @@ export const SharedCardReadingSurface = ({
           card={card}
           lookup={lookup}
           workspace={workspace}
+          presentationState={viewState}
           partLayout={viewState.partLayout}
           bilingualLayout={viewState.bilingualLayout}
           workspaceStyle={resolvedWorkspaceStyle}
           playbackCursor={cursor}
           focusSegmentId={effectiveFocusSegmentId}
+          contextualState={effectiveStandaloneContextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
@@ -517,12 +588,16 @@ export const SharedCardReadingSurface = ({
           onSelectUnit={handleSelectUnit}
           onFollowAudible={handleFollowAudible}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={handleEffectiveSelectContextualSegment}
+          onFollowContextualAudible={handleEffectiveFollowContextualAudible}
+          onDismissContextualTarget={handleEffectiveDismissContextualTarget}
         />
       ) : viewState.level === 'segment' ? (
         <SharedCardSegmentView
           card={card}
           lookup={lookup}
           workspace={workspace}
+          presentationState={viewState}
           bilingualLayout={viewState.bilingualLayout}
           workspaceStyle={resolvedWorkspaceStyle}
           playbackCursor={cursor}
@@ -543,14 +618,20 @@ export const SharedCardReadingSurface = ({
           card={card}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
+          presentationState={viewState}
           bilingualLayout={viewState.bilingualLayout}
+          readerMode={resolvedSurfaceMode}
           workspaceStyle={resolvedWorkspaceStyle}
           playbackCursor={cursor}
           focusSegmentId={effectiveFocusSegmentId}
+          contextualState={effectiveStandaloneContextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={handleEffectiveSelectContextualSegment}
+          onFollowContextualAudible={handleEffectiveFollowContextualAudible}
+          onDismissContextualTarget={handleEffectiveDismissContextualTarget}
         />
       )}
     </div>
@@ -953,6 +1034,33 @@ export const SharedParagraphWorkspaceReader = ({
   // and Workspace Style changes with strict Workspace isolation.
   const selectionStore = useSharedReaderSelectionStore(workspaceKey);
 
+  const workspaceId = presentation?.workspace?.id || null;
+  const activePlaybackSessionId = playbackCursor?.state === 'playing' || playbackCursor?.state === 'paused'
+    ? (playbackCursor?.sessionId ?? null)
+    : null;
+  const workspaceContextualState = useMemo(() => resolveWorkspaceContextualTarget({
+    cards,
+    cursor: playbackCursor,
+    focusTarget,
+    workspaceId,
+    workspaceKey,
+    activeContextualSelection: selectionStore.activeContextualTarget,
+    dismissedFocusNonce: selectionStore.dismissedContextualFocusNonce
+  }), [
+    cards,
+    playbackCursor,
+    focusTarget,
+    workspaceId,
+    workspaceKey,
+    selectionStore.activeContextualTarget,
+    selectionStore.dismissedContextualFocusNonce
+  ]);
+
+  const workspaceContextualModeActive = useMemo(() => resolveEffectiveBilingualPresentation({
+    readerMode: effectiveReaderMode,
+    view: activeViewState
+  }).isContextualActive, [effectiveReaderMode, activeViewState]);
+
   const isPlayingCardDiverged = Boolean(
     managesCardVisibility
     && !showBookPage
@@ -963,6 +1071,7 @@ export const SharedParagraphWorkspaceReader = ({
   const followScrollBlocked = Boolean(
     isPlayingCardDiverged
     || (activeCursorCardId && selectionStore.hasManualSelection(activeCursorCardId))
+    || Boolean(workspaceContextualModeActive && selectionStore.activeContextualTarget && workspaceContextualState.divergedFromAudible)
     || (
       playbackCursor?.sessionId !== null
       && playbackCursor?.sessionId !== undefined
@@ -990,7 +1099,7 @@ export const SharedParagraphWorkspaceReader = ({
     handleKeyDownNavigation
   } = useCardPresentationFollow({
     rootRef,
-    workspaceId: presentation?.workspace?.id || null,
+    workspaceId,
     workspaceKey,
     focusTarget,
     cursor: playbackCursor,
@@ -998,6 +1107,30 @@ export const SharedParagraphWorkspaceReader = ({
     onEnsureCardExpanded: handleEnsureCardExpanded,
     onFocusConsumed
   });
+
+  const handleSelectContextualSegment = useCallback((targetCard, segmentId) => {
+    if (!targetCard?.id || !segmentId) return;
+    selectionStore.selectCardSegment({
+      card: targetCard,
+      lookup: buildCardUnitLookup(targetCard),
+      segmentId,
+      focusTarget,
+      workspaceId,
+      activePlaybackSessionId
+    });
+    markUserNavigation();
+  }, [selectionStore, focusTarget, workspaceId, activePlaybackSessionId, markUserNavigation]);
+
+  const handleFollowContextualAudible = useCallback(() => {
+    selectionStore.clearContextualSelection();
+    selectionStore.clearAllManualSelections();
+    selectionStore.resumeViewportFollow();
+    resetUserNavigationGrace();
+  }, [selectionStore, resetUserNavigationGrace]);
+
+  const handleDismissContextualTarget = useCallback(() => {
+    selectionStore.clearContextualSelection();
+  }, [selectionStore]);
 
   const handleVisibilityChange = useCallback(nextMode => {
     const normalized = normalizeTextCardExpansionMode(nextMode);
@@ -1162,11 +1295,15 @@ export const SharedParagraphWorkspaceReader = ({
           workspaceStyle={resolvedWorkspaceStyle}
           playbackCursor={playbackCursor}
           focusTarget={focusTarget}
+          contextualState={workspaceContextualState}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           onPlayCard={onPlayCard}
           onPlaySegment={onPlaySegment}
+          onSelectContextualSegment={handleSelectContextualSegment}
+          onFollowContextualAudible={handleFollowContextualAudible}
+          onDismissContextualTarget={handleDismissContextualTarget}
         />
       ) : cards.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
@@ -1189,11 +1326,13 @@ export const SharedParagraphWorkspaceReader = ({
                 index={cardIndex}
                 workspace={presentation.workspace}
                 presentationState={effectiveCardPresentationState}
+                readerMode={effectiveReaderMode}
                 workspaceStyle={resolvedWorkspaceStyle}
                 playbackCursor={playbackCursor}
                 focusTarget={focusTarget}
                 focusSegmentId={focusSegmentId}
                 isFocusCard={isFocusCard}
+                contextualState={workspaceContextualState}
                 playableSegmentIds={playableSegmentIds}
                 audioCoverageMap={audioCoverageMap}
                 cardPlayable={hasText || hasMeaning}
@@ -1210,6 +1349,9 @@ export const SharedParagraphWorkspaceReader = ({
                 onSelectCardUnit={selectionStore.selectCardUnit}
                 onSelectCardSegment={selectionStore.selectCardSegment}
                 onFollowCardAudible={handleFollowCardAudible}
+                onSelectContextualSegment={handleSelectContextualSegment}
+                onFollowContextualAudible={handleFollowContextualAudible}
+                onDismissContextualTarget={handleDismissContextualTarget}
               />
             );
           })}

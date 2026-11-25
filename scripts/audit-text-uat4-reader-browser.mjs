@@ -555,7 +555,7 @@ try {
         allJustified: [...paraBodies, ...turnBodies].length === 22 && [...paraBodies, ...turnBodies].every(el => getComputedStyle(el).textAlign === 'justify'),
         allParaIndented: paraBodies.length === 6 && paraBodies.every(el => parseFloat(getComputedStyle(el).textIndent) > 16),
         noTurnIndented: turnBodies.every(el => parseFloat(getComputedStyle(el).textIndent) === 0),
-        alignedSideBySide: alignedGrids.length === 16 && alignedGrids.every(g => {
+        alignedSideBySide: alignedGrids.length === 8 && alignedGrids.every(g => {
           const sp = g.querySelector('[data-shared-turn-speaker-column]').getBoundingClientRect();
           const body = g.querySelector('[data-shared-turn-body-column]').getBoundingClientRect();
           return sp.right <= body.left + 2;
@@ -592,7 +592,7 @@ try {
     const mob = await evaluate(`(() => {
       const saved = JSON.parse(localStorage.getItem(window.__uat4.UAT_STORAGE_KEY));
       const grids = [...document.querySelectorAll('[data-shared-turn-aligned-grid]')];
-      const stackedSafely = grids.length === 16 && grids.every(g => {
+      const stackedSafely = grids.length === 8 && grids.every(g => {
         const sp = g.querySelector('[data-shared-turn-speaker-column]').getBoundingClientRect();
         const body = g.querySelector('[data-shared-turn-body-column]').getBoundingClientRect();
         return sp.bottom <= body.top + 2 && body.width >= 240;
@@ -677,7 +677,7 @@ try {
     }))()`);
     assert.equal(londonOverrideState.resetDisabled, false);
     assert.equal(londonOverrideState.align, 'left');
-    assert.ok(londonOverrideState.inlineSpeakers >= 8);
+    assert.ok(londonOverrideState.inlineSpeakers >= 4);
     assert.equal(londonOverrideState.logLen, beforeLogLen);
 
     // Reload browser page -> verify Shared UI, Card Mode, Separated layout, AND London Workspace Override persist!
@@ -729,9 +729,9 @@ try {
       noOverflow: document.documentElement.scrollWidth <= window.innerWidth
     }))()`);
     assert.equal(stressInherit.align, 'justify', 'Unoverridden Workspace must inherit Shared defaults');
-    assert.ok(stressInherit.alignedCount >= 6);
+    assert.ok(stressInherit.alignedCount >= 4);
     assert.equal(stressInherit.titleIndented, false, 'Title Card must never indent');
-    assert.ok(stressInherit.consecutiveCount >= 2);
+    assert.ok(stressInherit.consecutiveCount >= 1);
     assert.equal(stressInherit.totalEnStressSegments, 9, 'Complete stress fixture must retain all 9 stress sentences');
     assert.equal(stressInherit.hasLongSpeakerSecondSentence, true, 'Complete stress fixture must retain second long-speaker sentence');
     assert.equal(stressInherit.noOverflow, true);

@@ -3,7 +3,9 @@ import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Target } from 'luc
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
-  normalizeTextWorkspaceStyleState
+  normalizeTextCardPresentationState,
+  normalizeTextWorkspaceStyleState,
+  resolveEffectiveBilingualPresentation
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
 import SharedBilingualUnitsBody from './SharedBilingualUnitsBody.jsx';
@@ -15,25 +17,31 @@ import {
   getSharedUnitShortCode,
   getSharedUnitTerms,
   normalizeSegmentDisplayText,
+  resolveReaderAppearancePresentation,
   resolveSegmentCoverageStatuses,
   resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
 
 /**
- * 4B3 Segment Mode Surface (One Study Box per Card):
- * 1. Complete natural reading context with ALL authored Sections or Turns above,
- *    defaulting to one primary reading language (EN or ID when meaning-only is chosen),
- *    preserving full Workspace Style, punctuation, joinAfter, Title role, and Speaker identity.
- *    Tapping any Segment selects its Unit + Segment in this Card's Study Box without touching audio.
- * 2. Exactly ONE Segment Study Box below with hierarchical Unit picker (hidden for 1-Unit Cards),
- *    Unit-local Segment picker (1..N within the active Unit, never flat global numbering as primary),
- *    per-Unit remembered Segment selection, exact bilingual EN + ID display, and integration-ready
- *    playback controls (reusing verified onPlaySegment and honestly marking pending 4E callbacks).
+ * 4B3 / 4C1 Segment Mode Surface (One Study Box per Card):
+ * 1. Complete natural reading context with ALL authored Sections or Turns above:
+ *    - Primary-only reading context (EN or ID), OR optional Sentence Interlinear when
+ *      bilingual reading + Sentence Interlinear is selected.
+ *    - Separated and Contextual are unavailable in Segment Mode and fall back cleanly
+ *      to primary-only context WITHOUT overwriting the saved bilingual preference.
+ *    - Preserves full Workspace Style, Appearance / Typography, punctuation, joinAfter,
+ *      Title role, and Speaker identity. Tapping any Segment selects its Unit + Segment
+ *      in this Card's Study Box without touching audio.
+ * 2. Exactly ONE bilingual Segment Study Box below with hierarchical Unit picker (hidden
+ *    for 1-Unit Cards), Unit-local Segment picker (1..N), per-Unit remembered selection,
+ *    exact bilingual EN + ID display ordered by readingLanguage with shared alignment and
+ *    typography, and integration-ready playback controls.
  */
 export const SharedSegmentStudyBox = ({
   card,
   lookup,
   workspace = null,
+  presentationState = null,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
@@ -53,30 +61,68 @@ export const SharedSegmentStudyBox = ({
   const entries = lookup?.entries || [];
   const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
   const resolvedStyle = useMemo(() => normalizeTextWorkspaceStyleState(workspaceStyle), [workspaceStyle]);
+  const normalizedView = useMemo(() => (
+    presentationState
+      ? normalizeTextCardPresentationState(presentationState)
+      : normalizeTextCardPresentationState({ bilingualLayout })
+  ), [presentationState, bilingualLayout]);
+  const bilingualResolution = useMemo(() => resolveEffectiveBilingualPresentation({
+    readerMode: 'segment',
+    view: normalizedView
+  }), [normalizedView]);
+  const appearancePres = useMemo(
+    () => resolveReaderAppearancePresentation(bilingualResolution.appearance),
+    [bilingualResolution.appearance]
+  );
+
   const cardTerms = getSharedUnitTerms(card);
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
 
   const isConversation = card?.blockType === 'conversation';
-  const contextLayout = bilingualLayout === 'meaning-only' ? 'meaning-only' : 'text-only';
+  const primaryChannel = bilingualResolution.primaryChannel;
+  const secondaryChannel = bilingualResolution.secondaryChannel;
   const textLang = workspace?.textLanguage || 'en';
   const meaningLang = workspace?.meaningLanguage || 'id';
 
-  const studyBodyStyle = buildParagraphBodyStyle({
+  const studyPrimaryBodyStyle = buildParagraphBodyStyle({
     workspaceStyle: resolvedStyle,
+    appearance: appearancePres.appearance,
+    channelRole: 'primary',
     isTitleRole: false,
     allowIndent: false
   });
+  const studySecondaryBodyStyle = buildParagraphBodyStyle({
+    workspaceStyle: resolvedStyle,
+    appearance: appearancePres.appearance,
+    channelRole: 'secondary',
+    isTitleRole: false,
+    allowIndent: false
+  });
+
+  const contextLabel = bilingualResolution.effectiveRenderMode === 'interlinear'
+    ? (primaryChannel === 'meaning'
+        ? 'Reading Context (ID–EN Sentence Interlinear) · Tap any sentence to study'
+        : 'Reading Context (EN–ID Sentence Interlinear) · Tap any sentence to study')
+    : (primaryChannel === 'meaning'
+        ? 'Reading Context (ID) · Tap any sentence to study'
+        : 'Reading Context (EN) · Tap any sentence to study');
 
   if (!units.length || !entries.length) {
     return (
       <div className="space-y-4" data-shared-segment-view="true">
         {units.length > 0 && (
-          <div data-shared-segment-context={card?.id}>
+          <div
+            data-shared-segment-context={card?.id}
+            data-shared-segment-context-channel={primaryChannel}
+            data-shared-segment-context-style={bilingualResolution.effectiveRenderMode}
+          >
             <SharedBilingualUnitsBody
               card={card}
               workspace={workspace}
               speakerAppearanceMap={speakerAppearanceMap}
-              bilingualLayout={contextLayout}
+              presentationState={normalizedView}
+              bilingualPresentation={bilingualResolution}
+              readerMode="segment"
               workspaceStyle={resolvedStyle}
               playbackCursor={cursor}
               focusSegmentId={focusSegmentId}
@@ -217,28 +263,98 @@ export const SharedSegmentStudyBox = ({
           : 'border-l-4 border-l-teal-500/60 dark:border-l-teal-400/55')
     : '';
 
+  const renderStudyChannelBlock = (channel, role) => {
+    const isMeaningChannel = channel === 'meaning';
+    const isPrimaryRole = role === 'primary';
+    const bodyStyle = isPrimaryRole ? studyPrimaryBodyStyle : studySecondaryBodyStyle;
+    const isChannelPlaying = isMeaningChannel ? isSelectedPlayingMeaning : isSelectedPlayingText;
+    const isChannelPaused = isSelectedPaused && cursor.channel === channel;
+    const content = isMeaningChannel ? meaningContent : textContent;
+    const hasContent = isMeaningChannel ? hasMeaning : hasText;
+    const langTag = isMeaningChannel ? meaningLang : textLang;
+    const labelText = isMeaningChannel ? 'Indonesian (ID)' : 'English (EN)';
+    const labelTone = isMeaningChannel
+      ? 'text-emerald-700 dark:text-emerald-300'
+      : 'text-indigo-700 dark:text-indigo-300';
+    const textTone = isPrimaryRole
+      ? 'font-medium text-slate-900 dark:text-slate-50'
+      : appearancePres.secondaryTextClass;
+
+    return (
+      <div
+        key={channel}
+        className={isPrimaryRole ? 'space-y-1' : 'pt-3.5 border-t border-slate-100 dark:border-slate-800 space-y-1'}
+        data-shared-segment-channel-block={channel}
+        data-study-box-channel={channel}
+        data-study-box-role={role}
+      >
+        <div className="flex items-center gap-2 text-left">
+          <span className={`text-[10px] font-bold uppercase tracking-wider select-none ${labelTone}`}>
+            {labelText}
+          </span>
+          {isChannelPlaying && (
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${isMeaningChannel ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
+              Playing {isMeaningChannel ? 'ID' : 'EN'}
+            </span>
+          )}
+          {isChannelPaused && (
+            <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+              Paused
+            </span>
+          )}
+        </div>
+        <div
+          lang={langTag}
+          data-shared-reading-body="true"
+          data-shared-reading-channel={channel}
+          data-shared-reading-role={role}
+          data-shared-reading-kind="study-box"
+          data-shared-reading-align={bodyStyle.textAlign}
+          data-study-box-text={!isMeaningChannel ? segment.id : undefined}
+          data-study-box-meaning={isMeaningChannel ? segment.id : undefined}
+          style={bodyStyle.inlineStyle}
+          className={`max-w-[66ch] break-words whitespace-pre-line ${textTone} ${bodyStyle.className}`}
+        >
+          {hasContent ? content : (
+            <span
+              data-shared-card-missing-text={!isMeaningChannel ? segment.id : undefined}
+              data-shared-card-missing-meaning={isMeaningChannel ? segment.id : undefined}
+              className="text-sm italic font-normal text-slate-400 dark:text-slate-500"
+            >
+              {isMeaningChannel ? 'No Indonesian meaning for this sentence.' : 'No English text for this sentence.'}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       className="space-y-5"
       data-shared-segment-view="true"
-      data-shared-segment-context-lang={contextLayout === 'meaning-only' ? 'meaning' : 'text'}
+      data-shared-segment-context-lang={primaryChannel}
+      data-shared-segment-context-style={bilingualResolution.effectiveRenderMode}
     >
       {/* 1. Complete Natural Reading Context (all authored Sections/Turns, tap-to-select only) */}
       <div
         data-shared-segment-context={card?.id}
-        data-shared-segment-context-channel={contextLayout === 'meaning-only' ? 'meaning' : 'text'}
+        data-shared-segment-context-channel={primaryChannel}
+        data-shared-segment-context-style={bilingualResolution.effectiveRenderMode}
         className="space-y-2"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-left">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
-            {contextLayout === 'meaning-only' ? 'Reading Context (ID) · Tap any sentence to study' : 'Reading Context (EN) · Tap any sentence to study'}
+            {contextLabel}
           </span>
         </div>
         <SharedBilingualUnitsBody
           card={card}
           workspace={workspace}
           speakerAppearanceMap={speakerAppearanceMap}
-          bilingualLayout={contextLayout}
+          presentationState={normalizedView}
+          bilingualPresentation={bilingualResolution}
+          readerMode="segment"
           workspaceStyle={resolvedStyle}
           playbackCursor={cursor}
           focusSegmentId={focusSegmentId}
@@ -488,76 +604,11 @@ export const SharedSegmentStudyBox = ({
           </div>
         </div>
 
-        {/* Exact Bilingual Pair Display (respects shared Workspace Style alignment) */}
+        {/* Exact Bilingual Pair Display (respects shared Workspace Style alignment, reading order, and Typography) */}
         {segment ? (
           <div className="rounded-xl border border-slate-200/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4 sm:p-5 space-y-3.5">
-            <div className="space-y-1" data-shared-segment-channel-block="text" data-study-box-channel="text">
-              <div className="flex items-center gap-2 text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 select-none">
-                  English (EN)
-                </span>
-                {isSelectedPlayingText && (
-                  <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                    Playing EN
-                  </span>
-                )}
-                {isSelectedPaused && cursor.channel === 'text' && (
-                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
-                    Paused
-                  </span>
-                )}
-              </div>
-              <div
-                lang={textLang}
-                data-shared-reading-body="true"
-                data-shared-reading-channel="text"
-                data-shared-reading-kind="study-box"
-                data-shared-reading-align={studyBodyStyle.textAlign}
-                data-study-box-text={segment.id}
-                style={studyBodyStyle.inlineStyle}
-                className={`max-w-[66ch] break-words whitespace-pre-line text-base sm:text-[1.125rem] font-medium leading-[1.68] text-slate-900 dark:text-slate-50 ${studyBodyStyle.className}`}
-              >
-                {hasText ? textContent : (
-                  <span data-shared-card-missing-text={segment.id} className="text-sm italic font-normal text-slate-400 dark:text-slate-500">
-                    No English text for this sentence.
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-3.5 border-t border-slate-100 dark:border-slate-800 space-y-1" data-shared-segment-channel-block="meaning" data-study-box-channel="meaning">
-              <div className="flex items-center gap-2 text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 select-none">
-                  Indonesian (ID)
-                </span>
-                {isSelectedPlayingMeaning && (
-                  <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                    Playing ID
-                  </span>
-                )}
-                {isSelectedPaused && cursor.channel === 'meaning' && (
-                  <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
-                    Paused
-                  </span>
-                )}
-              </div>
-              <div
-                lang={meaningLang}
-                data-shared-reading-body="true"
-                data-shared-reading-channel="meaning"
-                data-shared-reading-kind="study-box"
-                data-shared-reading-align={studyBodyStyle.textAlign}
-                data-study-box-meaning={segment.id}
-                style={studyBodyStyle.inlineStyle}
-                className={`max-w-[66ch] break-words whitespace-pre-line text-[0.95rem] sm:text-[1.03125rem] leading-[1.68] text-slate-600 dark:text-slate-300 ${studyBodyStyle.className}`}
-              >
-                {hasMeaning ? meaningContent : (
-                  <span data-shared-card-missing-meaning={segment.id} className="text-sm italic text-slate-400 dark:text-slate-500">
-                    No Indonesian meaning for this sentence.
-                  </span>
-                )}
-              </div>
-            </div>
+            {renderStudyChannelBlock(primaryChannel, 'primary')}
+            {renderStudyChannelBlock(secondaryChannel, 'secondary')}
           </div>
         ) : (
           <div

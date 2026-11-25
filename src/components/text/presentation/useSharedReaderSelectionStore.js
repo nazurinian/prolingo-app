@@ -10,7 +10,9 @@ const createWorkspaceSelection = (workspaceKey, generation = 0) => ({
   workspaceKey,
   generation,
   byCardId: {},
-  manualBrowseSessionId: null
+  manualBrowseSessionId: null,
+  activeContextualTarget: null,
+  dismissedContextualFocusNonce: null
 });
 
 export const normalizeReaderSelectionWorkspaceKey = workspaceKey => {
@@ -128,7 +130,13 @@ export const useSharedReaderSelectionStore = workspaceKey => {
     setStore(createWorkspaceSelection(normalizedKey, store.generation + 1));
   }
 
-  const { generation, byCardId, manualBrowseSessionId } = store;
+  const {
+    generation,
+    byCardId,
+    manualBrowseSessionId,
+    activeContextualTarget,
+    dismissedContextualFocusNonce
+  } = store;
   const updateCurrentWorkspace = useCallback(update => {
     setStore(previous => (
       previous.workspaceKey === normalizedKey && previous.generation === generation
@@ -141,8 +149,8 @@ export const useSharedReaderSelectionStore = workspaceKey => {
     (cardId && byCardId[cardId]) || EMPTY_CARD_SELECTION_STATE
   ), [byCardId]);
 
-  const updateCardSelection = useCallback((applySelection, payload) => {
-    const { card, activePlaybackSessionId } = payload;
+  const updateCardSelection = useCallback((applySelection, payload, options = null) => {
+    const { card, activePlaybackSessionId, focusTarget = null, workspaceId = null } = payload;
     const cardId = card?.id;
     if (!cardId) return;
     updateCurrentWorkspace(previous => {
@@ -152,11 +160,47 @@ export const useSharedReaderSelectionStore = workspaceKey => {
         cardState: currentCardState,
         workspaceKey: normalizedKey
       });
-      if (nextCardState === currentCardState) return previous;
+      const shouldUpdateContextual = Boolean(options?.updateContextual && nextCardState?.manualAnchor?.segmentId);
+      const nextContextualTarget = shouldUpdateContextual
+        ? {
+            workspaceKey: normalizedKey,
+            cardId,
+            unitViewKey: nextCardState.manualAnchor.unitViewKey,
+            segmentId: nextCardState.manualAnchor.segmentId,
+            pinnedManual: true
+          }
+        : previous.activeContextualTarget;
+      const contextualChanged = shouldUpdateContextual && (
+        previous.activeContextualTarget?.cardId !== nextContextualTarget?.cardId
+        || previous.activeContextualTarget?.unitViewKey !== nextContextualTarget?.unitViewKey
+        || previous.activeContextualTarget?.segmentId !== nextContextualTarget?.segmentId
+      );
+      const shouldDismissContextualFocus = Boolean(
+        shouldUpdateContextual
+        && focusTarget
+        && workspaceId
+        && focusTarget.documentId === workspaceId
+        && focusTarget.nonce !== undefined
+      );
+      const nextDismissedContextualFocusNonce = shouldDismissContextualFocus
+        ? focusTarget.nonce
+        : previous.dismissedContextualFocusNonce;
+
+      if (
+        nextCardState === currentCardState
+        && !contextualChanged
+        && nextDismissedContextualFocusNonce === previous.dismissedContextualFocusNonce
+      ) {
+        return previous;
+      }
       return {
         ...previous,
-        byCardId: { ...previous.byCardId, [cardId]: nextCardState },
-        manualBrowseSessionId: activePlaybackSessionId ?? previous.manualBrowseSessionId
+        byCardId: nextCardState === currentCardState
+          ? previous.byCardId
+          : { ...previous.byCardId, [cardId]: nextCardState },
+        manualBrowseSessionId: activePlaybackSessionId ?? previous.manualBrowseSessionId,
+        activeContextualTarget: nextContextualTarget,
+        dismissedContextualFocusNonce: nextDismissedContextualFocusNonce
       };
     });
   }, [normalizedKey, updateCurrentWorkspace]);
@@ -166,31 +210,45 @@ export const useSharedReaderSelectionStore = workspaceKey => {
   }, [updateCardSelection]);
 
   const selectCardSegment = useCallback(payload => {
-    if (payload.segmentId) updateCardSelection(applySegmentSelectionToCardState, payload);
+    if (payload.segmentId) updateCardSelection(applySegmentSelectionToCardState, payload, { updateContextual: true });
   }, [updateCardSelection]);
 
   const clearCardManualSelection = useCallback(cardId => {
     if (!cardId) return;
     updateCurrentWorkspace(previous => {
       const currentCardState = previous.byCardId[cardId];
-      if (!currentCardState?.manualAnchor) return previous;
+      const clearContextual = previous.activeContextualTarget?.cardId === cardId;
+      if (!currentCardState?.manualAnchor && !clearContextual) return previous;
       return {
         ...previous,
-        byCardId: { ...previous.byCardId, [cardId]: clearCardManualSelectionState(currentCardState) }
+        byCardId: currentCardState?.manualAnchor
+          ? { ...previous.byCardId, [cardId]: clearCardManualSelectionState(currentCardState) }
+          : previous.byCardId,
+        activeContextualTarget: clearContextual ? null : previous.activeContextualTarget
       };
     });
+  }, [updateCurrentWorkspace]);
+
+  const clearContextualSelection = useCallback(() => {
+    updateCurrentWorkspace(previous => (
+      previous.activeContextualTarget === null
+        ? previous
+        : { ...previous, activeContextualTarget: null }
+    ));
   }, [updateCurrentWorkspace]);
 
   const clearAllManualSelections = useCallback(() => {
     updateCurrentWorkspace(previous => {
       const nextByCardId = {};
-      let changed = false;
+      let changed = previous.activeContextualTarget !== null;
       for (const [cardId, cardState] of Object.entries(previous.byCardId)) {
         const cleared = clearCardManualSelectionState(cardState);
         if (cleared !== cardState) changed = true;
         nextByCardId[cardId] = cleared;
       }
-      return changed ? { ...previous, byCardId: nextByCardId } : previous;
+      return changed
+        ? { ...previous, byCardId: nextByCardId, activeContextualTarget: null }
+        : previous;
     });
   }, [updateCurrentWorkspace]);
 
@@ -208,10 +266,13 @@ export const useSharedReaderSelectionStore = workspaceKey => {
     workspaceKey: normalizedKey,
     byCardId,
     manualBrowseSessionId,
+    activeContextualTarget,
+    dismissedContextualFocusNonce,
     getCardSelectionState,
     selectCardUnit,
     selectCardSegment,
     clearCardManualSelection,
+    clearContextualSelection,
     clearAllManualSelections,
     resumeViewportFollow,
     hasManualSelection
@@ -219,10 +280,13 @@ export const useSharedReaderSelectionStore = workspaceKey => {
     normalizedKey,
     byCardId,
     manualBrowseSessionId,
+    activeContextualTarget,
+    dismissedContextualFocusNonce,
     getCardSelectionState,
     selectCardUnit,
     selectCardSegment,
     clearCardManualSelection,
+    clearContextualSelection,
     clearAllManualSelections,
     resumeViewportFollow,
     hasManualSelection

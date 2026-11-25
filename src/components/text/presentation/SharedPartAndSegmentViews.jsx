@@ -263,16 +263,21 @@ const PartVerticalListView = ({
   units,
   workspace,
   speakerAppearanceMap,
+  presentationState = null,
   bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor,
   focusSegmentId,
+  contextualState = null,
   playableSegmentIds,
   audioCoverageMap,
   disabled,
   selection,
   onSelectUnit,
-  onPlaySegment
+  onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null
 }) => (
   <div className="space-y-4" data-shared-part-layout="vertical-list">
     {units.map((unit, unitIndex) => {
@@ -336,15 +341,21 @@ const PartVerticalListView = ({
             unitsOverride={[unit]}
             workspace={workspace}
             speakerAppearanceMap={speakerAppearanceMap}
+            presentationState={presentationState}
             bilingualLayout={bilingualLayout}
+            readerMode="card"
             workspaceStyle={workspaceStyle}
             playbackCursor={playbackCursor}
             focusSegmentId={focusSegmentId}
+            contextualState={contextualState}
             playableSegmentIds={playableSegmentIds}
             audioCoverageMap={audioCoverageMap}
             disabled={disabled}
             forceSectionHeaders={false}
             onPlaySegment={onPlaySegment}
+            onSelectContextualSegment={onSelectContextualSegment}
+            onFollowContextualAudible={onFollowContextualAudible}
+            onDismissContextualTarget={onDismissContextualTarget}
           />
         </div>
       );
@@ -360,18 +371,23 @@ export const SharedCardPartView = ({
   card,
   lookup,
   workspace = null,
+  presentationState = null,
   partLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
   selection,
   onSelectUnit,
   onFollowAudible,
-  onPlaySegment
+  onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null
 }) => {
   const units = lookup?.units || card?.units || [];
   const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
@@ -394,11 +410,13 @@ export const SharedCardPartView = ({
         units={units}
         workspace={workspace}
         speakerAppearanceMap={speakerAppearanceMap}
+        presentationState={presentationState}
         partLayout={partLayout}
         bilingualLayout={bilingualLayout}
         workspaceStyle={workspaceStyle}
         playbackCursor={playbackCursor}
         focusSegmentId={focusSegmentId}
+        contextualState={contextualState}
         playableSegmentIds={playableSegmentIds}
         audioCoverageMap={audioCoverageMap}
         disabled={disabled}
@@ -406,6 +424,9 @@ export const SharedCardPartView = ({
         onSelectUnit={onSelectUnit}
         onFollowAudible={onFollowAudible}
         onPlaySegment={onPlaySegment}
+        onSelectContextualSegment={onSelectContextualSegment}
+        onFollowContextualAudible={onFollowContextualAudible}
+        onDismissContextualTarget={onDismissContextualTarget}
       />
     );
   }
@@ -425,29 +446,35 @@ export const SharedCardPartView = ({
         units={units}
         workspace={workspace}
         speakerAppearanceMap={speakerAppearanceMap}
+        presentationState={presentationState}
         bilingualLayout={bilingualLayout}
         workspaceStyle={workspaceStyle}
         playbackCursor={playbackCursor}
         focusSegmentId={focusSegmentId}
+        contextualState={contextualState}
         playableSegmentIds={playableSegmentIds}
         audioCoverageMap={audioCoverageMap}
         disabled={disabled}
         selection={selection}
         onSelectUnit={onSelectUnit}
         onPlaySegment={onPlaySegment}
+        onSelectContextualSegment={onSelectContextualSegment}
+        onFollowContextualAudible={onFollowContextualAudible}
+        onDismissContextualTarget={onDismissContextualTarget}
       />
     </div>
   );
 };
 
 /**
- * Segment Mode View (4B3): renders complete natural reading context above exactly
+ * Segment Mode View (4B3 / 4C1): renders complete natural reading context above exactly
  * one Segment Study Box per Card, preserving persistent identities and passive selection.
  */
 export const SharedCardSegmentView = ({
   card,
   lookup,
   workspace = null,
+  presentationState = null,
   bilingualLayout = DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
@@ -467,6 +494,7 @@ export const SharedCardSegmentView = ({
     card={card}
     lookup={lookup}
     workspace={workspace}
+    presentationState={presentationState}
     bilingualLayout={bilingualLayout}
     workspaceStyle={workspaceStyle}
     playbackCursor={playbackCursor}

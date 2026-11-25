@@ -63,16 +63,21 @@ export const SharedHorizontalFocusCarousel = ({
   units,
   workspace,
   speakerAppearanceMap,
+  presentationState = null,
   bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
   selection,
   onSelectUnit,
   onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null,
   renderUnitHeader,
   isConsecutiveSpeakerTurn
 }) => {
@@ -127,7 +132,9 @@ export const SharedHorizontalFocusCarousel = ({
     swiper.updateAutoHeight(isInitial || reducedMotion ? 0 : 220);
   }, [activeIndex, reducedMotion, units.length]);
 
-  // Recalculate autoHeight cleanly when bilingual layout or Workspace Style changes.
+  const activeContextualSegmentId = contextualState?.target?.segmentId || null;
+
+  // Recalculate autoHeight cleanly when bilingual layout, Contextual target, Typography, or Workspace Style changes.
   useEffect(() => {
     const frame = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
       ? window.requestAnimationFrame(() => syncSwiperLayout())
@@ -137,6 +144,15 @@ export const SharedHorizontalFocusCarousel = ({
     };
   }, [
     bilingualLayout,
+    presentationState?.readingLanguage,
+    presentationState?.bilingualStyle,
+    presentationState?.contextualPlacement,
+    presentationState?.appearance?.primaryFontSize,
+    presentationState?.appearance?.secondaryFontSize,
+    presentationState?.appearance?.fontFamily,
+    presentationState?.appearance?.lineHeight,
+    presentationState?.appearance?.textSpacing,
+    activeContextualSegmentId,
     resolvedStyle.textAlign,
     resolvedStyle.paragraphIndent,
     resolvedStyle.speakerLayout,
@@ -299,7 +315,7 @@ export const SharedHorizontalFocusCarousel = ({
             ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
             : null;
           const repeated = isConsecutiveSpeakerTurn(units, unitIndex, speakerAppearanceMap);
-          const excerpt = !isSelected ? buildUnitPreviewExcerpt(unit, bilingualLayout, 180) : '';
+          const excerpt = !isSelected ? buildUnitPreviewExcerpt(unit, presentationState || bilingualLayout, 180) : '';
           const peekAccentBorder = !isSelected && resolvedStyle.showAccents
             ? (isTurn
                 ? `border-l-4 ${isAudible ? speakerInfo.palette.rail : speakerInfo.palette.railMuted}`
@@ -349,15 +365,21 @@ export const SharedHorizontalFocusCarousel = ({
                       unitsOverride={[unit]}
                       workspace={workspace}
                       speakerAppearanceMap={speakerAppearanceMap}
+                      presentationState={presentationState}
                       bilingualLayout={bilingualLayout}
+                      readerMode="focus"
                       workspaceStyle={resolvedStyle}
                       playbackCursor={playbackCursor}
                       focusSegmentId={focusSegmentId}
+                      contextualState={contextualState}
                       playableSegmentIds={playableSegmentIds}
                       audioCoverageMap={audioCoverageMap}
                       disabled={disabled}
                       forceSectionHeaders={isTurn}
                       onPlaySegment={safePlaySegment}
+                      onSelectContextualSegment={onSelectContextualSegment}
+                      onFollowContextualAudible={onFollowContextualAudible}
+                      onDismissContextualTarget={onDismissContextualTarget}
                     />
                   </>
                 ) : (
@@ -415,10 +437,12 @@ export const SharedVerticalScrollFocusView = ({
   units,
   workspace,
   speakerAppearanceMap,
+  presentationState = null,
   bilingualLayout,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
+  contextualState = null,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
@@ -427,6 +451,9 @@ export const SharedVerticalScrollFocusView = ({
   onNavigateUnit,
   navigationRef,
   onPlaySegment,
+  onSelectContextualSegment = null,
+  onFollowContextualAudible = null,
+  onDismissContextualTarget = null,
   renderUnitHeader,
   isConsecutiveSpeakerTurn
 }) => {
@@ -583,15 +610,21 @@ export const SharedVerticalScrollFocusView = ({
                 unitsOverride={[unit]}
                 workspace={workspace}
                 speakerAppearanceMap={speakerAppearanceMap}
+                presentationState={presentationState}
                 bilingualLayout={bilingualLayout}
+                readerMode="focus"
                 workspaceStyle={resolvedStyle}
                 playbackCursor={playbackCursor}
                 focusSegmentId={focusSegmentId}
+                contextualState={contextualState}
                 playableSegmentIds={playableSegmentIds}
                 audioCoverageMap={audioCoverageMap}
                 disabled={disabled}
                 forceSectionHeaders={isTurn}
                 onPlaySegment={onPlaySegment}
+                onSelectContextualSegment={onSelectContextualSegment}
+                onFollowContextualAudible={onFollowContextualAudible}
+                onDismissContextualTarget={onDismissContextualTarget}
               />
             ) : (
               <div
@@ -605,10 +638,13 @@ export const SharedVerticalScrollFocusView = ({
                     unitsOverride={[unit]}
                     workspace={workspace}
                     speakerAppearanceMap={speakerAppearanceMap}
+                    presentationState={presentationState}
                     bilingualLayout={bilingualLayout}
+                    readerMode="focus"
                     workspaceStyle={resolvedStyle}
                     playbackCursor={playbackCursor}
                     focusSegmentId={focusSegmentId}
+                    contextualState={contextualState}
                     playableSegmentIds={playableSegmentIds}
                     audioCoverageMap={audioCoverageMap}
                     disabled
