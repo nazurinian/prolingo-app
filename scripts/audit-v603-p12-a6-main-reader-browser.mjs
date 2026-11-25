@@ -182,12 +182,16 @@ try {
     check(await evaluate('document.querySelector("[data-shared-workspace-style-reset]").disabled === true'), 'Reset Style did not disable after reset');
     for (const level of ['full', 'part', 'segment']) {
       await click(`[data-shared-card-level-option="${level}"]`);
-      await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-level="${level}"]')`);
+      if (level === 'full') {
+        await until('Boolean(document.querySelector("[data-shared-book-page=true]"))');
+      } else {
+        await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-level="${level}"]')`);
+      }
       for (const layout of ['interlinear', 'separated', 'text-only', 'meaning-only']) {
         await click(`[data-shared-card-layout-option="${layout}"]`);
         await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-layout="${layout}"]')`);
       }
-      if (level === 'part') for (const layout of ['horizontal-focus', 'vertical-focus', 'vertical-list']) {
+      if (level === 'part') for (const layout of ['vertical-focus', 'horizontal-focus']) {
         await click(`[data-shared-card-part-layout-option="${layout}"]`);
         await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-part-layout="${layout}"]')`);
       }

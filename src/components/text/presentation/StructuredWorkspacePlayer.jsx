@@ -127,7 +127,7 @@ export default function StructuredWorkspacePlayer({
       <label>Rate <select aria-label="Audio rate" value={options.globalPlaybackRate} onChange={e => setOptions(o => ({ ...o, globalPlaybackRate: Number(e.target.value) }))}>{[0.75, 1, 1.5, 2].map(r => <option key={r} value={r}>{r}×</option>)}</select></label>
     </fieldset>
     <p className="text-sm">Audio setting changes stop the current attempt; presentation changes do not. Metadata alone is not physical audio readiness.</p>
-    <output data-unified-source-status>{JSON.stringify(audio.playbackSourceStatus)}</output>
+    <output data-unified-source-status className="block max-w-full break-all text-xs">{JSON.stringify(audio.playbackSourceStatus)}</output>
     <form onSubmit={search} className="flex gap-2"><input aria-label="Find Sentence" value={query} onChange={e => setQuery(e.target.value)} className="border rounded p-2" /><button type="submit">Find</button></form>
     {selected.error ? <p role="alert">{selected.error.message}</p> : (
       <UnifiedStructuredReader

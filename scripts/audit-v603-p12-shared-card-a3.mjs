@@ -456,7 +456,7 @@ test('Part View renders all 3 styles (Horizontal Focus, Vertical Focus, Vertical
   assert.equal(collectNodes(compatTree, n => n.props?.['data-shared-part-compat-badge'] === 'true').length, 1);
 });
 
-test('Segment View respects bilingual layouts, HF1 coverage honesty, Cached Full Card honesty, and Missing Meaning empty box', () => {
+test('Segment Study Box keeps primary reading context, bilingual Study Box, HF1 coverage honesty, Cached Full Card honesty, and Missing Meaning empty notice', () => {
   const layouts = ['interlinear', 'separated', 'text-only', 'meaning-only'];
   for (const bilingualLayout of layouts) {
     resetHooks();
@@ -474,15 +474,21 @@ test('Segment View respects bilingual layouts, HF1 coverage honesty, Cached Full
       audioCoverageMap: v2.audioCoverageMap
     }));
 
+    const studyBoxes = collectNodes(tree, n => n.props?.['data-shared-segment-study-box'] === storyCard.id);
+    assert.equal(studyBoxes.length, 1, `Exactly one Study Box per Card in layout ${bilingualLayout}`);
+    const contextNodes = collectNodes(tree, n => n.props?.['data-shared-segment-context'] === storyCard.id);
+    assert.equal(contextNodes.length, 1, `Complete reading context rendered above Study Box in layout ${bilingualLayout}`);
+    assert.equal(
+      contextNodes[0].props['data-shared-segment-context-channel'],
+      bilingualLayout === 'meaning-only' ? 'meaning' : 'text'
+    );
     const focusNode = collectNodes(tree, n => n.props?.['data-shared-segment-focus'] === v2.ids.missingMeaningSegId);
-    assert.equal(focusNode.length, 1, `Segment view missing target in layout ${bilingualLayout}`);
+    assert.equal(focusNode.length, 1, `Segment Study Box missing target in layout ${bilingualLayout}`);
     const textBlocks = collectNodes(tree, n => n.props?.['data-shared-segment-channel-block'] === 'text');
     const meaningBlocks = collectNodes(tree, n => n.props?.['data-shared-segment-channel-block'] === 'meaning');
-    assert.equal(textBlocks.length, bilingualLayout === 'meaning-only' ? 0 : 1);
-    assert.equal(meaningBlocks.length, bilingualLayout === 'text-only' ? 0 : 1);
-    if (bilingualLayout !== 'text-only') {
-      assert.ok(extractText(meaningBlocks[0]).includes('No Indonesian meaning for this sentence.'));
-    }
+    assert.equal(textBlocks.length, 1, 'Study Box always renders EN channel block');
+    assert.equal(meaningBlocks.length, 1, 'Study Box always renders ID channel block');
+    assert.ok(extractText(meaningBlocks[0]).includes('No Indonesian meaning for this sentence.'));
   }
 
   // Cached Full Card notice + zero fake active sentence

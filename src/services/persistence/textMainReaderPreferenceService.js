@@ -1,10 +1,12 @@
 import {
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
+  TEXT_READER_MODES,
   isTextWorkspaceStyleDirty,
   normalizeTextCardPresentationState,
   normalizeTextWorkspaceStyleOverride,
   normalizeTextWorkspaceStyleState,
   resolveEffectiveTextWorkspaceStyle,
+  resolveTextReaderModeFromState,
   updateTextWorkspaceStyleState
 } from '../../domain/text/textCardPresentationStateDomain.js';
 import {
@@ -15,7 +17,7 @@ import {
 // Separate from both the historical Shared QA view preference and audio settings.
 export const TEXT_MAIN_READER_PREFERENCE_KEY = 'prolingo_text_main_reader_v1';
 
-export const TEXT_MAIN_READER_MODES = Object.freeze(['full', 'card']);
+export const TEXT_MAIN_READER_MODES = TEXT_READER_MODES;
 export const DEFAULT_TEXT_MAIN_READER_MODE = 'full';
 export const DEFAULT_SHARED_CARD_VISIBILITY = TEXT_CARD_EXPANSION_MODES.ALL;
 
@@ -101,6 +103,15 @@ export const normalizeTextMainReaderPreference = candidate => {
     view: normalizeTextCardPresentationState(isV1 ? candidate.view : null),
     workspaceStyle: normalizeTextWorkspaceStyleState(isV1 ? candidate.workspaceStyle : null),
     workspaceStyleOverrides: normalizeWorkspaceStyleOverridesMap(isV1 ? candidate.workspaceStyleOverrides : null)
+  });
+};
+
+export const resolveTextMainReaderMode = preference => {
+  const normalized = normalizeTextMainReaderPreference(preference);
+  return resolveTextReaderModeFromState({
+    readerMode: normalized.readerMode,
+    view: normalized.view,
+    supportsFourModes: true
   });
 };
 

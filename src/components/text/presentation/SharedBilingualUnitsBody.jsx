@@ -198,11 +198,14 @@ const renderChannelJoinSeparator = (segment, hasNextSegment) => {
 
 const CardChannelFlowBody = ({
   units,
+  authoredUnitIndexByViewKey,
   channel,
   indexById,
   speakerAppearanceMap,
   cursor,
   focusSegmentId,
+  selectedSegmentId = null,
+  selectionOnly = false,
   playableSegmentIds,
   audioCoverageMap,
   isSpeakingCard,
@@ -213,7 +216,8 @@ const CardChannelFlowBody = ({
   showSectionHeaders,
   showMissingInline,
   workspaceStylePresentation,
-  onPlaySegment
+  onPlaySegment,
+  onSelectSegment = null
 }) => {
   const isMeaning = channel === 'meaning';
   const proseTypography = isTitleRole
@@ -241,6 +245,7 @@ const CardChannelFlowBody = ({
       data-shared-full-channel-highlight={fullChannelHighlighted ? 'true' : undefined}
     >
       {units.map((unit, unitIndex) => {
+        const authoredUnitIndex = authoredUnitIndexByViewKey?.get(unit.viewKey) ?? unitIndex;
         const unitSegments = unit.segments || [];
         const isTurn = unit.kind === 'turn';
         const speakerInfo = isTurn
@@ -333,6 +338,8 @@ const CardChannelFlowBody = ({
                   isSpeakingCard,
                   fullChannelHighlighted,
                   focusSegmentId,
+                  selectedSegmentId,
+                  selectionOnly,
                   playableSegmentIds,
                   audioCoverageMap,
                   disabled
@@ -351,10 +358,11 @@ const CardChannelFlowBody = ({
                       speaking={flags.speaking}
                       focused={flags.focused}
                       fullChannelHighlighted={flags.fullChannelHighlighted}
+                      className={flags.className}
                       dataAttributes={flags.dataAttributes}
                       title={flags.title}
                       accessibleLabel={flags.accessibleLabel}
-                      onActivate={onPlaySegment}
+                      onActivate={selectionOnly ? onSelectSegment : onPlaySegment}
                     >
                       {content}
                     </TextSegmentInteraction>
@@ -382,7 +390,7 @@ const CardChannelFlowBody = ({
               {showSectionHeaders && !isTurn && (
                 <UnitHeadingBlock
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   compact
                   showAccents={showAccents}
                 />
@@ -390,7 +398,7 @@ const CardChannelFlowBody = ({
               {useStackedTurn && (
                 <UnitHeadingBlock
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   speakerInfo={speakerInfo}
                   isRepeatedSpeaker={isRepeatedSpeaker}
                   isAudibleTurn={isAudibleTurn}
@@ -402,7 +410,7 @@ const CardChannelFlowBody = ({
               {useInlineTurn && (
                 <InlineTurnMetaStrip
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   speakerInfo={speakerInfo}
                   isRepeatedSpeaker={isRepeatedSpeaker}
                   isAudibleTurn={isAudibleTurn}
@@ -416,7 +424,7 @@ const CardChannelFlowBody = ({
                 >
                   <AlignedSpeakerColumn
                     unit={unit}
-                    unitIndex={unitIndex}
+                    unitIndex={authoredUnitIndex}
                     speakerInfo={speakerInfo}
                     isRepeatedSpeaker={isRepeatedSpeaker}
                     isAudibleTurn={isAudibleTurn}
@@ -440,10 +448,13 @@ const CardChannelFlowBody = ({
 
 const CardInterlinearBody = ({
   units,
+  authoredUnitIndexByViewKey,
   indexById,
   speakerAppearanceMap,
   cursor,
   focusSegmentId,
+  selectedSegmentId = null,
+  selectionOnly = false,
   playableSegmentIds,
   audioCoverageMap,
   isSpeakingCard,
@@ -454,7 +465,8 @@ const CardInterlinearBody = ({
   showSectionHeaders,
   showSegmentNumbers = true,
   workspaceStylePresentation,
-  onPlaySegment
+  onPlaySegment,
+  onSelectSegment = null
 }) => {
   const fullTextHighlight = isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'text';
   const fullMeaningHighlight = isSpeakingCard && cursor.precision === 'card' && cursor.channel === 'meaning';
@@ -473,6 +485,7 @@ const CardInterlinearBody = ({
   return (
     <div className="space-y-6" data-shared-card-flow="interlinear">
       {units.map((unit, unitIndex) => {
+        const authoredUnitIndex = authoredUnitIndexByViewKey?.get(unit.viewKey) ?? unitIndex;
         const unitSegments = unit.segments || [];
         const isTurn = unit.kind === 'turn';
         const speakerInfo = isTurn
@@ -531,6 +544,8 @@ const CardInterlinearBody = ({
                   isSpeakingCard,
                   fullChannelHighlighted: fullTextHighlight,
                   focusSegmentId,
+                  selectedSegmentId,
+                  selectionOnly,
                   playableSegmentIds,
                   audioCoverageMap,
                   disabled
@@ -543,6 +558,8 @@ const CardInterlinearBody = ({
                   isSpeakingCard,
                   fullChannelHighlighted: fullMeaningHighlight,
                   focusSegmentId,
+                  selectedSegmentId,
+                  selectionOnly,
                   playableSegmentIds,
                   audioCoverageMap,
                   disabled
@@ -603,10 +620,11 @@ const CardInterlinearBody = ({
                             speaking={textFlags.speaking}
                             focused={textFlags.focused}
                             fullChannelHighlighted={textFlags.fullChannelHighlighted}
+                            className={textFlags.className}
                             dataAttributes={textFlags.dataAttributes}
                             title={textFlags.title}
                             accessibleLabel={textFlags.accessibleLabel}
-                            onActivate={onPlaySegment}
+                            onActivate={selectionOnly ? onSelectSegment : onPlaySegment}
                           >
                             {textContent}
                           </TextSegmentInteraction>
@@ -640,10 +658,11 @@ const CardInterlinearBody = ({
                             speaking={meaningFlags.speaking}
                             focused={meaningFlags.focused}
                             fullChannelHighlighted={meaningFlags.fullChannelHighlighted}
+                            className={meaningFlags.className}
                             dataAttributes={meaningFlags.dataAttributes}
                             title={meaningFlags.title}
                             accessibleLabel={meaningFlags.accessibleLabel}
-                            onActivate={onPlaySegment}
+                            onActivate={selectionOnly ? onSelectSegment : onPlaySegment}
                           >
                             {meaningContent}
                           </TextSegmentInteraction>
@@ -680,14 +699,14 @@ const CardInterlinearBody = ({
               {showSectionHeaders && !isTurn && (
                 <UnitHeadingBlock
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   showAccents={showAccents}
                 />
               )}
               {useStackedTurn && (
                 <UnitHeadingBlock
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   speakerInfo={speakerInfo}
                   isRepeatedSpeaker={isRepeatedSpeaker}
                   isAudibleTurn={isAudibleTurn}
@@ -698,7 +717,7 @@ const CardInterlinearBody = ({
               {useInlineTurn && (
                 <InlineTurnMetaStrip
                   unit={unit}
-                  unitIndex={unitIndex}
+                  unitIndex={authoredUnitIndex}
                   speakerInfo={speakerInfo}
                   isRepeatedSpeaker={isRepeatedSpeaker}
                   isAudibleTurn={isAudibleTurn}
@@ -712,7 +731,7 @@ const CardInterlinearBody = ({
                 >
                   <AlignedSpeakerColumn
                     unit={unit}
-                    unitIndex={unitIndex}
+                    unitIndex={authoredUnitIndex}
                     speakerInfo={speakerInfo}
                     isRepeatedSpeaker={isRepeatedSpeaker}
                     isAudibleTurn={isAudibleTurn}
@@ -748,18 +767,28 @@ export const SharedBilingualUnitsBody = ({
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
   focusSegmentId = null,
+  selectedSegmentId = null,
+  selectionOnly = false,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false,
   forceSectionHeaders = null,
   showSegmentNumbers = true,
-  onPlaySegment
+  onPlaySegment,
+  onSelectSegment = null
 }) => {
   const units = unitsOverride || card?.units || [];
   const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
   const { indexById } = useMemo(() => buildCardSegmentIndexMap(card), [card]);
+  const authoredUnitIndexByViewKey = useMemo(() => {
+    const map = new Map();
+    (card?.units || []).forEach((unit, idx) => {
+      if (unit?.viewKey) map.set(unit.viewKey, idx);
+    });
+    return map;
+  }, [card]);
   const resolvedSpeakerMap = useMemo(
     () => speakerAppearanceMap || buildCardSpeakerAppearanceMap(card),
     [card, speakerAppearanceMap]
@@ -802,11 +831,14 @@ export const SharedBilingualUnitsBody = ({
           </p>
           <CardChannelFlowBody
             units={units}
+            authoredUnitIndexByViewKey={authoredUnitIndexByViewKey}
             channel="text"
             indexById={indexById}
             speakerAppearanceMap={resolvedSpeakerMap}
             cursor={cursor}
             focusSegmentId={focusSegmentId}
+            selectedSegmentId={selectedSegmentId}
+            selectionOnly={selectionOnly}
             playableSegmentIds={playableSegmentIds}
             audioCoverageMap={audioCoverageMap}
             isSpeakingCard={isSpeakingCard}
@@ -818,6 +850,7 @@ export const SharedBilingualUnitsBody = ({
             showMissingInline={false}
             workspaceStylePresentation={workspaceStylePresentation}
             onPlaySegment={onPlaySegment}
+            onSelectSegment={onSelectSegment}
           />
         </div>
         <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800">
@@ -826,11 +859,14 @@ export const SharedBilingualUnitsBody = ({
           </p>
           <CardChannelFlowBody
             units={units}
+            authoredUnitIndexByViewKey={authoredUnitIndexByViewKey}
             channel="meaning"
             indexById={indexById}
             speakerAppearanceMap={resolvedSpeakerMap}
             cursor={cursor}
             focusSegmentId={focusSegmentId}
+            selectedSegmentId={selectedSegmentId}
+            selectionOnly={selectionOnly}
             playableSegmentIds={playableSegmentIds}
             audioCoverageMap={audioCoverageMap}
             isSpeakingCard={isSpeakingCard}
@@ -842,6 +878,7 @@ export const SharedBilingualUnitsBody = ({
             showMissingInline={false}
             workspaceStylePresentation={workspaceStylePresentation}
             onPlaySegment={onPlaySegment}
+            onSelectSegment={onSelectSegment}
           />
         </div>
       </div>
@@ -854,11 +891,14 @@ export const SharedBilingualUnitsBody = ({
       <div {...workspaceStyleAttrs}>
         <CardChannelFlowBody
           units={units}
+          authoredUnitIndexByViewKey={authoredUnitIndexByViewKey}
           channel={channel}
           indexById={indexById}
           speakerAppearanceMap={resolvedSpeakerMap}
           cursor={cursor}
           focusSegmentId={focusSegmentId}
+          selectedSegmentId={selectedSegmentId}
+          selectionOnly={selectionOnly}
           playableSegmentIds={playableSegmentIds}
           audioCoverageMap={audioCoverageMap}
           isSpeakingCard={isSpeakingCard}
@@ -870,6 +910,7 @@ export const SharedBilingualUnitsBody = ({
           showMissingInline
           workspaceStylePresentation={workspaceStylePresentation}
           onPlaySegment={onPlaySegment}
+          onSelectSegment={onSelectSegment}
         />
       </div>
     );
@@ -879,10 +920,13 @@ export const SharedBilingualUnitsBody = ({
     <div {...workspaceStyleAttrs}>
       <CardInterlinearBody
         units={units}
+        authoredUnitIndexByViewKey={authoredUnitIndexByViewKey}
         indexById={indexById}
         speakerAppearanceMap={resolvedSpeakerMap}
         cursor={cursor}
         focusSegmentId={focusSegmentId}
+        selectedSegmentId={selectedSegmentId}
+        selectionOnly={selectionOnly}
         playableSegmentIds={playableSegmentIds}
         audioCoverageMap={audioCoverageMap}
         isSpeakingCard={isSpeakingCard}
@@ -894,6 +938,7 @@ export const SharedBilingualUnitsBody = ({
         showSegmentNumbers={showSegmentNumbers}
         workspaceStylePresentation={workspaceStylePresentation}
         onPlaySegment={onPlaySegment}
+        onSelectSegment={onSelectSegment}
       />
     </div>
   );

@@ -4,11 +4,13 @@ import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from '.
 import {
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   isTextWorkspaceStyleDirty,
-  normalizeTextWorkspaceStyleState
+  normalizeTextWorkspaceStyleState,
+  resolveTextReaderModeFromState
 } from '../src/domain/text/textCardPresentationStateDomain.js';
 import {
   DEFAULT_SHARED_CARD_VISIBILITY,
   DEFAULT_TEXT_MAIN_READER_MODE,
+  TEXT_MAIN_READER_MODES,
   TEXT_MAIN_READER_PERSISTENCE_REASONS,
   TEXT_MAIN_READER_PREFERENCE_KEY,
   TEXT_WORKSPACE_STYLE_SCOPES,
@@ -18,6 +20,7 @@ import {
   persistTextMainReaderPreference,
   resetSavedTextMainReaderWorkspaceStyle,
   resetTextMainReaderWorkspaceStyle,
+  resolveTextMainReaderMode,
   resolveTextMainReaderPreferenceStorageKey,
   resolveTextMainReaderWorkspaceStyle,
   saveTextMainReaderPreference,
@@ -388,5 +391,86 @@ test('non-destructive storage writes preserve previously saved data on QuotaExce
   assert.equal(unavailableResult.persisted, false);
   assert.equal(unavailableResult.reason, TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_UNAVAILABLE);
   assert.equal(unavailableResult.preference.reader, 'shared');
+});
+test('4-mode Reader preference compatibility maps legacy Part layouts deterministically without content migration', () => {
+  assert.deepEqual(TEXT_MAIN_READER_MODES, ['full', 'card', 'focus', 'segment']);
+
+  // Historical Part vertical-list -> Card
+  const legacyVerticalList = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    view: { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-list' }
+  });
+  assert.equal(legacyVerticalList.mode, 'card');
+  assert.equal(legacyVerticalList.effectiveLevel, 'full');
+  assert.equal(legacyVerticalList.mappedFromLegacyPart, true);
+
+  // Historical Part vertical-focus -> Focus Vertical
+  const legacyVerticalFocus = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    readerMode: 'card',
+    view: { level: 'part', bilingualLayout: 'interlinear', partLayout: 'vertical-focus' }
+  });
+  assert.equal(legacyVerticalFocus.mode, 'focus');
+  assert.equal(legacyVerticalFocus.effectiveLevel, 'part');
+  assert.equal(legacyVerticalFocus.focusOrientation, 'vertical-focus');
+  assert.equal(legacyVerticalFocus.effectivePartLayout, 'vertical-focus');
+
+  // Historical Part horizontal-focus -> Focus Horizontal
+  const legacyHorizontalFocus = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    view: { level: 'part', bilingualLayout: 'text-only', partLayout: 'horizontal-focus' }
+  });
+  assert.equal(legacyHorizontalFocus.mode, 'focus');
+  assert.equal(legacyHorizontalFocus.effectiveLevel, 'part');
+  assert.equal(legacyHorizontalFocus.focusOrientation, 'horizontal-focus');
+  assert.equal(legacyHorizontalFocus.effectivePartLayout, 'horizontal-focus');
+
+  // Historical Segment -> Segment Mode
+  const legacySegment = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    view: { level: 'segment', bilingualLayout: 'interlinear', partLayout: 'vertical-list' }
+  });
+  assert.equal(legacySegment.mode, 'segment');
+  assert.equal(legacySegment.effectiveLevel, 'segment');
+
+  // Direct 4-mode preferences
+  const directFocus = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    readerMode: 'focus',
+    view: { level: 'full', bilingualLayout: 'interlinear', partLayout: 'vertical-list' }
+  });
+  assert.equal(directFocus.mode, 'focus');
+  assert.equal(directFocus.focusOrientation, 'vertical-focus');
+
+  const directCard = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    readerMode: 'card',
+    view: { level: 'full', bilingualLayout: 'separated', partLayout: 'vertical-list' }
+  });
+  assert.equal(directCard.mode, 'card');
+  assert.equal(directCard.effectiveLevel, 'full');
+
+  const directFull = resolveTextMainReaderMode({
+    version: 1,
+    reader: 'shared',
+    readerMode: 'full',
+    view: { level: 'full', bilingualLayout: 'interlinear', partLayout: 'vertical-list' }
+  });
+  assert.equal(directFull.mode, 'full');
+
+  // Legacy 3-mode callers (supportsFourModes: false) keep raw Part vertical-list semantics
+  const threeModeLegacy = resolveTextReaderModeFromState({
+    readerMode: null,
+    view: { level: 'part', partLayout: 'vertical-list', bilingualLayout: 'interlinear' },
+    supportsFourModes: false
+  });
+  assert.equal(threeModeLegacy.effectiveLevel, 'part');
+  assert.equal(threeModeLegacy.effectivePartLayout, 'vertical-list');
 });
 console.log(`${passed} A6 Node checks PASS`);

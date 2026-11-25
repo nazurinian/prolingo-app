@@ -340,37 +340,63 @@ export const buildSharedSegmentRenderFlags = ({
   isSpeakingCard = false,
   fullChannelHighlighted = false,
   focusSegmentId = null,
+  selectedSegmentId = null,
+  selectionOnly = false,
   playableSegmentIds = null,
   audioCoverageMap = null,
   disabled = false
 }) => {
   const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id;
-  const speaking = active && cursor.channel === channel;
+  const paused = active && cursor.state === 'paused';
+  const speaking = active && !paused && cursor.channel === channel;
   const focused = segment.id === focusSegmentId;
+  const selected = Boolean(selectedSegmentId && segment.id === selectedSegmentId);
   const playable = playableSegmentIds?.has ? playableSegmentIds.has(segment.id) : true;
-  const segmentDisabled = disabled || !playable;
+  const segmentDisabled = selectionOnly ? false : (disabled || !playable);
   const isMeaning = channel === 'meaning';
+
+  const visualStateClasses = [];
+  if (paused && !fullChannelHighlighted) {
+    visualStateClasses.push('bg-amber-100/95 dark:bg-amber-950/60 text-amber-950 dark:text-amber-100 ring-1 ring-amber-400/75 dark:ring-amber-600/75');
+  }
+  if (selected) {
+    if (speaking || paused || fullChannelHighlighted) {
+      visualStateClasses.push('underline decoration-sky-500 dark:decoration-sky-300 decoration-2 underline-offset-4');
+    } else {
+      visualStateClasses.push('bg-sky-100/85 dark:bg-sky-900/45 text-slate-950 dark:text-sky-50 underline decoration-sky-500 dark:decoration-sky-400 decoration-2 underline-offset-4 ring-1 ring-sky-300/80 dark:ring-sky-700/80');
+    }
+  }
 
   return {
     active,
+    paused,
     speaking,
     focused,
+    selected,
     playable,
     segmentDisabled,
     fullChannelHighlighted,
+    className: visualStateClasses.join(' '),
     dataAttributes: {
       'data-shared-card-segment': segment.id,
       'data-shared-card-channel': channel,
-      'data-shared-card-index': logicalIndex + 1
+      'data-shared-card-index': logicalIndex + 1,
+      ...(selected ? { 'data-shared-segment-selected': 'true' } : {}),
+      ...(paused ? { 'data-shared-segment-paused': 'true' } : {}),
+      ...(selectionOnly ? { 'data-shared-segment-select-only': 'true' } : {})
     },
-    title: buildSegmentCoverageTitle({
-      segment,
-      logicalIndex,
-      audioCoverageMap,
-      playable,
-      disabled
-    }),
-    accessibleLabel: `Play sentence ${logicalIndex + 1} (${isMeaning ? 'Indonesian meaning' : 'English text'})`
+    title: selectionOnly
+      ? `Sentence ${logicalIndex + 1} • Tap to select in Study Box (does not start audio)`
+      : buildSegmentCoverageTitle({
+          segment,
+          logicalIndex,
+          audioCoverageMap,
+          playable,
+          disabled
+        }),
+    accessibleLabel: selectionOnly
+      ? `Select sentence ${logicalIndex + 1} in Study Box (${isMeaning ? 'Indonesian meaning' : 'English text'})`
+      : `Play sentence ${logicalIndex + 1} (${isMeaning ? 'Indonesian meaning' : 'English text'})`
   };
 };
 
@@ -493,6 +519,31 @@ export const SHARED_PART_LAYOUT_OPTIONS = Object.freeze([
   Object.freeze({ id: 'vertical-focus', label: 'Focus', description: 'Emphasize the active section vertically with previous and next neighbors' }),
   Object.freeze({ id: 'vertical-list', label: 'List', description: 'Read all sections stacked vertically in order' })
 ]);
+
+export const SHARED_FOCUS_ORIENTATION_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'vertical-focus', label: 'Vertical', description: 'Focus one section vertically with smaller previous and next previews' }),
+  Object.freeze({ id: 'horizontal-focus', label: 'Horizontal', description: 'Swipe or step horizontally with centered focus and peeking neighbor previews' })
+]);
+
+export const getSharedUnitShortCode = (unit, index) => (
+  unit?.kind === 'turn' ? `T${index + 1}` : `SC${index + 1}`
+);
+
+export const buildUnitPreviewExcerpt = (unit, bilingualLayout = 'interlinear', maxChars = 140) => {
+  const segments = unit?.segments || [];
+  if (!segments.length) return '';
+  const preferMeaning = bilingualLayout === 'meaning-only';
+  const parts = [];
+  for (const segment of segments) {
+    const primary = normalizeSegmentDisplayText(preferMeaning ? segment?.meaning : segment?.text);
+    const fallback = normalizeSegmentDisplayText(preferMeaning ? segment?.text : segment?.meaning);
+    const chosen = primary || fallback;
+    if (chosen) parts.push(chosen);
+  }
+  const joined = parts.join(' ').trim();
+  if (!joined) return '';
+  return joined.length > maxChars ? `${joined.slice(0, maxChars - 1).trimEnd()}…` : joined;
+};
 
 /**
  * Builds deterministic unit and segment lookups preserving empty sections and blank channels.

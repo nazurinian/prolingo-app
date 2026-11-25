@@ -5,6 +5,7 @@ import {
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   normalizeTextCardPresentationState,
   normalizeTextWorkspaceStyleState,
+  resolveTextReaderModeFromState,
   updateTextCardPresentationState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import {
@@ -334,6 +335,8 @@ export const SharedCardReadingSurface = ({
   onToggleExpanded,
   onPlayCard,
   onPlaySegment,
+  onPlaySegmentChannel = null,
+  onPlayContinueFromSegment = null,
   onManualNavigate = null,
   headerActionsSlot = null,
   footerSlot = null,
@@ -378,11 +381,21 @@ export const SharedCardReadingSurface = ({
   );
 
   const [manualAnchor, setManualAnchor] = useState(null);
+  const [unitSegmentMemory, setUnitSegmentMemory] = useState(() => ({
+    workspaceKey,
+    byUnitViewKey: {}
+  }));
   const [dismissedFocusNonce, setDismissedFocusNonce] = useState(null);
   const [manualGraceActive, setManualGraceActive] = useState(false);
   const graceTimerRef = useRef(null);
 
   useEffect(() => () => window.clearTimeout(graceTimerRef.current), []);
+
+  const activeUnitSegmentMemory = useMemo(() => (
+    unitSegmentMemory.workspaceKey === workspaceKey
+      ? unitSegmentMemory.byUnitViewKey
+      : {}
+  ), [unitSegmentMemory, workspaceKey]);
 
   const selection = useMemo(() => resolveEffectiveCardSelection({
     card,
@@ -407,18 +420,23 @@ export const SharedCardReadingSurface = ({
 
   const handleSelectUnit = useCallback(unitViewKey => {
     const unit = lookup.unitByViewKey.get(unitViewKey);
-    const firstSegId = unit?.segments?.[0]?.id || null;
+    const unitSegments = unit?.segments || [];
+    const rememberedId = activeUnitSegmentMemory[unitViewKey] || null;
+    const validRememberedId = rememberedId && unitSegments.some(seg => seg.id === rememberedId)
+      ? rememberedId
+      : null;
+    const restoredSegmentId = validRememberedId || unitSegments[0]?.id || null;
     if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
       setDismissedFocusNonce(focusTarget.nonce);
     }
     setManualAnchor({
       workspaceKey,
       unitViewKey,
-      segmentId: firstSegId,
+      segmentId: restoredSegmentId,
       playingKeyAtManual: selection.audiblePlayingKey
     });
     triggerManualGrace();
-  }, [lookup, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
+  }, [lookup, activeUnitSegmentMemory, focusTarget, workspaceId, card?.id, workspaceKey, selection.audiblePlayingKey, triggerManualGrace]);
 
   const handleSelectSegment = useCallback(segmentId => {
     const entry = lookup.entryBySegmentId.get(segmentId);
@@ -426,6 +444,13 @@ export const SharedCardReadingSurface = ({
     if (focusTarget?.documentId === workspaceId && focusTarget?.blockId === card?.id && focusTarget?.nonce !== undefined) {
       setDismissedFocusNonce(focusTarget.nonce);
     }
+    setUnitSegmentMemory(previous => ({
+      workspaceKey,
+      byUnitViewKey: {
+        ...(previous.workspaceKey === workspaceKey ? previous.byUnitViewKey : {}),
+        [entry.unitViewKey]: segmentId
+      }
+    }));
     setManualAnchor({
       workspaceKey,
       unitViewKey: entry.unitViewKey,
@@ -486,9 +511,12 @@ export const SharedCardReadingSurface = ({
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           selection={selection}
+          onSelectUnit={handleSelectUnit}
           onSelectSegment={handleSelectSegment}
           onFollowAudible={handleFollowAudible}
           onPlaySegment={onPlaySegment}
+          onPlaySegmentChannel={onPlaySegmentChannel}
+          onPlayContinueFromSegment={onPlayContinueFromSegment}
         />
       ) : (
         <SharedBilingualUnitsBody
@@ -813,6 +841,8 @@ export const SharedParagraphWorkspaceReader = ({
   disabled = false,
   onPlayCard,
   onPlaySegment,
+  onPlaySegmentChannel = null,
+  onPlayContinueFromSegment = null,
   toolbarRightSlot = null,
   scrollContainerRef = null
 }) => {
@@ -830,10 +860,22 @@ export const SharedParagraphWorkspaceReader = ({
     : uncontrolledState;
 
   const supportsBookAndCardModes = Boolean(readerMode !== null || onReaderModeChange !== null);
-  const effectiveReaderMode = supportsBookAndCardModes
-    ? (readerMode === 'card' ? 'card' : 'full')
-    : 'card';
-  const showBookPage = supportsBookAndCardModes && effectiveReaderMode === 'full' && activeViewState.level === 'full';
+  const modeResolution = useMemo(() => resolveTextReaderModeFromState({
+    readerMode,
+    view: activeViewState,
+    supportsFourModes: supportsBookAndCardModes
+  }), [readerMode, activeViewState, supportsBookAndCardModes]);
+  const effectiveReaderMode = modeResolution.mode;
+  const effectiveCardPresentationState = useMemo(() => (
+    supportsBookAndCardModes
+      ? normalizeTextCardPresentationState({
+          ...activeViewState,
+          level: modeResolution.effectiveLevel,
+          partLayout: modeResolution.effectivePartLayout
+        })
+      : activeViewState
+  ), [supportsBookAndCardModes, activeViewState, modeResolution.effectiveLevel, modeResolution.effectivePartLayout]);
+  const showBookPage = supportsBookAndCardModes && effectiveReaderMode === 'full';
 
   const resolvedWorkspaceStyle = useMemo(
     () => normalizeTextWorkspaceStyleState(workspaceStyle),
@@ -977,9 +1019,9 @@ export const SharedParagraphWorkspaceReader = ({
       data-shared-paragraph-reader="true"
       data-shared-workspace-id={presentation.workspace.id}
       data-shared-reader-surface={showBookPage ? 'book-full' : effectiveReaderMode}
-      data-shared-view-level={activeViewState.level}
-      data-shared-part-layout={activeViewState.partLayout}
-      data-shared-bilingual-layout={activeViewState.bilingualLayout}
+      data-shared-view-level={effectiveCardPresentationState.level}
+      data-shared-part-layout={effectiveCardPresentationState.partLayout}
+      data-shared-bilingual-layout={effectiveCardPresentationState.bilingualLayout}
       data-shared-card-visibility={managesCardVisibility ? effectiveVisibility : undefined}
       className="space-y-4"
     >
@@ -989,7 +1031,7 @@ export const SharedParagraphWorkspaceReader = ({
         presentationState={activeViewState}
         onChangePresentationState={handleChangePresentationState}
         onResetView={handleResetView}
-        readerMode={supportsBookAndCardModes ? effectiveReaderMode : null}
+        readerMode={supportsBookAndCardModes ? readerMode : null}
         onChangeReaderMode={onReaderModeChange}
         workspaceStyle={showWorkspaceStyle || onWorkspaceStyleChange ? resolvedControlStyle : null}
         effectiveWorkspaceStyleDefaults={effectiveWorkspaceStyleDefaults}
@@ -1085,7 +1127,7 @@ export const SharedParagraphWorkspaceReader = ({
                 card={card}
                 index={cardIndex}
                 workspace={presentation.workspace}
-                presentationState={activeViewState}
+                presentationState={effectiveCardPresentationState}
                 workspaceStyle={resolvedWorkspaceStyle}
                 playbackCursor={playbackCursor}
                 focusTarget={focusTarget}
@@ -1100,6 +1142,8 @@ export const SharedParagraphWorkspaceReader = ({
                 onToggleExpanded={cardsCollapsible ? handleToggleCard : undefined}
                 onPlayCard={onPlayCard}
                 onPlaySegment={onPlaySegment}
+                onPlaySegmentChannel={onPlaySegmentChannel}
+                onPlayContinueFromSegment={onPlayContinueFromSegment}
                 onManualNavigate={markUserNavigation}
               />
             );

@@ -3,6 +3,10 @@ export const TEXT_CARD_BILINGUAL_LAYOUTS = Object.freeze(['interlinear', 'separa
 export const TEXT_CARD_PART_LAYOUTS = Object.freeze(['horizontal-focus', 'vertical-focus', 'vertical-list']);
 export const DEFAULT_TEXT_CARD_PRESENTATION_STATE = Object.freeze({ level: 'full', bilingualLayout: 'interlinear', partLayout: 'vertical-list' });
 
+export const TEXT_READER_MODES = Object.freeze(['full', 'card', 'focus', 'segment']);
+export const TEXT_FOCUS_ORIENTATIONS = Object.freeze(['vertical-focus', 'horizontal-focus']);
+export const DEFAULT_TEXT_FOCUS_ORIENTATION = 'vertical-focus';
+
 export const TEXT_WORKSPACE_STYLE_ALIGNMENTS = Object.freeze(['left', 'justify']);
 export const TEXT_WORKSPACE_STYLE_SPEAKER_LAYOUTS = Object.freeze(['stacked', 'aligned', 'inline']);
 export const DEFAULT_TEXT_WORKSPACE_STYLE_STATE = Object.freeze({
@@ -24,6 +28,111 @@ export const updateTextCardPresentationState = (current, patch) => normalizeText
   ...normalizeTextCardPresentationState(current),
   ...Object.fromEntries(Object.keys(DEFAULT_TEXT_CARD_PRESENTATION_STATE).filter(key => Object.hasOwn(patch || {}, key)).map(key => [key, patch[key]]))
 });
+
+/**
+ * Deterministically resolves the 4-mode Reader surface ('full' | 'card' | 'focus' | 'segment')
+ * and Focus orientation ('vertical-focus' | 'horizontal-focus') from saved/runtime
+ * readerMode + view ({ level, partLayout }) without migrating content data.
+ *
+ * Historical compatibility mapping:
+ * - level: 'part', partLayout: 'vertical-list'    -> mode: 'card' (effectiveLevel: 'full')
+ * - level: 'part', partLayout: 'vertical-focus'   -> mode: 'focus', focusOrientation: 'vertical-focus'
+ * - level: 'part', partLayout: 'horizontal-focus' -> mode: 'focus', focusOrientation: 'horizontal-focus'
+ * - level: 'segment'                              -> mode: 'segment'
+ * - level: 'full', readerMode: 'card'             -> mode: 'card'
+ * - level: 'full', readerMode: 'full' (or unset)  -> mode: 'full'
+ */
+export const resolveTextReaderModeFromState = ({
+  readerMode = null,
+  view = null,
+  supportsFourModes = true
+} = {}) => {
+  const normalizedView = normalizeTextCardPresentationState(view);
+  const focusOrientation = normalizedView.partLayout === 'horizontal-focus'
+    ? 'horizontal-focus'
+    : DEFAULT_TEXT_FOCUS_ORIENTATION;
+
+  if (!supportsFourModes) {
+    return Object.freeze({
+      mode: normalizedView.level === 'part'
+        ? (normalizedView.partLayout === 'vertical-list' ? 'card' : 'focus')
+        : normalizedView.level === 'segment'
+          ? 'segment'
+          : 'card',
+      effectiveLevel: normalizedView.level,
+      effectivePartLayout: normalizedView.partLayout,
+      focusOrientation,
+      mappedFromLegacyPart: false
+    });
+  }
+
+  if (normalizedView.level === 'segment') {
+    return Object.freeze({
+      mode: 'segment',
+      effectiveLevel: 'segment',
+      effectivePartLayout: normalizedView.partLayout,
+      focusOrientation,
+      mappedFromLegacyPart: false
+    });
+  }
+
+  if (normalizedView.level === 'part') {
+    if (normalizedView.partLayout === 'vertical-list') {
+      return Object.freeze({
+        mode: 'card',
+        effectiveLevel: 'full',
+        effectivePartLayout: 'vertical-list',
+        focusOrientation,
+        mappedFromLegacyPart: true
+      });
+    }
+    return Object.freeze({
+      mode: 'focus',
+      effectiveLevel: 'part',
+      effectivePartLayout: focusOrientation,
+      focusOrientation,
+      mappedFromLegacyPart: readerMode !== 'focus'
+    });
+  }
+
+  if (readerMode === 'focus') {
+    return Object.freeze({
+      mode: 'focus',
+      effectiveLevel: 'part',
+      effectivePartLayout: focusOrientation,
+      focusOrientation,
+      mappedFromLegacyPart: false
+    });
+  }
+
+  if (readerMode === 'segment') {
+    return Object.freeze({
+      mode: 'segment',
+      effectiveLevel: 'segment',
+      effectivePartLayout: normalizedView.partLayout,
+      focusOrientation,
+      mappedFromLegacyPart: false
+    });
+  }
+
+  if (readerMode === 'card') {
+    return Object.freeze({
+      mode: 'card',
+      effectiveLevel: 'full',
+      effectivePartLayout: normalizedView.partLayout,
+      focusOrientation,
+      mappedFromLegacyPart: false
+    });
+  }
+
+  return Object.freeze({
+    mode: 'full',
+    effectiveLevel: 'full',
+    effectivePartLayout: normalizedView.partLayout,
+    focusOrientation,
+    mappedFromLegacyPart: false
+  });
+};
 
 const resolveWorkspaceStyleDefaults = defaults => {
   if (!defaults || defaults === DEFAULT_TEXT_WORKSPACE_STYLE_STATE) {

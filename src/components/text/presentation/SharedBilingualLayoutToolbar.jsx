@@ -24,12 +24,14 @@ import {
   normalizeTextCardPresentationState,
   normalizeTextWorkspaceStyleState,
   resetTextWorkspaceStyleState,
+  resolveTextReaderModeFromState,
   updateTextCardPresentationState,
   updateTextWorkspaceStyleState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import {
   SHARED_BILINGUAL_LAYOUT_OPTIONS,
   SHARED_CONVERSATION_SPEAKER_LAYOUT_OPTIONS,
+  SHARED_FOCUS_ORIENTATION_OPTIONS,
   SHARED_LEVEL_OPTIONS,
   SHARED_PART_LAYOUT_OPTIONS,
   SHARED_WORKSPACE_ALIGNMENT_OPTIONS,
@@ -360,15 +362,25 @@ export const SharedBilingualLayoutToolbar = ({
         bilingualLayout: bilingualLayout || DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
       });
 
-  const supportsBookAndCardModes = Boolean(onChangeReaderMode);
-  const resolvedReaderMode = readerMode === 'card' ? 'card' : 'full';
+  const supportsFourModes = Boolean(onChangeReaderMode);
+  const modeResolution = resolveTextReaderModeFromState({
+    readerMode,
+    view: activeState,
+    supportsFourModes
+  });
+  const resolvedReaderMode = modeResolution.mode;
+  const focusOrientation = modeResolution.focusOrientation;
 
-  const isCustomView = (
-    activeState.level !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.level
-    || activeState.bilingualLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
-    || (activeState.level === 'part' && activeState.partLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout)
-    || (supportsBookAndCardModes && resolvedReaderMode !== 'full')
-  );
+  const isCustomView = supportsFourModes
+    ? (
+        resolvedReaderMode !== 'full'
+        || activeState.bilingualLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
+      )
+    : (
+        activeState.level !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.level
+        || activeState.bilingualLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
+        || (activeState.level === 'part' && activeState.partLayout !== DEFAULT_TEXT_CARD_PRESENTATION_STATE.partLayout)
+      );
   const shouldShowWorkspaceStyle = Boolean(
     showWorkspaceStyle || workspaceStyle !== null || onChangeWorkspaceStyle !== null
   );
@@ -383,30 +395,41 @@ export const SharedBilingualLayoutToolbar = ({
     }
   };
 
-  const handleSelectMode = ({ nextReaderMode = null, nextLevel = 'full' }) => {
-    if (supportsBookAndCardModes && nextReaderMode) {
+  const handleSelectMode = ({ nextReaderMode = null, nextLevel = 'full', nextPartLayout = null }) => {
+    if (supportsFourModes && nextReaderMode) {
       onChangeReaderMode(nextReaderMode);
     }
+    const viewPatch = {};
     if (nextLevel !== activeState.level) {
-      emitPatch({ level: nextLevel });
+      viewPatch.level = nextLevel;
+    }
+    if (nextPartLayout && nextPartLayout !== activeState.partLayout) {
+      viewPatch.partLayout = nextPartLayout;
+    }
+    if (Object.keys(viewPatch).length > 0) {
+      emitPatch(viewPatch);
     }
   };
+
+  const showContextualFocusBar = supportsFourModes
+    ? resolvedReaderMode === 'focus'
+    : activeState.level === 'part';
 
   return (
     <div
       className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm transition-colors motion-reduce:transition-none space-y-2.5"
       data-shared-card-bilingual-toolbar="true"
-      data-shared-card-toolbar-level={activeState.level}
-      data-shared-reader-mode={supportsBookAndCardModes ? (activeState.level === 'full' ? resolvedReaderMode : activeState.level) : activeState.level}
+      data-shared-card-toolbar-level={modeResolution.effectiveLevel}
+      data-shared-reader-mode={supportsFourModes ? resolvedReaderMode : activeState.level}
     >
       <div className="flex flex-wrap items-center justify-between gap-2.5">
         <div className="flex flex-wrap items-center gap-2.5 min-w-0 w-full lg:w-auto">
           {/* Reader Mode / Display Level Selector */}
           <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {supportsBookAndCardModes ? 'Mode' : 'View'}
+              {supportsFourModes ? 'Mode' : 'View'}
             </span>
-            {supportsBookAndCardModes ? (
+            {supportsFourModes ? (
               <div
                 role="group"
                 aria-label="Reader mode (display only)"
@@ -417,7 +440,7 @@ export const SharedBilingualLayoutToolbar = ({
                     id: 'full',
                     label: 'Full',
                     icon: BookOpen,
-                    active: activeState.level === 'full' && resolvedReaderMode === 'full',
+                    active: resolvedReaderMode === 'full',
                     title: 'Read the entire Workspace as one continuous book presentation',
                     levelAttr: 'full',
                     modeAttr: 'full',
@@ -427,31 +450,35 @@ export const SharedBilingualLayoutToolbar = ({
                     id: 'card',
                     label: 'Card',
                     icon: Rows3,
-                    active: activeState.level === 'full' && resolvedReaderMode === 'card',
+                    active: resolvedReaderMode === 'card',
                     title: `Read individual expandable ${terms.cardLower}s containing all their ${terms.plural}`,
                     levelAttr: null,
                     modeAttr: 'card',
                     onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'full' })
                   },
                   {
-                    id: 'part',
-                    label: 'Part',
+                    id: 'focus',
+                    label: 'Focus',
                     icon: Layers,
-                    active: activeState.level === 'part',
+                    active: resolvedReaderMode === 'focus',
                     title: describe(SHARED_LEVEL_OPTIONS.find(o => o.id === 'part')),
                     levelAttr: 'part',
-                    modeAttr: null,
-                    onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'part' })
+                    modeAttr: 'focus',
+                    onClick: () => handleSelectMode({
+                      nextReaderMode: 'focus',
+                      nextLevel: 'part',
+                      nextPartLayout: focusOrientation
+                    })
                   },
                   {
                     id: 'segment',
                     label: 'Segment',
                     icon: Target,
-                    active: activeState.level === 'segment',
+                    active: resolvedReaderMode === 'segment',
                     title: describe(SHARED_LEVEL_OPTIONS.find(o => o.id === 'segment')),
                     levelAttr: 'segment',
-                    modeAttr: null,
-                    onClick: () => handleSelectMode({ nextReaderMode: 'card', nextLevel: 'segment' })
+                    modeAttr: 'segment',
+                    onClick: () => handleSelectMode({ nextReaderMode: 'segment', nextLevel: 'segment' })
                   }
                 ].map(item => {
                   const Icon = item.icon;
@@ -569,31 +596,40 @@ export const SharedBilingualLayoutToolbar = ({
         )}
       </div>
 
-      {/* Contextual Part Layout Switch (visible strictly in Part view) */}
-      {activeState.level === 'part' && (
+      {/* Contextual Focus Orientation (4-mode) or legacy Part Style (3-mode) Switch */}
+      {showContextualFocusBar && (
         <div
           className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center gap-2"
           data-shared-part-layout-bar="true"
+          data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
         >
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Part Style
+            {supportsFourModes ? 'Focus Style' : 'Part Style'}
           </span>
           <div
             role="group"
-            aria-label={`Part ${terms.lower} layout (display only)`}
-            className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/75 dark:bg-slate-800/60 p-1"
+            aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
+            className={`${supportsFourModes ? 'grid grid-cols-2' : 'grid grid-cols-3'} sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/75 dark:bg-slate-800/60 p-1`}
           >
-            {SHARED_PART_LAYOUT_OPTIONS.map(option => {
-              const active = activeState.partLayout === option.id;
+            {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
+              const active = supportsFourModes
+                ? focusOrientation === option.id
+                : activeState.partLayout === option.id;
               const Icon = PART_LAYOUT_ICONS[option.id] || List;
               return (
                 <button
                   key={option.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => emitPatch({ partLayout: option.id })}
+                  onClick={() => {
+                    if (supportsFourModes && readerMode !== 'focus') {
+                      onChangeReaderMode?.('focus');
+                    }
+                    emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
+                  }}
                   title={describe(option)}
                   data-shared-card-part-layout-option={option.id}
+                  data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
                   className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                     active
                       ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm ring-1 ring-indigo-200/70 dark:ring-slate-600'

@@ -113,7 +113,6 @@ const compileCss = async () => {
 const harnessJsx = `
 import React, { useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { applyTextLibraryCommand } from './src/domain/text/textLibraryCommandDomain.js';
 import { selectTextMixedReaderState } from './src/domain/text/textMixedReaderDomain.js';
 import {
   TEXT_MAIN_READER_PREFERENCE_KEY,
@@ -126,101 +125,37 @@ import {
   saveTextMainReaderPreference,
   updateTextMainReaderWorkspaceStyle
 } from './src/services/persistence/textMainReaderPreferenceService.js';
-import {
-  TEXT_PARAGRAPH_CARD_ROLES,
-  buildTextParagraphCardRoleMetadata
-} from './src/domain/text/textParagraphRoleDomain.js';
 import { TEXT_STRUCTURED_PLAYBACK_CONTEXT } from './src/domain/text/textStructuredPlaybackDomain.js';
 import StructuredWorkspacePlayer, {
   STRUCTURED_UAT_PREFERENCE_HOST_ID
 } from './src/components/text/presentation/StructuredWorkspacePlayer.jsx';
 import TextStructuredPlayer from './src/components/text/TextStructuredPlayer.jsx';
-import { createJourneyToLondonFixture } from './scripts/fixtures/uat4/journey-to-london.js';
+import {
+  createJourneyToLondonFixture,
+  createJourneyToLondonStressFixtures
+} from './scripts/fixtures/uat4/journey-to-london.js';
 
-// Build a single combined v2 snapshot containing BOTH:
+// Consume BOTH verbatim authoritative fixtures without shortening or dropping stress sentences:
 // 1. Complete 4/11/37 "A Journey to London" Mixed Workspace
-// 2. Separate "UAT-4B1 Stress Cases" Mixed Workspace (Title Card, empty Units, consecutive Turns, long Speaker, joinAfter)
-const buildDualWorkspaceSnapshot = () => {
+// 2. Complete 3/8/9 "UAT-4B0 Stress Cases (Separate)" Mixed Workspace
+const buildDualWorkspaceSnapshots = () => {
   const base = createJourneyToLondonFixture();
-  let snapshot = base.snapshot;
-  const apply = (type, payload) => {
-    const out = applyTextLibraryCommand(snapshot, { type, payload }, 4500);
-    snapshot = out.snapshot;
-    return out.result.id;
-  };
-  const stressDocId = apply('document.create', {
-    title: 'UAT-4B1 Stress Workspace',
-    documentType: 'mixed',
-    textLanguage: 'en',
-    meaningLanguage: 'id'
-  });
-  const jamesId = apply('speaker.register', { documentId: stressDocId, label: 'James' });
-  const longSpeakerLabel = 'Senior International Railway Ticketing & Passenger Assistance Coordinator';
-  const longSpeakerId = apply('speaker.register', { documentId: stressDocId, label: longSpeakerLabel });
-  const emmaId = apply('speaker.register', { documentId: stressDocId, label: 'Emma' });
-
-  const titleCardId = apply('block.create', {
-    documentId: stressDocId,
-    blockType: 'paragraph',
-    title: 'Chapter One',
-    metadata: buildTextParagraphCardRoleMetadata({ role: TEXT_PARAGRAPH_CARD_ROLES.TITLE })
-  });
-  const titleUnitId = snapshot.contentUnits.find(u => u.blockId === titleCardId)?.id
-    || apply('contentUnit.create', { blockId: titleCardId, kind: 'paragraph' });
-  apply('segment.create', { blockId: titleCardId, unitId: titleUnitId, text: 'A Journey to London', meaning: 'Perjalanan ke London' });
-
-  const paraStressCardId = apply('block.create', {
-    documentId: stressDocId,
-    blockType: 'paragraph',
-    title: 'Punctuation, Line Break & Unequal Length Stress'
-  });
-  const joinSecId = snapshot.contentUnits.find(u => u.blockId === paraStressCardId)?.id
-    || apply('contentUnit.create', { blockId: paraStressCardId, kind: 'paragraph' });
-  apply('segment.create', { blockId: paraStressCardId, unitId: joinSecId, text: 'Platform 4', meaning: 'Peron 4', joinAfter: 'none' });
-  apply('segment.create', {
-    blockId: paraStressCardId,
-    unitId: joinSecId,
-    text: '—direct express service—departed promptly while passengers settled into their seats.',
-    meaning: '—kereta ekspres langsung—berangkat tepat waktu.',
-    joinAfter: 'line'
-  });
-  apply('segment.create', {
-    blockId: paraStressCardId,
-    unitId: joinSecId,
-    text: 'All aboard!',
-    meaning: 'Para penumpang dipersilakan segera naik ke gerbong karena pintu kereta akan segera ditutup.'
-  });
-  const emptySecId = apply('contentUnit.create', { blockId: paraStressCardId, kind: 'paragraph' });
-
-  const convStressCardId = apply('block.create', {
-    documentId: stressDocId,
-    blockType: 'conversation',
-    title: 'Consecutive, Long-Name & Empty Turn Stress'
-  });
-  const consT1 = apply('contentUnit.create', { blockId: convStressCardId, kind: 'turn', speakerId: jamesId, speaker: 'James' });
-  apply('segment.create', { blockId: convStressCardId, unitId: consT1, text: 'Wait—I think I left my ticket in my coat pocket.', meaning: 'Tunggu—sepertinya tiket saya tertinggal di saku mantel.' });
-  const consT2 = apply('contentUnit.create', { blockId: convStressCardId, kind: 'turn', speakerId: jamesId, speaker: 'James' });
-  apply('segment.create', { blockId: convStressCardId, unitId: consT2, text: 'Oh, here it is! Sorry for holding up the queue.', meaning: 'Oh, ini dia! Maaf sudah menahan antrean.' });
-  const longT = apply('contentUnit.create', { blockId: convStressCardId, kind: 'turn', speakerId: longSpeakerId, speaker: longSpeakerLabel });
-  apply('segment.create', { blockId: convStressCardId, unitId: longT, text: 'No problem at all; please proceed directly towards carriage B where luggage racks remain available.', meaning: 'Tidak masalah sama sekali; silakan langsung menuju gerbong B tempat rak bagasi masih tersedia.' });
-  const emptyTurnId = apply('contentUnit.create', { blockId: convStressCardId, kind: 'turn', speakerId: emmaId, speaker: 'Emma' });
-  const unassignedT = apply('contentUnit.create', { blockId: convStressCardId, kind: 'turn' });
-  apply('segment.create', { blockId: convStressCardId, unitId: unassignedT, text: 'Please mind the gap between the train and the platform edge.', meaning: 'Harap perhatikan celah antara kereta dan tepi peron.' });
-
+  const stress = createJourneyToLondonStressFixtures();
   return {
-    snapshot,
+    london: base,
+    stress,
     londonIds: base.ids,
-    stressIds: { documentId: stressDocId, titleCardId, paraStressCardId, emptySecId, convStressCardId, consT1, consT2, longT, emptyTurnId }
+    stressIds: stress.ids
   };
 };
 
 const loadOrCreateDualSnapshot = () => {
-  const CACHE_KEY = '__uat4_4b1_dual_snapshot_cache_v1';
+  const CACHE_KEY = '__uat4_4b1_dual_snapshot_cache_v2';
   try {
     const cached = window.sessionStorage.getItem(CACHE_KEY);
     if (cached) return JSON.parse(cached);
   } catch { /* ignore */ }
-  const created = buildDualWorkspaceSnapshot();
+  const created = buildDualWorkspaceSnapshots();
   try {
     window.sessionStorage.setItem(CACHE_KEY, JSON.stringify(created));
   } catch { /* ignore */ }
@@ -228,18 +163,19 @@ const loadOrCreateDualSnapshot = () => {
 };
 
 const dual = loadOrCreateDualSnapshot();
-const snapshotBefore = JSON.stringify(dual.snapshot);
+const londonBefore = JSON.stringify(dual.london.snapshot);
+const stressBefore = JSON.stringify(dual.stress.snapshot);
 const UAT_STORAGE_KEY = resolveTextMainReaderPreferenceStorageKey({ hostId: STRUCTURED_UAT_PREFERENCE_HOST_ID });
 
-function LiveMainAppHostHarness({ activeDocId, playbackLogRef }) {
+function LiveMainAppHostHarness({ activeFixture, playbackLogRef }) {
   const [pref, setPref] = useState(() => loadTextMainReaderPreference());
   const [scope, setScope] = useState(TEXT_WORKSPACE_STYLE_SCOPES.SHARED);
   const [cardExpansionMode, setCardExpansionMode] = useState('all');
   const [activePlayback, setActivePlayback] = useState(null);
 
   const selected = useMemo(
-    () => selectTextMixedReaderState(dual.snapshot, { documentId: activeDocId }),
-    [activeDocId]
+    () => selectTextMixedReaderState(activeFixture.snapshot, { documentId: activeFixture.ids.documentId }),
+    [activeFixture]
   );
   const activeWorkspaceKey = useMemo(
     () => normalizeTextWorkspacePreferenceKey(selected.presentation.workspace),
@@ -323,7 +259,7 @@ function LiveMainAppHostHarness({ activeDocId, playbackLogRef }) {
         playbackRepresentationMode="split"
         playbackPreferences={{ cardExpansionMode, playbackOrderMode: 'sequential', repeatMode: 'off' }}
         onPlaybackFeelChange={patch => { if (patch.cardExpansionMode) setCardExpansionMode(patch.cardExpansionMode); }}
-        onPlayDocument={() => playbackLogRef.current.push(['main:playDocument', activeDocId])}
+        onPlayDocument={() => playbackLogRef.current.push(['main:playDocument', activeFixture.ids.documentId])}
         onPlayCard={(cardId, opts) => playbackLogRef.current.push(['main:playCard', cardId, opts || null])}
         onPlaySegment={segId => playbackLogRef.current.push(['main:playSegment', segId])}
       />
@@ -334,11 +270,12 @@ function LiveMainAppHostHarness({ activeDocId, playbackLogRef }) {
 function DualHostApp() {
   const initialParams = new URLSearchParams(window.location.search);
   const [hostTab, setHostTab] = useState(() => initialParams.get('host') || 'uat');
-  const [activeDocId, setActiveDocId] = useState(() => initialParams.get('doc') === 'stress' ? dual.stressIds.documentId : dual.londonIds.documentId);
+  const [whichDoc, setWhichDoc] = useState(() => initialParams.get('doc') === 'stress' ? 'stress' : 'london');
   const [dark, setDark] = useState(false);
   const playbackLogRef = useRef([]);
   const uatEventsRef = useRef([]);
   const uatCancelsRef = useRef(0);
+  const activeFixture = whichDoc === 'stress' ? dual.stress : dual.london;
 
   const audioRuntimeHooks = useMemo(() => ({
     speechSynth: {
@@ -363,7 +300,10 @@ function DualHostApp() {
     UAT_STORAGE_KEY,
     londonIds: dual.londonIds,
     stressIds: dual.stressIds,
-    getSnapshotUnchanged: () => JSON.stringify(dual.snapshot) === snapshotBefore,
+    getSnapshotUnchanged: () => (
+      JSON.stringify(dual.london.snapshot) === londonBefore
+      && JSON.stringify(dual.stress.snapshot) === stressBefore
+    ),
     getPlaybackLog: () => [...playbackLogRef.current],
     clearPlaybackLog: () => { playbackLogRef.current = []; },
     getUatEvents: () => uatEventsRef.current,
@@ -379,10 +319,10 @@ function DualHostApp() {
       window.history.replaceState(null, '', url);
     },
     setWorkspace: which => {
-      const nextId = which === 'stress' ? dual.stressIds.documentId : dual.londonIds.documentId;
-      setActiveDocId(nextId);
+      const nextDoc = which === 'stress' ? 'stress' : 'london';
+      setWhichDoc(nextDoc);
       const url = new URL(window.location.href);
-      url.searchParams.set('doc', which);
+      url.searchParams.set('doc', nextDoc);
       window.history.replaceState(null, '', url);
     },
     setDark: flag => {
@@ -410,12 +350,13 @@ function DualHostApp() {
 
         {hostTab === 'uat' ? (
           <StructuredWorkspacePlayer
-            snapshot={dual.snapshot}
-            documentId={activeDocId}
+            key={whichDoc}
+            snapshot={activeFixture.snapshot}
+            documentId={activeFixture.ids.documentId}
             audioRuntimeHooks={audioRuntimeHooks}
           />
         ) : (
-          <LiveMainAppHostHarness activeDocId={activeDocId} playbackLogRef={playbackLogRef} />
+          <LiveMainAppHostHarness key={whichDoc} activeFixture={activeFixture} playbackLogRef={playbackLogRef} />
         )}
       </div>
     </div>
@@ -783,12 +724,16 @@ try {
       alignedCount: document.querySelectorAll('[data-shared-turn-aligned-grid]').length,
       titleIndented: [...document.querySelectorAll('[data-shared-reading-kind="title"]')].some(el => parseFloat(getComputedStyle(el).textIndent) > 0),
       consecutiveCount: document.querySelectorAll('[data-shared-turn-consecutive="true"]').length,
+      totalEnStressSegments: document.querySelectorAll('[data-shared-card-segment][data-shared-card-channel="text"]').length,
+      hasLongSpeakerSecondSentence: document.body.textContent.includes('Our onboard attendants can also help you locate your reserved window seat'),
       noOverflow: document.documentElement.scrollWidth <= window.innerWidth
     }))()`);
     assert.equal(stressInherit.align, 'justify', 'Unoverridden Workspace must inherit Shared defaults');
     assert.ok(stressInherit.alignedCount >= 6);
     assert.equal(stressInherit.titleIndented, false, 'Title Card must never indent');
     assert.ok(stressInherit.consecutiveCount >= 2);
+    assert.equal(stressInherit.totalEnStressSegments, 9, 'Complete stress fixture must retain all 9 stress sentences');
+    assert.equal(stressInherit.hasLongSpeakerSecondSentence, true, 'Complete stress fixture must retain second long-speaker sentence');
     assert.equal(stressInherit.noOverflow, true);
     await captureFullPage('08-uat-host-stress-title-consecutive-long.png');
 

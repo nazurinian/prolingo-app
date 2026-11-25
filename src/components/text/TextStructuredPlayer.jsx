@@ -31,7 +31,8 @@ import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   normalizeTextCardPresentationState,
-  normalizeTextWorkspaceStyleState
+  normalizeTextWorkspaceStyleState,
+  resolveTextReaderModeFromState
 } from '../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
 import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
@@ -584,9 +585,20 @@ export const TextStructuredPlayer = ({
     ? normalizeTextCardPresentationState(sharedPresentationState)
     : uncontrolledSharedView;
   const supportsSharedReaderModes = Boolean(sharedReaderMode !== null || onSharedReaderModeChange !== null);
-  const activeSharedReaderMode = supportsSharedReaderModes
-    ? (sharedReaderMode === 'card' ? 'card' : 'full')
-    : 'card';
+  const sharedModeResolution = useMemo(() => resolveTextReaderModeFromState({
+    readerMode: sharedReaderMode,
+    view: activeSharedView,
+    supportsFourModes: supportsSharedReaderModes
+  }), [sharedReaderMode, activeSharedView, supportsSharedReaderModes]);
+  const effectiveSharedCardView = useMemo(() => (
+    supportsSharedReaderModes
+      ? normalizeTextCardPresentationState({
+          ...activeSharedView,
+          level: sharedModeResolution.effectiveLevel,
+          partLayout: sharedModeResolution.effectivePartLayout
+        })
+      : activeSharedView
+  ), [supportsSharedReaderModes, activeSharedView, sharedModeResolution.effectiveLevel, sharedModeResolution.effectivePartLayout]);
   const resolvedSharedWorkspaceStyle = useMemo(
     () => normalizeTextWorkspaceStyleState(sharedWorkspaceStyle),
     [sharedWorkspaceStyle]
@@ -599,8 +611,7 @@ export const TextStructuredPlayer = ({
     useSharedCardReader
     && sharedPresentation
     && supportsSharedReaderModes
-    && activeSharedReaderMode === 'full'
-    && activeSharedView.level === 'full'
+    && sharedModeResolution.mode === 'full'
   );
   const handleSharedPresentationChange = useCallback(nextState => {
     const next = normalizeTextCardPresentationState(nextState);
@@ -842,7 +853,7 @@ export const TextStructuredPlayer = ({
             presentationState={activeSharedView}
             onChangePresentationState={handleSharedPresentationChange}
             onResetView={handleResetSharedView}
-            readerMode={supportsSharedReaderModes ? activeSharedReaderMode : null}
+            readerMode={supportsSharedReaderModes ? sharedReaderMode : null}
             onChangeReaderMode={onSharedReaderModeChange}
             workspaceStyle={onSharedWorkspaceStyleChange ? resolvedSharedWorkspaceStyleControl : null}
             effectiveWorkspaceStyleDefaults={sharedWorkspaceStyleDefaults}
@@ -951,8 +962,8 @@ export const TextStructuredPlayer = ({
           useSharedCardReader={useSharedCardReader}
           sharedCard={useSharedCardReader ? (sharedPresentation?.cardById?.[block.id] || null) : null}
           sharedWorkspace={useSharedCardReader ? (sharedPresentation?.workspace || null) : null}
-          sharedPresentationState={useSharedCardReader ? activeSharedView : null}
-          sharedBilingualLayout={activeSharedView.bilingualLayout}
+          sharedPresentationState={useSharedCardReader ? effectiveSharedCardView : null}
+          sharedBilingualLayout={effectiveSharedCardView.bilingualLayout}
           sharedWorkspaceStyle={resolvedSharedWorkspaceStyle}
           sharedPlaybackCursor={sharedPlaybackCursor}
         />)}
