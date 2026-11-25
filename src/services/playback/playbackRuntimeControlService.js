@@ -4,8 +4,9 @@ export const executeSettlePlaybackPromise = ({ playbackResolveRef }) => {
       if (resolver) resolver();
 };
 
-export const executeWaitWhilePaused = async ({ pauseStateRef, stopSignalRef }) => {
-      while (pauseStateRef.current && !stopSignalRef.current) {
+export const executeWaitWhilePaused = async ({ pauseStateRef, stopSignalRef, playbackSessionRef }) => {
+      const session = playbackSessionRef?.current;
+      while (pauseStateRef.current && !stopSignalRef.current && playbackSessionRef?.current === session) {
           await new Promise(resolve => setTimeout(resolve, 100));
       }
 };
@@ -95,10 +96,15 @@ export const executeResumePlayback = ({
 };
 
 export const executeSafePlayTransition = async ({
-  forceStopAll, playbackSessionRef, stopSignalRef, pauseStateRef, actionCallback
+  forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession, onError
 }) => {
     forceStopAll();
     const transitionSession = playbackSessionRef.current;
+    // Transport can navigate the validated queue during the handoff delay.
+    // A pending session has no audible evidence yet.
+    if (playbackContextRef && pendingSession) {
+      playbackContextRef.current = { ...pendingSession, pending: true, sessionId: transitionSession };
+    }
     await new Promise(r => setTimeout(r, 120));
 
     // A Stop or newer Play/Next/Prev transition increments the playback session.
@@ -107,6 +113,34 @@ export const executeSafePlayTransition = async ({
 
     stopSignalRef.current = false;
     pauseStateRef.current = false;
-    await actionCallback();
-    return true;
+    try {
+      await actionCallback();
+      return true;
+    } catch (error) {
+      if (transitionSession === playbackSessionRef.current) {
+        forceStopAll();
+        onError?.(error);
+      }
+      return false;
+    }
+};
+
+export const readOwnedPlaybackSession = ({ playbackSessionRef, playbackContextRef, stopSignalRef }) => {
+  const session = playbackContextRef?.current;
+  return session?.sessionId === playbackSessionRef.current && (session.pending || !stopSignalRef.current)
+    ? session : null;
+};
+
+export const navigateOwnedPlayback = (session, direction) => {
+  if (!session) return false;
+  const { orderedList, nowPlayingCardOrder, cursorSegmentId, blockId, queueIndex, restart } = session;
+  const queue = nowPlayingCardOrder ?? orderedList;
+  if (!restart || !queue?.length || !['prev', 'next'].includes(direction)) return false;
+  const current = nowPlayingCardOrder ? queue.indexOf(blockId)
+    : cursorSegmentId != null ? queue.findIndex(item => item.id === cursorSegmentId) : queueIndex;
+  if (!Number.isInteger(current) || current < 0 || current >= queue.length) return false;
+  // Manual transport wraps within the owned queue. Natural completion is handled by the executor.
+  const index = (current + queue.length + (direction === 'next' ? 1 : -1)) % queue.length;
+  if (index !== current) restart(nowPlayingCardOrder ? orderedList.find(item => item.blockId === queue[index]) : queue[index], index);
+  return true;
 };

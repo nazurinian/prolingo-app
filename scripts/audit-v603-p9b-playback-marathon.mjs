@@ -669,7 +669,7 @@ await runCheck('S7', 'DEFECT', '[DEFECT S7-A] Stale Shuffle orderedListOverride 
 // ============================================================================
 // SCENARIO 8: Mid-playback workspace switch, Table/Text switch, restart
 // ============================================================================
-await runCheck('S8', 'CONTRACT', 'Mode switch & mid-playback workspace stop abort active session and suppress completion cursor overwrite', async () => {
+await runCheck('S8', 'CONTRACT', 'Passive mode switch keeps ownership; explicit Stop cancels without completion cursor overwrite', async () => {
   const doc = makeDocTree();
   const h = createRuntimeHarness();
   let completedCalls = 0;
@@ -688,12 +688,11 @@ await runCheck('S8', 'CONTRACT', 'Mode switch & mid-playback workspace stop abor
     }
   });
   await gate;
+  const ownedSessionId = h.playbackSessionRef.current;
   let nextMode = 'text';
   let scrollRestored = null;
   executeModeSwitch({
     targetMode: 'table', mode: 'text', isSystemBusy: false,
-    forceStopAll: h.forceStopAll, setPlayingIndex: h.setPlayingIndex, setPlayingContext: h.setPlayingContext,
-    setIndependentPlayingId: v => { h.state.independentPlayingId = v; },
     viewScrollPosRef: { current: { master: 120, text: 0 } }, tableViewMode: 'master',
     getScrollPos: () => 45, currentIndex: 'SEGMENT_000001',
     setSavedIndices: () => {}, setScrollTop: v => { scrollRestored = v; },
@@ -704,6 +703,10 @@ await runCheck('S8', 'CONTRACT', 'Mode switch & mid-playback workspace stop abor
   await flushAsync(4);
   assert.equal(nextMode, 'table');
   assert.equal(scrollRestored, 120);
+  assert.equal(h.state.isPlaying, true);
+  assert.equal(h.playbackSessionRef.current, ownedSessionId);
+  h.forceStopAll();
+  await flushAsync(4);
   assert.equal(h.state.isPlaying, false);
   assert.equal(completedCalls, 0);
 });

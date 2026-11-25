@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Play, Radio } from 'lucide-react';
+import { ChevronRight, Play, Radio, Square } from 'lucide-react';
+import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -148,6 +149,7 @@ export const SharedBookPageView = ({
             const sceneCast = isConversationScene ? summarizeSceneSpeakers({ card, appearanceMap: speakerAppearanceMap }) : [];
             const { hasText, hasMeaning } = resolveCardChannelAvailability(card);
             const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
+            const stopsCard = cardChannel => matchesStructuredPlaybackControl(cursor, { scope: 'card', blockId: card.id, cardChannel });
             const isFocusCard = Boolean(
               focusTarget?.documentId === workspace?.id
               && focusTarget?.blockId === card?.id
@@ -262,37 +264,40 @@ export const SharedBookPageView = ({
                       disabled={disabled || !hasText}
                       onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'text-only' })}
                       data-shared-card-play-channel="text"
-                      title={`Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
-                      aria-label="EN — Play English only"
+                      data-reader-playback-action={stopsCard('text-only') ? 'stop' : 'play'}
+                      title={stopsCard('text-only') ? 'Stop EN' : `Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
+                      aria-label={stopsCard('text-only') ? "Stop EN" : "EN — Play English only"}
                       className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-indigo-200/85 dark:border-indigo-800/75 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
-                      <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-                      <span>EN</span>
+                      {stopsCard('text-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+                      <span>{stopsCard('text-only') ? "Stop EN" : "EN"}</span>
                     </button>
                     <button
                       type="button"
                       disabled={disabled || !hasMeaning}
                       onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'meaning-only' })}
                       data-shared-card-play-channel="meaning"
-                      title={`Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
-                      aria-label="ID — Play Indonesian only"
+                      data-reader-playback-action={stopsCard('meaning-only') ? 'stop' : 'play'}
+                      title={stopsCard('meaning-only') ? 'Stop ID' : `Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
+                      aria-label={stopsCard('meaning-only') ? "Stop ID" : "ID — Play Indonesian only"}
                       className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-emerald-200/85 dark:border-emerald-800/75 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                     >
-                      <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-                      <span>ID</span>
+                      {stopsCard('meaning-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+                      <span>{stopsCard('meaning-only') ? "Stop ID" : "ID"}</span>
                     </button>
                     <button
                       type="button"
                       disabled={disabled || !cardPlayable}
                       onClick={() => onPlayCard?.(card.id)}
                       data-shared-card-play="true"
+                      data-reader-playback-action={stopsCard() ? 'stop' : 'play'}
                       data-text-card-play-compact="true"
-                      title={`Play entire ${cardTerms.cardLower}`}
-                      aria-label={`Play ${cardTerms.cardLower} ${cardIndex + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
+                      title={stopsCard() ? 'Stop Card' : `Play entire ${cardTerms.cardLower}`}
+                      aria-label={stopsCard() ? 'Stop Card' : `Play ${cardTerms.cardLower} ${cardIndex + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
                       className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 px-2.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1 shadow-sm disabled:opacity-40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                     >
-                      <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-                      <span className="sr-only sm:not-sr-only">Play</span>
+                      {stopsCard() ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+                      <span className="sr-only sm:not-sr-only">{stopsCard() ? 'Stop' : 'Play'}</span>
                     </button>
                     {renderCardActions?.(card, cardIndex)}
                   </div>
@@ -391,6 +396,7 @@ export const SharedCardReadingSurface = ({
   const cardTerms = getSharedUnitTerms(card);
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
+  const stopsCard = cardChannel => matchesStructuredPlaybackControl(cursor, { scope: 'card', blockId: card?.id, cardChannel });
   const lookup = useMemo(() => buildCardUnitLookup(card), [card]);
   const orderedSegments = useMemo(() => lookup.entries.map(item => item.segment), [lookup]);
   const speakerAppearanceMap = useMemo(
@@ -656,24 +662,26 @@ export const SharedCardReadingSurface = ({
               disabled={disabled || !hasText}
               onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'text-only' })}
               data-shared-card-play-channel="text"
-              title={`Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
-              aria-label="EN — Play English only"
+              data-reader-playback-action={stopsCard('text-only') ? 'stop' : 'play'}
+              title={stopsCard('text-only') ? 'Stop EN' : `Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
+              aria-label={stopsCard('text-only') ? "Stop EN" : "EN — Play English only"}
               className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-indigo-200/85 dark:border-indigo-800/75 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
-              <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-              <span>EN</span>
+              {stopsCard('text-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+              <span>{stopsCard('text-only') ? "Stop EN" : "EN"}</span>
             </button>
             <button
               type="button"
               disabled={disabled || !hasMeaning}
               onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'meaning-only' })}
               data-shared-card-play-channel="meaning"
-              title={`Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
-              aria-label="ID — Play Indonesian only"
+              data-reader-playback-action={stopsCard('meaning-only') ? 'stop' : 'play'}
+              title={stopsCard('meaning-only') ? 'Stop ID' : `Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
+              aria-label={stopsCard('meaning-only') ? "Stop ID" : "ID — Play Indonesian only"}
               className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-emerald-200/85 dark:border-emerald-800/75 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-              <span>ID</span>
+              {stopsCard('meaning-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+              <span>{stopsCard('meaning-only') ? "Stop ID" : "ID"}</span>
             </button>
           </div>
           {isSpeakingCard && (
@@ -854,40 +862,43 @@ export const SharedCardReadingSurface = ({
             disabled={disabled || !hasText}
             onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'text-only' })}
             data-shared-card-play-channel="text"
-            title={`Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
-            aria-label="EN — Play English only"
+            data-reader-playback-action={stopsCard('text-only') ? 'stop' : 'play'}
+            title={stopsCard('text-only') ? 'Stop EN' : `Play EN — Play English only (entire ${cardTerms.cardLower}, one-time override)`}
+            aria-label={stopsCard('text-only') ? "Stop EN" : "EN — Play English only"}
             className="min-h-11 sm:min-h-9 px-2.5 rounded-xl border border-indigo-200/85 dark:border-indigo-800/75 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
-            <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-            <span>EN</span>
+            {stopsCard('text-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+            <span>{stopsCard('text-only') ? "Stop EN" : "EN"}</span>
           </button>
           <button
             type="button"
             disabled={disabled || !hasMeaning}
             onClick={() => onPlayCard?.(card.id, { playbackChannelMode: 'meaning-only' })}
             data-shared-card-play-channel="meaning"
-            title={`Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
-            aria-label="ID — Play Indonesian only"
+            data-reader-playback-action={stopsCard('meaning-only') ? 'stop' : 'play'}
+            title={stopsCard('meaning-only') ? 'Stop ID' : `Play ID — Play Indonesian only (entire ${cardTerms.cardLower}, one-time override)`}
+            aria-label={stopsCard('meaning-only') ? "Stop ID" : "ID — Play Indonesian only"}
             className="min-h-11 sm:min-h-9 px-2.5 rounded-xl border border-emerald-200/85 dark:border-emerald-800/75 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            <Play aria-hidden="true" className="w-3 h-3 fill-current" />
-            <span>ID</span>
+            {stopsCard('meaning-only') ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}
+            <span>{stopsCard('meaning-only') ? "Stop ID" : "ID"}</span>
           </button>
           <button
             type="button"
             disabled={disabled || !cardPlayable}
             onClick={() => onPlayCard?.(card.id)}
             data-shared-card-play="true"
-            title={`Play entire ${cardTerms.cardLower}`}
-            aria-label={`Play ${cardTerms.cardLower} ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
+            data-reader-playback-action={stopsCard() ? 'stop' : 'play'}
+            title={stopsCard() ? 'Stop Card' : `Play entire ${cardTerms.cardLower}`}
+            aria-label={stopsCard() ? 'Stop Card' : `Play ${cardTerms.cardLower} ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
             className={`min-h-11 min-w-11 sm:min-h-9 sm:min-w-9 px-3 rounded-full text-xs font-semibold inline-flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
               isSpeakingCard
                 ? 'bg-indigo-700 text-white'
                 : 'bg-indigo-600 hover:bg-indigo-700 text-white'
             }`}
           >
-            <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
-            <span className="sr-only sm:not-sr-only">Play</span>
+            {stopsCard() ? <Square aria-hidden="true" className="w-3.5 h-3.5 fill-current" /> : <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />}
+            <span className="sr-only sm:not-sr-only">{stopsCard() ? 'Stop' : 'Play'}</span>
           </button>
           {headerActionsSlot}
         </div>

@@ -8,6 +8,7 @@ export const executeBrowserTtsPlaybackService = ({
   overrideVoice = null,
   selectedVoiceRef,
   stopSignalRef,
+  playbackSessionRef,
   pauseStateRef,
   synth,
   currentUtteranceRef,
@@ -19,11 +20,13 @@ export const executeBrowserTtsPlaybackService = ({
   onError = null,
   onNowPlaying = null
 }) => {
+    const session = playbackSessionRef?.current;
+    const isCurrent = () => !stopSignalRef.current && playbackSessionRef?.current === session;
     return new Promise((resolve) => {
       // When getVoices() exposes no named voice, let the device/browser use
       // its native speechSynthesis default rather than silently skipping TTS.
       const targetVoice = overrideVoice || selectedVoiceRef?.current || null;
-      if (stopSignalRef.current || !String(textToRead || '').trim()
+      if (!isCurrent() || !String(textToRead || '').trim()
           || !isBrowserTtsSpeechSupported({ synth })) {
           resolve();
           return;
@@ -34,12 +37,13 @@ export const executeBrowserTtsPlaybackService = ({
       }
       let settled = false;
       let utteranceGeneration = 0;
+      let ownedUtterance = null;
 
       const finish = () => {
           if (settled) return;
           settled = true;
           if (playbackResolveRef.current === finish) playbackResolveRef.current = null;
-          currentUtteranceRef.current = null;
+          if (currentUtteranceRef.current === ownedUtterance) currentUtteranceRef.current = null;
           if (ttsReplayRef?.current?.finish === finish) ttsReplayRef.current = null;
           onNowPlaying?.(null);
           resolve();
@@ -47,6 +51,7 @@ export const executeBrowserTtsPlaybackService = ({
 
       const handleUtteranceDone = (event, generation) => {
           if (settled || generation !== utteranceGeneration) return;
+          if (!isCurrent()) { finish(); return; }
           const replayState = ttsReplayRef?.current;
           // Android background MediaSession Pause may terminate the native
           // utterance. That termination is not the logical end of this ProLingo
@@ -60,12 +65,13 @@ export const executeBrowserTtsPlaybackService = ({
       };
 
       const speakFreshUtterance = () => {
-          if (settled || stopSignalRef.current) {
+          if (settled || !isCurrent()) {
               finish();
               return false;
           }
 
           const utterance = new SpeechSynthesisUtterance(textToRead);
+          ownedUtterance = utterance;
           const generation = ++utteranceGeneration;
           currentUtteranceRef.current = utterance;
           if (targetVoice) utterance.voice = targetVoice;
@@ -74,7 +80,7 @@ export const executeBrowserTtsPlaybackService = ({
           utterance.onend = event => handleUtteranceDone(event, generation);
           utterance.onerror = event => handleUtteranceDone(event, generation);
           if (onNowPlaying) utterance.onstart = () => {
-            if (settled || generation !== utteranceGeneration || ttsReplayRef?.current?.suspended) return;
+            if (settled || !isCurrent() || generation !== utteranceGeneration || ttsReplayRef?.current?.suspended) return;
             onNowPlaying({
               source: 'tts', provider: 'browser-tts',
               voice: utterance.voice?.name || null, rate: utterance.rate
@@ -99,7 +105,7 @@ export const executeBrowserTtsPlaybackService = ({
               suspended: false,
               restart: () => {
                   const replayState = ttsReplayRef.current;
-                  if (settled || stopSignalRef.current || replayState?.finish !== finish) {
+                  if (settled || !isCurrent() || replayState?.finish !== finish) {
                       finish();
                       return false;
                   }
@@ -111,7 +117,7 @@ export const executeBrowserTtsPlaybackService = ({
                   // engine one task turn before queueing the replacement so the
                   // cancellation cannot consume the new utterance as well.
                   setTimeout(() => {
-                      if (!settled && !stopSignalRef.current && !pauseStateRef?.current) {
+                      if (!settled && isCurrent() && !pauseStateRef?.current) {
                           speakFreshUtterance();
                       }
                   }, 25);
@@ -124,10 +130,10 @@ export const executeBrowserTtsPlaybackService = ({
           // Keep the short startup deferral from the frozen baseline, but do not
           // let a pending utterance start after the user has already pressed Pause.
           await new Promise(resolveStart => setTimeout(resolveStart, 10));
-          while (pauseStateRef?.current && !stopSignalRef.current) {
+          while (!settled && pauseStateRef?.current && isCurrent()) {
               await new Promise(resolvePause => setTimeout(resolvePause, 50));
           }
-          if (stopSignalRef.current) {
+          if (!isCurrent()) {
               finish();
               return;
           }
@@ -143,7 +149,9 @@ export const executeAudioSourcePlaybackService = ({
   item,
   part,
   stopSignalRef,
+  playbackSessionRef,
   preferLocalAudio,
+  waitWhilePaused,
   getLocalAudioUrl,
   currentAudioObjRef,
   rateRef,
@@ -157,13 +165,15 @@ export const executeAudioSourcePlaybackService = ({
   addLog,
   onNowPlaying = null
 }) => {
+    const session = playbackSessionRef?.current;
+    const isCurrent = () => !stopSignalRef.current && playbackSessionRef?.current === session;
     const fallbackToBrowserTts = () => {
-      if (stopSignalRef.current) return Promise.resolve();
+      if (!isCurrent()) return Promise.resolve();
       const fallbackVoice = resolveAudioFallbackVoice(part, selectedIndonesianVoiceRef.current);
       return playTTS(textToRead, fallbackVoice, onNowPlaying);
     };
 
-    if (stopSignalRef.current || !String(textToRead || '').trim()) return Promise.resolve();
+    if (!isCurrent() || !String(textToRead || '').trim()) return Promise.resolve();
 
     // C3.4.1: a local source can now be a lazy ZIP entry. Folder URLs remain
     // synchronous, while ZIP URLs resolve only when the requested audio is played.
@@ -173,11 +183,12 @@ export const executeAudioSourcePlaybackService = ({
     }) : null;
     return Promise.resolve(localSource)
       .catch(error => {
-        addLog?.('Warn', `Audio source resolve fail ${item?.vocabId || item?.displayId}/${part}: ${error?.message || error}. Fallback TTS.`);
+        if (isCurrent()) addLog?.('Warn', `Audio source resolve fail ${item?.vocabId || item?.displayId}/${part}: ${error?.message || error}. Fallback TTS.`);
         return null;
       })
-      .then(audioUrl => {
-        if (stopSignalRef.current) return undefined;
+      .then(async audioUrl => {
+        if (isCurrent() && waitWhilePaused) await waitWhilePaused();
+        if (!isCurrent()) return undefined;
         if (!audioUrl) return fallbackToBrowserTts();
 
         return new Promise((resolve) => {
@@ -205,6 +216,7 @@ export const executeAudioSourcePlaybackService = ({
           };
 
           const fallbackFromLocalFailure = () => {
+              if (!isCurrent()) { finish(); return; }
               if (shouldIgnoreLocalAudioFailure(settled)) return;
               settled = true;
               cleanupAudio();
@@ -217,11 +229,11 @@ export const executeAudioSourcePlaybackService = ({
 
           playbackResolveRef.current = finish;
           if (onNowPlaying) audio.onplaying = () => {
-            if (!settled) onNowPlaying({ ...sourceEvidence, media: audio });
+            if (!settled && isCurrent()) onNowPlaying({ ...sourceEvidence, media: audio });
           };
           audio.onended = finish;
           audio.onerror = () => {
-            addLog("Warn", `Audio fail ${item.vocabId || item.displayId}/${part}. Fallback TTS.`);
+            if (!settled && isCurrent()) addLog?.("Warn", `Audio fail ${item.vocabId || item.displayId}/${part}. Fallback TTS.`);
             fallbackFromLocalFailure();
           };
 

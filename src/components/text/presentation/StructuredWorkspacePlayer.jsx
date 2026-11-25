@@ -11,6 +11,7 @@ import {
 } from '../../../services/persistence/textMainReaderPreferenceService.js';
 import { useConversationAudioPlayback } from '../conversation/useConversationAudioPlayback.js';
 import { NowPlayingContext } from '../../playback/NowPlayingContext.js';
+import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import UnifiedStructuredReader from './UnifiedStructuredReader.jsx';
 
 const EMPTY = Object.freeze({});
@@ -105,6 +106,7 @@ export default function StructuredWorkspacePlayer({
 
   const audioConfig = useMemo(() => ({ preferences, ...options }), [preferences, options]);
   const audio = useConversationAudioPlayback({ snapshot, documentTree: selected.documentTree, audioConfig, runtimeAudioUrls, runtimeFullAudio, audioRuntimeHooks });
+  const stopsWorkspace = matchesStructuredPlaybackControl(audio.readNowPlaying(), { scope: 'document' });
   const consume = useCallback(nonce => setFocus(f => f?.nonce === nonce ? null : f), []);
   const search = event => {
     event.preventDefault();
@@ -118,7 +120,7 @@ export default function StructuredWorkspacePlayer({
       <button type="button" className="min-h-11 border rounded px-3" aria-pressed={mode === 'shared'} onClick={() => handleModeChange('shared')}>Shared UI (Beta)</button>
     </fieldset>
     <fieldset disabled={disabled} className="flex flex-wrap gap-2" aria-label="QA audio controls">
-      <button type="button" className="min-h-11 border px-3" onClick={audio.playWorkspace}>Play Workspace</button>
+      <button type="button" className="min-h-11 border px-3" onClick={audio.playWorkspace}>{stopsWorkspace ? 'Stop Workspace' : 'Play Workspace'}</button>
       <button type="button" className="min-h-11 border px-3" onClick={audio.pausePlayback}>Pause</button>
       <button type="button" className="min-h-11 border px-3" onClick={audio.resumePlayback}>Resume</button>
       <button type="button" className="min-h-11 border px-3" onClick={audio.stopPlayback}>Stop</button>

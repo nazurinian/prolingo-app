@@ -20,7 +20,8 @@ import { TEXT_LIBRARY_DB_VERSION, TEXT_LIBRARY_SCHEMA_VERSION } from '../src/con
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const notebookLayoutOnly = process.argv.includes('--notebook-layout');
 const notebookOnly = process.argv.includes('--only-4c3');
-const commandsOnly = process.argv.includes('--only-4e1');
+const sessionOnly = process.argv.includes('--only-4e2');
+const commandsOnly = sessionOnly || process.argv.includes('--only-4e1');
 const evidenceDir = process.env.UAT4_4C1_EVIDENCE_DIR
   || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-uat4-4c1-evidence-'));
 await fs.mkdir(evidenceDir, { recursive: true });
@@ -155,6 +156,9 @@ function LiveMainAppHostHarness({ activeFixture, playbackLogRef, commandRuntime 
     setFocusTarget: next => setFocusTarget(next),
     readNowPlaying: audio.readNowPlaying,
     stopPlayback: audio.stopPlayback,
+    pausePlayback: audio.pausePlayback,
+    resumePlayback: audio.resumePlayback,
+    navigatePlayback: audio.navigatePlayback,
     getFocusTarget: () => focusTarget
   };
 
@@ -266,6 +270,11 @@ function Audit4C1App() {
     finishLatestUatEvent: status => {
       const ev = uatEventsRef.current[uatEventsRef.current.length - 1];
       if (ev) ev.finish({ status: status || 'played' });
+    },
+    finishUatEvent: (index, status) => uatEventsRef.current[index]?.finish({ status }),
+    deleteDisposableSegment: id => {
+      const { snapshot } = applyTextLibraryCommand(activeFixture.snapshot, { type: 'segment.delete', payload: { id }, now: 4002 });
+      setDerived({ snapshot, ids: activeFixture.ids });
     },
     setWorkspace: next => {
       setDerived(null);
@@ -839,7 +848,9 @@ try {
 
   if (commandsOnly) {
     for (const host of ['uat', 'main']) {
-      await run(`4E1 ${host}: exact Reader and Study Box actions reach the owned session`, async () => {
+      await run(sessionOnly
+        ? `4E2 ${host}: owned Reader actions, precision, replacement and deletion`
+        : `4E1 ${host}: exact Reader and Study Box actions reach the owned session`, async () => {
         await call('Page.navigate', { url: `${origin}/?host=${host}&doc=london&audit=4e1` });
         await until('window.__uat4C1');
         if (host === 'main') {
@@ -949,6 +960,92 @@ try {
         if (host === 'uat') {
           assert.deepEqual(await evaluate(`['Audio representation','Audio channel'].map(name => document.querySelector('select[aria-label="'+name+'"]').value)`),
             ['full', 'text-meaning']);
+        }
+        if (sessionOnly) {
+          const action = (target, value) => until(`document.querySelector(${JSON.stringify(target)})?.dataset.readerPlaybackAction === '${value}'`);
+          const stopEn = box('play-en');
+          const stopId = box('play-id');
+          const initial = await count();
+          await click(stopEn);
+          await event(initial + 1, turnSecond, 'text');
+          await action(stopEn, 'stop');
+          await action(stopId, 'play');
+          if (host === 'main') await evaluate('window.__uat4C1Main.pausePlayback()');
+          else await clickButtonText('Pause');
+          await until(`document.querySelector('[data-shared-segment-paused="true"][data-shared-card-channel="text"][data-shared-card-segment="${turnSecond}"]')`, 'paused English only');
+          assert.equal(await evaluate('document.querySelectorAll(\'[data-shared-segment-paused="true"][data-shared-card-channel="meaning"]\').length'), 0);
+          if (host === 'main') await evaluate('window.__uat4C1Main.resumePlayback()');
+          else await clickButtonText('Resume');
+          await action(stopEn, 'stop');
+          assert.equal(await count(), initial + 1);
+          await click(stopId);
+          await event(initial + 2, turnSecond, 'meaning');
+          await evaluate(`window.__uat4C1.finishUatEvent(${initial}, 'error')`);
+          await action(stopId, 'stop');
+          await action(stopEn, 'play');
+          await click(stopId);
+          await finish();
+          await until(idle, 'matching exact control stopped');
+          assert.equal(await count(), initial + 2);
+
+          await pickBoundary('unit');
+          await click(box('play-continue'));
+          await event(initial + 3, turnSecond, 'text');
+          await action(box('play-continue'), 'stop');
+          await finish();
+          await event(initial + 4, turnSecond, 'meaning');
+          await finish();
+          await event(initial + 5, turnThird, 'text');
+          await action(box('play-continue'), 'stop');
+          const studyFocus = id => until(`document.querySelector(${JSON.stringify(`${c1} [data-shared-segment-study-box][data-shared-segment-focus="${id}"]`)})`);
+          await studyFocus(turnSecond);
+          await click(`${c1} [data-study-box-local-segment="1"]`);
+          await studyFocus(turnFirst);
+          assert.equal(await count(), initial + 5, 'local Study Box selection is passive');
+          await action(box('play-continue'), 'play');
+          await click(`${c1} [data-study-box-return-to-playing="true"]`);
+          await studyFocus(turnThird);
+          await action(box('play-continue'), 'stop');
+          await click(box('play-continue'));
+          await finish();
+          await until(idle, 'originating continuous control stopped after advancement');
+          assert.equal(await count(), initial + 5);
+
+          await mode('full');
+          await style('notebook');
+          await until(`document.querySelector(${JSON.stringify(notebook)})`, 'Notebook fragment ready');
+          await click(notebook);
+          await event(initial + 6, p1First, 'meaning');
+          await action(notebook, 'stop');
+          await action(`[data-shared-notebook-fragment]${fragment(p1First, 'text')}`, 'play');
+          await style('interlinear');
+          await action(fragment(p1First, 'meaning'), 'stop');
+          assert.equal(await count(), initial + 6, 'passive style switch keeps the owned command');
+          await clickButtonText(host === 'main' ? 'Play All' : 'Play Workspace');
+          await event(initial + 7, null, 'text');
+          await until(`document.querySelector('[data-shared-card-id="${ids.cards.P1}"][data-shared-card-precision="card"]')`, 'untimed Full Card precision');
+          assert.equal(await evaluate('document.querySelectorAll(\'[data-text-player-segment-active="true"]\').length'), 0);
+          await clickButtonText(host === 'main' ? 'Stop All' : 'Stop Workspace');
+          await finish();
+          await until(idle, 'matching Workspace command stopped');
+
+          await click(fragment(p1First, 'text'));
+          await event(initial + 8, p1First, 'text');
+          const cancelCount = await evaluate('window.__uat4C1.getUatCancels()');
+          await evaluate(`window.__uat4C1.deleteDisposableSegment(${JSON.stringify(p1First)})`);
+          await until(`window.__uat4C1.getUatCancels() > ${cancelCount}`, 'deleting active content cancelled execution');
+          await finish();
+          await until(idle, 'deleted Segment has no active projection');
+          assert.equal(await count(), initial + 8);
+
+          await click(fragment(turnFirst, 'text'));
+          await event(initial + 9, turnFirst, 'text');
+          const unmountCancelCount = await evaluate('window.__uat4C1.getUatCancels()');
+          await evaluate('window.__uat4C1.setWorkspace("stress")');
+          await until(`window.__uat4C1.getUatCancels() > ${unmountCancelCount}`, 'Workspace replacement cancelled old execution');
+          await finish();
+          await until(idle, 'replacement Workspace has no old active projection');
+          assert.equal(await count(), initial + 9);
         }
         const guard = await evaluate('({ db: window.__uat4DbCalls, errors: window.__uat4Errors, unchanged: window.__uat4C1.getSnapshotsUnchanged() })');
         assert.deepEqual(guard, { db: 0, errors: [], unchanged: true });
@@ -1505,7 +1602,7 @@ try {
     evidenceDir,
     screenshots
   };
-  await fs.writeFile(path.join(evidenceDir, commandsOnly ? 'uat4-4e1-report.json' : notebookOnly || notebookLayoutOnly ? 'uat4-4c3-report.json' : 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
+  await fs.writeFile(path.join(evidenceDir, sessionOnly ? 'uat4-4e2-report.json' : commandsOnly ? 'uat4-4e1-report.json' : notebookOnly || notebookLayoutOnly ? 'uat4-4c3-report.json' : 'uat4-4c1-report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   console.error('UAT-4 4C1 browser audit FAILED:', error);

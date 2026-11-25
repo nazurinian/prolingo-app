@@ -1,6 +1,6 @@
 import { selectTextConversationEditorState, TextConversationEditorError } from './textConversationEditorDomain.js';
 import { selectTextCardPresentation } from './textCardPresentationDomain.js';
-import { resolveTextCardPresentationCursor } from './textCardPresentationCursorDomain.js';
+import { resolveNowPlayingReaderCursor, resolveTextCardPresentationCursor } from './textCardPresentationCursorDomain.js';
 
 /** D4 validation first; A1 remains the sole read-only Card/Unit/Segment projection. */
 export const selectTextConversationReaderPresentation = (snapshot, { documentId } = {}) => {
@@ -13,6 +13,9 @@ export const selectTextConversationReaderPresentation = (snapshot, { documentId 
 
 /** No index fallback: only a status belonging to the live D5 scope is audible evidence. */
 export const resolveTextConversationReaderCursor = ({ presentation, audioPlayback } = {}) => {
+  if (typeof audioPlayback?.readNowPlaying === 'function') {
+    return resolveNowPlayingReaderCursor({ presentation, nowPlaying: audioPlayback.readNowPlaying() });
+  }
   const idle = () => resolveTextCardPresentationCursor({ presentation });
   const scope = audioPlayback?.readPresentationPlaybackScope?.();
   const status = audioPlayback?.playbackSourceStatus;

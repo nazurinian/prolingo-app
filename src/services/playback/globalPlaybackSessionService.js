@@ -2,10 +2,23 @@ import { getAdvancedExpressionPairs } from '../../utils/audioUtils';
 import { getPlaybackItemId } from '../../utils/playbackSequenceUtils';
 import { resolvePlaybackAdvanceState, resolvePlaybackRequestedId, resolvePlaybackSessionContextState, resolvePlaybackStartIndex } from '../../domain/playback/playbackSessionDomain';
 
-export const executeGlobalPlaybackSessionService = ({
+const resolveSequencePart = (item, part, expressionPairs) => {
+  if (part === 'word_en') return { textToPlay: item.word, sourcePart: 'word' };
+  if (part === 'word_idn') return { textToPlay: item.meaningWord, sourcePart: part };
+  if (part === 'sentence_en') return { textToPlay: item.sentence, sourcePart: 'sentence' };
+  if (part === 'sentence_idn') return { textToPlay: item.meaning, sourcePart: 'meaning' };
+  const match = typeof part === 'string' && part.match(/^exp([1-5])_(en|idn)$/);
+  return { textToPlay: match ? expressionPairs[Number(match[1]) - 1]?.[match[2]] : null, sourcePart: part };
+};
+
+export const executeGlobalPlaybackSessionService = args => {
+  const {
   startItemId = null,
   forcedContext = null,
   options = {},
+  sourceData = null,
+  documentId = null,
+  isVisibleContext = null,
   playingContext,
   playingIndex,
   isPlaying,
@@ -39,7 +52,7 @@ export const executeGlobalPlaybackSessionService = ({
   playSource,
   forceStopAll,
   onStudyVocab
-}) => {
+  } = args;
     const sessionStart = resolvePlaybackSessionContextState({
       forcedContext,
       playingContext,
@@ -48,28 +61,39 @@ export const executeGlobalPlaybackSessionService = ({
       mode,
       tableViewMode
     });
-    const sessionMode = sessionStart.sessionMode;
+    const sessionMode = forcedContext || sessionStart.sessionMode;
+    if (!['master', 'study', 'text'].includes(sessionMode)) return;
     // P4-A0: Table vocabulary order is a Table-domain preference. Legacy Text
     // playback remains deterministic/sequential until Text owns its own order contract.
-    const sessionPlayOrder = sessionMode === 'text' ? 'sequential' : vocabularyPlayOrderRef.current;
-    if (sessionStart.shouldSetPlayingContext) {
-      setPlayingContext(sessionStart.nextPlayingContext);
-    }
+    const sessionPlayOrder = options.sessionPlayOrder ?? (sessionMode === 'text' ? 'sequential' : vocabularyPlayOrderRef.current);
 
     const baseList = Array.isArray(options.baseListOverride)
       ? [...options.baseListOverride]
       : getBasePlaybackListForContext(sessionMode);
     if (!baseList.length) return;
 
+    const sequence = options.sequence ?? (Array.isArray(playbackSequenceRef.current) ? playbackSequenceRef.current : [])
+      .filter(entry => entry.enabled).map(entry => ({ ...entry }));
+    const delays = options.delays ?? { ...playbackDelaysRef?.current };
+
     // D3: a structured/table session with no enabled playback part has no work.
     // Refuse before safePlayTransition so no fake playing state, silent anchor,
     // fixed wait, index change, or shuffle mutation can occur.
-    if (sessionMode !== 'text' && !(Array.isArray(playbackSequenceRef.current) && playbackSequenceRef.current.some(entry => entry.enabled))) {
+    if (sessionMode !== 'text' && !sequence.length) {
       addLog("Info", "Playback not started: no Playback Sequence parts are enabled.");
       return;
     }
 
-    const requestedId = resolvePlaybackRequestedId(startItemId);
+    let requestedId = resolvePlaybackRequestedId(startItemId);
+    const isPlayable = item => {
+      if (!item.isStructured) return Boolean(String(item.text ?? '').trim());
+      const pairs = getAdvancedExpressionPairs(item);
+      return sequence.some(({ key }) => String(resolveSequencePart(item, key, pairs).textToPlay ?? '').trim());
+    };
+    if (!options.transport && requestedId !== null && !baseList.some(item => String(item.id) === requestedId && isPlayable(item))) {
+      if (!options.resumeHint) return;
+      requestedId = null;
+    }
     let listToPlay = Array.isArray(options.orderedListOverride)
       ? [...options.orderedListOverride]
       : resolveVocabularyPlaybackList(baseList, sessionMode, {
@@ -77,19 +101,24 @@ export const executeGlobalPlaybackSessionService = ({
           anchorId: options.anchorShuffle ? requestedId : null
         });
 
-    const startIndex = resolvePlaybackStartIndex(listToPlay, requestedId);
+    if (!listToPlay.length || (requestedId !== null && !listToPlay.some(item => String(item.id) === requestedId))) return;
+    const startIndex = options.queueIndex ?? (requestedId === null
+      ? listToPlay.findIndex(isPlayable) : resolvePlaybackStartIndex(listToPlay, requestedId));
+    if (startIndex < 0) return;
+    const makeSession = queueIndex => ({
+      context: sessionMode, kind: 'global', baseList, orderedList: listToPlay, queueIndex, sourceData, documentId,
+      restart: (item, index) => executeGlobalPlaybackSessionService({
+        ...args, startItemId: item.id, forcedContext: sessionMode,
+        options: { baseListOverride: baseList, orderedListOverride: listToPlay, queueIndex: index, sessionPlayOrder, sequence, delays, transport: true }
+      })
+    });
 
     safePlayTransition(async () => {
       const playbackSession = playbackSessionRef.current;
       if (playbackContextRef) {
-        playbackContextRef.current = {
-          sessionId: playbackSession,
-          context: sessionMode,
-          kind: 'global',
-          baseList: [...baseList],
-          orderedList: [...listToPlay]
-        };
+        playbackContextRef.current = { ...makeSession(startIndex), sessionId: playbackSession };
       }
+      setPlayingContext(sessionMode);
       setIsPlaying(true);
       setIsPaused(false);
       pauseStateRef.current = false;
@@ -105,7 +134,7 @@ export const executeGlobalPlaybackSessionService = ({
 
       while (index >= 0 && index < listToPlay.length && !stopSignalRef.current && playbackSession === playbackSessionRef.current) {
         await waitWhilePaused();
-        if (stopSignalRef.current) break;
+        if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
         // --- HEARTBEAT CHECK ---
         if (silentAudioRef.current && silentAudioRef.current.paused) {
              silentAudioRef.current.play().catch(() => {});
@@ -114,13 +143,16 @@ export const executeGlobalPlaybackSessionService = ({
         // -----------------------
 
         const item = listToPlay[index];
+        if (playbackContextRef?.current?.sessionId === playbackSession) playbackContextRef.current.queueIndex = index;
         setPlayingIndex(item.id); 
 
         if (sessionMode === 'master') setMasterIndex(item.id);
         else if (sessionMode === 'study') setStudyIndex(item.id);
         else setSavedIndices(prev => ({...prev, text: item.id}));
 
-        if ((mode === 'table' && tableViewModeRef.current === sessionMode) || (mode === 'text' && sessionMode === 'text')) {
+        const visible = isVisibleContext ? isVisibleContext(sessionMode, documentId)
+          : (mode === 'table' && tableViewModeRef.current === sessionMode) || (mode === 'text' && sessionMode === 'text');
+        if (visible) {
              setCurrentIndex(item.id);
         }
 
@@ -136,40 +168,12 @@ export const executeGlobalPlaybackSessionService = ({
 
           if (item.isStructured) {
             const expressionPairs = getAdvancedExpressionPairs(item);
-            const activeSequence = playbackSequenceRef.current.filter(entry => entry.enabled);
-
-            for (let sequenceIndex = 0; sequenceIndex < activeSequence.length; sequenceIndex++) {
+            for (const sequenceEntry of sequence) {
               if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
               await waitWhilePaused();
               if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
 
-              const sequencePart = activeSequence[sequenceIndex].key;
-              let textToPlay = '';
-              let sourcePart = sequencePart;
-
-              if (sequencePart === 'word_en') {
-                textToPlay = item.word || '';
-                sourcePart = 'word';
-              } else if (sequencePart === 'word_idn') {
-                textToPlay = item.meaningWord || '';
-                sourcePart = 'word_idn';
-              } else if (sequencePart === 'sentence_en') {
-                textToPlay = item.sentence || '';
-                sourcePart = 'sentence';
-              } else if (sequencePart === 'sentence_idn') {
-                // v5.11.6: read the sentence translation directly with no spoken prefix.
-                textToPlay = item.meaning || '';
-                sourcePart = 'meaning';
-              } else {
-                const expMatch = sequencePart.match(/^exp([1-5])_(en|idn)$/);
-                if (expMatch) {
-                  const expNo = Number(expMatch[1]);
-                  const language = expMatch[2];
-                  const pair = expressionPairs[expNo - 1];
-                  textToPlay = language === 'idn' ? (pair?.idn || '') : (pair?.en || '');
-                  sourcePart = `exp${expNo}_${language}`;
-                }
-              }
+              const { textToPlay, sourcePart } = resolveSequencePart(item, sequenceEntry.key, expressionPairs);
 
               if (!String(textToPlay || '').trim()) continue;
               if (!studyEventRecorded) {
@@ -177,7 +181,7 @@ export const executeGlobalPlaybackSessionService = ({
                 studyEventRecorded = true;
               }
 
-              const repeatCount = Math.min(5, Math.max(1, Number.parseInt(activeSequence[sequenceIndex]?.repeat, 10) || 1));
+              const repeatCount = Math.min(5, Math.max(1, Number.parseInt(sequenceEntry.repeat, 10) || 1));
               setSpeakingPart(sourcePart);
 
               for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex++) {
@@ -187,12 +191,13 @@ export const executeGlobalPlaybackSessionService = ({
 
                 // v5.11.6: repeat-gap and part-gap are independently configurable.
                 const delayMs = repeatIndex > 0
-                  ? playbackDelaysRef.current.repeatDelayMs
-                  : (playedAnyPartThisLoop ? playbackDelaysRef.current.partDelayMs : 0);
+                  ? delays.repeatDelayMs
+                  : (playedAnyPartThisLoop ? delays.partDelayMs : 0);
                 if (delayMs > 0) {
                   const delayCompleted = await waitPlaybackDelay(delayMs, playbackSession);
                   if (!delayCompleted) break;
                 }
+                if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) break;
 
                 await playSource(textToPlay, item, sourcePart, { queueIndex: index });
                 playedAnyPartThisLoop = true;
@@ -262,5 +267,5 @@ export const executeGlobalPlaybackSessionService = ({
           addLog("Info", "Playback Finished.");
           forceStopAll(); // Matikan silent audio juga
       }
-    });
+    }, makeSession(startIndex));
 };

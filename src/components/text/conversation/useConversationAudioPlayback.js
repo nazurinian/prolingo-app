@@ -27,11 +27,13 @@ import {
   executeResumePlayback,
   executeSafePlayTransition,
   executeSettlePlaybackPromise,
-  executeWaitWhilePaused
+  executeWaitWhilePaused,
+  navigateOwnedPlayback,
+  readOwnedPlaybackSession
 } from '../../../services/playback/playbackRuntimeControlService.js';
 import { executeStructuredTextRuntimeAudioPlaybackService } from '../../../services/playback/textStructuredAudioRuntimeService.js';
 import { executeStructuredTextPlaybackSessionService } from '../../../services/playback/textStructuredPlaybackSessionService.js';
-import { bindNowPlayingRuntime, readOwnedNowPlaying } from '../../../domain/playback/nowPlayingDomain.js';
+import { bindNowPlayingRuntime, matchesStructuredPlaybackControl, readOwnedNowPlaying } from '../../../domain/playback/nowPlayingDomain.js';
 
 const EMPTY_MAP = Object.freeze({});
 
@@ -112,8 +114,10 @@ export const useConversationAudioPlayback = ({
   const isPlayingRef = useRef(false);
   const isPausedRef = useRef(false);
   const objectUrlsByBlobRef = useRef(new Map());
+  const [, setNowPlayingRevision] = useState(0);
+  const refreshNowPlaying = useCallback(() => setNowPlayingRevision(revision => revision + 1), []);
   const bindRuntime = useCallback((status) => bindNowPlayingRuntime(
-    { playbackContextRef, playbackSessionRef, stopSignalRef },
+    { playbackContextRef, playbackSessionRef, stopSignalRef, onChange: refreshNowPlaying },
     {
       cardId: status.blockId,
       segmentId: status.segmentId,
@@ -121,7 +125,7 @@ export const useConversationAudioPlayback = ({
       representation: status.segmentId ? 'split' : 'full'
     },
     status.sessionId
-  ), []);
+  ), [refreshNowPlaying]);
 
   const [isPlaying, setIsPlayingState] = useState(false);
   const [isPaused, setIsPausedState] = useState(false);
@@ -131,6 +135,7 @@ export const useConversationAudioPlayback = ({
   const [activeBlockId, setActiveBlockId] = useState(null);
   const [speakingPart, setSpeakingPart] = useState(null);
   const [resumeCursorSegmentId, setResumeCursorSegmentId] = useState(null);
+  const resumeOrderRef = useRef(null);
   const [playbackSourceStatus, setPlaybackSourceStatus] = useState(null);
   const [playbackLogs, setPlaybackLogs] = useState([]);
   const [failedVariantIds, setFailedVariantIds] = useState({});
@@ -170,7 +175,7 @@ export const useConversationAudioPlayback = ({
   }, []);
 
   const waitWhilePaused = useCallback(
-    () => executeWaitWhilePaused({ pauseStateRef, stopSignalRef }),
+    () => executeWaitWhilePaused({ pauseStateRef, stopSignalRef, playbackSessionRef }),
     []
   );
 
@@ -194,14 +199,17 @@ export const useConversationAudioPlayback = ({
   }, [synth, settlePlaybackPromise, setIsPlaying, setIsPaused]);
 
   const safePlayTransition = useCallback(
-    actionCallback => executeSafePlayTransition({
+    (actionCallback, pendingSession) => executeSafePlayTransition({
       forceStopAll,
       playbackSessionRef,
+      playbackContextRef,
       stopSignalRef,
       pauseStateRef,
-      actionCallback
+      actionCallback,
+      pendingSession,
+      onError: error => addLog('Playback', error?.message || 'Playback failed.')
     }),
-    [forceStopAll]
+    [forceStopAll, addLog]
   );
 
   const resolveBlobObjectUrl = useCallback(runtime => {
@@ -284,6 +292,7 @@ export const useConversationAudioPlayback = ({
     failedVariantIdsRef.current = EMPTY_MAP;
     setFailedVariantIds(prev => (Object.keys(prev).length ? EMPTY_MAP : prev));
     if (workspaceChanged) {
+      resumeOrderRef.current = null;
       setResumeCursorSegmentId(prev => (prev === null ? prev : null));
       setCurrentIndex(prev => (prev === null ? prev : null));
       setActiveBlockId(prev => (prev === null ? prev : null));
@@ -447,6 +456,7 @@ export const useConversationAudioPlayback = ({
       overrideVoice: matchedVoice,
       selectedVoiceRef: { current: matchedVoice },
       stopSignalRef,
+      playbackSessionRef,
       pauseStateRef,
       synth,
       currentUtteranceRef,
@@ -491,13 +501,15 @@ export const useConversationAudioPlayback = ({
       currentAudioObjRef,
       playbackResolveRef,
       stopSignalRef,
+      playbackSessionRef,
+      waitWhilePaused,
       playbackRate,
       onNowPlaying,
       sourceEvidence,
       addLog,
       label
     });
-  }, [audioRuntimeHooks, addLog, bindRuntime]);
+  }, [audioRuntimeHooks, addLog, bindRuntime, waitWhilePaused]);
 
   const playStructuredChannel = useCallback(async (textToRead, item, channel, options = {}) => {
     const playbackSessionId = playbackSessionRef.current;
@@ -706,13 +718,24 @@ export const useConversationAudioPlayback = ({
     workspaceUid,
     boundary,
     channel,
+    cardChannel = null,
+    toggle = false,
     startSegmentId = null,
     cursorSegmentId = null,
+    orderedListOverride = null,
     playbackChannelMode = normalizedConfig.playbackChannelMode,
     playbackRepresentationMode = normalizedConfig.playbackRepresentationMode,
     repeatMode = normalizedConfig.repeatMode
   } = {}) => {
     if (!documentTree) return false;
+    const owned = readOwnedNowPlaying({ playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef }, 'isolated-uat', { isPlaying: isPlayingRef.current });
+    if (toggle && owned.workspace?.id === documentTree.id && owned.workspace.uid === documentTree.uid
+      && (workspaceId === undefined || owned.workspace.id === workspaceId)
+      && (workspaceUid === undefined || owned.workspace.uid === workspaceUid)
+      && matchesStructuredPlaybackControl(owned, { scope, boundary, blockId, unitId, virtualUnit, segmentId: startSegmentId, channel, cardChannel })) {
+      forceStopAll();
+      return true;
+    }
     return executeStructuredTextPlaybackSessionService({
       documentTree,
       startSegmentId,
@@ -724,12 +747,14 @@ export const useConversationAudioPlayback = ({
       workspaceUid,
       boundary,
       channel,
+      cardChannel,
       scope,
       playbackChannelMode,
       playbackOrderMode: normalizedConfig.playbackOrderMode,
       playbackRepresentationMode,
       savedPlaybackRepresentationMode: normalizedConfig.playbackRepresentationMode,
       repeatMode,
+      orderedListOverride,
       safePlayTransition,
       playbackSessionRef,
       playbackContextRef,
@@ -747,21 +772,24 @@ export const useConversationAudioPlayback = ({
       resolveBlockChannelPlaybackPlan: buildBlockPlan,
       playStructuredFullStep,
       forceStopAll,
-      onPlaybackAccepted: ({ segmentId }) => {
+      onPlaybackAccepted: ({ segmentId, orderedList }) => {
         setPlaybackSourceStatus(null);
-        if (cursorSegmentId || startSegmentId || blockId || unitId) {
-          setResumeCursorSegmentId(segmentId);
-          setCurrentIndex(segmentId);
-        }
+        setResumeCursorSegmentId(segmentId);
+        if (orderedList) resumeOrderRef.current = orderedList;
+        if (cursorSegmentId || startSegmentId || blockId || unitId) setCurrentIndex(segmentId);
         if (blockId) setActiveBlockId(blockId);
       },
-      onPlaybackCursor: ({ documentId: activeDocId, segmentId, blockId: cursorBlockId }) => {
+      onPlaybackCursor: ({ documentId: activeDocId, segmentId, blockId: cursorBlockId, orderedList }) => {
         if (activeDocId !== documentTree?.id) return;
+        if (orderedList && [TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT, TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE].includes(scope)) {
+          resumeOrderRef.current = orderedList;
+        }
         if (segmentId) setResumeCursorSegmentId(segmentId);
         if (cursorBlockId) setActiveBlockId(cursorBlockId);
       },
       onPlaybackCompleted: ({ documentId: activeDocId, segmentId }) => {
         if (activeDocId !== documentTree?.id) return;
+        resumeOrderRef.current = null;
         setResumeCursorSegmentId(segmentId || null);
         setActiveBlockId(null);
       },
@@ -782,53 +810,37 @@ export const useConversationAudioPlayback = ({
   ]);
 
   const playWorkspace = useCallback(
-    () => startSession({ scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT }),
+    () => startSession({ scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT, toggle: true }),
     [startSession]
   );
 
   const playScene = useCallback((blockId, options = {}) => {
-    const scopeNow = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      ? playbackContextRef.current?.scope
-      : null;
-    if ((isPlayingRef.current || isPausedRef.current)
-      && scopeNow === TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD
-      && playbackContextRef.current?.blockId === blockId) {
-      forceStopAll();
-      return true;
-    }
     return startSession({
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
       blockId,
+      toggle: true,
+      cardChannel: options.playbackChannelMode ?? null,
       ...(options.playbackChannelMode ? { playbackChannelMode: options.playbackChannelMode } : {}),
       ...(options.playbackRepresentationMode ? { playbackRepresentationMode: options.playbackRepresentationMode } : {})
     });
-  }, [forceStopAll, startSession]);
+  }, [startSession]);
 
   const playSentence = useCallback((segmentId, channel) => {
-    const scopeNow = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      ? playbackContextRef.current?.scope
-      : null;
-    if (channel === undefined && (isPlayingRef.current || isPausedRef.current)
-      && scopeNow === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT
-      && playbackContextRef.current?.cursorSegmentId === segmentId) {
-      forceStopAll();
-      return true;
-    }
     return startSession({
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT,
       startSegmentId: segmentId,
-      channel
+      channel, toggle: true
     });
-  }, [forceStopAll, startSession]);
+  }, [startSession]);
 
   const playUnit = useCallback(target => startSession({
-    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once'
+    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once', toggle: true
   }), [startSession]);
 
   const playFromSentence = useCallback((segmentId, boundary) => startSession({
     scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
     startSegmentId: segmentId, boundary: boundary === undefined ? TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT : boundary,
-    repeatMode: boundary === undefined ? normalizedConfig.repeatMode : 'once'
+    repeatMode: boundary === undefined ? normalizedConfig.repeatMode : 'once', toggle: true
   }), [startSession, normalizedConfig.repeatMode]);
 
   const pausePlayback = useCallback(() => {
@@ -846,6 +858,11 @@ export const useConversationAudioPlayback = ({
     });
   }, [isMobile, synth, setIsPaused, addLog]);
 
+  const navigatePlayback = useCallback(direction => {
+    const owner = readOwnedPlaybackSession({ playbackContextRef, playbackSessionRef, stopSignalRef });
+    return owner ? navigateOwnedPlayback(owner, direction) : false;
+  }, []);
+
   const resumePlayback = useCallback(() => {
     if (isPlayingRef.current && pauseStateRef.current) {
       executeResumePlayback({
@@ -860,15 +877,12 @@ export const useConversationAudioPlayback = ({
       });
       return true;
     }
-    if (resumeCursorSegmentId) {
-      return startSession({
-        scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
-        boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
-        startSegmentId: resumeCursorSegmentId
-      });
-    }
-    return playWorkspace();
-  }, [synth, setIsPaused, addLog, resumeCursorSegmentId, startSession, playWorkspace]);
+    if (readOwnedPlaybackSession({ playbackContextRef, playbackSessionRef, stopSignalRef })) return false;
+    const scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT;
+    return Boolean(normalizedConfig.preferences?.resumeMode !== 'restart' && resumeCursorSegmentId
+      && startSession({ scope, cursorSegmentId: resumeCursorSegmentId, orderedListOverride: resumeOrderRef.current }))
+      || startSession({ scope });
+  }, [synth, setIsPaused, addLog, resumeCursorSegmentId, normalizedConfig.preferences?.resumeMode, startSession]);
 
   const stopPlayback = useCallback(() => {
     forceStopAll();
@@ -921,6 +935,7 @@ export const useConversationAudioPlayback = ({
     playUnit,
     playFromSentence,
     pausePlayback,
+    navigatePlayback,
     resumePlayback,
     stopPlayback
   }), [
@@ -944,6 +959,7 @@ export const useConversationAudioPlayback = ({
     playUnit,
     playFromSentence,
     pausePlayback,
+    navigatePlayback,
     resumePlayback,
     stopPlayback
   ]);

@@ -133,18 +133,12 @@ export const executeMobileTabSwitch = ({
 };
 
 export const executeModeSwitch = ({
-  targetMode, mode, isSystemBusy, forceStopAll, setPlayingIndex, setPlayingContext,
-  setIndependentPlayingId, viewScrollPosRef, tableViewMode, getScrollPos, currentIndex,
+  targetMode, mode, isSystemBusy, viewScrollPosRef, tableViewMode, getScrollPos, currentIndex,
   setSavedIndices, setScrollTop, pendingScrollRestoration, isAutoScrolling, setMode,
   savedIndices, setCurrentIndex, addLog
 }) => {
       if (targetMode === mode) return;
       if (isSystemBusy) return; 
-
-      forceStopAll();
-      setPlayingIndex(null);
-      setPlayingContext(null);
-      setIndependentPlayingId(null); 
 
       // SAVE Scroll Position
       if (mode === 'table') viewScrollPosRef.current[tableViewMode] = getScrollPos();

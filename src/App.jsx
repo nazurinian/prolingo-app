@@ -46,7 +46,8 @@ import { MemoizedTextRow } from './components/table/MemoizedTextRow';
 import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
 import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
 import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
-import { selectTextMainReaderPresentation, resolveTextMainReaderCursor } from './domain/text/textMainReaderDomain.js';
+import { selectTextMainReaderPresentation } from './domain/text/textMainReaderDomain.js';
+import { resolveNowPlayingReaderCursor } from './domain/text/textCardPresentationCursorDomain.js';
 import {
   TEXT_WORKSPACE_STYLE_SCOPES,
   loadTextMainReaderPreference,
@@ -96,7 +97,7 @@ import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readT
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService, isBrowserTtsSpeechSupported } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
-import { bindNowPlayingRuntime, readOwnedNowPlaying } from './domain/playback/nowPlayingDomain.js';
+import { bindNowPlayingRuntime, matchesStructuredPlaybackControl, readOwnedNowPlaying } from './domain/playback/nowPlayingDomain.js';
 import { NowPlayingContext } from './components/playback/NowPlayingContext.js';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
@@ -107,7 +108,7 @@ import { executeActiveRowAutoFollowEffect, executeBodyScrollLockEffect, executeB
 import { executeApplyChangeRevert, executeBatchRangeBlur, executeConfirmDeleteStructuredItem, executeRevertAllChanges, executeSaveManualVocabulary, executeStudyRangeAdd, executeToggleCellReveal, executeUndoLastDataChange } from './services/dataset/datasetInteractionService';
 import { executePlaylistContentSyncEffect, executeResetFullState, executeResetTextState, executeSystemLogAppend } from './services/app/mainAppStateLifecycleService';
 import { executeAddTextItem, executeClearStudyQueue, executeCloseManualEditor, executeDeleteStructuredItemPrompt, executeDeleteTextItem, executeInsertTab, executeMenuToggle, executeOpenManualAdd, executeOpenManualEdit, executeToggleStudyItem } from './services/dataset/manualTextStudyInteractionService';
-import { executePausePlayback, executeResumePlayback, executeSafePlayTransition, executeSettlePlaybackPromise, executeWaitPlaybackDelay, executeWaitWhilePaused } from './services/playback/playbackRuntimeControlService';
+import { executePausePlayback, executeResumePlayback, executeSafePlayTransition, executeSettlePlaybackPromise, executeWaitPlaybackDelay, executeWaitWhilePaused, navigateOwnedPlayback, readOwnedPlaybackSession } from './services/playback/playbackRuntimeControlService';
 import { executeApplyPlaybackPreset, executeChangeVocabularyPlayOrder, executeMovePlaybackSequencePart, executeResetPlaybackDelays, executeResetPlaybackSequence, executeReshuffleVocabularyPlayback, executeSetPlaybackDelay, executeSetPlaybackSequencePartRepeat, executeShufflePlaybackSequence, executeTogglePlaybackSequencePart, resolvePlaybackSequencePartAvailable } from './services/playback/playbackConfigurationService';
 import { executeCsvImportFileService, executeFullPackImportService, executeSourceLayerImportService } from './services/persistence/datasetImportFileService';
 import { executeExportMergedDatasetService, executeExportTableCsvService, executeRemoveSourceLayerService, executeSaveUpdatedCsvService, executeSaveUpdatedSourceService } from './services/persistence/datasetPersistenceService';
@@ -354,7 +355,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const structuredTextFullAudioRuntimeUrlsRef = useRef({});
   // HF4-D: Text-only cursor and shuffled card order survive Stop, while
   // Table and other documents keep their independent navigation state.
-  const structuredTextResumeCursorRef = useRef({ documentId: null, segmentId: null, orderedList: null });
+  const structuredTextResumeCursorRef = useRef({ documentId: null, workspaceUid: null, segmentId: null, orderedList: null });
   // Final Text C6: Text binary staging is separate from core Text DB and keeps Blob data out of React state.
   const [structuredTextAudioStagingSummary, setStructuredTextAudioStagingSummary] = useState({ count: 0, bytes: 0, voices: {} });
   const structuredTextAudioStagingSummaryRef = useRef({ count: 0, bytes: 0, voices: {} });
@@ -862,7 +863,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const activeTextEditorModel = textLibrarySnapshot?.documents?.find(document => document.id === activeTextDocumentId)?.editorModel || null;
   const [textMainReaderPreference, setTextMainReaderPreference] = useState(loadTextMainReaderPreference);
   const [textWorkspaceStyleScope, setTextWorkspaceStyleScope] = useState(TEXT_WORKSPACE_STYLE_SCOPES.SHARED);
-  const textMainReaderProvenanceRef = useRef(null);
   const textMainReader = useMemo(
     () => selectTextMainReaderPresentation(textLibrarySnapshot, activeTextDocumentId),
     [textLibrarySnapshot, activeTextDocumentId]
@@ -1807,8 +1807,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const deleteStructuredItem = (item) => executeDeleteStructuredItemPrompt({ item, setPendingDeleteItem });
 
   const confirmDeleteStructuredItem = () => executeConfirmDeleteStructuredItem({
-      pendingDeleteItem, setPendingDeleteItem, pushUndoSnapshot, forceStopAll, tableContent,
-      setTableContent, setStudyQueue, currentIndex, setCurrentIndex, playingIndex,
+      pendingDeleteItem, setPendingDeleteItem, pushUndoSnapshot, tableContent,
+      forceStopAll: () => {
+        if (['master', 'study'].includes(playbackContextRef.current?.context)) forceStopAll();
+      },
+      setTableContent, setStudyQueue, currentIndex, setCurrentIndex,
+      playingIndex: ['master', 'study'].includes(playingContext) ? playingIndex : null,
       setPlayingIndex, expandedAdvancedId, setExpandedAdvancedId, addLog
   });
 
@@ -1876,10 +1880,22 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleMenuToggle = (rowId) => executeMenuToggle({ rowId, setActiveMenuId });
 
   // --- AUDIO ENGINE v5.8 ---
-  const nowPlayingRefs = { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef };
+  const [, setNowPlayingRevision] = useState(0);
+  const refreshNowPlaying = useCallback(() => setNowPlayingRevision(revision => revision + 1), []);
+  const nowPlayingRefs = { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef, onChange: refreshNowPlaying };
   const readNowPlaying = () => readOwnedNowPlaying(nowPlayingRefs, 'main', { isPlaying });
-  const getLocalAudioUrl = async (item, part, onResolvedVariant) => {
-    if (mode !== 'table') return resolveLocalAudioUrl({ mode, item, part, localAudioMapTable, localAudioMapText });
+  const visiblePlaybackView = useRef({ mode, tableViewMode, activeTextDocumentId });
+  useLayoutEffect(() => {
+    visiblePlaybackView.current = { mode, tableViewMode, activeTextDocumentId };
+  }, [mode, tableViewMode, activeTextDocumentId]);
+  const isVisiblePlaybackContext = (context, documentId) => {
+    const view = visiblePlaybackView.current;
+    return context === 'text' || context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
+      ? view.mode === 'text' && documentId === view.activeTextDocumentId
+      : view.mode === 'table' && context === view.tableViewMode;
+  };
+  const getLocalAudioUrl = async (item, part, onResolvedVariant, ownerContext) => {
+    if (ownerContext === 'text') return resolveLocalAudioUrl({ mode: 'text', item, part, localAudioMapTable, localAudioMapText });
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const itemScope = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
     const variants = (tableAudioVariantInventory?.[mapKey] || []).filter(variant =>
@@ -1907,7 +1923,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const settlePlaybackPromise = () => executeSettlePlaybackPromise({ playbackResolveRef });
 
-  const waitWhilePaused = async () => executeWaitWhilePaused({ pauseStateRef, stopSignalRef });
+  const waitWhilePaused = async () => executeWaitWhilePaused({ pauseStateRef, stopSignalRef, playbackSessionRef });
 
   // Delay that remains responsive to Pause / Stop / playback-session changes.
   // Paused time does not consume the configured learning gap.
@@ -1921,6 +1937,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       overrideVoice,
       selectedVoiceRef,
       stopSignalRef,
+      playbackSessionRef,
       pauseStateRef,
       synth,
       currentUtteranceRef,
@@ -1934,13 +1951,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const playSource = (textToRead, item, part, { queueIndex } = {}) => {
+    const ownerContext = playbackContextRef.current?.context;
     return executeAudioSourcePlaybackService({
       textToRead,
       item,
       part,
       stopSignalRef,
+      playbackSessionRef,
       preferLocalAudio,
-      getLocalAudioUrl,
+      waitWhilePaused,
+      getLocalAudioUrl: (item, part, observe) => getLocalAudioUrl(item, part, observe, ownerContext),
       currentAudioObjRef,
       rateRef,
       rate,
@@ -1965,22 +1985,26 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [rate, currentAudioObjRef]);
 
   const pausePlayback = (options = {}) => executePausePlayback({
-    isPlaying, isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
     ttsReplayRef, pauseSource: options?.source || 'ui'
   });
 
   const resumePlayback = () => executeResumePlayback({
-    isPlaying, isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog, ttsReplayRef
+    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog, ttsReplayRef
   });
 
-  const safePlayTransition = async (actionCallback) => executeSafePlayTransition({
-    forceStopAll, playbackSessionRef, stopSignalRef, pauseStateRef, actionCallback
+  const safePlayTransition = async (actionCallback, pendingSession) => executeSafePlayTransition({
+    forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession,
+    onError: error => addLog('Playback', error?.message || 'Playback failed.')
   });
 
-  const handleIndependentPlay = (item, part, uiId) => executeIndependentPlaybackInteraction({
+  const handleIndependentPlay = (item, part, uiId) => getBasePlaybackListForContext(mode === 'table' ? tableViewMode : 'text')
+    .some(candidate => candidate.id === item?.id) && executeIndependentPlaybackInteraction({
     item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
     playbackSessionRef, playbackContextRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
-    setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab: recordStudyActivity
+    setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab: recordStudyActivity,
+    sourceData: mode === 'table' ? tableContent : textContent,
+    documentId: mode === 'text' ? activeTextDocumentId : null, isVisibleContext: isVisiblePlaybackContext
   });
 
   // --- HELPER FOR SCROLL PERSISTENCE ---
@@ -2028,15 +2052,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     return resolved.list;
   };
 
+  const compatibleItemPlaybackContext = (mode === 'table' ? ['master', 'study'].includes(playingContext) : playingContext === 'text')
+    ? playingContext : null;
   const handleGlobalPlay = () => executeGlobalPlayInteraction({
     setActiveMenuId, isPlaying, isPaused, resumePlayback, pausePlayback, justSwitchedTab,
-    playingIndex, playingContext, getBasePlaybackListForContext, startGlobalPlayback,
+    playingIndex, playingContext: compatibleItemPlaybackContext, getBasePlaybackListForContext, startGlobalPlayback,
     mode, tableViewMode, currentIndex
   });
 
   const handleManualRowClick = (item) => executeManualRowPlaybackInteraction({
-    item, setActiveMenuId, setIndependentPlayingId, mode, tableViewMode, setCurrentIndex,
-    setPlayingIndex, setPlayingContext, startGlobalPlayback, vocabularyPlayOrderRef
+    item, setActiveMenuId, mode, tableViewMode, startGlobalPlayback, vocabularyPlayOrderRef
   });
 
   const startGlobalPlayback = (startItemId = null, forcedContext = null, options = {}) => {
@@ -2044,6 +2069,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       startItemId,
       forcedContext,
       options,
+      sourceData: (forcedContext ?? (mode === 'table' ? tableViewMode : 'text')) === 'text' ? textContent : tableContent,
+      documentId: activeTextDocumentId,
+      isVisibleContext: isVisiblePlaybackContext,
       playingContext,
       playingIndex,
       isPlaying,
@@ -2088,6 +2116,26 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     setStructuredTextPlaybackSourceStatus(null);
   };
+
+  const stopOnPlaybackUnmount = useRef(forceStopAll);
+  useLayoutEffect(() => { stopOnPlaybackUnmount.current = forceStopAll; });
+  useEffect(() => () => stopOnPlaybackUnmount.current(), []);
+  useLayoutEffect(() => {
+    const owner = playbackContextRef.current;
+    if (!owner) return;
+    let replaced = false;
+    if (owner.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT) {
+      const current = textLibrarySnapshot && resolveTextLibraryDocumentTree(textLibrarySnapshot, owner.documentId);
+      replaced = !current || current.uid !== owner.documentTree.uid
+        || JSON.stringify(current.blocks) !== JSON.stringify(owner.documentTree.blocks);
+    } else if (owner.context === 'text') {
+      replaced = (owner.documentId === activeTextDocumentId && owner.sourceData !== textContent)
+        || (owner.documentId && textLibrarySnapshot && !textLibrarySnapshot.documents.some(document => document.id === owner.documentId));
+    } else if (owner.sourceData) {
+      replaced = owner.sourceData !== tableContent;
+    }
+    if (replaced) stopOnPlaybackUnmount.current();
+  }, [activeTextDocumentId, playbackContextRef, tableContent, textContent, textLibrarySnapshot]);
 
   const rememberStructuredTextStagingRecord = useCallback((record, { deferUi = false } = {}) => {
     if (!record?.id) return;
@@ -3919,6 +3967,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       overrideVoice: targetVoice,
       selectedVoiceRef: { current: targetVoice },
       stopSignalRef,
+      playbackSessionRef,
       pauseStateRef,
       synth,
       currentUtteranceRef,
@@ -3991,6 +4040,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
           currentAudioObjRef,
           playbackResolveRef,
           stopSignalRef,
+          playbackSessionRef,
+          waitWhilePaused,
           playbackRate: resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
           onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
             cardId: block?.id, channel: normalizedChannel, representation: 'full'
@@ -4153,6 +4204,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
             currentAudioObjRef,
             playbackResolveRef,
             stopSignalRef,
+            playbackSessionRef,
+            waitWhilePaused,
             playbackRate: resolveStructuredTextItemPlaybackRate(item, channel),
             onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
               cardId: block?.id || item?.blockId,
@@ -4196,6 +4249,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     workspaceId,
     workspaceUid,
     channel,
+    cardChannel = null,
+    toggle = false,
     boundary,
     scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
     playbackChannelMode = textStructuredPreferences.playbackChannelMode,
@@ -4206,12 +4261,21 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     orderedListOverride = null
   } = {}) => {
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1' || !activeTextDocumentTree) return false;
+    const owned = readNowPlaying();
+    if (toggle && owned.workspace?.id === activeTextDocumentTree.id && owned.workspace.uid === activeTextDocumentTree.uid
+      && (workspaceId === undefined || workspaceId === owned.workspace.id)
+      && (workspaceUid === undefined || workspaceUid === owned.workspace.uid)
+      && matchesStructuredPlaybackControl(owned, { scope, boundary, blockId, unitId, virtualUnit, segmentId: startSegmentId, channel, cardChannel })) {
+      forceStopAll();
+      return true;
+    }
     const isManualUnitScope = [TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT, TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD].includes(scope)
       || (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE && [TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD].includes(boundary));
     const globalShuffleActive = textStructuredPreferences.playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE;
     const preservedManualShuffleList = isManualUnitScope
       && globalShuffleActive
       && structuredTextResumeCursorRef.current.documentId === activeTextDocumentTree.id
+      && structuredTextResumeCursorRef.current.workspaceUid === activeTextDocumentTree.uid
       && Array.isArray(structuredTextResumeCursorRef.current.orderedList)
       ? structuredTextResumeCursorRef.current.orderedList
       : null;
@@ -4225,6 +4289,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       workspaceId,
       workspaceUid,
       channel,
+      cardChannel,
       scope,
       boundary,
       safePlayTransition,
@@ -4238,7 +4303,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       waitWhilePaused,
       setPlayingContext,
       setPlayingIndex,
-      setCurrentIndex,
+      setCurrentIndex: segmentId => {
+        if (isVisiblePlaybackContext(TEXT_STRUCTURED_PLAYBACK_CONTEXT, activeTextDocumentTree.id)) setCurrentIndex(segmentId);
+      },
       setSpeakingPart,
       playbackChannelMode,
       playbackOrderMode,
@@ -4247,38 +4314,26 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       repeatMode,
       repeatCount,
       orderedListOverride,
-      onPlaybackAccepted: ({ segmentId }) => {
+      onPlaybackAccepted: ({ segmentId, orderedList }) => {
         setStructuredTextPlaybackSourceStatus(null);
         // Remember the validated target before the async transition, including
         // when the user presses Stop before the first audio step.
-        if (cursorSegmentId || startSegmentId || blockId || unitId) {
-          structuredTextResumeCursorRef.current = {
-            documentId: activeTextDocumentTree.id, segmentId,
-            orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedListOverride)
-              ? [...orderedListOverride]
-              : preservedManualShuffleList
-          };
-        }
+        structuredTextResumeCursorRef.current = {
+          documentId: activeTextDocumentTree.id, workspaceUid: activeTextDocumentTree.uid,
+          segmentId, orderedList: orderedList ?? preservedManualShuffleList
+        };
       },
       onPlaybackCursor: ({ documentId, segmentId, orderedList }) => {
         if (documentId !== activeTextDocumentTree?.id || !segmentId) return;
-        // Observe the existing host session; do not allocate a token or change audio.
-        const context = playbackContextRef.current;
-        if (context?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT && context.documentId === documentId
-          && context.sessionId === playbackSessionRef.current) {
-          textMainReaderProvenanceRef.current = {
-            snapshot: textLibrarySnapshot, documentId,
-            workspaceUid: activeTextDocumentTree.uid ?? null, sessionId: context.sessionId
-          };
-        }
         const retainedManualShuffleList = isManualUnitScope
           && globalShuffleActive
           && structuredTextResumeCursorRef.current.documentId === documentId
+          && structuredTextResumeCursorRef.current.workspaceUid === activeTextDocumentTree.uid
           && Array.isArray(structuredTextResumeCursorRef.current.orderedList)
           ? structuredTextResumeCursorRef.current.orderedList
           : null;
         structuredTextResumeCursorRef.current = {
-          documentId, segmentId,
+          documentId, workspaceUid: activeTextDocumentTree.uid, segmentId,
           orderedList: playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE && Array.isArray(orderedList)
             ? [...orderedList]
             : retainedManualShuffleList
@@ -4286,7 +4341,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       },
       onPlaybackCompleted: ({ documentId, segmentId }) => {
         if (documentId !== activeTextDocumentTree?.id) return;
-        structuredTextResumeCursorRef.current = { documentId, segmentId, orderedList: null };
+        structuredTextResumeCursorRef.current = { documentId, workspaceUid: activeTextDocumentTree.uid, segmentId, orderedList: null };
       },
       channelDelayMs: textStructuredPreferences.channelDelayMs,
       segmentDelayMs: textStructuredPreferences.segmentDelayMs,
@@ -4301,15 +4356,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextPlaySegment = (segmentId, channel) => {
     if (channel !== undefined) return startStructuredTextPlayback({
       startSegmentId: segmentId, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT, channel,
-      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL
+      playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL, toggle: true
     });
-    const currentScope = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      ? playbackContextRef.current?.scope
-      : null;
-    if ((isPlaying || isPaused) && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && currentScope === TEXT_STRUCTURED_PLAYBACK_SCOPES.SEGMENT && playingIndex === segmentId) {
-      forceStopAll();
-      return true;
-    }
     const manual = resolveTextStructuredManualPlaybackProfile(textStructuredPreferences, 'segment');
     return startStructuredTextPlayback({
       startSegmentId: segmentId,
@@ -4317,6 +4365,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       playbackChannelMode: manual.playbackChannelMode,
       playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
       repeatMode: manual.repeatMode,
+      toggle: true,
       repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
     });
   };
@@ -4332,6 +4381,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       blockId,
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.CARD,
       playbackChannelMode: oneShotChannel,
+      cardChannel: requestedChannel ?? null,
+      toggle: true,
       playbackOrderMode: TEXT_STRUCTURED_ORDER_MODES.SEQUENTIAL,
       repeatMode: manual.repeatMode,
       repeatCount: manual.repeatMode === 'custom' ? manual.repeatCount : null
@@ -4341,35 +4392,37 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextStartFromSegment = (segmentId) => startStructuredTextPlayback({
     startSegmentId: segmentId,
     scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
-    boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+    boundary: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT, toggle: true
   });
 
   const handleStructuredTextPlayUnit = (target) => startStructuredTextPlayback({
-    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once'
+    ...target, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.UNIT, repeatMode: 'once', toggle: true
   });
 
   const handleStructuredTextPlayContinue = (segmentId, { scope: boundary } = {}) => boundary
     ? startStructuredTextPlayback({
-      startSegmentId: segmentId, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE, boundary, repeatMode: 'once'
+      startSegmentId: segmentId, scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE, boundary, repeatMode: 'once', toggle: true
     }) : false;
 
   const handleStructuredTextPlayDocument = () => startStructuredTextPlayback({
-    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
+    scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT, toggle: true
   });
 
   const handlePlayerGlobalPlay = () => {
+    const owned = readOwnedPlaybackSession(nowPlayingRefs);
+    if (owned) {
+      if (owned.pending) return;
+      if (pauseStateRef.current) resumePlayback();
+      else pausePlayback();
+      return;
+    }
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1') {
       handleGlobalPlay();
       return;
     }
-    if (isPlaying && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT) {
-      if (isPaused) resumePlayback();
-      else pausePlayback();
-      return;
-    }
     const saved = structuredTextResumeCursorRef.current;
     const allowResumeCursor = textStructuredPreferences.resumeMode !== TEXT_STRUCTURED_RESUME_MODES.RESTART;
-    const cursorId = allowResumeCursor && saved.documentId === activeTextDocumentId
+    const cursorId = allowResumeCursor && saved.documentId === activeTextDocumentId && saved.workspaceUid === activeTextDocumentTree?.uid
       && structuredTextActivePlaybackList.some(item => item.id === saved.segmentId)
       ? saved.segmentId : null;
     const savedOrderedList = cursorId
@@ -4386,22 +4439,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handlePlayerSmartNav = (direction) => {
+    const owned = readOwnedPlaybackSession(nowPlayingRefs);
+    if (owned) {
+      navigateOwnedPlayback(owned, direction);
+      return;
+    }
     if (mode !== 'text' || activeTextEditorModel !== 'structured-v1') {
       handleSmartNav(direction);
       return;
     }
     if (!structuredTextActivePlaybackList.length) return;
-    const session = playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      && playbackContextRef.current?.documentId === activeTextDocumentId
-      ? playbackContextRef.current : null;
     // Freeze one Shuffle order for the whole navigation session when Shuffle is
     // active, and never inherit manual Segment/Card overrides or stale Shuffle
     // lists after switching back to Sequential.
     const nav = resolveStructuredTextSmartNavigationContext({
       completeList: structuredTextActivePlaybackList,
       activeDocumentId: activeTextDocumentId,
-      session,
-      savedResume: structuredTextResumeCursorRef.current,
+      savedResume: structuredTextResumeCursorRef.current.workspaceUid === activeTextDocumentTree?.uid
+        ? structuredTextResumeCursorRef.current : null,
       preferences: textStructuredPreferences
     });
     if (!nav) return;
@@ -4416,11 +4471,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     // old card before React/async audio start has committed its state.
     structuredTextResumeCursorRef.current = {
       documentId: activeTextDocumentId,
+      workspaceUid: activeTextDocumentTree.uid,
       segmentId: target.id,
       orderedList: nav.persistedOrderedList ? [...nav.persistedOrderedList] : null
     };
-    // Force an exact new cursor, so Full navigates by Card and Split by sentence.
-    // A manual Card/Sentence play can also escape its previous restricted scope.
+    // With no owner, start a new Workspace session using current preferences.
     startStructuredTextPlayback({
       cursorSegmentId: target.id,
       scope: TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT,
@@ -4450,18 +4505,20 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, addLog]);
 
   const handleTextLibrarySelectDocument = useCallback((documentId) => runTextLibraryUiCommand(async () => {
-    forceStopAll();
+    const owner = playbackContextRef.current;
     structuredTextZipImportCoordinatorRef.current?.cancelActive('Workspace switched during Portable ZIP import.');
-    setStructuredTextPlaybackSourceStatus(null);
     setCurrentIndex(null);
-    setPlayingIndex(null);
-    setPlayingContext(null);
+    if (!owner) {
+      setStructuredTextPlaybackSourceStatus(null);
+      setPlayingIndex(null);
+      setPlayingContext(null);
+    }
     setSavedIndices(prev => ({ ...prev, text: null }));
     return executeTextLibrarySelectDocument({
       documentId, activeTextDocumentId, activeTextEditorModel, textIdentityState,
       setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
     });
-  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+  }), [runTextLibraryUiCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
 
   const handleTextLibrarySearchAction = useCallback(async (result, requestedAction = TEXT_LIBRARY_SEARCH_ACTIONS.OPEN) => {
@@ -4527,32 +4584,30 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
 
   const handleTextLibraryCreateDocument = useCallback((payload) => runTextLibraryUiCommand(async () => {
-    forceStopAll();
     setCurrentIndex(null);
-    setPlayingIndex(null);
-    setPlayingContext(null);
+    if (!playbackContextRef.current) {
+      setPlayingIndex(null);
+      setPlayingContext(null);
+    }
     setSavedIndices(prev => ({ ...prev, text: null }));
     return executeTextLibraryCreateDocument({
       payload, activeTextDocumentId, activeTextEditorModel, textIdentityState,
       setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
     });
-  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+  }), [runTextLibraryUiCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryMoveDocument = useCallback((id, collectionId) => runTextLibraryUiCommand(() => executeTextLibraryMoveDocument({ id, collectionId, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteDocument = useCallback((id) => runTextLibraryUiCommand(async () => {
-    forceStopAll();
-    setCurrentIndex(null);
-    setPlayingIndex(null);
-    setPlayingContext(null);
     const result = await executeTextLibraryDeleteDocument({
       id, activeTextDocumentId, activeTextEditorModel, textIdentityState,
       setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
     });
+    if (id === activeTextDocumentId) setCurrentIndex(null);
     if (result?.librarySnapshot) await runStructuredTextAudioStagingGc(result.librarySnapshot, 'document-delete');
     return result;
-  }), [runTextLibraryUiCommand, forceStopAll, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, runStructuredTextAudioStagingGc, addLog]);
+  }), [runTextLibraryUiCommand, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, runStructuredTextAudioStagingGc, addLog]);
   const handleTextLibraryRenameCollection = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameCollection({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteCollection = useCallback((id) => runTextLibraryUiCommand(() => executeTextLibraryDeleteCollection({ id, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(async () => {
@@ -4996,11 +5051,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     forceStopAll();
     setStructuredTextPlaybackSourceStatus(null);
     const docId = activeTextDocumentTree?.id || activeTextDocumentId || null;
-    structuredTextResumeCursorRef.current = { documentId: docId, segmentId: null, orderedList: null };
+    structuredTextResumeCursorRef.current = { documentId: docId, workspaceUid: activeTextDocumentTree?.uid, segmentId: null, orderedList: null };
     if (playbackContextRef.current?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT) {
       playbackContextRef.current = { ...playbackContextRef.current, orderedListOverride: null };
     }
-  }, [forceStopAll, activeTextDocumentTree?.id, activeTextDocumentId]);
+  }, [forceStopAll, activeTextDocumentTree?.id, activeTextDocumentTree?.uid, activeTextDocumentId]);
 
   const handleStructuredTextResetGlobalPlaybackPreferences = useCallback((target = 'playback') => {
     const guard = canExecuteTextStructuredReset({
@@ -5561,6 +5616,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         overrideVoice: voiceState.ttsVoice || null,
         selectedVoiceRef: { current: voiceState.ttsVoice || null },
         stopSignalRef,
+        playbackSessionRef,
         pauseStateRef,
         synth,
         currentUtteranceRef,
@@ -5571,7 +5627,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         pitch: 1
       });
     });
-  }, [structuredTextAudioGenerationState.running, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, resolveStructuredTextItemPlaybackRate, safePlayTransition, addLog, stopSignalRef, pauseStateRef, synth, currentUtteranceRef, ttsReplayRef, playbackResolveRef]);
+  }, [structuredTextAudioGenerationState.running, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, resolveStructuredTextItemPlaybackRate, safePlayTransition, addLog, stopSignalRef, playbackSessionRef, pauseStateRef, synth, currentUtteranceRef, ttsReplayRef, playbackResolveRef]);
 
   const handleStructuredTextGenerateCardAudio = useCallback((blockId, channels = null, options = {}) => {
     if (!activeTextDocumentTree) return null;
@@ -5975,7 +6031,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
 
   const handleSmartNav = (direction) => executeSmartPlaybackNavigation({
-    direction, setActiveMenuId, justSwitchedTab, playingIndex, playingContext, mode,
+    direction, setActiveMenuId, justSwitchedTab, playingIndex, playingContext: compatibleItemPlaybackContext, mode,
     tableViewMode, currentIndex, getBasePlaybackListForContext, vocabularyPlayOrderRef,
     resolveVocabularyPlaybackList, activeVocabularyOrderRef, playbackContextRef, setCurrentIndex,
     setPlayingContext, startGlobalPlayback
@@ -6024,8 +6080,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const handleModeSwitch = (targetMode) => executeModeSwitch({
-    targetMode, mode, isSystemBusy, forceStopAll, setPlayingIndex, setPlayingContext,
-    setIndependentPlayingId, viewScrollPosRef, tableViewMode, getScrollPos, currentIndex,
+    targetMode, mode, isSystemBusy, viewScrollPosRef, tableViewMode, getScrollPos, currentIndex,
     setSavedIndices, setScrollTop, pendingScrollRestoration, isAutoScrolling, setMode,
     savedIndices, setCurrentIndex, addLog
   });
@@ -7602,15 +7657,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     rangeInput, setRangeInput, handleRangeAdd
   });
 
-  const sharedTextPlaybackCursor = resolveTextMainReaderCursor({
-    presentation: textMainReader.presentation,
-    snapshot: textLibrarySnapshot,
-    provenance: textMainReaderProvenanceRef.current,
-    context: playbackContextRef.current,
-    sessionId: playbackSessionRef.current,
-    status: scopedStructuredTextPlaybackSourceStatus,
-    isPlaying, isPaused, playingContext, stopped: stopSignalRef.current
-  });
+  const sharedTextPlaybackCursor = resolveNowPlayingReaderCursor({ presentation: textMainReader.presentation, nowPlaying: readNowPlaying() });
 
   const renderPlaylistContent = () => {
     if (mode === 'text' && textDatabaseStatus !== 'ready') {

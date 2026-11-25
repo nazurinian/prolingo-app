@@ -1,4 +1,5 @@
 import { buildTextStructuredRuntimeAudioKey } from '../../../domain/text/textStructuredAudioRuntimeDomain.js';
+import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import { summarizeTextStructuredAudioCoverage, TEXT_AUDIO_COVERAGE_STATUS } from '../../../domain/text/textStructuredAudioCoverageDomain.js';
 import {
   normalizeTextReaderAppearanceState,
@@ -594,9 +595,10 @@ export const buildSharedSegmentRenderFlags = ({
   audioCoverageMap = null,
   disabled = false
 }) => {
-  const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id;
-  const paused = active && cursor.state === 'paused' && cursor.channel === channel;
-  const speaking = active && !paused && cursor.channel === channel;
+  const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id && cursor.channel === channel;
+  const paused = active && cursor.state === 'paused';
+  const speaking = active && !paused;
+  const stop = !selectionOnly && matchesStructuredPlaybackControl(cursor, { scope: 'segment', segmentId: segment.id, channel });
   const focused = segment.id === focusSegmentId;
   const selected = Boolean(selectedSegmentId && segment.id === selectedSegmentId);
   const playable = playableSegmentIds?.has ? playableSegmentIds.has(segment.id) : true;
@@ -632,12 +634,14 @@ export const buildSharedSegmentRenderFlags = ({
       'data-shared-card-segment': segment.id,
       'data-shared-card-channel': channel,
       'data-shared-card-index': logicalIndex + 1,
+      ...(!selectionOnly ? { 'data-reader-playback-action': stop ? 'stop' : 'play' } : {}),
       ...(selected ? { 'data-shared-segment-selected': 'true' } : {}),
       ...(paused ? { 'data-shared-segment-paused': 'true' } : {}),
       ...(selectionOnly ? { 'data-shared-segment-select-only': 'true' } : {})
     },
     title: selectionOnly
       ? `Sentence ${logicalIndex + 1} • Tap to select in Study Box (does not start audio)`
+      : stop ? `Stop ${isMeaning ? 'Indonesian' : 'English'} playback for sentence ${logicalIndex + 1}`
       : buildSegmentCoverageTitle({
           segment,
           logicalIndex,
@@ -647,7 +651,7 @@ export const buildSharedSegmentRenderFlags = ({
         }),
     accessibleLabel: selectionOnly
       ? `Select sentence ${logicalIndex + 1} in Study Box (${isMeaning ? 'Indonesian meaning' : 'English text'})`
-      : `Play sentence ${logicalIndex + 1} (${isMeaning ? 'Indonesian meaning' : 'English text'})`
+      : `${stop ? 'Stop' : 'Play'} sentence ${logicalIndex + 1} (${isMeaning ? 'Indonesian meaning' : 'English text'})`
   };
 };
 

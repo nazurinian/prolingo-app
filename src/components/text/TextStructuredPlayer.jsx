@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { matchesStructuredPlaybackControl } from '../../domain/playback/nowPlayingDomain.js';
 import { ChevronDown, ChevronRight, FileDown, FileText, MessageSquare, Play, PlayCircle, SkipForward, SlidersHorizontal, Square, Upload, Volume2, Wand2, X } from 'lucide-react';
 import {
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
@@ -720,6 +721,7 @@ export const TextStructuredPlayer = ({
     }
     return sharedPlaybackCursor;
   }, [sharedPlaybackCursor, documentTree?.id, documentTree?.uid]);
+  const stopsWorkspace = matchesStructuredPlaybackControl(effectiveBookPlaybackCursor, { scope: 'document' });
 
   const sharedWorkspaceKey = sharedPresentation?.workspace?.id
     ? `${sharedPresentation.workspace.id}:${sharedPresentation.workspace.uid || ''}`
@@ -924,7 +926,7 @@ export const TextStructuredPlayer = ({
               {documentCoverage?.stale ? <span className="rounded-md bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 font-black text-rose-700 dark:text-rose-300">STALE {documentCoverage.stale}</span> : null}
             </div>
           </div>
-          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title="Play Workspace from start"><Play className="w-3.5 h-3.5 fill-current"/>Play All</button>
+          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}>{stopsWorkspace ? <Square className="w-3.5 h-3.5 fill-current"/> : <Play className="w-3.5 h-3.5 fill-current"/>}{stopsWorkspace ? 'Stop All' : 'Play All'}</button>
         </div>
 
         {!showSharedBookPage && (

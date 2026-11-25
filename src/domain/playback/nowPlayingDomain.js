@@ -7,7 +7,7 @@ const IDLE = Object.freeze({
   workspace: null, card: null, unit: null, segment: null, speaker: null, item: null,
   channel: null, savedRepresentation: null, requestedRepresentation: null, commandRepresentation: null,
   actualRepresentation: null, representationFallback: null, boundary: null,
-  source: null, provider: null, voice: null, rate: null, scope: null, queue: null, timeline: null
+  source: null, provider: null, voice: null, rate: null, scope: null, queue: null, timeline: null, commandTarget: null
 });
 
 const ownedContext = ({ playbackContextRef, playbackSessionRef, stopSignalRef }, sessionId) => {
@@ -28,7 +28,9 @@ export const bindNowPlayingRuntime = (refs, target, sessionId = refs.playbackSes
   context[RUNTIME] = observation;
   return runtime => {
     const current = ownedContext(refs, sessionId);
-    if (current?.[RUNTIME] === observation) observation.runtime = runtime;
+    if (current?.[RUNTIME] !== observation || observation.runtime === runtime) return;
+    observation.runtime = runtime;
+    refs.onChange?.();
   };
 };
 
@@ -147,7 +149,23 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     source: runtime?.source ?? null, provider: runtime?.provider ?? null, voice: runtime?.voice ?? null,
     rate: Number.isFinite(rate) && rate > 0 ? rate : null,
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
+    commandTarget: structured ? context.commandTarget ?? null : null,
     queue: target ? readQueue(context, target) : null,
     timeline: readTimeline(runtime?.media)
   });
+};
+
+/** Command ownership remains stable while the audible target moves through its queue. */
+export const matchesStructuredPlaybackControl = (playback, target) => {
+  const command = playback?.commandTarget;
+  if (!command || !['playing', 'paused'].includes(playback.state) || command.scope !== target.scope) return false;
+  if (command.scope === 'segment') return command.segmentId === target.segmentId && command.channel === (target.channel ?? null);
+  if (command.scope === 'unit') {
+    return command.blockId === target.blockId && (command.virtualUnit
+      ? target.virtualUnit === true && target.unitId == null
+      : !target.virtualUnit && Boolean(command.unitId && command.unitId === target.unitId));
+  }
+  if (command.scope === 'card') return command.blockId === target.blockId && command.cardChannel === (target.cardChannel ?? null);
+  if (command.scope === 'from-here') return command.segmentId === target.segmentId && command.boundary === target.boundary;
+  return command.scope === 'document';
 };

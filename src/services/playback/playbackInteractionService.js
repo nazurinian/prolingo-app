@@ -7,44 +7,39 @@ import { resolvePlaybackNavigationReferenceState, resolvePlaybackNavigationTarge
 export const executeIndependentPlaybackInteraction = ({
   item, part, uiId, setActiveMenuId, independentPlayingId, forceStopAll, safePlayTransition,
   playbackSessionRef, playbackContextRef, setIndependentPlayingId, setPlayingContext, mode, tableViewMode,
-  setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab
+  setPlayingIndex, setCurrentIndex, setSpeakingPart, playSource, onStudyVocab, sourceData, documentId,
+  isVisibleContext
 }) => {
     setActiveMenuId(null);
-    if (resolveIndependentPlaybackControlAction({ independentPlayingId, uiId }) === 'stop') {
+    const textToPlay = item?.id == null ? null : getItemPartText(item, part);
+    if (!String(textToPlay || '').trim()) return;
+    const owner = playbackContextRef?.current;
+    const ownedIndependentId = owner?.kind === 'independent' && owner.sessionId === playbackSessionRef.current ? owner.uiId : null;
+    if (resolveIndependentPlaybackControlAction({ independentPlayingId: playbackContextRef ? ownedIndependentId : independentPlayingId, uiId }) === 'stop') {
         forceStopAll();
         return;
     }
 
+    const pending = {
+      context: resolveIndependentPlaybackContext({ mode, tableViewMode }), kind: 'independent', uiId,
+      baseList: [item], orderedList: [item], sourceData, documentId
+    };
     safePlayTransition(async () => {
       const playbackSession = playbackSessionRef.current;
       if (playbackContextRef) {
-        playbackContextRef.current = {
-          sessionId: playbackSession,
-          context: resolveIndependentPlaybackContext({ mode, tableViewMode }),
-          kind: 'independent',
-          baseList: [item],
-          orderedList: [item]
-        };
+        playbackContextRef.current = { ...pending, sessionId: playbackSession };
       }
       setIndependentPlayingId(uiId);
-      setPlayingContext(resolveIndependentPlaybackContext({ mode, tableViewMode }));
+      setPlayingContext(pending.context);
       setPlayingIndex(item.id);
-      setCurrentIndex(item.id);
+      if (!isVisibleContext || isVisibleContext(pending.context, documentId)) setCurrentIndex(item.id);
       
-      const textToPlay = getItemPartText(item, part);
-      if (!String(textToPlay || '').trim()) {
-          setIndependentPlayingId(null);
-          setSpeakingPart(null);
-          return;
-      }
-
       setSpeakingPart(part);
       onStudyVocab?.(item);
       await playSource(textToPlay, item, part);
       if (playbackSession !== playbackSessionRef.current) return;
-      setIndependentPlayingId(null);
-      setSpeakingPart(null); 
-    });
+      forceStopAll();
+    }, pending);
 };
 
 export const executeGlobalPlayInteraction = ({
@@ -69,7 +64,7 @@ export const executeGlobalPlayInteraction = ({
         const baseList = getBasePlaybackListForContext(playingContext);
         const item = resolveGlobalPlayResumeItem(baseList, playingIndex);
         if (item) {
-            startGlobalPlayback(item.id, playingContext);
+            startGlobalPlayback(item.id, playingContext, { resumeHint: true });
             return;
         }
     }
@@ -78,21 +73,16 @@ export const executeGlobalPlayInteraction = ({
     const baseList = getBasePlaybackListForContext(targetContext);
     const freshStart = resolveGlobalPlayFreshStartState({ baseList, currentIndex });
     startGlobalPlayback(freshStart.startItemId, targetContext, {
-      anchorShuffle: freshStart.anchorShuffle
+      anchorShuffle: freshStart.anchorShuffle, resumeHint: true
     });
 };
 
 export const executeManualRowPlaybackInteraction = ({
-  item, setActiveMenuId, setIndependentPlayingId, mode, tableViewMode, setCurrentIndex,
-  setPlayingIndex, setPlayingContext, startGlobalPlayback, vocabularyPlayOrderRef
+  item, setActiveMenuId, mode, tableViewMode, startGlobalPlayback, vocabularyPlayOrderRef
 }) => {
       setActiveMenuId(null);
-      setIndependentPlayingId(null);
-
+      if (item?.id == null) return;
       const targetContext = mode === 'table' ? tableViewMode : 'text';
-      setCurrentIndex(item.id);
-      setPlayingIndex(item.id);
-      setPlayingContext(targetContext);
       startGlobalPlayback(item.id, targetContext, {
         anchorShuffle: targetContext !== 'text',
         forceReshuffle: targetContext !== 'text' && vocabularyPlayOrderRef.current === 'shuffle'
@@ -115,6 +105,7 @@ export const executeForceStopPlaybackService = ({
       activeAudio.currentTime = 0;
       activeAudio.onended = null;
       activeAudio.onerror = null;
+      activeAudio.onplaying = null;
     }
     synth.cancel();
     settlePlaybackPromise();

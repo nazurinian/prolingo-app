@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Target } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Square, Target } from 'lucide-react';
+import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -179,6 +180,19 @@ export const SharedSegmentStudyBox = ({
   const isSelectedPaused = isSelectedAudible && cursor.state === 'paused';
   const isSelectedPlayingText = isSelectedAudible && !isSelectedPaused && cursor.channel === 'text';
   const isSelectedPlayingMeaning = isSelectedAudible && !isSelectedPaused && cursor.channel === 'meaning';
+  const ownsSegmentControl = channel => matchesStructuredPlaybackControl(cursor, { scope: 'segment', segmentId: segment?.id, channel });
+  const stopsEn = ownsSegmentControl('text');
+  const stopsId = ownsSegmentControl('meaning');
+  const stopsSegment = ownsSegmentControl(null);
+  const continueStart = cursor.commandTarget?.segmentId;
+  const continuesThisCard = lookup?.entryBySegmentId?.has(continueStart) && (!selection.hasManualOverride || continueStart === segment?.id);
+  const stopsContinue = continuesThisCard && matchesStructuredPlaybackControl(cursor, {
+    scope: 'from-here', segmentId: continueStart, boundary: continueScope
+  });
+  const EnIcon = stopsEn ? Square : Play;
+  const IdIcon = stopsId ? Square : Play;
+  const SegmentIcon = stopsSegment ? Square : Play;
+  const ContinueIcon = stopsContinue ? Square : SkipForward;
 
   const textContent = segment ? normalizeSegmentDisplayText(segment.text) : '';
   const meaningContent = segment ? normalizeSegmentDisplayText(segment.meaning) : '';
@@ -195,7 +209,7 @@ export const SharedSegmentStudyBox = ({
   const supportsContinuePlay = typeof onPlayContinueFromSegment === 'function';
   const playEnDisabled = !supportsChannelPlay || disabled || !segment || !hasText;
   const playIdDisabled = !supportsChannelPlay || disabled || !segment || !hasMeaning;
-  const playContinueDisabled = !supportsContinuePlay || disabled || !segment || (!hasText && !hasMeaning);
+  const playContinueDisabled = !supportsContinuePlay || disabled || (!stopsContinue && (!segment || (!hasText && !hasMeaning)));
 
   const atUnitStart = localIndex <= 0;
   const atUnitEnd = localIndex < 0 || localIndex >= activeUnitSegments.length - 1;
@@ -628,28 +642,30 @@ export const SharedSegmentStudyBox = ({
               disabled={playEnDisabled}
               onClick={() => supportsChannelPlay && segment && onPlaySegmentChannel(segment.id, 'text')}
               data-study-box-action="play-en"
+              data-reader-playback-action={stopsEn ? 'stop' : 'play'}
               data-study-box-pending-callback={!supportsChannelPlay ? 'onPlaySegmentChannel' : undefined}
-              title={supportsChannelPlay
+              title={stopsEn ? 'Stop English playback' : supportsChannelPlay
                 ? 'Play English only for this sentence (one-time Split override)'
                 : 'Play EN — awaits 4E exact-channel Split override callback'}
               className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-indigo-200/90 dark:border-indigo-800/80 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
-              <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
-              <span>Play EN</span>
+              <EnIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <span>{stopsEn ? 'Stop EN' : 'Play EN'}</span>
             </button>
             <button
               type="button"
               disabled={playIdDisabled}
               onClick={() => supportsChannelPlay && segment && onPlaySegmentChannel(segment.id, 'meaning')}
               data-study-box-action="play-id"
+              data-reader-playback-action={stopsId ? 'stop' : 'play'}
               data-study-box-pending-callback={!supportsChannelPlay ? 'onPlaySegmentChannel' : undefined}
-              title={supportsChannelPlay
+              title={stopsId ? 'Stop Indonesian playback' : supportsChannelPlay
                 ? 'Play Indonesian only for this sentence (one-time Split override)'
                 : 'Play ID — awaits 4E exact-channel Split override callback'}
               className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-emerald-200/90 dark:border-emerald-800/80 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
-              <span>Play ID</span>
+              <IdIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <span>{stopsId ? 'Stop ID' : 'Play ID'}</span>
             </button>
             <button
               type="button"
@@ -657,11 +673,12 @@ export const SharedSegmentStudyBox = ({
               onClick={() => segment && onPlaySegment?.(segment.id)}
               data-shared-segment-focus-play="true"
               data-study-box-action="play-segment"
-              title="Play this sentence using current host playback configuration"
+              data-reader-playback-action={stopsSegment ? 'stop' : 'play'}
+              title={stopsSegment ? 'Stop Segment playback' : 'Play this sentence using current host playback configuration'}
               className="min-h-11 sm:min-h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
             >
-              <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
-              <span>Play Segment</span>
+              <SegmentIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <span>{stopsSegment ? 'Stop Segment' : 'Play Segment'}</span>
             </button>
             {supportsContinuePlay && (
               <label className="inline-flex items-center gap-1 text-xs">
@@ -682,16 +699,17 @@ export const SharedSegmentStudyBox = ({
             <button
               type="button"
               disabled={playContinueDisabled}
-              onClick={() => supportsContinuePlay && segment && onPlayContinueFromSegment(segment.id, { scope: continueScope })}
+              onClick={() => supportsContinuePlay && onPlayContinueFromSegment(stopsContinue ? continueStart : segment.id, { scope: continueScope })}
               data-study-box-action="play-continue"
+              data-reader-playback-action={stopsContinue ? 'stop' : 'play'}
               data-study-box-pending-callback={!supportsContinuePlay ? 'onPlayContinueFromSegment' : undefined}
-              title={supportsContinuePlay
+              title={stopsContinue ? 'Stop continuous playback' : supportsContinuePlay
                 ? 'Play from this sentence and continue through the configured boundary'
                 : 'Play & Continue — awaits 4E bounded Continue playback callback'}
               className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
-              <SkipForward aria-hidden="true" className="w-3.5 h-3.5" />
-              <span>Play &amp; Continue</span>
+              <ContinueIcon aria-hidden="true" className="w-3.5 h-3.5" />
+              <span>{stopsContinue ? 'Stop Continue' : 'Play & Continue'}</span>
             </button>
           </div>
           {(!supportsChannelPlay || !supportsContinuePlay) && (

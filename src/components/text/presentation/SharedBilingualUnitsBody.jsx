@@ -8,6 +8,7 @@ import {
   resolveEffectiveBilingualPresentation
 } from '../../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_PARAGRAPH_CARD_ROLES } from '../../../domain/text/textParagraphRoleDomain.js';
+import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import SharedNotebookUnitsBody from './SharedNotebookUnitsBody.jsx';
 import { SharedUnitPlaybackContext } from './SharedUnitPlaybackContext.js';
@@ -261,14 +262,21 @@ const ContextualReturnToPlayingButton = ({ audibleTarget, onFollowContextualAudi
   );
 };
 
-const ContextualTranslationText = ({ text, segmentId, channel, onPlaySegment, disabled }) => (
+const ContextualTranslationText = ({ text, segmentId, channel, onPlaySegment, disabled, cursor }) => {
+ const stop = matchesStructuredPlaybackControl(cursor, { scope: 'segment', segmentId, channel });
+ const audible = cursor?.precision === 'segment' && cursor.segmentId === segmentId && cursor.channel === channel;
+ const paused = audible && cursor.state === 'paused';
+ return (
   <TextSegmentInteraction segmentId={segmentId} channel={channel}
     interactive={Boolean(onPlaySegment)} disabled={disabled}
-    accessibleLabel={channel === 'meaning' ? 'Play Indonesian translation' : 'Play English text'}
-    dataAttributes={{ 'data-shared-card-segment': segmentId, 'data-shared-card-channel': channel }}
+    active={audible} speaking={audible && !paused}
+    accessibleLabel={`${stop ? 'Stop' : 'Play'} ${channel === 'meaning' ? 'Indonesian translation' : 'English text'}`}
+    dataAttributes={{ 'data-shared-card-segment': segmentId, 'data-shared-card-channel': channel,
+      'data-reader-playback-action': stop ? 'stop' : 'play', 'data-shared-segment-paused': paused ? 'true' : undefined }}
     onActivate={() => onPlaySegment?.(segmentId, channel)}
   >{text}</TextSegmentInteraction>
-);
+ );
+};
 
 const ContextualBlockCallout = ({
   placement,
@@ -280,6 +288,7 @@ const ContextualBlockCallout = ({
   divergedFromAudible,
   audibleTarget,
   onPlaySegment,
+  cursor,
   disabled,
   onFollowContextualAudible,
   onDismissContextualTarget
@@ -341,7 +350,7 @@ const ContextualBlockCallout = ({
       >
         {secondaryText ? (
           <ContextualTranslationText text={secondaryText} segmentId={target.segmentId} channel={secondaryChannel}
-            onPlaySegment={onPlaySegment} disabled={disabled} />
+            onPlaySegment={onPlaySegment} disabled={disabled} cursor={cursor} />
         ) : (
           <span className="italic text-slate-400 dark:text-slate-500">
             {secMeta.missingNotice}
@@ -560,7 +569,7 @@ const UnitChannelStream = ({
               >
                 {inlineSecondaryText ? (
                   <ContextualTranslationText text={inlineSecondaryText} segmentId={segment.id} channel={secondaryChannel}
-                    onPlaySegment={onPlaySegment} disabled={disabled} />
+                    onPlaySegment={onPlaySegment} disabled={disabled} cursor={cursor} />
                 ) : (
                   <span className="italic text-slate-400 dark:text-slate-500">
                     {secMeta.missingNotice}
@@ -912,16 +921,22 @@ export const SharedBilingualUnitsBody = ({
   const fullPrimaryHighlighted = isSpeakingCard && cursor.precision === 'card' && cursor.channel === primaryChannel;
   const fullSecondaryHighlighted = isSpeakingCard && cursor.precision === 'card' && cursor.channel === secondaryChannel;
   const activeContextualTarget = renderMode === 'contextual' ? (contextualState?.target || null) : null;
-  const renderUnitPlay = unit => onPlayUnit && !disabled && unit.segments?.some(item =>
-    normalizeSegmentDisplayText(item.text) || normalizeSegmentDisplayText(item.meaning)) && (
+  const renderUnitPlay = unit => {
+    if (!onPlayUnit || disabled || !unit.segments?.some(item =>
+      normalizeSegmentDisplayText(item.text) || normalizeSegmentDisplayText(item.meaning))) return null;
+    const target = {
+      blockId: card.id, unitId: unit.id, virtualUnit: unit.identitySource === 'v1-paragraph-compat',
+      workspaceId: workspace?.id, workspaceUid: workspace?.uid
+    };
+    const stop = matchesStructuredPlaybackControl(cursor, { ...target, scope: 'unit' });
+    return (
     <button type="button" data-shared-unit-play={unit.viewKey}
+      data-reader-playback-action={stop ? 'stop' : 'play'}
       className="mb-1 min-h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium"
-      onClick={() => onPlayUnit({
-        blockId: card.id, unitId: unit.id, virtualUnit: unit.identitySource === 'v1-paragraph-compat',
-        workspaceId: workspace?.id, workspaceUid: workspace?.uid
-      })}
-    >Play {unit.kind === 'turn' ? 'Turn' : 'Section'}</button>
-  );
+      onClick={() => onPlayUnit(target)}
+    >{stop ? 'Stop' : 'Play'} {unit.kind === 'turn' ? 'Turn' : 'Section'}</button>
+    );
+  };
   const contextualDiverged = Boolean(renderMode === 'contextual' && contextualState?.divergedFromAudible);
   const contextualAudibleTarget = renderMode === 'contextual' ? (contextualState?.audibleTarget || null) : null;
 
@@ -1295,6 +1310,7 @@ export const SharedBilingualUnitsBody = ({
               <>
                 {resolvedUnitTarget && contextualPlacement === 'above' && (
                   <ContextualBlockCallout
+                    cursor={cursor}
                     placement="above"
                     target={resolvedUnitTarget}
                     secondaryChannel={secondaryChannel}
@@ -1346,6 +1362,7 @@ export const SharedBilingualUnitsBody = ({
 
                 {resolvedUnitTarget && contextualPlacement === 'below' && (
                   <ContextualBlockCallout
+                    cursor={cursor}
                     placement="below"
                     target={resolvedUnitTarget}
                     secondaryChannel={secondaryChannel}
