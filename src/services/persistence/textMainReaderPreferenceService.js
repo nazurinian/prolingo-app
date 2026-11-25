@@ -24,17 +24,25 @@ export const TEXT_WORKSPACE_STYLE_SCOPES = Object.freeze({
   WORKSPACE: 'workspace'
 });
 
+export const TEXT_MAIN_READER_PERSISTENCE_REASONS = Object.freeze({
+  QUOTA_EXCEEDED: 'quota-exceeded',
+  STORAGE_DENIED: 'storage-denied',
+  STORAGE_UNAVAILABLE: 'storage-unavailable',
+  WRITE_FAILED: 'write-failed'
+});
+
 const FORBIDDEN_WORKSPACE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/**
- * Bounded LRU-by-recency safeguard for per-Workspace style overrides.
- * JS object insertion order tracks recency (updates move touched keys to the tail),
- * so if more than MAX_WORKSPACE_OVERRIDE_ENTRIES unique overrides accumulate, only
- * the oldest least-recently-used entries are evicted — never the active or newly
- * written Workspace override. Storage quota failures also fall back safely without
- * losing Shared defaults, Reader Mode, Card Visibility, or View preferences.
- */
-export const MAX_WORKSPACE_OVERRIDE_ENTRIES = 250;
+let lastPersistenceStatus = Object.freeze({
+  ok: true,
+  persisted: false,
+  reason: null,
+  storageKey: null,
+  error: null,
+  overrideCount: 0
+});
+
+export const getLastTextMainReaderPersistenceStatus = () => lastPersistenceStatus;
 
 export const resolveTextMainReaderPreferenceStorageKey = ({ hostId = null, storageKey = null } = {}) => {
   const cleanStorageKey = typeof storageKey === 'string' ? storageKey.trim() : '';
@@ -72,20 +80,12 @@ const normalizeWorkspaceStyleOverridesMap = candidate => {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
     return Object.freeze({});
   }
-  const validEntries = [];
+  const normalized = {};
   for (const [rawKey, rawOverride] of Object.entries(candidate)) {
     const key = normalizeTextWorkspacePreferenceKey(rawKey);
     if (!key) continue;
     const override = normalizeTextWorkspaceStyleOverride(rawOverride);
     if (Object.keys(override).length === 0) continue;
-    validEntries.push([key, override]);
-  }
-  // Retain the most recently updated overrides if raw persisted input exceeds capacity.
-  const boundedEntries = validEntries.length > MAX_WORKSPACE_OVERRIDE_ENTRIES
-    ? validEntries.slice(validEntries.length - MAX_WORKSPACE_OVERRIDE_ENTRIES)
-    : validEntries;
-  const normalized = {};
-  for (const [key, override] of boundedEntries) {
     normalized[key] = override;
   }
   return Object.freeze(normalized);
@@ -101,18 +101,6 @@ export const normalizeTextMainReaderPreference = candidate => {
     view: normalizeTextCardPresentationState(isV1 ? candidate.view : null),
     workspaceStyle: normalizeTextWorkspaceStyleState(isV1 ? candidate.workspaceStyle : null),
     workspaceStyleOverrides: normalizeWorkspaceStyleOverridesMap(isV1 ? candidate.workspaceStyleOverrides : null)
-  });
-};
-
-export const inspectTextMainReaderOverrideCapacity = preference => {
-  const normalized = normalizeTextMainReaderPreference(preference);
-  const count = Object.keys(normalized.workspaceStyleOverrides).length;
-  return Object.freeze({
-    count,
-    maxEntries: MAX_WORKSPACE_OVERRIDE_ENTRIES,
-    remaining: Math.max(0, MAX_WORKSPACE_OVERRIDE_ENTRIES - count),
-    atCapacity: count >= MAX_WORKSPACE_OVERRIDE_ENTRIES,
-    evictionPolicy: 'lru-oldest-on-overflow'
   });
 };
 
@@ -180,7 +168,7 @@ export const resolveTextMainReaderWorkspaceStyle = (preference, target = null) =
   });
 };
 
-export const updateTextMainReaderWorkspaceStyle = (preference, patch, options = {}) => {
+export const updateTextMainReaderWorkspaceStyle = (preference, patch, options = null) => {
   const normalized = normalizeTextMainReaderPreference(preference);
   const { intendedScope, workspaceKey: key, invalidWorkspaceKey } = parseWorkspaceStyleTarget(options);
 
@@ -209,15 +197,11 @@ export const updateTextMainReaderWorkspaceStyle = (preference, patch, options = 
     }
   }
 
-  // Maintain LRU recency order by moving the updated key to the tail.
-  const nextOverrides = {};
-  for (const [existingKey, existingOverride] of Object.entries(normalized.workspaceStyleOverrides)) {
-    if (existingKey !== key) {
-      nextOverrides[existingKey] = existingOverride;
-    }
-  }
+  const nextOverrides = { ...normalized.workspaceStyleOverrides };
   if (Object.keys(sparseOverride).length > 0) {
     nextOverrides[key] = sparseOverride;
+  } else {
+    delete nextOverrides[key];
   }
 
   return normalizeTextMainReaderPreference({
@@ -232,7 +216,7 @@ export const updateTextMainReaderWorkspaceStyle = (preference, patch, options = 
  * Visibility, bilingual layout, audio preferences, or unrelated Workspaces.
  * Invalid or missing workspace identity for Workspace scope fails safely as a no-op.
  */
-export const resetTextMainReaderWorkspaceStyle = (preference, options = {}) => {
+export const resetTextMainReaderWorkspaceStyle = (preference, options = null) => {
   const normalized = normalizeTextMainReaderPreference(preference);
   const { intendedScope, workspaceKey: key, invalidWorkspaceKey } = parseWorkspaceStyleTarget(options);
 
@@ -259,6 +243,50 @@ const resolveStorage = options => {
   return typeof window !== 'undefined' ? window.localStorage : null;
 };
 
+const serializeError = (error, fallbackName = 'Error', fallbackMessage = 'Preference persistence failed') => Object.freeze({
+  name: typeof error?.name === 'string' && error.name ? error.name : fallbackName,
+  message: typeof error?.message === 'string' && error.message
+    ? error.message
+    : String(error || fallbackMessage),
+  code: error?.code ?? null
+});
+
+const classifyPersistenceFailure = error => {
+  const name = String(error?.name || '');
+  const message = String(error?.message || '');
+  if (
+    name === 'QuotaExceededError'
+    || name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || error?.code === 22
+    || error?.code === 1014
+    || /quota/i.test(`${name} ${message}`)
+  ) {
+    return TEXT_MAIN_READER_PERSISTENCE_REASONS.QUOTA_EXCEEDED;
+  }
+  if (name === 'SecurityError' || /denied|security/i.test(`${name} ${message}`)) {
+    return TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_DENIED;
+  }
+  return TEXT_MAIN_READER_PERSISTENCE_REASONS.WRITE_FAILED;
+};
+
+const recordPersistenceResult = (result, options) => {
+  lastPersistenceStatus = Object.freeze({
+    ok: result.ok,
+    persisted: result.persisted,
+    reason: result.reason,
+    storageKey: result.storageKey,
+    error: result.error,
+    overrideCount: Object.keys(result.preference.workspaceStyleOverrides).length
+  });
+  try {
+    options?.onPersistenceStatus?.(result);
+    if (!result.persisted) {
+      options?.onPersistenceError?.(result);
+    }
+  } catch { /* Diagnostic callbacks must never block reading. */ }
+  return result;
+};
+
 export const loadTextMainReaderPreference = (options = {}) => {
   try {
     const storage = resolveStorage(options);
@@ -270,42 +298,94 @@ export const loadTextMainReaderPreference = (options = {}) => {
   }
 };
 
-export const saveTextMainReaderPreference = (candidate, options = {}) => {
+/**
+ * Non-destructively persists normalized reader preferences to storage.
+ * Storage quota or access errors never retry with trimmed preferences and never
+ * overwrite previously persisted data; callers receive full in-memory state
+ * alongside structured failure diagnostics.
+ */
+export const persistTextMainReaderPreference = (candidate, options = {}) => {
   const normalized = normalizeTextMainReaderPreference(candidate);
+  const key = resolveTextMainReaderPreferenceStorageKey(options);
+
+  let storage;
   try {
-    const storage = resolveStorage(options);
-    if (storage) {
-      const key = resolveTextMainReaderPreferenceStorageKey(options);
-      try {
-        storage.setItem(key, JSON.stringify(normalized));
-      } catch {
-        // Quota-safe fallback: trim oldest workspace overrides before giving up,
-        // preserving Shared defaults, Reader Mode, Card Visibility, and View state.
-        const overrideEntries = Object.entries(normalized.workspaceStyleOverrides);
-        if (overrideEntries.length > 0) {
-          const reduced = normalizeTextMainReaderPreference({
-            ...normalized,
-            workspaceStyleOverrides: Object.fromEntries(overrideEntries.slice(-Math.min(32, Math.floor(overrideEntries.length / 2))))
-          });
-          storage.setItem(key, JSON.stringify(reduced));
-          return reduced;
-        }
-      }
-    }
-  } catch { /* Optional view preferences must never block reading. */ }
-  return normalized;
+    storage = resolveStorage(options);
+  } catch (error) {
+    return recordPersistenceResult(Object.freeze({
+      ok: false,
+      persisted: false,
+      reason: TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_DENIED,
+      storageKey: key,
+      preference: normalized,
+      error: serializeError(error, 'SecurityError', 'localStorage access denied')
+    }), options);
+  }
+
+  if (!storage || typeof storage.setItem !== 'function') {
+    return recordPersistenceResult(Object.freeze({
+      ok: false,
+      persisted: false,
+      reason: TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_UNAVAILABLE,
+      storageKey: key,
+      preference: normalized,
+      error: Object.freeze({
+        name: 'StorageUnavailableError',
+        message: 'localStorage is unavailable.',
+        code: null
+      })
+    }), options);
+  }
+
+  try {
+    storage.setItem(key, JSON.stringify(normalized));
+    return recordPersistenceResult(Object.freeze({
+      ok: true,
+      persisted: true,
+      reason: null,
+      storageKey: key,
+      preference: normalized,
+      error: null
+    }), options);
+  } catch (error) {
+    return recordPersistenceResult(Object.freeze({
+      ok: false,
+      persisted: false,
+      reason: classifyPersistenceFailure(error),
+      storageKey: key,
+      preference: normalized,
+      error: serializeError(error, 'Error', 'Unable to write reader preferences')
+    }), options);
+  }
+};
+
+export const saveTextMainReaderPreference = (candidate, options = {}) => (
+  persistTextMainReaderPreference(candidate, options).preference
+);
+
+const extractWorkspaceTargetOption = options => {
+  if (!options || typeof options !== 'object') return null;
+  if (
+    Object.hasOwn(options, 'scope')
+    || Object.hasOwn(options, 'workspaceKey')
+    || Object.hasOwn(options, 'id')
+    || Object.hasOwn(options, 'uid')
+  ) {
+    return options;
+  }
+  return null;
 };
 
 export const saveTextMainReaderWorkspaceStyle = (patch, options = {}) => {
   const current = loadTextMainReaderPreference(options);
-  const next = updateTextMainReaderWorkspaceStyle(current, patch, options);
+  const next = updateTextMainReaderWorkspaceStyle(current, patch, extractWorkspaceTargetOption(options));
   if (next === current) return current;
   return saveTextMainReaderPreference(next, options);
 };
 
 export const resetSavedTextMainReaderWorkspaceStyle = (options = {}) => {
   const current = loadTextMainReaderPreference(options);
-  const next = resetTextMainReaderWorkspaceStyle(current, options);
+  const next = resetTextMainReaderWorkspaceStyle(current, extractWorkspaceTargetOption(options));
   if (next === current) return current;
   return saveTextMainReaderPreference(next, options);
 };

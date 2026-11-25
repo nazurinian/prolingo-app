@@ -9,16 +9,19 @@ import {
 import {
   DEFAULT_SHARED_CARD_VISIBILITY,
   DEFAULT_TEXT_MAIN_READER_MODE,
-  MAX_WORKSPACE_OVERRIDE_ENTRIES,
+  TEXT_MAIN_READER_PERSISTENCE_REASONS,
   TEXT_MAIN_READER_PREFERENCE_KEY,
   TEXT_WORKSPACE_STYLE_SCOPES,
-  inspectTextMainReaderOverrideCapacity,
+  getLastTextMainReaderPersistenceStatus,
   loadTextMainReaderPreference,
   normalizeTextMainReaderPreference,
+  persistTextMainReaderPreference,
+  resetSavedTextMainReaderWorkspaceStyle,
   resetTextMainReaderWorkspaceStyle,
   resolveTextMainReaderPreferenceStorageKey,
   resolveTextMainReaderWorkspaceStyle,
   saveTextMainReaderPreference,
+  saveTextMainReaderWorkspaceStyle,
   updateTextMainReaderWorkspaceStyle
 } from '../src/services/persistence/textMainReaderPreferenceService.js';
 import {
@@ -122,7 +125,7 @@ test('versioned preference defaults old reader; whitelists view and Workspace St
   assert.deepEqual(saved.workspaceStyleOverrides, {});
   assert.ok(Object.isFrozen(saved) && Object.isFrozen(saved.view) && Object.isFrozen(saved.workspaceStyle));
 });
-test('Workspace Style normalization, inheritance, safe workspace identity, LRU cap, host isolation and scoped reset stay independent', () => {
+test('Workspace Style normalization, inheritance, safe workspace identity, unbounded valid overrides, host isolation and scoped reset stay independent', () => {
   const dirtyStyle = normalizeTextWorkspaceStyleState({ textAlign: 'left', paragraphIndent: 'yes', speakerLayout: 'invalid', showAccents: false, voice: 'ignored' });
   assert.deepEqual(dirtyStyle, { textAlign: 'left', paragraphIndent: true, speakerLayout: 'aligned', showAccents: false });
   assert.equal(isTextWorkspaceStyleDirty(DEFAULT_TEXT_WORKSPACE_STYLE_STATE), false);
@@ -197,20 +200,45 @@ test('Workspace Style normalization, inheritance, safe workspace identity, LRU c
   assert.deepEqual(pref.view, { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' });
   assert.equal(resolveTextMainReaderWorkspaceStyle(pref, 'WS_BETA').effectiveStyle.showAccents, false);
 
-  // Safe LRU override capacity retains newest and touched workspaces instead of dropping recent edits
-  let lruPref = normalizeTextMainReaderPreference({ version: 1, reader: 'shared' });
-  for (let i = 1; i <= MAX_WORKSPACE_OVERRIDE_ENTRIES + 10; i += 1) {
-    lruPref = updateTextMainReaderWorkspaceStyle(lruPref, { textAlign: 'left' }, {
+  // More than 250 valid Workspace overrides are preserved without arbitrary eviction; updating one preserves all others
+  const totalWorkspaces = 310;
+  let manyPref = normalizeTextMainReaderPreference({ version: 1, reader: 'shared' });
+  for (let i = 1; i <= totalWorkspaces; i += 1) {
+    manyPref = updateTextMainReaderWorkspaceStyle(manyPref, {
+      textAlign: 'left',
+      ...(i % 2 === 0 ? { speakerLayout: 'inline' } : { showAccents: false })
+    }, {
       scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE,
       workspaceKey: `WS_${String(i).padStart(4, '0')}`
     });
   }
-  const cap = inspectTextMainReaderOverrideCapacity(lruPref);
-  assert.equal(cap.count, MAX_WORKSPACE_OVERRIDE_ENTRIES);
-  assert.equal(cap.atCapacity, true);
-  assert.equal(cap.evictionPolicy, 'lru-oldest-on-overflow');
-  assert.equal(Object.hasOwn(lruPref.workspaceStyleOverrides, 'WS_0001'), false, 'Oldest evicted');
-  assert.equal(Object.hasOwn(lruPref.workspaceStyleOverrides, `WS_${String(MAX_WORKSPACE_OVERRIDE_ENTRIES + 10).padStart(4, '0')}`), true, 'Newest retained');
+  assert.equal(Object.keys(manyPref.workspaceStyleOverrides).length, totalWorkspaces);
+  assert.equal(Object.hasOwn(manyPref.workspaceStyleOverrides, 'WS_0001'), true);
+  assert.equal(Object.hasOwn(manyPref.workspaceStyleOverrides, `WS_${String(totalWorkspaces).padStart(4, '0')}`), true);
+
+  // Normalization of persisted raw state with >250 valid overrides retains every valid entry
+  const renormalized = normalizeTextMainReaderPreference(JSON.parse(JSON.stringify(manyPref)));
+  assert.equal(Object.keys(renormalized.workspaceStyleOverrides).length, totalWorkspaces);
+
+  // Updating one Workspace never deletes or alters unrelated Workspace overrides
+  const snapshotBeforeSingleEdit = JSON.stringify(
+    Object.fromEntries(Object.entries(renormalized.workspaceStyleOverrides).filter(([k]) => k !== 'WS_0001'))
+  );
+  const afterSingleUpdate = updateTextMainReaderWorkspaceStyle(renormalized, { paragraphIndent: false, speakerLayout: 'stacked' }, {
+    scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE,
+    workspaceKey: 'WS_0001'
+  });
+  assert.equal(Object.keys(afterSingleUpdate.workspaceStyleOverrides).length, totalWorkspaces);
+  assert.deepEqual(afterSingleUpdate.workspaceStyleOverrides.WS_0001, {
+    textAlign: 'left',
+    paragraphIndent: false,
+    speakerLayout: 'stacked',
+    showAccents: false
+  });
+  const snapshotAfterSingleEdit = JSON.stringify(
+    Object.fromEntries(Object.entries(afterSingleUpdate.workspaceStyleOverrides).filter(([k]) => k !== 'WS_0001'))
+  );
+  assert.equal(snapshotAfterSingleEdit, snapshotBeforeSingleEdit);
 
   // Prototype pollution keys are stripped cleanly
   const unsafe = normalizeTextMainReaderPreference({
@@ -232,39 +260,133 @@ test('Shared Card Visibility supports Follow Playback, Expand All and Custom wit
   assert.deepEqual([...resolveSharedReaderExpandedCardIds({ mode: TEXT_CARD_EXPANSION_MODES.FOLLOW, cards, activeCardId: null, lastActiveCardId: null })], ['C1']);
   assert.deepEqual([...resolveSharedReaderExpandedCardIds({ mode: TEXT_CARD_EXPANSION_MODES.CUSTOM, cards, customExpandedIds: new Set(['C1', 'C3']) })], ['C1', 'C3']);
 });
-test('guarded view storage writes only the new key, handles quota fallback, and tolerates denied/corrupt storage', () => {
+test('non-destructive storage writes preserve previously saved data on QuotaExceededError and expose diagnostics', () => {
   const writes = [];
   globalThis.window = { localStorage: { getItem: () => '{broken', setItem: (...args) => writes.push(args) } };
   assert.equal(loadTextMainReaderPreference().reader, 'legacy');
   saveTextMainReaderPreference({ version: 1, reader: 'shared', view: { level: 'segment' } });
   assert.equal(writes.length, 1); assert.equal(writes[0][0], TEXT_MAIN_READER_PREFERENCE_KEY);
+  assert.equal(getLastTextMainReaderPersistenceStatus().ok, true);
+  assert.equal(getLastTextMainReaderPersistenceStatus().persisted, true);
   saveTextMainReaderPreference({ version: 1, reader: 'shared' }, { hostId: 'structured-uat' });
   assert.equal(writes.length, 2); assert.equal(writes[1][0], resolveTextMainReaderPreferenceStorageKey({ hostId: 'structured-uat' }));
 
-  // QuotaExceeded fallback preserves Shared defaults and trims oldest overrides cleanly
-  let quotaAttempts = 0;
-  let storedQuotaPayload = null;
+  // Simulated QuotaExceededError: no destructive retries and previously persisted settings remain intact
+  const backingStore = new Map();
+  let throwQuota = false;
+  let quotaWriteAttempts = 0;
   const quotaStorage = {
-    getItem: () => storedQuotaPayload,
-    setItem: (_k, value) => {
-      quotaAttempts += 1;
-      if (quotaAttempts === 1) throw new Error('QuotaExceededError');
-      storedQuotaPayload = value;
+    getItem: key => (backingStore.has(key) ? backingStore.get(key) : null),
+    setItem: (key, value) => {
+      quotaWriteAttempts += 1;
+      if (throwQuota) {
+        const err = new Error('QuotaExceededError: storage limit reached');
+        err.name = 'QuotaExceededError';
+        err.code = 22;
+        throw err;
+      }
+      backingStore.set(key, value);
     }
   };
-  let bigPref = normalizeTextMainReaderPreference({ version: 1, reader: 'shared', workspaceStyle: { textAlign: 'left' } });
-  for (let i = 1; i <= 20; i += 1) {
+
+  let priorPref = normalizeTextMainReaderPreference({
+    version: 1,
+    reader: 'shared',
+    readerMode: 'card',
+    cardVisibility: 'custom',
+    view: { level: 'part', bilingualLayout: 'separated', partLayout: 'vertical-focus' },
+    workspaceStyle: { textAlign: 'left', paragraphIndent: false, speakerLayout: 'stacked', showAccents: true }
+  });
+  priorPref = updateTextMainReaderWorkspaceStyle(priorPref, { speakerLayout: 'inline' }, { scope: 'workspace', workspaceKey: 'WS_KEEP_1' });
+  priorPref = updateTextMainReaderWorkspaceStyle(priorPref, { showAccents: false }, { scope: 'workspace', workspaceKey: 'WS_KEEP_2' });
+  const baselinePersist = persistTextMainReaderPreference(priorPref, { storage: quotaStorage });
+  assert.equal(baselinePersist.ok, true);
+  assert.equal(baselinePersist.persisted, true);
+  const persistedRawBeforeFailure = backingStore.get(TEXT_MAIN_READER_PREFERENCE_KEY);
+
+  // Now fail writes with QuotaExceededError while adding >250 workspace overrides
+  throwQuota = true;
+  quotaWriteAttempts = 0;
+  let bigPref = priorPref;
+  for (let i = 1; i <= 265; i += 1) {
     bigPref = updateTextMainReaderWorkspaceStyle(bigPref, { speakerLayout: 'inline' }, { scope: 'workspace', workspaceKey: `W_${i}` });
   }
-  const savedAfterQuota = saveTextMainReaderPreference(bigPref, { storage: quotaStorage });
-  assert.equal(quotaAttempts, 2);
-  assert.equal(savedAfterQuota.workspaceStyle.textAlign, 'left');
-  assert.ok(Object.keys(savedAfterQuota.workspaceStyleOverrides).length < 20);
-  assert.equal(Object.hasOwn(savedAfterQuota.workspaceStyleOverrides, 'W_20'), true);
+  const errorEvents = [];
+  const failedPersistResult = persistTextMainReaderPreference(bigPref, {
+    storage: quotaStorage,
+    onPersistenceError: diagnostic => errorEvents.push(diagnostic)
+  });
 
+  // Exactly 1 setItem attempt — NO destructive trimming/retry loop!
+  assert.equal(quotaWriteAttempts, 1);
+  assert.equal(failedPersistResult.ok, false);
+  assert.equal(failedPersistResult.persisted, false);
+  assert.equal(failedPersistResult.reason, TEXT_MAIN_READER_PERSISTENCE_REASONS.QUOTA_EXCEEDED);
+  assert.equal(failedPersistResult.storageKey, TEXT_MAIN_READER_PREFERENCE_KEY);
+  assert.equal(failedPersistResult.error.name, 'QuotaExceededError');
+  assert.equal(failedPersistResult.error.code, 22);
+  // In-memory state stays complete and untrimmed
+  assert.equal(Object.keys(failedPersistResult.preference.workspaceStyleOverrides).length, 267);
+  // Previously persisted storage snapshot is completely untouched
+  assert.equal(backingStore.get(TEXT_MAIN_READER_PREFERENCE_KEY), persistedRawBeforeFailure);
+  assert.deepEqual(loadTextMainReaderPreference({ storage: quotaStorage }), priorPref);
+  // Diagnostic callback & status accessor match
+  assert.equal(errorEvents.length, 1);
+  assert.equal(errorEvents[0], failedPersistResult);
+  assert.equal(getLastTextMainReaderPersistenceStatus().ok, false);
+  assert.equal(getLastTextMainReaderPersistenceStatus().reason, TEXT_MAIN_READER_PERSISTENCE_REASONS.QUOTA_EXCEEDED);
+  assert.equal(getLastTextMainReaderPersistenceStatus().overrideCount, 267);
+
+  // saveTextMainReaderPreference and saveTextMainReaderWorkspaceStyle preserve caller compatibility and fail non-destructively
+  quotaWriteAttempts = 0;
+  const inMemoryAfterSave = saveTextMainReaderPreference(bigPref, {
+    storage: quotaStorage,
+    onPersistenceError: diagnostic => errorEvents.push(diagnostic)
+  });
+  assert.equal(quotaWriteAttempts, 1);
+  assert.deepEqual(inMemoryAfterSave, bigPref);
+  assert.equal(backingStore.get(TEXT_MAIN_READER_PREFERENCE_KEY), persistedRawBeforeFailure);
+  assert.equal(errorEvents.length, 2);
+
+  quotaWriteAttempts = 0;
+  const inMemoryAfterWorkspaceSave = saveTextMainReaderWorkspaceStyle({ textAlign: 'justify' }, {
+    storage: quotaStorage,
+    scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE,
+    workspaceKey: 'WS_KEEP_1',
+    onPersistenceError: diagnostic => errorEvents.push(diagnostic)
+  });
+  assert.equal(quotaWriteAttempts, 1);
+  assert.equal(resolveTextMainReaderWorkspaceStyle(inMemoryAfterWorkspaceSave, 'WS_KEEP_1').effectiveStyle.textAlign, 'justify');
+  assert.equal(backingStore.get(TEXT_MAIN_READER_PREFERENCE_KEY), persistedRawBeforeFailure);
+  assert.equal(errorEvents.length, 3);
+
+  const inMemoryAfterResetSave = resetSavedTextMainReaderWorkspaceStyle({
+    storage: quotaStorage,
+    scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE,
+    workspaceKey: 'WS_KEEP_1',
+    onPersistenceError: diagnostic => errorEvents.push(diagnostic)
+  });
+  assert.equal(resolveTextMainReaderWorkspaceStyle(inMemoryAfterResetSave, 'WS_KEEP_1').hasWorkspaceOverride, false);
+  assert.equal(backingStore.get(TEXT_MAIN_READER_PREFERENCE_KEY), persistedRawBeforeFailure);
+  assert.equal(errorEvents.length, 4);
+
+  // Denied localStorage getter exposes diagnostic safely without throwing
   globalThis.window = { get localStorage() { throw Error('denied'); } };
-  assert.doesNotThrow(() => saveTextMainReaderPreference({ version: 1, reader: 'shared' }));
+  const deniedDiagnostics = [];
+  const deniedSaved = saveTextMainReaderPreference({ version: 1, reader: 'shared' }, {
+    onPersistenceError: diagnostic => deniedDiagnostics.push(diagnostic)
+  });
+  assert.equal(deniedSaved.reader, 'shared');
+  assert.equal(deniedDiagnostics.length, 1);
+  assert.equal(deniedDiagnostics[0].reason, TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_DENIED);
   assert.equal(loadTextMainReaderPreference().reader, 'legacy');
   delete globalThis.window;
+
+  // Unavailable localStorage (no window, no storage option) exposes diagnostic safely
+  const unavailableResult = persistTextMainReaderPreference({ version: 1, reader: 'shared' });
+  assert.equal(unavailableResult.ok, false);
+  assert.equal(unavailableResult.persisted, false);
+  assert.equal(unavailableResult.reason, TEXT_MAIN_READER_PERSISTENCE_REASONS.STORAGE_UNAVAILABLE);
+  assert.equal(unavailableResult.preference.reader, 'shared');
 });
 console.log(`${passed} A6 Node checks PASS`);
