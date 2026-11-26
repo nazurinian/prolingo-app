@@ -121,19 +121,22 @@ const VoiceSelect = memoComponent(({ label, value, voices, context = 'general', 
       voiceNameSet: new Set(deduped.map(voice => clean(voice?.name)).filter(Boolean))
     };
   }, [voices]);
-  return <label className="block rounded-xl border border-indigo-100 dark:border-indigo-900/80 bg-white dark:bg-slate-900/50 p-2.5 text-[9px] font-bold text-slate-600 dark:text-slate-300">
-    <span className="flex items-center justify-between gap-1">
-      <span>{label}</span>
-      <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${value ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
-        {value ? 'Workspace Narrator' : 'Inherits Global Browser TTS'}
+  return <label className="block rounded-xl border border-indigo-100 dark:border-indigo-900/80 bg-white dark:bg-slate-900/50 p-2.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+    <span className="flex flex-wrap items-center justify-between gap-1.5">
+      <span className="min-w-0 leading-snug">{label}</span>
+      <span
+        title={value ? 'Workspace Narrator override active' : 'Inherits Global Browser TTS'}
+        className={`shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[9px] font-bold ${value ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}
+      >
+        {value ? 'Override' : 'Inherited'}
       </span>
     </span>
-    <select value={value || ''} disabled={disabled} onChange={event => emitTargetChange(onChange, event.target.value || null, targetItem, targetChannel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[10px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
+    <select value={value || ''} disabled={disabled} onChange={event => emitTargetChange(onChange, event.target.value || null, targetItem, targetChannel)} className="mt-1.5 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-200 disabled:opacity-55">
       <option value="">{fallbackLabel}</option>
       {value && !voiceNameSet.has(value) && <option value={value}>Unavailable in browser • {formatTextStructuredBrowserVoiceLabel(value)}</option>}
       <BrowserTtsVoiceOptgroups voices={voiceOptions} context={context} />
     </select>
-    {helper && <span className="mt-1 block text-[8px] font-semibold text-sky-600 dark:text-sky-300">{helper}</span>}
+    {helper && <span className="mt-1 block text-[9px] font-medium leading-snug text-sky-700 dark:text-sky-300">{helper}</span>}
   </label>;
 });
 
@@ -404,8 +407,8 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
       <div className="flex items-start gap-2">
         <Headphones className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-300 shrink-0"/>
         <div className="min-w-0">
-          <p className="text-[11px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Playback Voices & Routing</p>
-          <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400"> Inheritance order: <b>Segment → Card → Speaker / Workspace → Global</b>.</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Audio &amp; Voices</p>
+          <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">Inheritance: <b>Segment → Card → Speaker / Workspace → Global</b>.</p>
         </div>
       </div>
 
@@ -413,16 +416,16 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
       <div role="separator" aria-hidden="true" className="border-t border-slate-200 dark:border-slate-700" />
 
       <details className="min-w-0 space-y-2" data-text-playback-source-menu="true">
-        <summary className="cursor-pointer select-none py-2 text-[11px] font-black uppercase text-indigo-700 dark:text-indigo-300">1. Audio Source & Local MP3 <span className="ml-1 text-[9px] normal-case font-semibold text-slate-500 dark:text-slate-400">({localAudioEnabled ? (customLocal ? 'Custom' : 'Auto') : 'TTS Only'})</span></summary>
+        <summary className="cursor-pointer select-none py-2 text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-300">1. Audio Source &amp; Local Priority <span className="ml-1 text-[10px] normal-case font-semibold text-slate-500 dark:text-slate-400">({localAudioEnabled ? (customLocal ? 'Local · Custom' : 'Local First') : 'TTS Only'})</span></summary>
         <div className="space-y-3 pt-1">
       <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/85 dark:bg-slate-900/45 p-2.5" data-text-local-audio-mode="true">
         <button type="button" disabled={disabled} aria-pressed={!localAudioEnabled}
           aria-label={`Global Player Source: ${localAudioEnabled ? 'Local First' : 'TTS Only'}. Switch to ${localAudioEnabled ? 'TTS Only' : 'Local First'}.`}
           onClick={() => onAudioSourceModeChange?.(localAudioEnabled ? TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY : TEXT_STRUCTURED_AUDIO_SOURCE_MODES.LOCAL_FIRST)}
-          className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[9px] font-black transition-colors disabled:opacity-40 ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-300 hover:border-emerald-400' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-300 hover:border-amber-400'}`}
+          className={`flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[10px] font-bold transition-colors disabled:opacity-40 ${localAudioEnabled ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/25 text-emerald-700 dark:text-emerald-300 hover:border-emerald-400' : 'border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/25 text-amber-700 dark:text-amber-300 hover:border-amber-400'}`}
           data-text-global-tts-status="true" data-text-audio-source-toggle="true"
           title={`Click to switch to ${localAudioEnabled ? 'TTS Only' : 'Local First'}`}>
-          <span className="min-w-0"><span className="block">GLOBAL PLAYER SOURCE</span><span className="block text-[8px] font-medium opacity-70">Click to change</span></span>
+          <span className="min-w-0"><span className="block uppercase">Audio Source</span><span className="block text-[9px] font-medium opacity-75">Tap to switch Local vs TTS</span></span>
           <span className="shrink-0 rounded px-1.5 py-1 bg-white/80 dark:bg-slate-900/60">{localAudioEnabled ? 'LOCAL FIRST' : 'TTS ONLY'}</span>
         </button>
         {localAudioEnabled && <div className="space-y-1.5">

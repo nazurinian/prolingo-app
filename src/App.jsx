@@ -7659,6 +7659,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
         useSharedCardReader={sharedTextReaderActive}
+        readerSwitchSlot={sharedTextReaderActive ? (
+          <TextMainReaderControl
+            compact
+            reader="shared"
+            eligible={Boolean(textMainReader.presentation) && textDatabaseStatus === 'ready'}
+            reason={null}
+            onChange={reader => updateTextMainReaderPreference({ reader })}
+          />
+        ) : null}
         sharedPresentation={textMainReader.presentation}
         sharedPresentationState={textMainReaderPreference.view}
         onSharedPresentationStateChange={view => updateTextMainReaderPreference({ view })}
@@ -7829,18 +7838,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const renderPlaylist = () => mode === 'text' ? (
-    <div className="h-full min-h-0 flex flex-col" data-text-main-reader={sharedTextReaderActive ? 'shared' : 'legacy'}>
-      <TextMainReaderControl
-        reader={sharedTextReaderActive ? 'shared' : 'legacy'}
-        eligible={Boolean(textMainReader.presentation) && textDatabaseStatus === 'ready'}
-        reason={textDatabaseStatus === 'ready' ? textMainReader.reason : textDatabaseStatus === 'error'
-          ? 'Workspace Text gagal dimuat; Shared Beta tidak tersedia.' : 'Workspace Text sedang dimuat.'}
-        onChange={reader => updateTextMainReaderPreference({ reader })}
-      />
-      <div className="flex-1 min-h-0">{renderPlaylistContent()}</div>
-    </div>
-  ) : renderPlaylistContent();
+  const renderPlaylist = () => {
+    if (mode !== 'text') return renderPlaylistContent();
+    const inlineSharedSwitch = activeTextEditorModel === 'structured-v1' && sharedTextReaderActive && textDatabaseStatus === 'ready';
+    return (
+      <div className="h-full min-h-0 flex flex-col" data-text-main-reader={sharedTextReaderActive ? 'shared' : 'legacy'}>
+        {!inlineSharedSwitch && (
+          <TextMainReaderControl
+            reader={sharedTextReaderActive ? 'shared' : 'legacy'}
+            eligible={Boolean(textMainReader.presentation) && textDatabaseStatus === 'ready'}
+            reason={textDatabaseStatus === 'ready' ? textMainReader.reason : textDatabaseStatus === 'error'
+              ? 'Workspace Text gagal dimuat; Shared Beta tidak tersedia.' : 'Workspace Text sedang dimuat.'}
+            onChange={reader => updateTextMainReaderPreference({ reader })}
+          />
+        )}
+        <div className="flex-1 min-h-0">{renderPlaylistContent()}</div>
+      </div>
+    );
+  };
 
   return <NowPlayingContext.Provider value={readNowPlaying}>{renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,

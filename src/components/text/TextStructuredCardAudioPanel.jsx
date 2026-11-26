@@ -753,22 +753,25 @@ export const TextStructuredCardAudioPanel = memoComponent(({
     >
       {/* Header */}
       <div className="prolingo-text-audio-sheet-header sticky top-0 z-10 shrink-0 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-3.5 py-2.5 md:px-4 space-y-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center"><Volume2 className="w-4 h-4"/></div>
-          <div className="min-w-0 flex-1">
-            <div className="min-h-6 flex flex-nowrap items-center gap-1.5 overflow-hidden">
-              <h3 className="text-xs md:text-sm font-black leading-tight text-slate-800 dark:text-white truncate">Card Audio • {block?.title || 'Card'}</h3>
-              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase leading-none ${isConversation ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'}`}>
+        <div className="flex items-start gap-2.5">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-violet-100 dark:bg-violet-950/40 text-violet-600 dark:text-violet-300 flex items-center justify-center mt-0.5"><Volume2 className="w-4 h-4"/></div>
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Card Audio Settings</span>
+              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none ${isConversation ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300' : 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300'}`}>
                 {isConversation ? 'Conversation' : 'Paragraph'}
               </span>
               {isPlayerDirty && (
-                <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[8px] font-black uppercase leading-none text-amber-800 dark:text-amber-300" data-text-card-player-dirty-badge="true">
+                <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none text-amber-800 dark:text-amber-300" data-text-card-player-dirty-badge="true">
                   Unsaved Draft
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-              {isConversation ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'} detected` : 'Player TTS & Edge Download surfaces'} • {segments.length} segment{segments.length === 1 ? '' : 's'}
+            <h3 className="text-sm md:text-[15px] font-bold leading-snug text-slate-900 dark:text-white break-words">
+              {block?.title || 'Card'}
+            </h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              {isConversation ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'} detected` : 'Card & Segment voice overrides'} · {segments.length} segment{segments.length === 1 ? '' : 's'}
             </p>
           </div>
           {onResetCardAudioPreferences && (
@@ -782,14 +785,14 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                 message: 'Clears saved Card Player & Download overrides, Card local priority, Card-speaker overrides, and its Segment overrides back to Workspace/Global inheritance (and discards unsaved drafts in this sheet). Downloaded Staging MP3 binaries and Full Card artifacts stay intact.'
               })}
               data-text-reset-card-audio="true"
-              className={`shrink-0 min-h-8 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/35 px-2.5 text-[9px] font-black text-amber-800 dark:text-amber-200 ${cardResetState.dirty && !cardResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${cardResetState.opacityClass} ${cardResetState.interactionClass}`}
+              className={`shrink-0 min-h-9 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/35 px-2.5 text-[10px] font-bold text-amber-800 dark:text-amber-200 ${cardResetState.dirty && !cardResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${cardResetState.opacityClass} ${cardResetState.interactionClass}`}
               title="Reset saved Card & Segment audio overrides to Workspace/Global inheritance"
             >
               <RotateCcw className="w-3 h-3"/>
               <span>Reset Card</span>
             </button>
           )}
-          <button type="button" onClick={onClose} className="w-10 h-10 shrink-0 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition" aria-label="Close audio settings"><X className="w-4 h-4"/></button>
+          <button type="button" onClick={onClose} className="w-10 h-10 shrink-0 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center active:scale-95 transition" aria-label="Close audio settings"><X className="w-4 h-4"/></button>
         </div>
 
         {/* Surface Switcher: Player vs Download */}
@@ -823,80 +826,39 @@ export const TextStructuredCardAudioPanel = memoComponent(({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3 md:p-4 space-y-3" style={{ paddingBottom: 'calc(0.625rem + env(safe-area-inset-bottom, 0px))' }}>
         {activeSurface === 'player' ? (
           <div className="space-y-3" data-text-card-audio-player-surface="true">
-            {/* 1. Effective Voice Reporting & Inheritance Chain */}
-            <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/40 dark:bg-indigo-950/15 p-3 space-y-2.5" data-text-card-effective-voice-reporting="true">
-              <div className="flex items-start gap-2" data-text-simple-audio-rule="true">
-                <Headphones className="w-4 h-4 mt-0.5 text-indigo-600 dark:text-indigo-400 shrink-0"/>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-800 dark:text-slate-100">Browser TTS Voice Hierarchy & Effective Resolution</p>
-                    <span className="rounded bg-indigo-100 dark:bg-indigo-900/50 px-1.5 py-0.5 text-[8px] font-black uppercase text-indigo-700 dark:text-indigo-300">Browser SpeechSynthesis</span>
-                  </div>
-                  <p className="mt-0.5 text-[9px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    Full Card TTS resolves <span className="font-bold">Card Browser TTS Voice → Workspace Narrator → Global Browser TTS</span> (ignoring Segment overrides). Split TTS resolves <span className="font-bold">Segment override → Card override → Workspace Narrator → Global Browser TTS</span>. Browser TTS voices (including Microsoft system/browser voices) are live speech synthesis, not Edge Neural MP3 downloads.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-2 md:grid-cols-2" data-text-card-voice-hierarchy-grid="true">
+            {/* 1. Compact Effective Voice Summary + Collapsible Inheritance & Playback Diagnostics */}
+            <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/70 bg-indigo-50/35 dark:bg-indigo-950/15 p-2.5 space-y-2" data-text-card-effective-voice-reporting="true">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-text-card-effective-summary="true">
                 {['text', 'meaning'].map(channel => {
                   const isMeaning = channel === 'meaning';
                   const res = cardVoiceResolutions[channel];
                   return (
                     <div
                       key={channel}
-                      className={`rounded-xl border p-2.5 space-y-1.5 ${
+                      className={`rounded-lg border px-2.5 py-2 space-y-1 bg-white/95 dark:bg-slate-900/60 ${
                         isMeaning
-                          ? 'border-emerald-200 dark:border-emerald-900/70 bg-white/90 dark:bg-slate-900/50'
-                          : 'border-indigo-200 dark:border-indigo-900/70 bg-white/90 dark:bg-slate-900/50'
+                          ? 'border-violet-200/90 dark:border-violet-900/70'
+                          : 'border-blue-200/90 dark:border-blue-900/70'
                       }`}
-                      data-text-card-voice-resolution={channel}
                     >
                       <div className="flex items-center justify-between gap-1.5">
-                        <span className={`text-[9px] font-black uppercase ${isMeaning ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'}`}>
-                          {isMeaning ? 'ID (Meaning) Browser TTS' : 'EN (Text) Browser TTS'}
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${isMeaning ? 'text-violet-700 dark:text-violet-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                          {isMeaning ? 'ID Effective' : 'EN Effective'}
                         </span>
-                        <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[8px] font-black text-slate-600 dark:text-slate-300">
+                        <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">
                           {res.effectiveSourceLabel}
                         </span>
                       </div>
-
-                      <div className="space-y-1 text-[9px]">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-slate-500 dark:text-slate-400">Global Browser TTS:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-200 truncate" title={res.globalBrowserVoiceName || 'Browser system default'}>
-                            {formatTextStructuredBrowserVoiceLabel(res.globalBrowserVoiceName)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-slate-500 dark:text-slate-400">Workspace Narrator:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-200 truncate" title={res.workspaceNarratorVoiceName || 'Inherits Global Browser TTS'}>
-                            {res.workspaceNarratorVoiceName ? formatTextStructuredBrowserVoiceLabel(res.workspaceNarratorVoiceName) : 'Inherits Global Browser TTS'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-slate-500 dark:text-slate-400">Card Override:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-200 truncate" title={res.cardOverrideVoiceName || 'Inherits Workspace / Global'}>
-                            {res.cardOverrideVoiceName ? formatTextStructuredBrowserVoiceLabel(res.cardOverrideVoiceName) : 'Inherits Workspace / Global'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-1">
-                          <span className="text-slate-500 dark:text-slate-400">Requested Voice:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-200 truncate">
-                            {formatTextStructuredBrowserVoiceLabel(res.requestedVoiceName)} ({res.requestedSourceLabel})
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-black text-slate-700 dark:text-slate-200">Effective Card TTS Voice:</span>
-                          <span className={`font-black truncate ${isMeaning ? 'text-emerald-700 dark:text-emerald-300' : 'text-indigo-700 dark:text-indigo-300'}`} data-text-card-effective-voice={channel}>
-                            {formatTextStructuredBrowserVoiceLabel(res.effectiveVoiceName)} ({res.effectiveSourceLabel})
-                          </span>
-                        </div>
-                      </div>
-
+                      <p
+                        className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100"
+                        title={`${formatTextStructuredBrowserVoiceLabel(res.effectiveVoiceName)} (${res.effectiveSourceLabel})`}
+                        data-text-card-effective-voice={channel}
+                      >
+                        {formatTextStructuredBrowserVoiceLabel(res.effectiveVoiceName)}
+                      </p>
                       {res.fallbackUsed && res.fallbackReason && (
-                        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 text-[8px] font-semibold text-amber-800 dark:text-amber-200 flex items-start gap-1.5" data-text-card-voice-fallback-warning={channel}>
-                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
+                        <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 text-[9px] font-semibold text-amber-800 dark:text-amber-200 flex items-start gap-1" data-text-card-voice-fallback-warning={channel}>
+                          <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
                           <span>{res.fallbackReason}</span>
                         </div>
                       )}
@@ -905,11 +867,13 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                 })}
               </div>
 
-              {/* Actual Playback Source / Voice Status */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/60 px-3 py-2 text-[9px]" data-text-card-actual-playback-source="true">
-                <div className="flex flex-wrap items-center justify-between gap-1.5">
-                  <span className="font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">Actual Playback Source & Voice</span>
-                  <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${
+              <details className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/45 px-2.5 py-1.5" data-text-card-diagnostics-disclosure="true">
+                <summary className="cursor-pointer select-none flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Headphones className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0"/>
+                    <span>Voice hierarchy &amp; playback diagnostics</span>
+                  </span>
+                  <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                     cardPlaybackStatus
                       ? cardPlaybackStatus.mode === 'local'
                         ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
@@ -918,26 +882,76 @@ export const TextStructuredCardAudioPanel = memoComponent(({
                   }`}>
                     {cardPlaybackStatus
                       ? (cardPlaybackStatus.mode === 'local' ? 'Local MP3' : 'Browser TTS')
-                      : 'Idle (Ready to Play)'}
+                      : 'Idle'}
                   </span>
+                </summary>
+
+                <div className="mt-2.5 space-y-2.5">
+                  <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300" data-text-simple-audio-rule="true">
+                    Full Card TTS resolves <span className="font-bold">Card → Workspace → Global</span> (ignoring Segment overrides). Split TTS resolves <span className="font-bold">Segment → Card → Workspace → Global</span>. Browser TTS voices are live speech synthesis, separate from Edge MP3 downloads.
+                  </p>
+
+                  <div className="grid gap-2 md:grid-cols-2" data-text-card-voice-hierarchy-grid="true">
+                    {['text', 'meaning'].map(channel => {
+                      const isMeaning = channel === 'meaning';
+                      const res = cardVoiceResolutions[channel];
+                      return (
+                        <div
+                          key={channel}
+                          className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900/60 p-2 space-y-1 text-[10px]"
+                          data-text-card-voice-resolution={channel}
+                        >
+                          <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-slate-100 dark:border-slate-800">
+                            <span className={`font-bold uppercase ${isMeaning ? 'text-violet-700 dark:text-violet-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                              {isMeaning ? 'ID (Meaning)' : 'EN (Text)'}
+                            </span>
+                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                              {res.effectiveSourceLabel}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Global TTS:</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{formatTextStructuredBrowserVoiceLabel(res.globalBrowserVoiceName)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Workspace:</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{res.workspaceNarratorVoiceName ? formatTextStructuredBrowserVoiceLabel(res.workspaceNarratorVoiceName) : 'Inherited'}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Card Override:</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{res.cardOverrideVoiceName ? formatTextStructuredBrowserVoiceLabel(res.cardOverrideVoiceName) : 'Inherited'}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800 pt-1">
+                            <span className="text-slate-500 dark:text-slate-400">Requested:</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{formatTextStructuredBrowserVoiceLabel(res.requestedVoiceName)} ({res.requestedSourceLabel})</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Actual Playback Source / Voice Status */}
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/60 px-2.5 py-2 text-[10px]" data-text-card-actual-playback-source="true">
+                    <span className="font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Actual Playback Source &amp; Voice</span>
+                    {cardPlaybackStatus ? (
+                      <p className="mt-1 text-slate-600 dark:text-slate-300">
+                        <span className="font-bold">{cardPlaybackStatus.mode === 'local' ? 'Local MP3' : 'Browser TTS'}</span>
+                        {' · '}
+                        <span>Voice: {cardPlaybackStatus.effectiveVoice || cardPlaybackStatus.voice || 'Browser system default'}</span>
+                        {cardPlaybackStatus.effectiveSourceLabel ? ` (${cardPlaybackStatus.effectiveSourceLabel})` : ''}
+                        {cardPlaybackStatus.requestedVoice && cardPlaybackStatus.requestedVoice !== cardPlaybackStatus.effectiveVoice
+                          ? ` · Requested: ${cardPlaybackStatus.requestedVoice}`
+                          : ''}
+                        {cardPlaybackStatus.fallbackReason ? ` · ${cardPlaybackStatus.fallbackReason}` : ''}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-slate-500 dark:text-slate-400">
+                        Play this Card or a Segment to inspect live Local MP3 versus Browser TTS runtime routing.
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {cardPlaybackStatus ? (
-                  <p className="mt-1 text-slate-600 dark:text-slate-300">
-                    <span className="font-bold">{cardPlaybackStatus.mode === 'local' ? 'Local MP3' : 'Browser TTS'}</span>
-                    {' • '}
-                    <span>Voice: {cardPlaybackStatus.effectiveVoice || cardPlaybackStatus.voice || 'Browser system default'}</span>
-                    {cardPlaybackStatus.effectiveSourceLabel ? ` (${cardPlaybackStatus.effectiveSourceLabel})` : ''}
-                    {cardPlaybackStatus.requestedVoice && cardPlaybackStatus.requestedVoice !== cardPlaybackStatus.effectiveVoice
-                      ? ` • Requested: ${cardPlaybackStatus.requestedVoice}`
-                      : ''}
-                    {cardPlaybackStatus.fallbackReason ? ` • ${cardPlaybackStatus.fallbackReason}` : ''}
-                  </p>
-                ) : (
-                  <p className="mt-1 text-slate-500 dark:text-slate-400">
-                    Play this Card or a Segment to inspect live Local MP3 versus Browser TTS runtime routing.
-                  </p>
-                )}
-              </div>
+              </details>
             </div>
 
             {/* 2. Card Browser TTS Override */}

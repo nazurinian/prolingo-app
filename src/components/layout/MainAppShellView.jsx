@@ -354,13 +354,13 @@ export const renderMainAppShellView = (props) => {
                           paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode)}px` : '0'
                       }}
                  >
-                    {isMobile && mode === 'text' && <div className="mb-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white/95 dark:bg-slate-900/95 p-2 shadow-sm" data-mobile-text-document-strip="true">
-                      <div className="flex items-center gap-1.5 overflow-x-auto overscroll-x-contain custom-scrollbar pb-0.5">
-                        {mobileTextDocuments.map(document => <button key={document.id} type="button" aria-busy={textLibraryCommandBusy || undefined} onClick={() => { if (!textLibraryCommandBusy) handleTextLibrarySelectDocument?.(document.id); }} className={`shrink-0 min-h-10 max-w-[180px] rounded-lg border px-2.5 py-1.5 text-left ${document.id === activeTextDocumentId ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
-                          <span className="block truncate text-[9px] font-black">{document.title}</span><span className={`block text-[7px] font-bold ${document.id === activeTextDocumentId ? 'text-indigo-100' : 'text-slate-400'}`}>{getTextWorkspaceBadge(document)}</span>
+                    {isMobile && mode === 'text' && <div className="mb-1.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-1.5 py-1 shadow-xs" data-mobile-text-document-strip="true">
+                      <div className="flex items-center gap-1 overflow-x-auto overscroll-x-contain custom-scrollbar">
+                        {mobileTextDocuments.map(document => <button key={document.id} type="button" aria-busy={textLibraryCommandBusy || undefined} onClick={() => { if (!textLibraryCommandBusy) handleTextLibrarySelectDocument?.(document.id); }} className={`shrink-0 min-h-9 max-w-[200px] rounded-lg border px-2.5 py-1 text-left inline-flex items-center gap-1.5 transition-colors ${document.id === activeTextDocumentId ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>
+                          <span className="truncate text-[11px] font-bold">{document.title}</span><span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase ${document.id === activeTextDocumentId ? 'bg-indigo-500/70 text-indigo-50' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-300'}`}>{getTextWorkspaceBadge(document)}</span>
                         </button>)}
-                        {!mobileTextDocuments.length && <span className="shrink-0 px-2 text-[9px] text-slate-400">No Text data yet</span>}
-                        <button type="button" onClick={() => { setSidebarSection?.('data'); handleMobileTabSwitch?.('tools'); }} className="shrink-0 min-h-10 rounded-lg border border-indigo-200 dark:border-indigo-800 px-3 text-[9px] font-black text-indigo-700 dark:text-indigo-300">DATA</button>
+                        {!mobileTextDocuments.length && <span className="shrink-0 px-2 text-[11px] text-slate-400">No Text data yet</span>}
+                        <button type="button" onClick={() => { setSidebarSection?.('data'); handleMobileTabSwitch?.('tools'); }} className="shrink-0 min-h-9 rounded-lg border border-indigo-200 dark:border-indigo-800 px-2.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">DATA</button>
                       </div>
                     </div>}
                     {renderPlaylist()}

@@ -37,6 +37,13 @@ import {
   resolveWorkspaceContextualTarget
 } from './presentation/sharedCardPresentationUtils.js';
 import {
+  SHARED_CONTROL_TOKENS,
+  SHARED_SEMANTIC_COLORS,
+  SHARED_SPACING_TOKENS,
+  SHARED_SURFACE_TOKENS,
+  SHARED_UI_TERMINOLOGY
+} from './presentation/sharedDesignTokens.js';
+import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   normalizeTextCardPresentationState,
@@ -252,7 +259,7 @@ const StructuredPlayerCard = ({
   const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && sharedCard);
 
   return (<>
-    <article ref={cardRef} className={`rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
+    <article ref={cardRef} className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
       <div className={`flex items-start gap-2 p-2.5 sm:gap-2.5 sm:p-3.5 transition-colors ${isActiveCard ? (speakingPart === 'meaning' ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50' : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/50') : 'bg-slate-50/80 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80'}`}>
         <button type="button" onClick={() => onToggleCardExpanded?.(block.id)} aria-expanded={expanded} className="w-9 h-9 shrink-0 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 transition-all duration-150 active:scale-95 flex items-center justify-center" aria-label={expanded ? 'Collapse card' : 'Expand card'} title={expanded ? 'Collapse card' : 'Expand card'}>
           <ChevronRight className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''}`}/>
@@ -602,6 +609,7 @@ export const TextStructuredPlayer = ({
   onResetCardAudioPreferences = null,
   onResetSegmentAudioPreferences = null,
   useSharedCardReader = false,
+  readerSwitchSlot = null,
   sharedPresentation = null,
   sharedPresentationState = null,
   onSharedPresentationStateChange = null,
@@ -878,6 +886,11 @@ export const TextStructuredPlayer = ({
     return () => window.clearTimeout(timer);
   }, [useSharedCardReader, focusTarget?.documentId, focusTarget?.blockId, focusTarget?.nonce, documentTree?.id, onFocusConsumed]);
 
+  const isSharedShellActive = Boolean(useSharedCardReader && sharedPresentation);
+  const workspaceTypeTone = documentTree?.documentType === 'paragraph'
+    ? SHARED_SEMANTIC_COLORS.paragraph.badge
+    : SHARED_SEMANTIC_COLORS.conversation.badge;
+
   return (
     <SharedUnitPlaybackContext.Provider value={useSharedCardReader ? onPlayUnit : null}>
     <WorkspaceReaderScrollContext.Provider value={sharedReaderScroll}>
@@ -892,44 +905,45 @@ export const TextStructuredPlayer = ({
       data-text-segment-auto-follow="true"
       data-text-auto-follow-user-grace-ms="1800"
     >
-      <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
-        <div className="flex flex-wrap items-center gap-2.5 p-2.5 sm:p-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">
-            {['conversation', 'mixed'].includes(documentTree?.documentType) ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-300">{documentModeLabel}</p>
-              <span className="text-slate-300 dark:text-slate-600">•</span>
-              <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase ${effectiveRepresentationMode === 'full' ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300'}`}>
-                {effectiveRepresentationMode === 'full' ? 'FULL • Card' : 'SPLIT • Sentence'}
-              </span>
-              <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-700/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-200">
-                Lang: {getStructuredTextPlaybackModeLabel(playbackChannelMode)}
-              </span>
-              <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase ${isGlobalTtsOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`}>
-                {isGlobalTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}
-              </span>
-              {structuredSessionActive && activeCardNumber > 0 && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm ${
-                  isPaused ? 'bg-amber-500' : speakingPart === 'meaning' ? 'bg-emerald-600 animate-pulse' : 'bg-indigo-600 animate-pulse'
-                }`}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                  Card #{activeCardNumber} • {isPaused ? 'Paused' : speakingPart === 'meaning' ? 'Playing ID' : 'Playing EN'}
+      {/* Classic/Legacy Reader Toolbar (preserved intact when Classic UI is active) */}
+      {!isSharedShellActive && (
+        <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
+          <div className="flex flex-wrap items-center gap-2.5 p-2.5 sm:p-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 flex items-center justify-center flex-shrink-0">
+              {['conversation', 'mixed'].includes(documentTree?.documentType) ? <MessageSquare className="w-4 h-4"/> : <FileText className="w-4 h-4"/>}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-300">{documentModeLabel}</p>
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase ${effectiveRepresentationMode === 'full' ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300' : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300'}`}>
+                  {effectiveRepresentationMode === 'full' ? 'FULL • Card' : 'SPLIT • Sentence'}
                 </span>
-              )}
+                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-700/70 px-1.5 py-0.5 text-[9px] font-bold text-slate-700 dark:text-slate-200">
+                  Lang: {getStructuredTextPlaybackModeLabel(playbackChannelMode)}
+                </span>
+                <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase ${isGlobalTtsOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'}`}>
+                  {isGlobalTtsOnly ? 'TTS ONLY' : 'LOCAL FIRST'}
+                </span>
+                {structuredSessionActive && activeCardNumber > 0 && (
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-sm ${
+                    isPaused ? SHARED_SEMANTIC_COLORS.paused.solid : speakingPart === 'meaning' ? `${SHARED_SEMANTIC_COLORS.id.solid} animate-pulse` : `${SHARED_SEMANTIC_COLORS.en.solid} animate-pulse`
+                  }`}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                    Card #{activeCardNumber} • {isPaused ? 'Paused' : speakingPart === 'meaning' ? 'Playing ID' : 'Playing EN'}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400" data-text-workspace-compact-readiness="true">
+                <span className="truncate font-medium">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'}</span>
+                <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/40 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}</span>
+                {documentCoverage?.needDownload ? <span className="rounded-md bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {documentCoverage.needDownload}</span> : null}
+                {documentCoverage?.stale ? <span className="rounded-md bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 font-black text-rose-700 dark:text-rose-300">STALE {documentCoverage.stale}</span> : null}
+              </div>
             </div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400" data-text-workspace-compact-readiness="true">
-              <span className="truncate font-medium">{blocks.length} cards • {playableList.length}/{playbackList.length} playable{documentTree?.documentType === 'conversation' ? ` • ${conversationSpeakers.length} speakers` : documentTree?.documentType === 'mixed' ? ` • narrator + ${conversationSpeakers.length} speakers` : ' • single narrator'}</span>
-              <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/40 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {documentCoverage?.covered || 0}/{documentCoverage?.total || 0}</span>
-              {documentCoverage?.needDownload ? <span className="rounded-md bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {documentCoverage.needDownload}</span> : null}
-              {documentCoverage?.stale ? <span className="rounded-md bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 font-black text-rose-700 dark:text-rose-300">STALE {documentCoverage.stale}</span> : null}
-            </div>
+            <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}>{stopsWorkspace ? <Square className="w-3.5 h-3.5 fill-current"/> : <Play className="w-3.5 h-3.5 fill-current"/>}{stopsWorkspace ? 'Stop All' : 'Play All'}</button>
           </div>
-          <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}>{stopsWorkspace ? <Square className="w-3.5 h-3.5 fill-current"/> : <Play className="w-3.5 h-3.5 fill-current"/>}{stopsWorkspace ? 'Stop All' : 'Play All'}</button>
-        </div>
 
-        {!showSharedBookPage && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-indigo-100/80 dark:border-indigo-900/60 bg-slate-50/60 dark:bg-slate-900/40 px-2.5 sm:px-3 py-2 rounded-b-2xl" data-text-card-expansion-toolbar="true">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Cards:</span>
@@ -953,42 +967,45 @@ export const TextStructuredPlayer = ({
               <span>{getStructuredTextOrderModeLabel(playbackPreferences?.playbackOrderMode)} • {getStructuredTextRepeatModeLabel(playbackPreferences?.repeatMode)} • View: {getStructuredTextDisplayModeLabel(displayMode)}</span>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-[155] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-6" data-text-player-workspace="true" onMouseDown={event => { if (event.target === event.currentTarget) onCloseControlsWorkspace?.(); }}>
-            <div className="w-full max-w-2xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
-              <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><PlayCircle className="w-4 h-4"/></div>
-                <div className="min-w-0 flex-1"><h2 className="text-sm font-black text-slate-800 dark:text-white">Text Player Settings</h2><p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{documentTree?.title || 'Text Workspace'} • Global Playback • Manual Play • Display</p></div>
-                {structuredSessionActive && <button type="button" onClick={() => onStopPlayback?.()} className="min-h-10 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3 text-[10px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200" title="Stop playback so settings can be edited" data-text-settings-stop-playback="true"><Square className="inline h-3 w-3 mr-1 fill-current"/>Stop audio</button>}
-                <button type="button" onClick={() => onCloseControlsWorkspace?.()} className="min-h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-[10px] font-black text-slate-500 hover:text-red-500 transition-colors"><X className="w-4 h-4 inline mr-1"/>Close</button>
+      {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[155] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-6" data-text-player-workspace="true" onMouseDown={event => { if (event.target === event.currentTarget) onCloseControlsWorkspace?.(); }}>
+          <div className="w-full max-w-2xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><PlayCircle className="w-4 h-4"/></div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">{SHARED_UI_TERMINOLOGY.playbackSettings}</h2>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{documentTree?.title || 'Text Workspace'} · {SHARED_UI_TERMINOLOGY.audioRepresentation} · Channel Sequence · Timing · Manual Play</p>
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3.5 md:p-5">
-                {controlsBusy && <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200" role="status" data-text-settings-busy-reason="true">{generationBusy ? 'Audio generation is running; settings are temporarily locked until it finishes.' : 'Audio is playing. Tap Stop audio above to unlock the settings.'}</p>}
-                <TextStructuredPlaybackControls
-                  documentTree={documentTree}
-                  preferences={playbackPreferences}
-                  playbackRepresentationMode={playbackRepresentationMode}
-                  playbackOrder={playbackOrder}
-                  availableLocalVoices={availableLocalVoices}
-                  disabled={controlsBusy}
-                  resetDisabled={generationBusy || resetDisabled}
-                  onDisplayModeChange={onDisplayModeChange}
-                  onPlaybackChannelModeChange={onPlaybackChannelModeChange}
-                  onPlaybackRepresentationModeChange={onPlaybackRepresentationModeChange}
-                  onGlobalPlaybackOrderChange={onGlobalPlaybackOrderChange}
-                  onGlobalTtsOnlyChange={onGlobalTtsOnlyChange}
-                  onPlaybackFeelChange={onPlaybackFeelChange}
-                  onResetPlaybackPreferences={onResetPlaybackPreferences}
-                />
-              </div>
+              {structuredSessionActive && <button type="button" onClick={() => onStopPlayback?.()} className="min-h-10 shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3 text-[11px] font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200" title="Stop playback so settings can be edited" data-text-settings-stop-playback="true"><Square className="inline h-3 w-3 mr-1 fill-current"/>Stop audio</button>}
+              <button type="button" onClick={() => onCloseControlsWorkspace?.()} className="min-h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-red-500 transition-colors"><X className="w-4 h-4 inline mr-1"/>Close</button>
             </div>
-          </div>, document.body)}
-      </div>
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-3.5 md:p-5">
+              {controlsBusy && <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200" role="status" data-text-settings-busy-reason="true">{generationBusy ? 'Audio generation is running; settings are temporarily locked until it finishes.' : 'Audio is playing. Tap Stop audio above to unlock the settings.'}</p>}
+              <TextStructuredPlaybackControls
+                documentTree={documentTree}
+                preferences={playbackPreferences}
+                playbackRepresentationMode={playbackRepresentationMode}
+                playbackOrder={playbackOrder}
+                availableLocalVoices={availableLocalVoices}
+                disabled={controlsBusy}
+                resetDisabled={generationBusy || resetDisabled}
+                onDisplayModeChange={onDisplayModeChange}
+                onPlaybackChannelModeChange={onPlaybackChannelModeChange}
+                onPlaybackRepresentationModeChange={onPlaybackRepresentationModeChange}
+                onGlobalPlaybackOrderChange={onGlobalPlaybackOrderChange}
+                onGlobalTtsOnlyChange={onGlobalTtsOnlyChange}
+                onPlaybackFeelChange={onPlaybackFeelChange}
+                onResetPlaybackPreferences={onResetPlaybackPreferences}
+              />
+            </div>
+          </div>
+        </div>, document.body)}
 
-      <div className="space-y-3 animate-in fade-in duration-200">
-        {useSharedCardReader && sharedPresentation && (
+      <div className="space-y-2.5 sm:space-y-3">
+        {isSharedShellActive && (
           <SharedBilingualLayoutToolbar
             presentationState={activeSharedView}
             onChangePresentationState={handleSharedPresentationChange}
@@ -1006,6 +1023,109 @@ export const TextStructuredPlayer = ({
             showWorkspaceStyle={Boolean(onSharedWorkspaceStyleChange)}
             unitKind={sharedPresentation.workspace?.documentType === 'conversation' ? 'turn' : 'paragraph'}
             workspaceType={sharedPresentation.workspace?.documentType || documentTree?.documentType || null}
+            workspaceHeaderSlot={(
+              <div
+                className="flex items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-slate-50/60 dark:bg-slate-900/50"
+                data-text-compact-toolbar="true"
+              >
+                <div className="min-w-0 flex-1 flex items-center gap-1.5 sm:gap-2 overflow-hidden">
+                  <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide shrink-0 ${workspaceTypeTone}`}>
+                    {['conversation', 'mixed'].includes(documentTree?.documentType) ? <MessageSquare aria-hidden="true" className="hidden sm:inline-block w-3 h-3"/> : <FileText aria-hidden="true" className="hidden sm:inline-block w-3 h-3"/>}
+                    <span className="hidden sm:inline">{documentModeLabel}</span>
+                    <span className="sm:hidden">{documentTree?.documentType === 'mixed' ? 'Mixed' : documentTree?.documentType === 'conversation' ? 'Dialog' : 'Text'}</span>
+                  </span>
+
+                  <span
+                    className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums"
+                    data-text-workspace-compact-readiness="true"
+                  >
+                    <span className="sm:hidden">{blocks.length} cards · {playableList.length} seg</span>
+                    <span className="hidden sm:inline">{blocks.length} {blocks.length === 1 ? 'card' : 'cards'} · {playableList.length} segs</span>
+                    <span className="hidden lg:inline">
+                      {' · '}{effectiveRepresentationMode === 'full' ? 'Full' : 'Split'} · {getStructuredTextPlaybackModeLabel(playbackChannelMode)} · {isGlobalTtsOnly ? 'TTS' : 'Local First'}
+                      {documentCoverage?.total ? ` · ${documentCoverage.covered}/${documentCoverage.total} ready` : ''}
+                    </span>
+                  </span>
+
+                  {structuredSessionActive && activeCardNumber > 0 && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 shadow-xs ${
+                      isPaused
+                        ? SHARED_SEMANTIC_COLORS.paused.solid
+                        : speakingPart === 'meaning'
+                          ? SHARED_SEMANTIC_COLORS.id.solid
+                          : SHARED_SEMANTIC_COLORS.en.solid
+                    }`}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      <span>C{activeCardNumber} · {isPaused ? 'Paused' : speakingPart === 'meaning' ? 'ID' : 'EN'}</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {readerSwitchSlot}
+                  <button
+                    type="button"
+                    disabled={!playableList.length || generationBusy}
+                    onClick={onPlayDocument}
+                    className={`min-h-8 sm:min-h-8 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold disabled:opacity-35 inline-flex items-center gap-1.5 shrink-0 ${SHARED_CONTROL_TOKENS.primaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+                    title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}
+                  >
+                    {stopsWorkspace ? <Square aria-hidden="true" className="w-3 h-3 fill-current"/> : <Play aria-hidden="true" className="w-3 h-3 fill-current"/>}
+                    <span>{stopsWorkspace ? 'Stop All' : 'Play All'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+            cardVisibilitySlot={!showSharedBookPage ? (
+              <div
+                className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 text-left"
+                data-text-card-expansion-toolbar="true"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
+                    Card Visibility
+                  </span>
+                  <div className={`inline-flex flex-wrap items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}>
+                    {[
+                      [TEXT_CARD_EXPANSION_MODES.FOLLOW, 'Follow Playback'],
+                      [TEXT_CARD_EXPANSION_MODES.ALL, 'Expand All'],
+                      [TEXT_CARD_EXPANSION_MODES.CUSTOM, 'Custom']
+                    ].map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => onChangeCardExpansionMode(mode)}
+                        aria-pressed={expansionMode === mode}
+                        data-text-card-expansion-mode={mode}
+                        className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                          expansionMode === mode ? SHARED_CONTROL_TOKENS.segmentActivePrimary : SHARED_CONTROL_TOKENS.segmentInactive
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="hidden md:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>{getStructuredTextOrderModeLabel(playbackPreferences?.playbackOrderMode)} · {getStructuredTextRepeatModeLabel(playbackPreferences?.repeatMode)}</span>
+                </div>
+              </div>
+            ) : null}
+            divergedBannerSlot={sharedPlayingCardCollapsed ? (
+              <>
+                <span className="text-[11px] font-medium text-indigo-800 dark:text-indigo-200">
+                  Playing Card #{activeCardNumber} is currently collapsed
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onChangeCardExpansionMode(TEXT_CARD_EXPANSION_MODES.FOLLOW)}
+                  data-text-card-return-to-playing="true"
+                  className={`min-h-8 px-2.5 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-indigo-950/70 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-900/60 transition-colors ${SHARED_CONTROL_TOKENS.focusRing}`}
+                >
+                  Follow Playing Card
+                </button>
+              </>
+            ) : null}
           />
         )}
         {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Workspace belum memiliki Card. Buka DATA → CREATE untuk membuat Card pertama.</div>}

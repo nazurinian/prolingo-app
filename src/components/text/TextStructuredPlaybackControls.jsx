@@ -18,6 +18,7 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { TEXT_CARD_EXPANSION_MODES } from '../../domain/text/textStructuredCardExpansionDomain.js';
 import { getTextResetButtonState, isTextGlobalPlaybackDirty } from '../../domain/text/textStructuredResetPresentationDomain.js';
+import { SHARED_UI_TERMINOLOGY } from './presentation/sharedDesignTokens.js';
 
 const DISPLAY_OPTIONS = [
   TEXT_STRUCTURED_DISPLAY_MODES.TEXT_ONLY,
@@ -121,10 +122,10 @@ const ManualTargetControls = ({ title, badge, prefix, preferences, disabled, onC
       </div>
       {badge && <span className="shrink-0 rounded-md bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[9px] font-black text-amber-800 dark:text-amber-300">{badge}</span>}
     </div>
-    <ChoiceGroup title="Language Playback Order" options={manualChannelChoices} value={channelMode} disabled={disabled} tone="amber" testId={`${prefix}-channels`} onChange={value => onChange?.({ [channelKey]: value })}/>
+    <ChoiceGroup title="Channel Sequence" options={manualChannelChoices} value={channelMode} disabled={disabled} tone="amber" testId={`${prefix}-channels`} onChange={value => onChange?.({ [channelKey]: value })}/>
     <ChoiceGroup title="Repeat Behaviour" options={repeatChoices} value={repeatMode} disabled={disabled} tone="amber" testId={`${prefix}-repeat`} onChange={value => onChange?.({ [repeatKey]: value })}/>
     {repeatMode === TEXT_STRUCTURED_MANUAL_REPEAT_MODES.CUSTOM && <label className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-slate-300">Repeat count<input type="number" min="1" max="20" disabled={disabled} value={Number(preferences?.[countKey] || 3)} onChange={event => onChange?.({ [countKey]: Number(event.target.value) })} className="w-20 min-h-9 rounded-lg border border-amber-200 dark:border-amber-900 bg-white dark:bg-slate-800 px-2 text-center font-bold"/></label>}
-    {channelMode === TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL && <p className="rounded-lg bg-amber-50/80 dark:bg-amber-950/30 px-2.5 py-1.5 text-[10px] font-medium text-amber-800 dark:text-amber-300">Follows the current Global EN/ID Language Playback Order automatically.</p>}
+    {channelMode === TEXT_STRUCTURED_MANUAL_INHERIT_GLOBAL && <p className="rounded-lg bg-amber-50/80 dark:bg-amber-950/30 px-2.5 py-1.5 text-[10px] font-medium text-amber-800 dark:text-amber-300">Follows the current Global EN/ID Channel Sequence automatically.</p>}
   </div>;
 };
 
@@ -180,13 +181,13 @@ export default function TextStructuredPlaybackControls({
   return <div className="space-y-3.5" data-text-player-settings="true">
     {/* Header + Active Configuration Summary Pills */}
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/>
-          <p className="text-xs font-black uppercase tracking-wide text-indigo-800 dark:text-indigo-200">Text Player Settings</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-indigo-800 dark:text-indigo-200">{SHARED_UI_TERMINOLOGY.playbackSettings}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-1 text-[9px] font-black">
-          <span className="rounded-md bg-indigo-100 dark:bg-indigo-950/70 px-1.5 py-0.5 text-indigo-700 dark:text-indigo-300">{isFull ? 'FULL' : 'SPLIT'}</span>
+        <div className="flex flex-wrap items-center gap-1 text-[10px] font-semibold">
+          <span className="rounded-md bg-indigo-100 dark:bg-indigo-950/70 px-1.5 py-0.5 text-indigo-700 dark:text-indigo-300">{isFull ? 'Full' : 'Split'}</span>
           <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-700 dark:text-slate-300">{currentLangLabel}</span>
           <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/70 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">{currentOrderLabel}</span>
           <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-600 dark:text-slate-400">{currentDisplayLabel}</span>
@@ -196,8 +197,8 @@ export default function TextStructuredPlaybackControls({
               disabled={playbackResetState.disabled}
               onClick={() => setConfirmResetOpen(true)}
               data-text-reset-playback="true"
-              className={`ml-1 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-2 py-1 text-[9px] font-black text-amber-800 dark:text-amber-200 ${playbackResetState.dirty && !playbackResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${playbackResetState.opacityClass} ${playbackResetState.interactionClass}`}
-              title="Reset Text Player, Manual Play, Display, and Local Priority defaults"
+              className={`ml-1 inline-flex items-center gap-1 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-2 py-1 text-[10px] font-bold text-amber-800 dark:text-amber-200 ${playbackResetState.dirty && !playbackResetState.busyBlocked ? 'hover:bg-amber-100' : ''} ${playbackResetState.opacityClass} ${playbackResetState.interactionClass}`}
+              title="Reset Playback Settings, Manual Play, Display, and Local Priority defaults"
             >
               <RotateCcw className="w-3 h-3"/>
               <span>Reset Defaults</span>
@@ -206,12 +207,12 @@ export default function TextStructuredPlaybackControls({
         </div>
       </div>
       <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-        Configure <b>Global Playback</b> (bottom player), <b>Manual Play</b> (card & sentence buttons), and <b>Display</b> (visible text & card expansion). Voices and Edge downloads live in the <b>AUDIO</b> sidebar.
+        Configure <b>Global Playback</b> (bottom player), <b>Manual Play</b> (Card &amp; Segment triggers), and <b>Legacy Display</b>. {SHARED_UI_TERMINOLOGY.readingStyle} &amp; Typography live in <b>{SHARED_UI_TERMINOLOGY.readingSettings}</b>; Voices &amp; Local MP3 live in <b>{SHARED_UI_TERMINOLOGY.audioAndVoices}</b>.
       </p>
     </div>
 
     {/* 3-Tab Navigation */}
-    <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1" role="tablist" aria-label="Text Player Settings tabs" data-text-player-settings-tabs="true">
+    <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800 p-1" role="tablist" aria-label="Playback Settings tabs" data-text-player-settings-tabs="true">
       {tabs.map(tab => <button type="button" role="tab" key={tab.id} aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} className={`min-h-10 rounded-lg px-2 text-[11px] font-bold transition-all ${activeTab === tab.id ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'}`}>{tab.label}</button>)}
     </div>
 
@@ -221,13 +222,13 @@ export default function TextStructuredPlaybackControls({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400"/>
-            <p className="text-[12px] font-black text-indigo-900 dark:text-indigo-200">1. Global Mode & Language Playback Order</p>
+            <p className="text-[12px] font-bold text-indigo-900 dark:text-indigo-200">1. {SHARED_UI_TERMINOLOGY.audioRepresentation} &amp; Channel Sequence</p>
           </div>
-          <span className="rounded bg-indigo-100 dark:bg-indigo-950/60 px-2 py-0.5 text-[9px] font-black text-indigo-700 dark:text-indigo-300">Bottom Player</span>
+          <span className="rounded bg-indigo-100 dark:bg-indigo-950/60 px-2 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300">Global Player</span>
         </div>
 
         <ChoiceGroup
-          title="Reading Mode (Split vs Full)"
+          title={`${SHARED_UI_TERMINOLOGY.audioRepresentation} (Split vs Full)`}
           subtitle="Split plays and highlights sentence-by-sentence; Full plays the entire Card channel as one unit."
           options={[
             { value: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT, label: 'Split · Sentences' },
@@ -241,7 +242,7 @@ export default function TextStructuredPlaybackControls({
         <div data-text-global-playback-mode="true" className="sr-only">Global Split/Full</div>
 
         <ChoiceGroup
-          title="Language Playback Order (Which language plays first)"
+          title="Channel Sequence (Which language plays first)"
           subtitle="Controls whether English (EN), Indonesian (ID), or both are spoken during Global Playback."
           options={PLAY_OPTIONS.map(value => ({ value, label: getStructuredTextPlaybackModeLabel(value) }))}
           value={preferences.playbackChannelMode || TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY}
@@ -253,7 +254,7 @@ export default function TextStructuredPlaybackControls({
         <details open={showAdvancedPriority} onToggle={e => setShowAdvancedPriority(e.currentTarget.open)} className="rounded-xl border border-indigo-100 dark:border-indigo-900 bg-white/90 dark:bg-slate-900/35 p-3">
           <summary className="cursor-pointer text-[11px] font-bold text-indigo-700 dark:text-indigo-200">Advanced · Local Voice Priority (Global EN / ID order)</summary>
           <p className="mt-1.5 mb-2.5 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-            Global representation and local voice priority across Structured Text documents. When multiple local voices are downloaded for a card or sentence, the first Ready local voice is used. Generation/export selections stay independent from this playback priority.
+            Global representation and local voice priority across Structured Text Workspaces. When multiple local voices are downloaded for a Card or Segment, the first Ready local voice is used. Generation/export selections stay independent from this playback priority.
           </p>
           <div className="grid gap-2 md:grid-cols-2" data-text-global-playback-order-editor="true">
             <PlaybackProfileOrderEditor channel="text" playbackOrder={playbackOrder} availableLocalVoices={availableLocalVoices} disabled={disabled} onChange={onGlobalPlaybackOrderChange}/>
@@ -265,7 +266,7 @@ export default function TextStructuredPlaybackControls({
       <section className="rounded-xl border border-emerald-200/80 dark:border-emerald-900 bg-emerald-50/35 dark:bg-emerald-950/15 p-3.5 space-y-3" data-text-player-behaviour="true">
         <div className="flex gap-2 items-center">
           <Repeat2 className="w-4 h-4 text-emerald-700 dark:text-emerald-400"/>
-          <p className="text-[12px] font-black text-emerald-900 dark:text-emerald-200">2. Global Playback Behaviour</p>
+          <p className="text-[12px] font-bold text-emerald-900 dark:text-emerald-200">2. Global Playback Behaviour</p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -279,7 +280,7 @@ export default function TextStructuredPlaybackControls({
             onChange={value => onPlaybackFeelChange?.({ playbackOrderMode: value })}
           />
           <ChoiceGroup
-            title="Repeat Document"
+            title="Repeat Workspace"
             subtitle="What happens after reaching the last Card."
             options={REPEAT_OPTIONS.map(value => ({ value, label: getStructuredTextRepeatModeLabel(value) }))}
             value={preferences.repeatMode || TEXT_STRUCTURED_REPEAT_MODES.ONCE}
@@ -363,16 +364,16 @@ export default function TextStructuredPlaybackControls({
         </div>
         <div className="grid gap-1.5 sm:grid-cols-2 text-[10px] leading-relaxed text-slate-600 dark:text-slate-300">
           <div className="rounded-lg bg-white/80 dark:bg-slate-900/40 p-2 border border-slate-200/70 dark:border-slate-800">
-            <b className="text-indigo-700 dark:text-indigo-300">1. Language Playback Order:</b> Which language channel is spoken (<code className="text-[9px]">EN</code>, <code className="text-[9px]">ID</code>, <code className="text-[9px]">EN → ID</code>, or <code className="text-[9px]">ID → EN</code>).
+            <b className="text-indigo-700 dark:text-indigo-300">1. {SHARED_UI_TERMINOLOGY.readerMode} &amp; {SHARED_UI_TERMINOLOGY.readingStyle}:</b> Configured in <b>{SHARED_UI_TERMINOLOGY.readingSettings}</b> (Full / Card / Focus / Segment; Separated / Sentence Interlinear / Notebook / Contextual).
           </div>
           <div className="rounded-lg bg-white/80 dark:bg-slate-900/40 p-2 border border-slate-200/70 dark:border-slate-800">
-            <b className="text-indigo-700 dark:text-indigo-300">2. Local Voice Priority:</b> Which downloaded Edge voice (e.g. Sonia vs Ryan) wins when multiple local files are Ready.
+            <b className="text-indigo-700 dark:text-indigo-300">2. {SHARED_UI_TERMINOLOGY.audioRepresentation}:</b> <b>Split</b> plays and highlights sentence-by-sentence; <b>Full</b> plays the entire Card channel continuously.
           </div>
           <div className="rounded-lg bg-white/80 dark:bg-slate-900/40 p-2 border border-slate-200/70 dark:border-slate-800">
-            <b className="text-indigo-700 dark:text-indigo-300">3. Text Display Visibility:</b> Which text boxes (<code className="text-[9px]">TEXT</code> / <code className="text-[9px]">MEANING</code>) are shown visually on Cards.
+            <b className="text-indigo-700 dark:text-indigo-300">3. {SHARED_UI_TERMINOLOGY.playbackScope}:</b> Play a single <b>Segment</b>, <b>Section / Turn</b>, <b>Card</b>, or the entire <b>Workspace</b>.
           </div>
           <div className="rounded-lg bg-white/80 dark:bg-slate-900/40 p-2 border border-slate-200/70 dark:border-slate-800">
-            <b className="text-indigo-700 dark:text-indigo-300">4. Global vs Manual Playback:</b> <b>Global</b> traverses the document via the bottom bar; <b>Manual</b> plays a single Card or Sentence on demand.
+            <b className="text-indigo-700 dark:text-indigo-300">4. {SHARED_UI_TERMINOLOGY.audioSource}:</b> Switch between <b>Local First</b> (downloaded MP3) and <b>TTS</b> in <b>{SHARED_UI_TERMINOLOGY.audioAndVoices}</b>.
           </div>
         </div>
       </div>
@@ -380,7 +381,7 @@ export default function TextStructuredPlaybackControls({
 
     <SafetyConfirmDialog
       open={confirmResetOpen}
-      title="Reset Text Player Settings to Defaults?"
+      title="Reset Playback Settings to Defaults?"
       message="Restores Global Playback (Split, EN only, Sequential, Once, Continue), Manual Play, Display mode, delays, and Global Local Voice Priority, and clears active Shuffle order. Global Browser TTS voices, Staging MP3 files, Workspace/Card/Segment overrides, and Table settings are preserved."
       confirmLabel="Reset Defaults"
       tone="amber"

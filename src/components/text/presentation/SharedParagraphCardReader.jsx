@@ -41,6 +41,7 @@ import {
   summarizeCardPresentationCoverage,
   summarizeSceneSpeakers
 } from './sharedCardPresentationUtils.js';
+import { SHARED_SPACING_TOKENS } from './sharedDesignTokens.js';
 
 export const SharedFullCardBody = props => <SharedBilingualUnitsBody {...props} />;
 
@@ -113,7 +114,7 @@ export const SharedBookPageView = ({
       data-shared-workspace-indent={stylePresentation.style.paragraphIndent ? 'on' : 'off'}
       data-shared-workspace-speaker-layout={stylePresentation.style.speakerLayout}
       data-shared-workspace-accents={stylePresentation.style.showAccents ? 'on' : 'off'}
-      className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 shadow-sm px-4 py-5 sm:px-9 sm:py-8 space-y-7 transition-colors motion-reduce:transition-none"
+      className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/95 shadow-sm px-4 py-4 sm:px-9 sm:py-7 space-y-6 transition-colors motion-reduce:transition-none`}
     >
       <header
         data-shared-book-header="true"
@@ -185,7 +186,7 @@ export const SharedBookPageView = ({
                 data-shared-card-precision={isSpeakingCard ? cursor.precision : 'none'}
                 data-shared-card-speaking={isSpeakingCard ? (cursor.precision === 'card' ? 'card' : 'segment') : undefined}
                 data-text-search-focus-card={isFocusCard ? 'true' : undefined}
-                className={`${cardIndex > 0 ? 'pt-7 border-t border-slate-100 dark:border-slate-800/80' : ''} ${speakingAccent} space-y-4 transition-colors motion-reduce:transition-none`}
+                className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} ${cardIndex > 0 ? 'pt-7 border-t border-slate-100 dark:border-slate-800/80' : ''} ${speakingAccent} space-y-4 transition-colors motion-reduce:transition-none`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2.5 text-left">
                   <div className="min-w-0 flex-1 space-y-1">
@@ -746,7 +747,7 @@ export const SharedCardReadingSurface = ({
       data-shared-card-precision={isSpeakingCard ? cursor.precision : 'none'}
       data-shared-card-speaking={isSpeakingCard ? (cursor.precision === 'card' ? 'card' : 'segment') : undefined}
       data-text-search-focus-card={isFocusCard ? 'true' : undefined}
-      className={`rounded-2xl border shadow-sm transition-colors duration-150 motion-reduce:transition-none overflow-hidden ${cardSurfaceTone} ${cardTopAccent} ${cardBackground}`}
+      className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-sm transition-colors duration-150 motion-reduce:transition-none overflow-hidden ${cardSurfaceTone} ${cardTopAccent} ${cardBackground}`}
     >
       <header className="px-5 py-4 sm:px-8 sm:py-5 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0 w-full sm:flex-1 flex items-start gap-2.5">
@@ -1248,20 +1249,16 @@ export const SharedParagraphWorkspaceReader = ({
         hasWorkspaceStyleOverride={hasWorkspaceStyleOverride}
         showWorkspaceStyle={showWorkspaceStyle}
         rightSlot={toolbarRightSlot}
-      />
-
-      {/* Card Visibility Controls: Follow Playback | Expand All | Custom (Card/Part/Segment modes) */}
-      {managesCardVisibility && !showBookPage && cards.length > 0 && (
-        <div
-          data-shared-card-visibility-bar="true"
-          data-shared-card-visibility-mode={effectiveVisibility}
-          className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/85 dark:bg-slate-900/75 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-left"
-        >
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">
-              Cards
+        cardVisibilitySlot={managesCardVisibility && !showBookPage && cards.length > 0 ? (
+          <div
+            data-shared-card-visibility-bar="true"
+            data-shared-card-visibility-mode={effectiveVisibility}
+            className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1.5 sm:gap-2.5 text-left"
+          >
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
+              Card Visibility
             </span>
-            <div role="group" aria-label="Card visibility (display only)" className="inline-flex flex-wrap items-center gap-1">
+            <div role="group" aria-label="Card visibility (display only)" className="inline-flex flex-wrap items-center gap-0.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/85 p-0.5">
               {TEXT_CARD_EXPANSION_OPTIONS.map(option => {
                 const active = effectiveVisibility === option.id;
                 return (
@@ -1272,10 +1269,10 @@ export const SharedParagraphWorkspaceReader = ({
                     onClick={() => handleVisibilityChange(option.id)}
                     title={option.description}
                     data-shared-card-visibility-option={option.id}
-                    className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-lg text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                       active
-                        ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
-                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     {option.label}
@@ -1284,20 +1281,24 @@ export const SharedParagraphWorkspaceReader = ({
               })}
             </div>
           </div>
-
-          {isPlayingCardDiverged && (
+        ) : null}
+        divergedBannerSlot={isPlayingCardDiverged ? (
+          <>
+            <span className="text-[11px] font-medium text-indigo-800 dark:text-indigo-200">
+              Browsing other cards while audio plays
+            </span>
             <button
               type="button"
               onClick={() => handleVisibilityChange(TEXT_CARD_EXPANSION_MODES.FOLLOW)}
               data-shared-card-return-to-playing="true"
-              className="min-h-11 sm:min-h-8 px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/60 text-xs font-semibold text-indigo-700 dark:text-indigo-200 inline-flex items-center gap-1.5 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-indigo-950/70 text-xs font-semibold text-indigo-700 dark:text-indigo-200 inline-flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/60 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <Radio aria-hidden="true" className="w-3.5 h-3.5" />
               <span>Follow Playing Card</span>
             </button>
-          )}
-        </div>
-      )}
+          </>
+        ) : null}
+      />
 
       {showBookPage ? (
         <SharedBookPageView

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlignJustify,
   AlignLeft,
@@ -21,7 +22,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
-  Type
+  Type,
+  X
 } from 'lucide-react';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -52,6 +54,12 @@ import {
   SHARED_WORKSPACE_ALIGNMENT_OPTIONS,
   getSharedUnitTerms
 } from './sharedCardPresentationUtils.js';
+import {
+  SHARED_CONTROL_TOKENS,
+  SHARED_SPACING_TOKENS,
+  SHARED_SURFACE_TOKENS,
+  SHARED_UI_TERMINOLOGY
+} from './sharedDesignTokens.js';
 
 const LEVEL_ICONS = {
   full: BookOpen,
@@ -95,6 +103,7 @@ const PART_LAYOUT_ICONS = {
 const BILINGUAL_STYLE_ICONS = {
   separated: Columns,
   interlinear: Languages,
+  notebook: BookOpen,
   contextual: Eye
 };
 
@@ -109,6 +118,13 @@ const ALIGNMENT_ICONS = {
   justify: AlignJustify
 };
 
+const STYLE_BADGE_LABELS = Object.freeze({
+  separated: 'Separated',
+  interlinear: 'Interlinear',
+  notebook: 'Notebook',
+  contextual: 'Contextual'
+});
+
 const adaptDescription = (text, terms) => (
   terms.label === 'Section'
     ? text
@@ -118,6 +134,28 @@ const adaptDescription = (text, terms) => (
         .replace(/\bcard\b/g, terms.cardLower)
 );
 
+const useIsCompactViewport = () => {
+  const [compact, setCompact] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 767px)').matches
+      : false
+  ));
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia('(max-width: 767px)');
+    const handleChange = event => setCompact(event.matches);
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', handleChange);
+      return () => media.removeEventListener('change', handleChange);
+    }
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
+
+  return compact;
+};
+
 const AppearanceOptionRow = ({ label, ariaLabel, options, activeId, attrName, onSelect }) => (
   <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
     <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">
@@ -126,7 +164,7 @@ const AppearanceOptionRow = ({ label, ariaLabel, options, activeId, attrName, on
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 p-0.5"
+      className={`inline-flex flex-wrap items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
     >
       {options.map(option => {
         const active = activeId === option.id;
@@ -137,10 +175,10 @@ const AppearanceOptionRow = ({ label, ariaLabel, options, activeId, attrName, on
             aria-pressed={active}
             onClick={() => onSelect(option.id)}
             {...{ [attrName]: option.id }}
-            className={`min-h-10 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+            className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
               active
                 ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/80 dark:ring-slate-600'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                : SHARED_CONTROL_TOKENS.segmentInactive
             }`}
           >
             {option.label}
@@ -153,7 +191,8 @@ const AppearanceOptionRow = ({ label, ariaLabel, options, activeId, attrName, on
 
 /**
  * Compact, grouped, view-only Appearance / Typography panel (6 independent controls +
- * independent Reset Appearance that never mutates Workspace Style, bilingual choices, or audio).
+ * Notebook spacing/guide options + independent Reset Appearance that never mutates
+ * Workspace Style, bilingual choices, or audio).
  */
 export const SharedAppearanceTypographyPanel = ({
   appearance,
@@ -165,7 +204,7 @@ export const SharedAppearanceTypographyPanel = ({
 
   return (
     <div
-      className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5 text-left"
+      className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-left"
       data-shared-appearance-panel="true"
       data-shared-appearance-dirty={dirty ? 'true' : 'false'}
     >
@@ -173,10 +212,10 @@ export const SharedAppearanceTypographyPanel = ({
         <div className="flex items-center gap-1.5 min-w-0">
           <Type aria-hidden="true" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300 shrink-0" />
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-            Appearance &amp; Typography
+            Typography &amp; Contrast
           </span>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">
-            · View-only, independent of Workspace Style &amp; audio
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden md:inline">
+            · View-only, live preview below
           </span>
         </div>
         <button
@@ -187,14 +226,14 @@ export const SharedAppearanceTypographyPanel = ({
           title={dirty
             ? 'Reset only Appearance & Typography defaults without changing Workspace Style, reading style, or audio'
             : 'Appearance & Typography already matches defaults'}
-          className="min-h-10 sm:min-h-7 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 inline-flex items-center gap-1 transition-colors motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
         >
           <RotateCcw aria-hidden="true" className="w-3 h-3" />
           <span>Reset Appearance</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-2 rounded-xl bg-slate-50/75 dark:bg-slate-800/35 border border-slate-200/70 dark:border-slate-800 p-3">
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 ${SHARED_SURFACE_TOKENS.panelInset} p-2.5`}>
         <AppearanceOptionRow
           label="Primary Size"
           ariaLabel="Primary reading font size (display only)"
@@ -253,14 +292,15 @@ export const SharedAppearanceTypographyPanel = ({
               attrName="data-shared-notebook-spacing-option"
               onSelect={notebookSpacing => onChangeAppearance({ notebookSpacing })}
             />
-            <label className="flex items-center gap-2 text-xs font-semibold">
+            <label className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200 min-h-9 sm:min-h-7 cursor-pointer">
+              <span>Notebook Guide Lines</span>
               <input
                 type="checkbox"
                 data-shared-notebook-guides-option="true"
                 checked={appearance.notebookGuideLines}
                 onChange={event => onChangeAppearance({ notebookGuideLines: event.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
               />
-              Notebook Guide Lines
             </label>
           </>
         )}
@@ -271,7 +311,8 @@ export const SharedAppearanceTypographyPanel = ({
 
 /**
  * Compact, grouped Workspace Style bar separate from Reader Mode, Reading Language /
- * Bilingual Style, Appearance / Typography, Card Visibility, and Playback Settings.
+ * Reading Style, Appearance / Typography, Card Visibility, and Playback Settings.
+ * Displays explicit Inherited vs Workspace Override status badges.
  */
 export const SharedWorkspaceStyleBar = ({
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -299,79 +340,115 @@ export const SharedWorkspaceStyleBar = ({
   const resetLabel = isWorkspaceScope ? 'Reset Override' : 'Reset Style';
   const resetTitle = isWorkspaceScope
     ? (dirty ? 'Remove this Workspace override and inherit Shared Style defaults' : 'This Workspace already inherits Shared Style defaults')
-    : (dirty ? 'Restore default Workspace Style without changing Reading Mode, Appearance, or Audio settings' : 'Workspace Style is already using accepted defaults');
+    : (dirty ? 'Restore default Workspace Style without changing Reader Mode, Appearance, or Audio settings' : 'Workspace Style is already using accepted defaults');
 
   return (
     <div
-      className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5"
+      className="space-y-2.5 text-left"
       data-shared-workspace-style-bar="true"
       data-shared-workspace-style-scope={isWorkspaceScope ? 'workspace' : 'shared'}
       data-shared-workspace-style-override={hasWorkspaceOverride ? 'true' : 'false'}
+      data-shared-workspace-style-status={hasWorkspaceOverride ? 'override' : 'inherited'}
       data-shared-workspace-style-align={activeStyle.textAlign}
       data-shared-workspace-style-indent={activeStyle.paragraphIndent ? 'on' : 'off'}
       data-shared-workspace-style-speaker={activeStyle.speakerLayout}
       data-shared-workspace-style-accents={activeStyle.showAccents ? 'on' : 'off'}
     >
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0 flex-1">
-        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
-          <Palette aria-hidden="true" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
-          <span>Workspace Style</span>
-          {scopeLabel && !showScopeSwitcher && (
-            <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 shrink-0">
+            <Palette aria-hidden="true" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300" />
+            <span>Workspace Style</span>
+          </div>
+
+          {canOverrideWorkspace ? (
+            <span
+              data-shared-workspace-style-inheritance-badge={hasWorkspaceOverride ? 'override' : 'inherited'}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                hasWorkspaceOverride
+                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-200'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {hasWorkspaceOverride ? 'Workspace Override Active' : 'Inherited from Shared Default'}
+            </span>
+          ) : scopeLabel ? (
+            <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
               {scopeLabel}
             </span>
-          )}
+          ) : null}
         </div>
 
-        {showScopeSwitcher && (
-          <div
-            role="group"
-            aria-label="Workspace style target scope (display only)"
-            data-shared-workspace-style-scope-group="true"
-            className="inline-flex items-center gap-0.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 p-0.5"
+        {onResetWorkspaceStyle && (
+          <button
+            type="button"
+            disabled={!dirty}
+            onClick={onResetWorkspaceStyle}
+            data-shared-workspace-style-reset="true"
+            title={resetTitle}
+            className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
           >
-            {[
-              { id: 'shared', label: 'Shared Default', title: 'Edit shared Workspace Style defaults for all unoverridden Workspaces' },
-              { id: 'workspace', label: 'This Workspace', title: 'Edit an optional Workspace-specific style override for this Workspace only' }
-            ].map(item => {
-              const active = (item.id === 'workspace') === isWorkspaceScope;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onChangeWorkspaceStyleScope(item.id)}
-                  title={item.title}
-                  data-shared-workspace-style-scope-option={item.id}
-                  className={`min-h-10 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                    active
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {item.id === 'workspace' && hasWorkspaceOverride && (
-                    <span
-                      aria-label="Custom override active"
-                      data-shared-workspace-style-override-dot="true"
-                      className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-indigo-500 dark:bg-indigo-300'}`}
-                    />
-                  )}
-                </button>
-              );
-            })}
+            <RotateCcw aria-hidden="true" className="w-3 h-3" />
+            <span>{resetLabel}</span>
+          </button>
+        )}
+      </div>
+
+      <div className={`flex flex-wrap items-center gap-2.5 ${SHARED_SURFACE_TOKENS.panelInset} p-2.5`}>
+        {showScopeSwitcher && (
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              Scope
+            </span>
+            <div
+              role="group"
+              aria-label="Workspace style target scope (display only)"
+              data-shared-workspace-style-scope-group="true"
+              className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
+            >
+              {[
+                { id: 'shared', label: 'Shared Default', title: 'Edit shared Workspace Style defaults for all unoverridden Workspaces' },
+                { id: 'workspace', label: 'This Workspace', title: 'Edit an optional Workspace-specific style override for this Workspace only' }
+              ].map(item => {
+                const active = (item.id === 'workspace') === isWorkspaceScope;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => onChangeWorkspaceStyleScope(item.id)}
+                    title={item.title}
+                    data-shared-workspace-style-scope-option={item.id}
+                    className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                      active
+                        ? SHARED_CONTROL_TOKENS.segmentActivePrimary
+                        : SHARED_CONTROL_TOKENS.segmentInactive
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    {item.id === 'workspace' && hasWorkspaceOverride && (
+                      <span
+                        aria-label="Custom override active"
+                        data-shared-workspace-style-override-dot="true"
+                        className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-white' : 'bg-indigo-500 dark:bg-indigo-300'}`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
         {/* Shared Text Alignment: Left | Justify */}
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-          <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
             Align
           </span>
           <div
             role="group"
             aria-label="Shared reading text alignment (display only)"
-            className="inline-flex items-center gap-0.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 p-0.5"
+            className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
           >
             {SHARED_WORKSPACE_ALIGNMENT_OPTIONS.map(option => {
               const active = activeStyle.textAlign === option.id;
@@ -384,10 +461,10 @@ export const SharedWorkspaceStyleBar = ({
                   onClick={() => emitStylePatch({ textAlign: option.id })}
                   title={option.description}
                   data-shared-workspace-align-option={option.id}
-                  className={`min-h-10 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                  className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                     active
                       ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/80 dark:ring-slate-600'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      : SHARED_CONTROL_TOKENS.segmentInactive
                   }`}
                 >
                   <Icon aria-hidden="true" className="w-3 h-3 shrink-0" />
@@ -401,13 +478,13 @@ export const SharedWorkspaceStyleBar = ({
         {/* Conversation Speaker Arrangement: Aligned | Stacked | Inline */}
         {showSpeakerLayout && (
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
               Speakers
             </span>
             <div
               role="group"
               aria-label="Conversation speaker arrangement (display only)"
-              className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-slate-100/90 dark:bg-slate-800/80 p-0.5"
+              className={`inline-flex flex-wrap items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
             >
               {SHARED_CONVERSATION_SPEAKER_LAYOUT_OPTIONS.map(option => {
                 const active = activeStyle.speakerLayout === option.id;
@@ -419,10 +496,10 @@ export const SharedWorkspaceStyleBar = ({
                     onClick={() => emitStylePatch({ speakerLayout: option.id })}
                     title={option.description}
                     data-shared-workspace-speaker-option={option.id}
-                    className={`min-h-10 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    className={`min-h-9 sm:min-h-7 px-2 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                       active
                         ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/80 dark:ring-slate-600'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                        : SHARED_CONTROL_TOKENS.segmentInactive
                     }`}
                   >
                     <span>{option.label}</span>
@@ -442,7 +519,7 @@ export const SharedWorkspaceStyleBar = ({
               onClick={() => emitStylePatch({ paragraphIndent: !activeStyle.paragraphIndent })}
               title="Toggle first-line indentation on Paragraph body Sections (never indents Title Cards or Dialogue Turns)"
               data-shared-workspace-indent-toggle="true"
-              className={`min-h-10 sm:min-h-7 px-2.5 py-0.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                 activeStyle.paragraphIndent
                   ? 'border-teal-300/90 dark:border-teal-700/80 bg-teal-50/80 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200'
                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300'
@@ -459,7 +536,7 @@ export const SharedWorkspaceStyleBar = ({
             onClick={() => emitStylePatch({ showAccents: !activeStyle.showAccents })}
             title="Toggle subtle Paragraph/Speaker left accent rails and speaker dots"
             data-shared-workspace-accents-toggle="true"
-            className={`min-h-10 sm:min-h-7 px-2.5 py-0.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+            className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
               activeStyle.showAccents
                 ? 'border-indigo-300/90 dark:border-indigo-700/80 bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200'
                 : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300'
@@ -470,28 +547,18 @@ export const SharedWorkspaceStyleBar = ({
           </button>
         </div>
       </div>
-
-      {onResetWorkspaceStyle && (
-        <button
-          type="button"
-          disabled={!dirty}
-          onClick={onResetWorkspaceStyle}
-          data-shared-workspace-style-reset="true"
-          title={resetTitle}
-          className="min-h-10 sm:min-h-7 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 inline-flex items-center gap-1 transition-colors motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-        >
-          <RotateCcw aria-hidden="true" className="w-3 h-3" />
-          <span>{resetLabel}</span>
-        </button>
-      )}
     </div>
   );
 };
 
 /**
- * Shared view-only reading controls for Mode, Reading Language / Order,
- * Bilingual Style (mode-aware without mutating saved preferences), Contextual
- * Placement, collapsible Appearance / Typography, and Workspace Style.
+ * Reading-First Shell & Progressive-Disclosure Reading Settings bar.
+ *
+ * Default closed state prioritizes immediate prose visibility on desktop and mobile:
+ * Reader Mode + Reading Language + Focus Orientation (when Focus active) + Reading Settings toggle.
+ *
+ * Opening Reading Settings exposes Reading Style, Contextual Position, Card Visibility,
+ * Appearance / Typography, and Workspace Style without mutating audio, selection, or scroll.
  */
 export const SharedBilingualLayoutToolbar = ({
   presentationState,
@@ -512,9 +579,26 @@ export const SharedBilingualLayoutToolbar = ({
   unitKind = 'paragraph',
   workspaceType = null,
   subtitle = null,
-  rightSlot = null
+  rightSlot = null,
+  workspaceHeaderSlot = null,
+  cardVisibilitySlot = null,
+  divergedBannerSlot = null
 }) => {
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('reading');
+  const isCompactViewport = useIsCompactViewport();
+  const settingsPanelId = useId();
+
+  useEffect(() => {
+    if (!settingsOpen || typeof window === 'undefined') return undefined;
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        setSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [settingsOpen]);
 
   const activeState = normalizeTextCardPresentationState(presentationState);
   const terms = getSharedUnitTerms(workspaceType === 'mixed' ? { documentType: 'mixed' } : unitKind);
@@ -572,7 +656,7 @@ export const SharedBilingualLayoutToolbar = ({
 
   const handleSelectBilingualStyle = nextStyle => {
     if (!bilingualResolution.allowedBilingualStyles.includes(nextStyle)) return;
-    // Selecting a Bilingual Style while on single-language automatically promotes
+    // Selecting a Reading Style while on single-language automatically promotes
     // EN Only -> EN–ID or ID Only -> ID–EN so style choice applies in one click.
     const nextReadingLanguage = bilingualResolution.isBilingual
       ? activeState.readingLanguage
@@ -591,6 +675,13 @@ export const SharedBilingualLayoutToolbar = ({
     onChangePresentationState?.(resetTextCardAppearanceInPresentationState(activeState));
   };
 
+  const handleToggleReadingSettings = () => {
+    setSettingsOpen(open => {
+      if (!open) setSettingsTab('reading');
+      return !open;
+    });
+  };
+
   const shouldShowWorkspaceStyle = Boolean(
     showWorkspaceStyle
     || workspaceStyle !== null
@@ -600,29 +691,268 @@ export const SharedBilingualLayoutToolbar = ({
     ? activeReaderMode === 'focus'
     : activeState.level === 'part';
 
+  const activeStyleSummary = STYLE_BADGE_LABELS[bilingualResolution.effectiveBilingualStyle]
+    || STYLE_BADGE_LABELS[activeState.bilingualStyle]
+    || 'Interlinear';
+  const hasSettingsCustomizations = Boolean(appearanceDirty || hasWorkspaceStyleOverride);
+
+  const readingSettingsBody = (
+    <div className="space-y-3">
+      {/* Panel Header: Tabs + Reset View + Close */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          {shouldShowWorkspaceStyle ? (
+            <div
+              role="tablist"
+              aria-label="Reading Settings sections"
+              className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
+              data-shared-reading-settings-tabs="true"
+            >
+              {[
+                { id: 'reading', label: 'Style & Typography' },
+                { id: 'workspace', label: 'Workspace Style', badge: hasWorkspaceStyleOverride }
+              ].map(tab => {
+                const active = settingsTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    data-shared-reading-settings-tab={tab.id}
+                    onClick={() => setSettingsTab(tab.id)}
+                    className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                      active ? SHARED_CONTROL_TOKENS.segmentActiveNeutral : SHARED_CONTROL_TOKENS.segmentInactive
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.badge && (
+                      <span
+                        aria-label="Workspace override active"
+                        className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              {SHARED_UI_TERMINOLOGY.readingSettings}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onResetView && isCustomView && (
+            <button
+              type="button"
+              onClick={onResetView}
+              className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+              title="Restore default reader view and typography without changing Workspace Style or audio"
+              data-shared-card-reset-view="true"
+            >
+              <RotateCcw aria-hidden="true" className="w-3 h-3" />
+              <span>Reset View</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(false)}
+            data-shared-reading-settings-close="true"
+            aria-label="Close Reading Settings"
+            className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+          >
+            <X aria-hidden="true" className="w-3.5 h-3.5" />
+            <span>Done</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab 1: Reading Style + Contextual Position + Card Visibility + Appearance / Typography */}
+      <div
+        hidden={shouldShowWorkspaceStyle && settingsTab !== 'reading'}
+        className="space-y-2.5"
+        data-shared-reading-settings-reading-tab="true"
+      >
+        {/* Reading Style: Separated | Sentence Interlinear | Notebook | Contextual */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1.5 sm:gap-2.5 text-left">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
+            {SHARED_UI_TERMINOLOGY.readingStyle}
+          </span>
+          <div
+            role="group"
+            aria-label="Bilingual reading style (display only)"
+            data-shared-bilingual-style-group="true"
+            className={`grid grid-cols-2 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+          >
+            {SHARED_BILINGUAL_STYLE_OPTIONS.map(option => {
+              const unavailable = !bilingualResolution.allowedBilingualStyles.includes(option.id);
+              const active = bilingualResolution.effectiveBilingualStyle === option.id;
+              const savedRemembered = !active && activeState.bilingualStyle === option.id;
+              const Icon = BILINGUAL_STYLE_ICONS[option.id] || Languages;
+              const unavailableTitle = option.id === 'contextual'
+                ? 'Contextual is unavailable in Segment Mode (represented by the Study Box); saved preference is preserved when you return'
+                : 'Separated is unavailable in Segment Mode; saved preference is preserved when you return';
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={unavailable}
+                  aria-pressed={active}
+                  aria-disabled={unavailable ? 'true' : undefined}
+                  onClick={() => handleSelectBilingualStyle(option.id)}
+                  title={unavailable ? unavailableTitle : option.description}
+                  data-shared-bilingual-style-option={option.id}
+                  data-shared-bilingual-style-unavailable={unavailable ? 'true' : undefined}
+                  data-shared-card-layout-option={option.legacyLayoutId || undefined}
+                  className={`min-h-10 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    active
+                      ? SHARED_CONTROL_TOKENS.segmentActiveNeutral
+                      : SHARED_CONTROL_TOKENS.segmentInactive
+                  }`}
+                >
+                  <Icon aria-hidden="true" className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-400'}`} />
+                  <span className="truncate">{option.shortLabel || option.label}</span>
+                  {savedRemembered && (
+                    <span
+                      aria-hidden="true"
+                      title="Saved reading style (restored when bilingual reading is active)"
+                      className="h-1.5 w-1.5 rounded-full bg-indigo-400/80 shrink-0"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Mode-aware fallback notice in Segment Mode when saved style is Separated or Contextual */}
+        {bilingualResolution.fallbackActive && (
+          <div
+            data-shared-bilingual-fallback-notice="true"
+            data-shared-bilingual-fallback-reason={bilingualResolution.fallbackReason}
+            className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 px-2.5 py-1.5 text-left text-[11px] text-slate-600 dark:text-slate-300"
+          >
+            Segment Mode keeps primary text ({bilingualResolution.primaryChannel === 'meaning' ? 'ID' : 'EN'}) above the bilingual Study Box. Your saved{' '}
+            <strong className="font-semibold text-slate-800 dark:text-slate-100">
+              {activeState.bilingualStyle === 'contextual' ? 'Contextual' : 'Separated'}
+            </strong>{' '}
+            style is preserved for Full, Card, and Focus modes.
+          </div>
+        )}
+
+        {/* Contextual Translation Position Bar (Above | Below | Inline) — shown only when Contextual is active */}
+        {bilingualResolution.isContextualActive && (
+          <div
+            className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1.5 sm:gap-2 text-left"
+            data-shared-contextual-placement-bar="true"
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
+              Contextual Position
+            </span>
+            <div
+              role="group"
+              aria-label="Contextual translation position (display only)"
+              className={`grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
+            >
+              {SHARED_CONTEXTUAL_PLACEMENT_OPTIONS.map(option => {
+                const active = activeState.contextualPlacement === option.id;
+                const Icon = CONTEXTUAL_PLACEMENT_ICONS[option.id] || ArrowDown;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => emitPatch({ contextualPlacement: option.id })}
+                    title={option.description}
+                    data-shared-contextual-placement-option={option.id}
+                    className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-md text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                      active
+                        ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                        : SHARED_CONTROL_TOKENS.segmentInactive
+                    }`}
+                  >
+                    <Icon aria-hidden="true" className="w-3 h-3 shrink-0" />
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              Tap a sentence&apos;s translate icon to inspect without playing audio
+            </span>
+          </div>
+        )}
+
+        {/* Card Visibility Controls (Card / Focus / Segment modes) */}
+        {cardVisibilitySlot}
+
+        {/* Appearance / Typography Panel (mounted only while Reading Settings is open) */}
+        {settingsOpen && (
+          <SharedAppearanceTypographyPanel
+            appearance={activeState.appearance}
+            showNotebook={bilingualResolution.effectiveRenderMode === 'notebook'}
+            onChangeAppearance={handleChangeAppearance}
+            onResetAppearance={handleResetAppearance}
+          />
+        )}
+      </div>
+
+      {/* Tab 2: Workspace Style */}
+      {shouldShowWorkspaceStyle && (
+        <div
+          hidden={settingsTab !== 'workspace'}
+          data-shared-reading-settings-workspace-tab="true"
+        >
+          <SharedWorkspaceStyleBar
+            workspaceStyle={workspaceStyle}
+            effectiveDefaults={effectiveWorkspaceStyleDefaults}
+            onChangeWorkspaceStyle={onChangeWorkspaceStyle}
+            onResetWorkspaceStyle={onResetWorkspaceStyle}
+            workspaceType={workspaceType}
+            workspaceStyleScope={workspaceStyleScope}
+            onChangeWorkspaceStyleScope={onChangeWorkspaceStyleScope}
+            canOverrideWorkspace={canOverrideWorkspaceStyle}
+            hasWorkspaceOverride={hasWorkspaceStyleOverride}
+            scopeLabel={workspaceStyleScopeLabel}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
-      className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/90 shadow-sm px-3.5 py-2.5 sm:px-4 sm:py-3 space-y-2.5"
+      className={`${SHARED_SURFACE_TOKENS.shellCard} overflow-hidden`}
       data-shared-card-bilingual-toolbar="true"
       data-shared-reader-mode={activeReaderMode}
       data-shared-reading-language={activeState.readingLanguage}
       data-shared-bilingual-style-saved={activeState.bilingualStyle}
       data-shared-bilingual-style-effective={bilingualResolution.effectiveRenderMode}
       data-shared-contextual-placement={activeState.contextualPlacement}
+      data-shared-reading-settings-open={settingsOpen ? 'true' : 'false'}
     >
-      {/* Row 1: Reader Mode + Reading Language + Bilingual Style + Appearance Toggle + Reset View */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
-          {/* Reader Mode Selector */}
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              {supportsFourModes ? 'Mode' : 'View'}
+      {/* Optional integrated compact Workspace header strip */}
+      {workspaceHeaderSlot && (
+        <div className={`border-b ${SHARED_SURFACE_TOKENS.dividerHairline}`}>
+          {workspaceHeaderSlot}
+        </div>
+      )}
+
+      {/* Primary Reading-First Bar: Reader Mode + Language + Focus Orientation (if Focus) + Reading Settings */}
+      <div className="px-2 py-1.5 sm:px-3 sm:py-2 space-y-1.5 sm:space-y-0">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 sm:gap-2">
+          {/* Reader Mode (Full | Card | Focus | Segment) */}
+          <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
+            <span className="hidden xl:inline text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+              {supportsFourModes ? SHARED_UI_TERMINOLOGY.readerMode : 'View'}
             </span>
             {supportsFourModes ? (
               <div
                 role="group"
                 aria-label="Reader presentation mode (display only)"
-                className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+                className={`grid grid-cols-4 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
               >
                 {READER_MODE_OPTIONS.map(item => {
                   const active = activeReaderMode === item.id;
@@ -635,14 +965,14 @@ export const SharedBilingualLayoutToolbar = ({
                       onClick={() => handleSelectReaderMode(item.id)}
                       title={item.description}
                       data-shared-reader-mode-option={item.id}
-                      className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      className={`min-h-9 sm:min-h-8 px-1.5 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                         active
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                          ? SHARED_CONTROL_TOKENS.segmentActivePrimary
+                          : SHARED_CONTROL_TOKENS.segmentInactive
                       }`}
                     >
-                      <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                      <span>{item.label}</span>
+                      <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{item.label}</span>
                     </button>
                   );
                 })}
@@ -651,7 +981,7 @@ export const SharedBilingualLayoutToolbar = ({
               <div
                 role="group"
                 aria-label="Reading view level (display only)"
-                className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+                className={`grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
               >
                 {SHARED_LEVEL_OPTIONS.map(option => {
                   const active = activeState.level === option.id;
@@ -664,14 +994,14 @@ export const SharedBilingualLayoutToolbar = ({
                       onClick={() => emitPatch({ level: option.id })}
                       title={describe(option)}
                       data-shared-card-level-option={option.id}
-                      className={`min-h-11 sm:min-h-9 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                         active
-                          ? 'bg-indigo-600 text-white shadow-sm'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                          ? SHARED_CONTROL_TOKENS.segmentActivePrimary
+                          : SHARED_CONTROL_TOKENS.segmentInactive
                       }`}
                     >
-                      <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                      <span>{option.label}</span>
+                      <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{option.label}</span>
                     </button>
                   );
                 })}
@@ -679,18 +1009,14 @@ export const SharedBilingualLayoutToolbar = ({
             )}
           </div>
 
-          <span aria-hidden="true" className="hidden sm:inline-block h-5 w-px bg-slate-200 dark:bg-slate-800" />
-
-          {/* Reading Language & Order: EN Only | ID Only | EN–ID | ID–EN */}
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Language
-            </span>
+          {/* Language + Focus Orientation (when Focus) + Reading Settings Trigger */}
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 min-w-0 flex-1">
+            {/* Reading Language & Order: EN | ID | EN–ID | ID–EN */}
             <div
               role="group"
               aria-label="Reading language and display order (display only)"
               data-shared-reading-language-group="true"
-              className="grid grid-cols-2 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
+              className={`grid grid-cols-4 sm:inline-flex flex-1 sm:flex-initial items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
             >
               {SHARED_READING_LANGUAGE_OPTIONS.map(option => {
                 const active = activeState.readingLanguage === option.id;
@@ -699,261 +1025,218 @@ export const SharedBilingualLayoutToolbar = ({
                     key={option.id}
                     type="button"
                     aria-pressed={active}
+                    aria-label={option.label}
                     onClick={() => handleSelectReadingLanguage(option.id)}
                     title={option.description}
                     data-shared-reading-language-option={option.id}
                     data-shared-card-layout-option={option.legacyLayoutId || undefined}
-                    className={`min-h-11 sm:min-h-9 px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    className={`min-h-9 sm:min-h-8 px-1 sm:px-2 py-1 rounded-lg text-[11px] sm:text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                       active
-                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-600/80'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
+                        ? SHARED_CONTROL_TOKENS.segmentActiveNeutral
+                        : SHARED_CONTROL_TOKENS.segmentInactive
                     }`}
                   >
+                    <span className="sm:hidden">{option.shortLabel || option.label}</span>
+                    <span className="hidden sm:inline">{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Focus Orientation (inline single-row pill ONLY when Focus Mode is active on desktop/tablet) */}
+            {showContextualFocusBar && !isCompactViewport && (
+              <div
+                className="inline-flex items-center gap-1 shrink-0"
+                data-shared-part-layout-bar="true"
+                data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+              >
+                <div
+                  role="group"
+                  aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
+                  className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                >
+                  {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
+                    const active = supportsFourModes
+                      ? focusOrientation === option.id
+                      : activeState.partLayout === option.id;
+                    const Icon = PART_LAYOUT_ICONS[option.id] || List;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => {
+                          if (supportsFourModes && readerMode !== 'focus') {
+                            onChangeReaderMode?.('focus');
+                          }
+                          emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
+                        }}
+                        title={describe(option)}
+                        data-shared-card-part-layout-option={option.id}
+                        data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
+                        className={`min-h-8 px-2 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                          active
+                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                            : SHARED_CONTROL_TOKENS.segmentInactive
+                        }`}
+                      >
+                        <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Progressive-Disclosure Reading Settings Trigger */}
+            <button
+              type="button"
+              aria-expanded={settingsOpen}
+              aria-controls={settingsPanelId}
+              onClick={handleToggleReadingSettings}
+              data-shared-reading-settings-toggle="true"
+              data-shared-appearance-toggle="true"
+              title="Open Reading Settings: Reading Style, Typography, Card Visibility, and Workspace Style"
+              className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-xl border text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                settingsOpen || hasSettingsCustomizations
+                  ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/85 dark:bg-indigo-950/55 text-indigo-800 dark:text-indigo-200'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700'
+              }`}
+            >
+              <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">{SHARED_UI_TERMINOLOGY.readingSettings}</span>
+              <span className="sm:hidden">Settings</span>
+              <span className="hidden md:inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                {activeStyleSummary}
+              </span>
+              {appearanceDirty && (
+                <span
+                  aria-label="Custom typography active"
+                  data-shared-appearance-dirty-dot="true"
+                  className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
+                />
+              )}
+              {!appearanceDirty && hasWorkspaceStyleOverride && (
+                <span
+                  aria-label="Workspace style override active"
+                  className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
+                />
+              )}
+              <ChevronDown
+                aria-hidden="true"
+                className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${settingsOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {rightSlot}
+          </div>
+        </div>
+
+        {/* Mobile-only compact Focus Orientation row when Focus Mode is active */}
+        {showContextualFocusBar && isCompactViewport && (
+          <div
+            className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80"
+            data-shared-part-layout-bar="true"
+            data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Focus Flow
+            </span>
+            <div
+              role="group"
+              aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
+              className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
+            >
+              {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
+                const active = supportsFourModes
+                  ? focusOrientation === option.id
+                  : activeState.partLayout === option.id;
+                const Icon = PART_LAYOUT_ICONS[option.id] || List;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (supportsFourModes && readerMode !== 'focus') {
+                        onChangeReaderMode?.('focus');
+                      }
+                      emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
+                    }}
+                    title={describe(option)}
+                    data-shared-card-part-layout-option={option.id}
+                    data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
+                    className={`min-h-8 px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                      active
+                        ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                        : SHARED_CONTROL_TOKENS.segmentInactive
+                    }`}
+                  >
+                    <Icon aria-hidden="true" className="w-3 h-3 shrink-0" />
                     <span>{option.label}</span>
                   </button>
                 );
               })}
             </div>
           </div>
+        )}
 
-          <span aria-hidden="true" className="hidden sm:inline-block h-5 w-px bg-slate-200 dark:bg-slate-800" />
-
-          {/* Bilingual Style: Separated | Sentence Interlinear | Contextual (Notebook deferred to 4C2-4C3) */}
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0 w-full sm:w-auto">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Style
-            </span>
-            <div
-              role="group"
-              aria-label="Bilingual reading style (display only)"
-              data-shared-bilingual-style-group="true"
-              className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1"
-            >
-              {SHARED_BILINGUAL_STYLE_OPTIONS.map(option => {
-                const unavailable = !bilingualResolution.allowedBilingualStyles.includes(option.id);
-                const active = bilingualResolution.effectiveBilingualStyle === option.id;
-                const savedRemembered = !active && activeState.bilingualStyle === option.id;
-                const Icon = BILINGUAL_STYLE_ICONS[option.id] || Languages;
-                const unavailableTitle = option.id === 'contextual'
-                  ? 'Contextual is unavailable in Segment Mode (represented by the Study Box); saved preference is preserved when you return'
-                  : 'Separated is unavailable in Segment Mode; saved preference is preserved when you return';
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    disabled={unavailable}
-                    aria-pressed={active}
-                    aria-disabled={unavailable ? 'true' : undefined}
-                    onClick={() => handleSelectBilingualStyle(option.id)}
-                    title={unavailable ? unavailableTitle : option.description}
-                    data-shared-bilingual-style-option={option.id}
-                    data-shared-bilingual-style-unavailable={unavailable ? 'true' : undefined}
-                    data-shared-card-layout-option={option.legacyLayoutId || undefined}
-                    className={`min-h-11 sm:min-h-9 px-2.5 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed ${
-                      active
-                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-600/80'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/50'
-                    }`}
-                  >
-                    <Icon aria-hidden="true" className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400 dark:text-slate-400'}`} />
-                    <span className="truncate">{option.shortLabel || option.label}</span>
-                    {savedRemembered && (
-                      <span
-                        aria-hidden="true"
-                        title="Saved bilingual style (restored when bilingual reading is active)"
-                        className="h-1.5 w-1.5 rounded-full bg-indigo-400/80 shrink-0"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Collapsible Appearance / Typography Trigger */}
-          <button
-            type="button"
-            aria-expanded={appearanceOpen}
-            onClick={() => setAppearanceOpen(open => !open)}
-            data-shared-appearance-toggle="true"
-            title="Adjust reading font sizes, font family, line height, translation contrast, and spacing"
-            className={`min-h-11 sm:min-h-9 px-2.5 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-              appearanceOpen || appearanceDirty
-                ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-200'
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
-            }`}
-          >
-            <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-            <span>Typography</span>
-            {appearanceDirty && (
-              <span
-                aria-label="Custom typography active"
-                data-shared-appearance-dirty-dot="true"
-                className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300"
-              />
-            )}
-            <ChevronDown
-              aria-hidden="true"
-              className={`w-3.5 h-3.5 transition-transform duration-150 ${appearanceOpen ? 'rotate-180' : ''}`}
-            />
-          </button>
-
-          {onResetView && isCustomView && (
-            <button
-              type="button"
-              onClick={onResetView}
-              className="min-h-11 sm:min-h-9 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 hover:border-indigo-300 inline-flex items-center gap-1 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-              title="Restore default reader view and typography without changing Workspace Style or audio"
-              data-shared-card-reset-view="true"
-            >
-              <RotateCcw aria-hidden="true" className="w-3.5 h-3.5" />
-              <span>Reset View</span>
-            </button>
-          )}
-        </div>
-
-        {(subtitle || rightSlot) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {subtitle && (
-              <span className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</span>
-            )}
-            {rightSlot}
-          </div>
+        {subtitle && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-left">{subtitle}</p>
         )}
       </div>
 
-      {/* Mode-aware fallback notice in Segment Mode when saved style is Separated or Contextual */}
-      {bilingualResolution.fallbackActive && (
-        <div
-          data-shared-bilingual-fallback-notice="true"
-          data-shared-bilingual-fallback-reason={bilingualResolution.fallbackReason}
-          className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-left text-xs text-slate-500 dark:text-slate-400"
-        >
-          <span>
-            Segment Mode uses primary-only reading context ({bilingualResolution.primaryChannel === 'meaning' ? 'ID' : 'EN'}) above the bilingual Study Box. Your saved{' '}
-            <strong className="font-semibold text-slate-700 dark:text-slate-200">
-              {activeState.bilingualStyle === 'contextual' ? 'Contextual' : 'Separated'}
-            </strong>{' '}
-            style is preserved for Full, Card, and Focus modes.
-          </span>
+      {/* Visible return-to-playing banner when user manually diverges from playing Card */}
+      {divergedBannerSlot && (
+        <div className={`px-3 py-1.5 border-t ${SHARED_SURFACE_TOKENS.dividerHairline} bg-indigo-50/45 dark:bg-indigo-950/25 flex flex-wrap items-center justify-between gap-2`}>
+          {divergedBannerSlot}
         </div>
       )}
 
-      {/* Contextual Translation Position Bar (Above | Below | Inline) — shown only when Contextual is active */}
-      {bilingualResolution.isContextualActive && (
-        <div
-          className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center gap-2 text-left"
-          data-shared-contextual-placement-bar="true"
-        >
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Contextual Position
-          </span>
+      {/* Reading Settings Disclosure:
+          - Closed: hidden inline container (0px visual height, excluded from AT/tab flow, preserves selector stability)
+          - Open Desktop: clean inline disclosure panel with live reading preview directly underneath
+          - Open Mobile: bottom-docked floating sheet positioned safely above the Global Player */}
+      {settingsOpen && isCompactViewport && typeof document !== 'undefined' ? (
+        createPortal(
           <div
-            role="group"
-            aria-label="Contextual translation position (display only)"
-            className="grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/65 p-1"
+            className="fixed inset-0 z-[60]"
+            data-shared-reading-settings-mobile-overlay="true"
           >
-            {SHARED_CONTEXTUAL_PLACEMENT_OPTIONS.map(option => {
-              const active = activeState.contextualPlacement === option.id;
-              const Icon = CONTEXTUAL_PLACEMENT_ICONS[option.id] || ArrowDown;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => emitPatch({ contextualPlacement: option.id })}
-                  title={option.description}
-                  data-shared-contextual-placement-option={option.id}
-                  className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                    active
-                      ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm ring-1 ring-indigo-200/70 dark:ring-slate-600'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                  <span>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            All primary text stays visible · tap any sentence&apos;s translate icon to inspect without playing audio
-          </span>
-        </div>
-      )}
-
-      {/* Contextual Focus Orientation (4-mode) or legacy Part Style (3-mode) Switch */}
-      {showContextualFocusBar && (
+            <button
+              type="button"
+              aria-label="Close Reading Settings backdrop"
+              onClick={() => setSettingsOpen(false)}
+              className="fixed inset-0 bg-slate-950/30"
+            />
+            <div
+              id={settingsPanelId}
+              role="dialog"
+              aria-label={SHARED_UI_TERMINOLOGY.readingSettings}
+              data-shared-reading-settings-panel="true"
+              className={`fixed inset-x-2 z-[65] flex flex-col overflow-hidden ${SHARED_SURFACE_TOKENS.mobileSheet}`}
+              style={{
+                bottom: SHARED_SPACING_TOKENS.mobileSheetBottomOffset,
+                maxHeight: '56dvh'
+              }}
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3">
+                {readingSettingsBody}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      ) : (
         <div
-          className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center gap-2"
-          data-shared-part-layout-bar="true"
-          data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+          id={settingsPanelId}
+          hidden={!settingsOpen}
+          data-shared-reading-settings-panel="true"
+          className={`px-3 py-2.5 border-t ${SHARED_SURFACE_TOKENS.dividerHairline} bg-slate-50/45 dark:bg-slate-900/60`}
         >
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            {supportsFourModes ? 'Focus Style' : 'Part Style'}
-          </span>
-          <div
-            role="group"
-            aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
-            className={`${supportsFourModes ? 'grid grid-cols-2' : 'grid grid-cols-3'} sm:inline-flex w-full sm:w-auto items-center gap-1 rounded-xl bg-slate-100/75 dark:bg-slate-800/60 p-1`}
-          >
-            {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
-              const active = supportsFourModes
-                ? focusOrientation === option.id
-                : activeState.partLayout === option.id;
-              const Icon = PART_LAYOUT_ICONS[option.id] || List;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    if (supportsFourModes && readerMode !== 'focus') {
-                      onChangeReaderMode?.('focus');
-                    }
-                    emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
-                  }}
-                  title={describe(option)}
-                  data-shared-card-part-layout-option={option.id}
-                  data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
-                  className={`min-h-11 sm:min-h-8 px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center justify-center sm:justify-start gap-1.5 transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                    active
-                      ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm ring-1 ring-indigo-200/70 dark:ring-slate-600'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                  <span>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {readingSettingsBody}
         </div>
-      )}
-
-      {/* Collapsible Appearance / Typography Panel */}
-      {appearanceOpen && (
-        <SharedAppearanceTypographyPanel
-          appearance={activeState.appearance}
-          showNotebook={bilingualResolution.effectiveRenderMode === 'notebook'}
-          onChangeAppearance={handleChangeAppearance}
-          onResetAppearance={handleResetAppearance}
-        />
-      )}
-
-      {shouldShowWorkspaceStyle && (
-        <SharedWorkspaceStyleBar
-          workspaceStyle={workspaceStyle}
-          effectiveDefaults={effectiveWorkspaceStyleDefaults}
-          onChangeWorkspaceStyle={onChangeWorkspaceStyle}
-          onResetWorkspaceStyle={onResetWorkspaceStyle}
-          workspaceType={workspaceType}
-          workspaceStyleScope={workspaceStyleScope}
-          onChangeWorkspaceStyleScope={onChangeWorkspaceStyleScope}
-          canOverrideWorkspace={canOverrideWorkspaceStyle}
-          hasWorkspaceOverride={hasWorkspaceStyleOverride}
-          scopeLabel={workspaceStyleScopeLabel}
-        />
       )}
     </div>
   );
