@@ -39,9 +39,9 @@ export const renderMainAppShellView = (props) => {
     setIsClearDialogOpen, setIsChangeReviewOpen, undoStack, undoLastDataChange, isMultiSourceMode, textareaRef,
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates, dirtySourceKeys,
     openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
-    saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt, renderMobileTools, renderPlaylist, isPaused,
-    isPlaying, playingIndex, speakingPart, activePlaybackList, handleSmartNav, handleGlobalPlay, forceStopAll,
-    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive, textPlaybackRepresentationMode, textPlaybackOrder, textPlaybackChannelMode, textActiveCursorSegmentId, onTextPlaybackRepresentationModeChange, onOpenTextPlayer, isChangeReviewOpen,
+    saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt, renderMobileTools, renderPlaylist, readGlobalPlayer,
+    handleSmartNav, handleGlobalPlay, forceStopAll,
+    playbackMode, cyclePlaybackMode, setPlaybackMode, setShowAppBar, structuredTextModeActive, textPlaybackRepresentationMode, textPlaybackOrder, textPlaybackChannelMode, onTextPlaybackRepresentationModeChange, onOpenTextPlayer, isChangeReviewOpen,
     applyChangeRevert, setIsRevertAllConfirmOpen, isRevertAllConfirmOpen, revertAllChanges, isManualEditorOpen, closeManualEditor,
     manualEditingId, importedRowCount, sequenceHighWater, manualForm, setManualForm, manualAdvancedOpen,
     setManualAdvancedOpen, saveManualVocabulary, isClearDialogOpen, setTableContent, setCsvBaselineContent, setSourcePack,
@@ -373,23 +373,17 @@ export const renderMainAppShellView = (props) => {
       {/* BOTTOM BAR - FIXED BOTTOM */}
       <BottomPlayerBar
         isMobile={isMobile}
-        isPaused={isPaused}
-        isPlaying={isPlaying}
-        playingIndex={playingIndex}
-        speakingPart={speakingPart}
-        activePlaybackList={activePlaybackList}
+        readPlayer={readGlobalPlayer}
         handleSmartNav={handleSmartNav}
         handleGlobalPlay={handleGlobalPlay}
         forceStopAll={forceStopAll}
         playbackMode={playbackMode}
         cyclePlaybackMode={cyclePlaybackMode}
         setPlaybackMode={setPlaybackMode}
-        playingContext={playingContext}
         structuredTextModeActive={structuredTextModeActive}
         textPlaybackRepresentationMode={textPlaybackRepresentationMode}
         textPlaybackOrder={textPlaybackOrder}
         textPlaybackChannelMode={textPlaybackChannelMode}
-        textActiveCursorSegmentId={textActiveCursorSegmentId}
         onTextPlaybackRepresentationModeChange={onTextPlaybackRepresentationModeChange}
         onOpenTextPlayer={onOpenTextPlayer}
       />

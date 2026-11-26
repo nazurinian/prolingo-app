@@ -96,7 +96,7 @@ export const executeResumePlayback = ({
 };
 
 export const executeSafePlayTransition = async ({
-  forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession, onError
+  forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession, onPending, onError
 }) => {
     forceStopAll();
     const transitionSession = playbackSessionRef.current;
@@ -104,6 +104,7 @@ export const executeSafePlayTransition = async ({
     // A pending session has no audible evidence yet.
     if (playbackContextRef && pendingSession) {
       playbackContextRef.current = { ...pendingSession, pending: true, sessionId: transitionSession };
+      onPending?.();
     }
     await new Promise(r => setTimeout(r, 120));
 

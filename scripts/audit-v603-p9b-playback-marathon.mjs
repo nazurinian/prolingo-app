@@ -8,13 +8,16 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const load = createRequire(import.meta.url);
 const esbuild = load('esbuild');
 
+let mockPlayerDetailsOpen = false;
 const mockReact = {
   Fragment: Symbol('Fragment'),
   createElement: (type, props, ...children) => ({
     type,
     props: { ...(props || {}), children: children.length === 1 ? children[0] : children }
   }),
-  useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+  useState: initial => [mockPlayerDetailsOpen || (typeof initial === 'function' ? initial() : initial), () => {}],
+  useReducer: (_, initial) => [initial, () => {}],
+  useId: () => 'audit-player-details',
   useMemo: fn => fn(),
   useCallback: fn => fn,
   useRef: initial => ({ current: initial }),
@@ -807,13 +810,10 @@ await runCheck('S10', 'CONTRACT', '[DEFECT S10-A FIXED] Dead textTtsOnly/onTextT
   for (const isMobile of [false, true]) {
     let splitToggleCalls = 0;
     let settingsCalls = 0;
+    mockPlayerDetailsOpen = true;
+    // The existing settings controls now live under the details disclosure.
     const barTree = BottomPlayerBar({
       isMobile,
-      isPlaying: false,
-      isPaused: false,
-      speakingPart: null,
-      activePlaybackList: [],
-      displayPlayingIndex: null,
       handleSmartNav: () => {},
       handleGlobalPlay: () => {},
       forceStopAll: () => {},
@@ -828,6 +828,7 @@ await runCheck('S10', 'CONTRACT', '[DEFECT S10-A FIXED] Dead textTtsOnly/onTextT
       onTextPlaybackRepresentationModeChange: () => { splitToggleCalls += 1; },
       onOpenTextPlayer: () => { settingsCalls += 1; }
     });
+    mockPlayerDetailsOpen = false;
     const barButtons = collectNodes(barTree).filter(n => n.type === 'button');
     const duplicateSourceToggle = barButtons.find(btn => btn.props?.['data-text-audio-source-toggle'] === 'true');
     assert.equal(duplicateSourceToggle, undefined, 'BottomPlayerBar must not render a duplicate TTS-Only button');

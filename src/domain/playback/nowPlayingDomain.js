@@ -29,6 +29,10 @@ export const bindNowPlayingRuntime = (refs, target, sessionId = refs.playbackSes
   return runtime => {
     const current = ownedContext(refs, sessionId);
     if (current?.[RUNTIME] !== observation || observation.runtime === runtime) return;
+    const previous = observation.runtime;
+    // A seek or buffer recovery can fire playing again on the same source.
+    if (runtime?.media && previous?.media === runtime.media && previous.source === runtime.source
+      && previous.provider === runtime.provider && previous.voice === runtime.voice) return;
     observation.runtime = runtime;
     refs.onChange?.();
   };
@@ -45,7 +49,8 @@ const readStructuredIdentity = (tree, target) => {
   const index = blocks.findIndex(card => card.id === target?.cardId);
   if (index < 0) return { workspace };
   const block = blocks[index];
-  const card = Object.freeze({ ...identity(block), ...indexed(blocks, index), kind: block.blockType ?? null });
+  const card = Object.freeze({ ...identity(block), ...indexed(blocks, index), kind: block.blockType ?? null,
+    kindOrdinal: blocks.slice(0, index + 1).filter(candidate => candidate.blockType === block.blockType).length });
   // Full artifacts/utterances carry no sentence timing in the audited paths.
   if (target.representation === 'full') return { workspace, card, precision: 'card' };
   const segments = block.segments || [];
@@ -109,6 +114,10 @@ const readTimeline = media => {
     seekable: media.seekable ? media.seekable.length > 0 : null
   });
 };
+
+/** Only the observed source can publish media progress. The keepalive is never bound here. */
+export const readOwnedNowPlayingMedia = refs =>
+  ownedContext(refs, refs.playbackSessionRef.current)?.[RUNTIME]?.runtime?.media ?? null;
 
 /**
  * Read at consumption time. Attachment/browse state is not an input, and

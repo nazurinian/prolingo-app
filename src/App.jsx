@@ -22,7 +22,6 @@ import { GroupedVoiceSelect } from './components/common/GroupedVoiceSelect';
 import { HighlightedText } from './components/common/HighlightedText';
 import { LandingPage } from './components/landing/LandingPage';
 import Header from './components/layout/Header';
-import BottomPlayerBar from './components/layout/BottomPlayerBar';
 import MobileTools from './components/layout/MobileTools';
 import SidebarShell from './components/layout/SidebarShell';
 import SidebarTopControls from './components/layout/SidebarTopControls';
@@ -81,7 +80,7 @@ import { resolveDraftCacheMetadata } from './domain/dataset/draftCacheMetadataDo
 import { resolveExportSourceMetadata, resolveSavedSourceMetadata } from './domain/dataset/exportSourceMetadataDomain';
 import { resolveFullPackImportState, resolveSingleSourceImportState } from './domain/dataset/sourceImportStateDomain';
 import { resolveManualAddForm, resolveManualAddNextNo, resolveManualEditAdvancedOpen, resolveManualEditForm } from './domain/dataset/manualEditorStateDomain';
-import { resolveActivePlaybackList, resolveAdvancedDatasetStats, resolveCurrentPlayerList, resolveMasterFilteredPlaylist, resolveSourceChangeSummaries } from './domain/view/mainAppDerivedStateDomain';
+import { resolveAdvancedDatasetStats, resolveCurrentPlayerList, resolveMasterFilteredPlaylist, resolveSourceChangeSummaries } from './domain/view/mainAppDerivedStateDomain';
 import { resolveMasteryProgressStatistics } from './domain/progress/masteryStatisticsDomain';
 import { resolveStudyActivityStatistics } from './domain/progress/studyTrackingDomain.js';
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
@@ -97,7 +96,8 @@ import { clearTableAudioZipRuntimeCache, getTableAudioZipVariantObjectUrl, readT
 import { executeAudioSourcePlaybackService, executeBrowserTtsPlaybackService, isBrowserTtsSpeechSupported } from './services/audio/audioPlaybackSideEffectService';
 import { executeBrowserTtsVoiceLifecycleEffect, executeSilentAudioAnchorEffect } from './services/audio/audioRuntimeLifecycleService';
 import { executeGlobalPlaybackSessionService } from './services/playback/globalPlaybackSessionService';
-import { bindNowPlayingRuntime, matchesStructuredPlaybackControl, readOwnedNowPlaying } from './domain/playback/nowPlayingDomain.js';
+import { bindNowPlayingRuntime, matchesStructuredPlaybackControl, readOwnedNowPlaying, readOwnedNowPlayingMedia } from './domain/playback/nowPlayingDomain.js';
+import { resolveGlobalPlayerTransport } from './domain/playback/globalPlayerPresentationDomain.js';
 import { NowPlayingContext } from './components/playback/NowPlayingContext.js';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
@@ -556,10 +556,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const currentPlayerList = useMemo(() => resolveCurrentPlayerList({
       mode, playlist, tableViewMode, studyQueueSet, masterFilteredPlaylist
   }), [playlist, mode, tableViewMode, studyQueueSet, masterFilteredPlaylist]);
-
-  const legacyActivePlaybackList = useMemo(() => resolveActivePlaybackList({
-      playingContext, playlist, studyQueueSet, masterFilteredPlaylist, vocabularyPlayOrder, activeVocabularyOrder
-  }), [playingContext, playlist, studyQueueSet, masterFilteredPlaylist, vocabularyPlayOrder, activeVocabularyOrder]);
 
 
   useEffect(() => executeUnsavedCsvBeforeUnloadEffect({ isCsvDirty }), [isCsvDirty]);
@@ -1701,7 +1697,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackChannelMode }));
   }, []);
   const handleStructuredTextPlaybackRepresentationModeChange = (playbackRepresentationMode) => {
-    forceStopAll();
     setTextStructuredPreferences(prev => normalizeTextStructuredPreferences({ ...prev, playbackRepresentationMode }));
   };
   const handleStructuredTextPlaybackFeelChange = useCallback((patch) => {
@@ -1724,10 +1719,6 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleStructuredTextAudioGenerationPreferenceChange = useCallback((patch) => {
     setStructuredTextAudioGenerationPreferences(prev => normalizeTextStructuredAudioGenerationPreferences({ ...prev, ...(patch || {}) }));
   }, []);
-  const activePlaybackList = mode === 'text' && activeTextEditorModel === 'structured-v1'
-    ? structuredTextActivePlaybackList
-    : legacyActivePlaybackList;
-
 
   useEffect(() => executeTextLibraryCompatibilityPersistenceEffect({
     textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState,
@@ -1884,6 +1875,15 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const refreshNowPlaying = useCallback(() => setNowPlayingRevision(revision => revision + 1), []);
   const nowPlayingRefs = { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef, onChange: refreshNowPlaying };
   const readNowPlaying = () => readOwnedNowPlaying(nowPlayingRefs, 'main', { isPlaying });
+  const readGlobalPlayer = () => {
+    const nowPlaying = readNowPlaying();
+    const transport = resolveGlobalPlayerTransport({
+      session: readOwnedPlaybackSession(nowPlayingRefs), paused: pauseStateRef.current,
+      audible: nowPlaying.precision !== 'none', structuredView: structuredTextModeActive,
+      savedRepresentation: textStructuredPreferences.playbackRepresentationMode
+    });
+    return { nowPlaying, transport, media: readOwnedNowPlayingMedia(nowPlayingRefs) };
+  };
   const visiblePlaybackView = useRef({ mode, tableViewMode, activeTextDocumentId });
   useLayoutEffect(() => {
     visiblePlaybackView.current = { mode, tableViewMode, activeTextDocumentId };
@@ -1995,6 +1995,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   const safePlayTransition = async (actionCallback, pendingSession) => executeSafePlayTransition({
     forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession,
+    onPending: refreshNowPlaying,
     onError: error => addLog('Playback', error?.message || 'Playback failed.')
   });
 
@@ -2109,12 +2110,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   };
 
   const forceStopAll = () => {
+    const hadOwner = Boolean(playbackContextRef.current);
     executeForceStopPlaybackService({
       playbackSessionRef, stopSignalRef, pauseStateRef, currentAudioObjRef, synth,
       settlePlaybackPromise, currentUtteranceRef, silentAudioRef, setIsPlaying,
       setIsPaused, setSpeakingPart, setIndependentPlayingId, playbackContextRef
     });
     setStructuredTextPlaybackSourceStatus(null);
+    if (hadOwner) refreshNowPlaying();
   };
 
   const stopOnPlaybackUnmount = useRef(forceStopAll);
@@ -7881,13 +7884,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     isLocked, textContent, handleInputContentChange, handleInsertTab, setLockedStates,
     dirtySourceKeys, openFullPackPicker, sourceDiagnostics, sourceChangeSummaries, sourcePack,
     openSourcePicker, removeSourceLayer, saveUpdatedSource, exportMergedDataset, lastDraftAutoSaveAt,
-    renderMobileTools, renderPlaylist, isPaused, isPlaying, playingIndex, speakingPart,
-    activePlaybackList, handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
-    cyclePlaybackMode, setPlaybackMode, setShowAppBar, playingContext, structuredTextModeActive,
+    renderMobileTools, renderPlaylist, readGlobalPlayer,
+    handleSmartNav: handlePlayerSmartNav, handleGlobalPlay: handlePlayerGlobalPlay, forceStopAll, playbackMode,
+    cyclePlaybackMode, setPlaybackMode, setShowAppBar, structuredTextModeActive,
     textPlaybackRepresentationMode: textStructuredPreferences.playbackRepresentationMode,
     textPlaybackOrder: structuredTextAudioPlaybackOrder,
     textPlaybackChannelMode: textStructuredPreferences.playbackChannelMode,
-    textActiveCursorSegmentId: playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT ? currentIndex : null,
     onTextPlaybackRepresentationModeChange: handleStructuredTextPlaybackRepresentationModeChange,
     onOpenTextPlayer: () => setTextPlayerWorkspaceOpen(true),
     isChangeReviewOpen,
