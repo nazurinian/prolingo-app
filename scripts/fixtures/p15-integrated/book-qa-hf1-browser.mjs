@@ -95,6 +95,106 @@ export async function checkBookQaHostBoundaries({
     assert.equal((await current()).view.selection.workspaceId, before.id);
   });
 
+  await check('T1 Main Title input, repair-safe mode changes and reconnect in the real App', async () => {
+    const title = '[data-book-main-title]';
+    const mainEn = 'fieldset input[required]';
+    const mainId = 'fieldset input:not([type="checkbox"]):not([required])';
+    const inherited = 'fieldset input[type="checkbox"]';
+    await clickButton('CREATE');
+    await clickByLabel('Create Workspace');
+    await change('[placeholder="Workspace title"]', 'T1 catalogue label');
+    await click(inherited);
+    const before = await state(alternate);
+    await clickButton('Create & Open');
+    await waitFor(`document.querySelector('[role="alert"]')?.textContent.includes('Resolved Main Title EN must be nonblank')`);
+    assert.deepEqual(await state(alternate), before);
+    await change(mainEn, 'T1 independent title');
+    await change(mainId, 'Judul utama');
+    await clickButton('Create & Open');
+    await waitFor(`document.querySelector('[data-app-header] select')?.selectedOptions[0]?.textContent.includes('T1 catalogue label')`);
+    const document = (await state(alternate)).snapshot.documents.find(item => item.title === 'T1 catalogue label');
+    assert.deepEqual(document.metadata.bookMainTitleV1, { mode: 'custom', en: 'T1 independent title', id: 'Judul utama' });
+    await closeData();
+    assert.equal(await evaluate(`document.querySelectorAll('${title}').length`), 1);
+    assert.equal(await evaluate(`document.querySelector('${title} [lang="en"]')?.textContent`), 'T1 independent title');
+    assert.equal(await evaluate(`document.querySelector('${title} [lang="id"]')?.textContent`), 'Judul utama');
+    assert.equal(await evaluate(`document.querySelector('button[title="Play Workspace from start"]')?.disabled`), true);
+
+    await clickButton('OPEN DATA WORKSPACE');
+    await clickButton('MANAGE');
+    await click('[data-text-library-crud] button:first-of-type');
+    await click(inherited);
+    await change('input[value="T1 catalogue label"]', 'T1 linked title');
+    await click('[aria-label="Save Workspace"]');
+    await waitFor(`document.querySelector('[data-app-header] select')?.selectedOptions[0]?.textContent.includes('T1 linked title')`);
+    await open(alternate, 'Load / Connect existing v2 library');
+    await select(document.id);
+    const reloaded = (await state(alternate)).snapshot.documents.find(item => item.id === document.id);
+    assert.equal(reloaded.uid, document.uid);
+    assert.deepEqual(reloaded.metadata.bookMainTitleV1, { mode: 'workspace-name', id: 'Judul utama' });
+    await waitFor(`document.querySelector('${title} [lang="en"]')?.textContent === 'T1 linked title'`);
+    assert.equal(await evaluate(`document.querySelector('${title} [lang="id"]')?.textContent`), 'Judul utama');
+  });
+
+  await check('T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection', async () => {
+    await clickButton('OPEN DATA WORKSPACE');
+    await clickButton('CREATE');
+    await clickByLabel('Mixed');
+    await waitFor(`document.querySelector('[data-text-library-demos] button:last-child')?.textContent === 'Mixed' && !document.querySelector('[data-text-library-demos] button:last-child').disabled`);
+    const before = (await state(alternate)).snapshot;
+    const document = before.documents.find(item => item.title === 'Book QA · Mixed sample');
+    const [paragraph, scene] = before.blocks.filter(item => item.documentId === document.id);
+    assert.deepEqual(document.metadata.bookMainTitleV1, { mode: 'workspace-name' });
+    assert.equal(paragraph.metadata.bookHeadingV1.id, 'Latihan harian');
+    assert.equal(scene.metadata.bookHeadingV1.id, 'Latihan percakapan');
+    const execute = payload => probe(`module.executeBookTransaction(${quoted(alternate)}, ${quoted(document.id)}, ${quoted({ type: 'block.update', payload })})`);
+    const invalid = await execute({ id: paragraph.id, heading: { en: '', id: 'Forbidden' } });
+    assert.equal(invalid.error.code, 'BOOK_CARD_HEADING_INVALID');
+    assert.deepEqual((await state(alternate)).snapshot, before);
+    const metadataInjection = await execute({ id: paragraph.id, metadata: { paragraphRoleV1: 'title' } });
+    assert.equal(metadataInjection.ok, false);
+    assert.deepEqual((await state(alternate)).snapshot, before);
+    const mutation = { id: paragraph.id, heading: { en: 'Updated heading', id: 'Judul baru' } };
+    await closeData();
+    const forbidden = await evaluate(`window.__bookQaProps('[data-book-qa-indicator]', 'bookQaConnection').bookQaConnection.session.dispatch(${quoted({ type: 'block.update', payload: mutation })})`);
+    assert.equal(forbidden.error.code, 'CAPABILITY_UNAVAILABLE');
+    const receipt = await execute(mutation);
+    assert.equal(receipt.ok && receipt.authoritative, true);
+    const updated = (await state(alternate)).snapshot;
+    for (const store of ['segments', 'contentUnits', 'audioVariants']) assert.deepEqual(updated[store], before[store]);
+    assert.equal(updated.blocks.find(item => item.id === paragraph.id).uid, paragraph.uid);
+    assert.equal(await refresh(), true);
+    const english = `[data-book-card-heading="${paragraph.id}"]`;
+    const indonesian = `[data-book-card-heading-id="${paragraph.id}"]`;
+    await waitFor(`document.querySelector(${quoted(english)})?.textContent.trim() === 'Updated heading'`);
+    assert.equal(await evaluate(`document.querySelector(${quoted(indonesian)})?.textContent`), 'Judul baru');
+    await open(alternate, 'Load / Connect existing v2 library');
+    await select(document.id);
+    await waitFor(`document.querySelector(${quoted(indonesian)})?.textContent === 'Judul baru'`);
+    await click('[data-text-main-reader-option="shared"]');
+    await click('[data-shared-reader-mode-option="full"]');
+    await waitFor(present('[data-shared-book-page]'));
+    assert.equal(await evaluate(`document.querySelectorAll('[data-book-main-title]').length`), 1);
+    assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] ' + ${quoted(english)})?.textContent.trim()`), 'Updated heading');
+    assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] ' + ${quoted(indonesian)})?.textContent`), 'Judul baru');
+    assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] [data-book-card-heading-id="${scene.id}"]')?.textContent`), 'Latihan percakapan');
+  });
+
+  await check('T1 stale title writer and committed-but-unaccepted receipt never replay', async () => {
+    const workspaceId = (await state(alternate)).snapshot.documents.find(item => item.title === 'T1 linked title').id;
+    const result = await probe(`module.runBookTitleReceiptReview(${quoted(alternate)}, ${quoted(workspaceId)})`);
+    assert.equal(result.winner, true);
+    assert.equal(result.stale, 'STALE_RESULT');
+    assert.equal(result.rejected.code, 'INVALID_RESPONSE');
+    assert.equal(result.rejected.committed, true);
+    assert.equal(result.rejected.reloadRequired, true);
+    assert.equal(result.blocked.code, 'REFRESH_REQUIRED');
+    assert.deepEqual(result.beforeRefresh, { mode: 'custom', en: 'T1 conflict winner', id: 'Judul utama' });
+    assert.deepEqual(result.afterRefresh, { mode: 'custom', en: 'T1 committed without accepted receipt', id: 'Judul utama' });
+    assert.deepEqual(result.persisted, result.afterRefresh);
+    assert.equal(result.calls, 1);
+  });
+
   await open(qaDbName, 'Load / Connect existing v2 library');
   assert.deepEqual(await state(qaDbName), original, 'Second library commands changed first library');
   await check('Real Reader and Global Player transport retain audible ownership across navigation', async () => {

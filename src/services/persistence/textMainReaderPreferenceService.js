@@ -93,8 +93,24 @@ const normalizeWorkspaceStyleOverridesMap = candidate => {
   return Object.freeze(normalized);
 };
 
+const normalizeWorkspaceHeadingVisibility = candidate => {
+  const normalized = {};
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return normalized;
+  for (const [rawKey, rawVisibility] of Object.entries(candidate)) {
+    const key = normalizeTextWorkspacePreferenceKey(rawKey);
+    if (!key) continue;
+    const visibility = {};
+    for (const name of ['mainTitle', 'paragraph', 'scene']) {
+      if (typeof rawVisibility?.[name] === 'boolean') visibility[name] = rawVisibility[name];
+    }
+    if (Object.keys(visibility).length) normalized[key] = Object.freeze(visibility);
+  }
+  return normalized;
+};
+
 export const normalizeTextMainReaderPreference = candidate => {
   const isV1 = candidate?.version === 1;
+  const headingVisibility = normalizeWorkspaceHeadingVisibility(isV1 ? candidate.workspaceHeadingVisibility : null);
   return Object.freeze({
     version: 1,
     reader: isV1 && candidate.reader === 'shared' ? 'shared' : 'legacy',
@@ -102,7 +118,8 @@ export const normalizeTextMainReaderPreference = candidate => {
     cardVisibility: normalizeSharedCardVisibility(isV1 ? candidate.cardVisibility : null),
     view: normalizeTextCardPresentationState(isV1 ? candidate.view : null),
     workspaceStyle: normalizeTextWorkspaceStyleState(isV1 ? candidate.workspaceStyle : null),
-    workspaceStyleOverrides: normalizeWorkspaceStyleOverridesMap(isV1 ? candidate.workspaceStyleOverrides : null)
+    workspaceStyleOverrides: normalizeWorkspaceStyleOverridesMap(isV1 ? candidate.workspaceStyleOverrides : null),
+    ...(Object.keys(headingVisibility).length ? { workspaceHeadingVisibility: Object.freeze(headingVisibility) } : {})
   });
 };
 

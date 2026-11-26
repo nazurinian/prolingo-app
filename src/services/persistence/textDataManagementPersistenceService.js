@@ -683,6 +683,7 @@ export const executeDisposableTextManagementTransaction = async ({
   selection = {},
   boundary = 'read-only',
   permissions = [],
+  bookAuthoring = false,
   expectedSnapshotFingerprint = null,
   expectedRevision = null,
   now = Date.now(),
@@ -722,6 +723,7 @@ export const executeDisposableTextManagementTransaction = async ({
           selection: resolvedSelection,
           boundary,
           permissions,
+          bookAuthoring,
           now
         });
 
@@ -913,6 +915,7 @@ export const createTextDataManagementPersistenceAdapter = ({
   version = null,
   boundary = 'read-only',
   permissions = [],
+  bookAuthoring = false,
   now = () => Date.now(),
   ...restOptions
 } = {}) => {
@@ -941,6 +944,7 @@ export const createTextDataManagementPersistenceAdapter = ({
     selection: context.selection || {},
     boundary: context.boundary ?? boundary,
     permissions: requestedPermissions,
+    bookAuthoring,
     expectedSnapshotFingerprint: context.expectedSnapshotFingerprint ?? null,
     expectedRevision: context.expectedRevision ?? null,
     now: resolveNow()

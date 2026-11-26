@@ -26,6 +26,9 @@ await assertDir(productionRoot);
 const probeSource = `
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
+import { createBookQaConnection } from './src/services/bookQaSessionService.js';
+
+const bookAdapter = dbName => createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable', permissions: ['catalog', 'content'], bookAuthoring: true });
 
 const connect = async (dbName, execute = null) => {
   const adapter = createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable', permissions: ['catalog', 'content'] });
@@ -45,6 +48,46 @@ export const executeExternal = async (dbName, selection, command) => {
   const { session } = await connect(dbName);
   try { session.navigate(selection); return await session.dispatch(command); }
   finally { session.dispose(); }
+};
+export const executeBookTransaction = async (dbName, workspaceId, command) => {
+  const adapter = bookAdapter(dbName);
+  const loaded = await adapter.loadState();
+  try {
+    return await adapter.execute(command, { selection: { workspaceId }, expectedSnapshotFingerprint: loaded.snapshotFingerprint });
+  } catch (error) {
+    if (!error.code) throw error;
+    return { ok: false, error: { code: error.code, message: error.message } };
+  }
+};
+export const runBookTitleReceiptReview = async (dbName, workspaceId) => {
+  const adapter = bookAdapter(dbName);
+  const before = await adapter.loadState();
+  const context = { selection: { workspaceId }, expectedSnapshotFingerprint: before.snapshotFingerprint };
+  const titleUpdate = en => ({ type: 'document.update', payload: { id: workspaceId, mainTitle: { mode: 'custom', en } } });
+  const winner = await adapter.execute(titleUpdate('T1 conflict winner'), context);
+  let stale;
+  try { await adapter.execute(titleUpdate('T1 stale writer'), context); }
+  catch (error) { stale = error.code; }
+  const winnerState = await adapter.loadState();
+  let calls = 0;
+  const distortedReceipt = async (command, scope) => {
+    calls += 1;
+    const receipt = await adapter.execute(command, scope);
+    return { ...receipt, previousFingerprint: 'invalid-receipt' };
+  };
+  Object.defineProperty(distortedReceipt, 'authoritativeTransaction', { value: true });
+  const connection = createBookQaConnection({ ...adapter, execute: distortedReceipt }, winnerState);
+  try {
+    connection.session.navigate({ workspaceId });
+    const rejected = await connection.session.dispatch(titleUpdate('T1 committed without accepted receipt'));
+    const fromSnapshot = snapshot => snapshot.documents.find(item => item.id === workspaceId).metadata.bookMainTitleV1;
+    const beforeRefresh = fromSnapshot(connection.session.getSnapshot());
+    const blocked = await connection.session.dispatch(titleUpdate('T1 must not replay'));
+    await connection.refresh();
+    const afterRefresh = fromSnapshot(connection.session.getSnapshot());
+    const persisted = fromSnapshot((await adapter.loadState()).snapshot);
+    return { calls, winner: winner.ok, stale, rejected: rejected.error, blocked: blocked.error, beforeRefresh, afterRefresh, persisted };
+  } finally { connection.session.dispose(); }
 };
 const requestResult = request => new Promise((resolve, reject) => {
   request.onsuccess = () => resolve(request.result);

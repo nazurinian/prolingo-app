@@ -4709,18 +4709,19 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
   const handleTextLibraryCreateDocument = useCallback((payload) => runTextLibraryUiCommand(async () => {
     if (bookQaMode) {
-      if (payload?.editorModel === 'legacy-line-v1' || !['paragraph', 'conversation', 'mixed'].includes(payload?.documentType || 'paragraph')) {
+      if (payload?.editorModel === 'legacy-line-v1') {
         throw new Error('A1a supports only structured v2 Paragraph, Conversation, and Mixed Workspaces.');
       }
       const result = await dispatchBookQaNativeCommand({
         type: 'document.create',
         payload: {
           title: payload.title,
-          documentType: payload.documentType || 'paragraph',
+          documentType: payload.documentType,
           collectionId: payload.collectionId || null,
           textLanguage: payload.textLanguage,
           meaningLanguage: payload.meaningLanguage,
-          metadata: payload.metadata
+          metadata: payload.metadata,
+          ...(payload.mainTitle === undefined ? {} : { mainTitle: payload.mainTitle })
         }
       }, { selection: payload.collectionId ? { collectionId: payload.collectionId } : {}, selectResultWorkspace: true });
       return result;
@@ -4752,8 +4753,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => bookQaMode
     ? dispatchBookQaNativeCommand({ type: 'collection.create', payload: { title } }, { selection: {} })
     : executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
-  const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => bookQaMode
-    ? dispatchBookQaNativeCommand({ type: 'document.update', payload: { id, title } }, { selection: { workspaceId: id } })
+  const handleTextLibraryRenameDocument = useCallback((id, title, mainTitle) => runTextLibraryUiCommand(() => bookQaMode
+    ? dispatchBookQaNativeCommand({ type: 'document.update', payload: { id, title, ...(mainTitle === undefined ? {} : { mainTitle }) } }, { selection: { workspaceId: id } })
     : executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryMoveDocument = useCallback((id, collectionId) => runTextLibraryUiCommand(() => bookQaMode
     ? dispatchBookQaNativeCommand({ type: 'document.update', payload: { id, collectionId: collectionId || null } }, { selection: { workspaceId: id } })
@@ -7867,6 +7868,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
         bookQaAudioDisabled={bookQaMode}
+        bookHeadingsEnabled={bookQaMode}
+        bookHeadingVisibility={bookQaMode && activeTextDocumentTree?.uid
+          ? textMainReaderPreference.workspaceHeadingVisibility?.[activeTextDocumentTree.uid] : undefined}
         readPlayer={readGlobalPlayer}
         useSharedCardReader={sharedTextReaderActive}
         mobileWorkspaceMeta={{

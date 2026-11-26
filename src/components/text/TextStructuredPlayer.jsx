@@ -28,6 +28,7 @@ import TextStructuredPlaybackControls from './TextStructuredPlaybackControls.jsx
 import { getTextParagraphCardRoleLabel, resolveTextParagraphCardRole, TEXT_PARAGRAPH_CARD_ROLES } from '../../domain/text/textParagraphRoleDomain.js';
 import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedBookPageView, SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
+import { projectBookHeadings } from '../../domain/text/textBookHeadingDomain.js';
 import { SharedUnitPlaybackContext } from './presentation/SharedUnitPlaybackContext.js';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
 import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
@@ -105,6 +106,7 @@ const coverageBadgeLabel = status => ({
 
 const StructuredPlayerCard = ({
   block,
+  bookHeading,
   index,
   isPlaying,
   isPaused,
@@ -318,7 +320,10 @@ const StructuredPlayerCard = ({
           <div className="min-w-0 flex-1 pt-0.5 text-left">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
               <span className="inline-flex items-center justify-center rounded-md bg-slate-200/75 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-600 dark:text-slate-300 shrink-0">#{index + 1}</span>
-              <span className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-white leading-snug break-words">{block.title || (isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title Card' : `${blockLabel(block.blockType)} Card`)}</span>
+              <span data-book-card-heading={bookHeading?.visible && bookHeading.en ? block.id : undefined} className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-white leading-snug break-words">
+                {bookHeading ? (bookHeading.visible && bookHeading.en) || bookHeading.fallback
+                  : block.title || (isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title Card' : `${blockLabel(block.blockType)} Card`)}
+              </span>
               <span className={`inline-flex text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${block.blockType === 'conversation' ? SHARED_SEMANTIC_COLORS.conversation.badge : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-indigo-100/90 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200' : SHARED_SEMANTIC_COLORS.paragraph.badge}`}>
                 {block.blockType === 'conversation' ? 'Conversation' : paragraphRoleLabel}
               </span>
@@ -371,6 +376,7 @@ const StructuredPlayerCard = ({
               )}
             </div>
             {!expanded && <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300 line-clamp-2 animate-in fade-in duration-150">{preview}</p>}
+            {bookHeading?.visible && bookHeading.id && <p lang="id" data-book-card-heading-id={block.id} className="text-xs text-slate-500 dark:text-slate-400">{bookHeading.id}</p>}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 pl-10 sm:pl-0" data-text-card-quick-actions="true">
@@ -741,6 +747,8 @@ export const TextStructuredPlayer = ({
   onResetCardAudioPreferences = null,
   onResetSegmentAudioPreferences = null,
   bookQaAudioDisabled = false,
+  bookHeadingsEnabled = false,
+  bookHeadingVisibility,
   useSharedCardReader = false,
   readerSwitchSlot = null,
   sharedPresentation = null,
@@ -811,6 +819,11 @@ export const TextStructuredPlayer = ({
   const playerRef = useRef(null);
   const userNavigationRef = useRef(0);
   const blocks = documentTree?.blocks || [];
+  const bookHeadings = useMemo(() => {
+    if (!bookHeadingsEnabled || !documentTree) return null;
+    const projection = projectBookHeadings(documentTree, bookHeadingVisibility);
+    return projection.hasSavedMainTitle ? projection : null;
+  }, [bookHeadingsEnabled, documentTree, bookHeadingVisibility]);
   const playbackList = useMemo(() => resolveStructuredTextPlaybackList(documentTree), [documentTree]);
   const playableList = useMemo(() => playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode)), [playbackList, playbackChannelMode]);
   const structuredSessionActive = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && (isPlaying || isPaused);
@@ -1291,10 +1304,17 @@ export const TextStructuredPlayer = ({
             ) : null}
           />
         )}
+        {(!showSharedBookPage || !blocks.length) && bookHeadings?.mainTitle && (
+          <header className="px-3 py-2" data-book-main-title="true">
+            <h2 lang="en" className="text-lg font-bold text-slate-900 dark:text-white">{bookHeadings.mainTitle.en}</h2>
+            {bookHeadings.mainTitle.id && <p lang="id" className="text-sm text-slate-500 dark:text-slate-400">{bookHeadings.mainTitle.id}</p>}
+          </header>
+        )}
         {blocks.length === 0 && <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 p-8 text-center text-sm text-slate-400">Workspace belum memiliki Card. Buka DATA → CREATE untuk membuat Card pertama.</div>}
         {blocks.length > 0 && showSharedBookPage && (
           <SharedBookPageView
             presentation={sharedPresentation}
+            bookHeadings={bookHeadings}
             presentationState={activeSharedView}
             workspaceStyle={resolvedSharedWorkspaceStyle}
             playbackCursor={effectiveBookPlaybackCursor}
@@ -1330,6 +1350,7 @@ export const TextStructuredPlayer = ({
         {blocks.length > 0 && !showSharedBookPage && blocks.map((block, index) => <StructuredPlayerCard
           key={block.id}
           block={block}
+          bookHeading={bookHeadings?.cards[block.id]}
           index={index}
           isPlaying={isPlaying}
           isPaused={isPaused}

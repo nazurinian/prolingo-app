@@ -70,6 +70,7 @@ const resolveCardTypeOrdinal = (cards, cardIndex) => {
  */
 export const SharedBookPageView = ({
   presentation,
+  bookHeadings = null,
   presentationState = null,
   workspaceStyle = DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
   playbackCursor = IDLE_SHARED_CURSOR,
@@ -128,9 +129,16 @@ export const SharedBookPageView = ({
       >
         {embedded ? (
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <h2 className="text-[15px] sm:text-[1.35rem] font-bold tracking-tight leading-snug text-slate-900 dark:text-white break-words">
-              {workspace?.title || workspaceTypeLabel}
-            </h2>
+            {bookHeadings ? bookHeadings.mainTitle && (
+              <div data-book-main-title="true">
+                <h2 lang="en" className="text-[15px] sm:text-[1.35rem] font-bold leading-snug text-slate-900 dark:text-white break-words">{bookHeadings.mainTitle.en}</h2>
+                {bookHeadings.mainTitle.id && <p lang="id" className="text-sm text-slate-500 dark:text-slate-400">{bookHeadings.mainTitle.id}</p>}
+              </div>
+            ) : (
+              <h2 className="text-[15px] sm:text-[1.35rem] font-bold tracking-tight leading-snug text-slate-900 dark:text-white break-words">
+                {workspace?.title || workspaceTypeLabel}
+              </h2>
+            )}
             <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums shrink-0">
               <span className="sm:hidden">{cards.length} {cards.length === 1 ? 'card' : 'cards'} · {totalUnits} {totalUnits === 1 ? 'unit' : 'units'}</span>
               <span className="hidden sm:inline">{cards.length} {cards.length === 1 ? 'Card' : 'Cards'} · {totalUnits} {totalUnits === 1 ? 'Unit' : 'Units'} · {totalSegments} {totalSegments === 1 ? 'Segment' : 'Segments'}</span>
@@ -162,6 +170,8 @@ export const SharedBookPageView = ({
       ) : (
         <div className="space-y-5 sm:space-y-7" data-shared-book-chapters="true">
           {cards.map((card, cardIndex) => {
+            const heading = bookHeadings?.cards[card.id];
+            const headingLabel = heading ? (heading.visible && heading.en) || heading.fallback : card?.title;
             const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
             const isConversationScene = card?.blockType === 'conversation';
             const cardTerms = getSharedUnitTerms(card);
@@ -246,17 +256,19 @@ export const SharedBookPageView = ({
                       )}
                     </div>
 
-                    {card?.title && (
+                    {headingLabel && (
                       <h3
+                        data-book-card-heading={heading?.visible && heading.en ? card.id : undefined}
                         className={`text-left break-words ${
                           isTitleRole
                             ? 'text-lg sm:text-xl font-bold tracking-tight leading-snug text-slate-900 dark:text-white'
                             : 'text-[15px] sm:text-lg font-semibold tracking-[-0.01em] leading-snug text-slate-900 dark:text-slate-100'
                         }`}
                       >
-                        {card.title}
+                        {headingLabel}
                       </h3>
                     )}
+                    {heading?.visible && heading.id && <p lang="id" data-book-card-heading-id={card.id} className="text-sm text-slate-500 dark:text-slate-400">{heading.id}</p>}
 
                     {sceneCast.length > 0 && (
                       <div className="pt-1 flex flex-wrap items-center gap-1.5" data-shared-scene-cast={card.id}>

@@ -7,6 +7,7 @@ import { TEXT_MIXED_EDITOR_COMMAND_FIELDS, scopeTextStructuredEditorCommand } fr
 import { applyTextLibraryCommand } from './textLibraryCommandDomain.js';
 import { canonicalJsonStringify } from './textCanonicalFingerprintDomain.js';
 import { buildTextStructuredAudioCoverageMap } from './textStructuredAudioCoverageDomain.js';
+import { getBookAuthoringField, prepareBookAuthoringCommand } from './textBookHeadingDomain.js';
 
 export class TextDataManagementError extends Error {
   constructor(code, message) { super(message); this.name = 'TextDataManagementError'; this.code = code; }
@@ -137,14 +138,22 @@ export const selectTextDataManagementState = (candidate, { selection = {}, bound
  * Validates command fields, capability boundaries, protected metadata, and Workspace scope
  * without allocating persistent IDs/UIDs or mutating snapshots.
  */
-export const validateAndScopeTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [] } = {}) => {
+export const validateAndScopeTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], bookAuthoring = false } = {}) => {
   const snapshot = validateTextManagementSnapshot(candidate);
   const selected = resolveTextManagementSelection(snapshot, selection);
-  const { type, payload = {} } = command || {};
+  const { type, payload: input = {} } = command || {};
   const fields = Object.hasOwn(TEXT_DATA_MANAGEMENT_COMMAND_FIELDS, type) && TEXT_DATA_MANAGEMENT_COMMAND_FIELDS[type];
-  if (!fields || !plain(payload) || Object.keys(payload).some(k => !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
+  const bookField = bookAuthoring === true ? getBookAuthoringField(type) : null;
+  if (!fields || !plain(input) || Object.keys(input).some(k => k !== bookField && !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
+  const payload = { ...input };
+  const bookFields = {};
+  if (bookField && Object.hasOwn(payload, bookField)) {
+    bookFields[bookField] = payload[bookField];
+    delete payload[bookField];
+  }
   const capability = getTextManagementCommandCapabilities(snapshot, selected, { boundary, permissions })[type];
   if (!capability.enabled) fail(capability.reason, 'Operation unavailable: ' + capability.reason);
+  if (bookAuthoring === true && snapshot.schemaVersion !== 2) fail('PERSISTENT_UNITS_REQUIRED', 'Book authoring requires an isolated v2 snapshot');
   let scoped = { type, payload };
   if (Object.hasOwn(catalogFields, type)) {
     const collection = snapshot.collections.find(c => c.id === selected.collectionId);
@@ -152,7 +161,7 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
     if (type.startsWith('collection.') && ['collection.update', 'collection.delete'].includes(type) && payload.id !== collection.id) fail('OUT_OF_SCOPE', 'Collection must match current scope');
     if (['document.update', 'document.delete'].includes(type) && payload.id !== doc.id) fail('OUT_OF_SCOPE', 'Workspace must match current scope');
     if (['document.create', 'document.reorder'].includes(type) && (payload.collectionId ?? null) !== (selected.collectionId ?? null)) fail('OUT_OF_SCOPE', 'Command must target the selected Collection or Root');
-    if (type === 'document.create' && !['paragraph', ...(snapshot.schemaVersion === 2 ? ['conversation', 'mixed'] : [])].includes(payload.documentType ?? 'paragraph')) fail('PERSISTENT_UNITS_REQUIRED', 'Only complete v2 disposable snapshots can author Conversation or Mixed Workspaces');
+    if (type === 'document.create' && bookAuthoring !== true && !['paragraph', ...(snapshot.schemaVersion === 2 ? ['conversation', 'mixed'] : [])].includes(payload.documentType ?? 'paragraph')) fail('PERSISTENT_UNITS_REQUIRED', 'Only complete v2 disposable snapshots can author Conversation or Mixed Workspaces');
     if (type === 'document.reorder' && snapshot.documents.some(d => d.collectionId === (payload.collectionId ?? null) && !supported(snapshot, d))) fail('UNSUPPORTED_WORKSPACE', 'Cannot reorder a group containing an unsupported Workspace');
     if (payload.metadata !== undefined) {
       if (!plain(payload.metadata)) fail('INVALID_COMMAND', 'metadata must be a plain object');
@@ -167,15 +176,17 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
       if (!tree.blocks.some(c => c.id === payload.blockId)) fail('OUT_OF_SCOPE', 'Card is outside the selected Workspace');
       if (payload.unitId !== undefined) fail('PERSISTENT_UNITS_REQUIRED', 'Virtual Sections are read-only; omit unitId');
       if (payload.metadata !== undefined && (!plain(payload.metadata) || canonicalJsonStringify(Object.fromEntries(Object.entries(payload.metadata).filter(([k]) => k !== 'note'))) !== '{}')) fail('PROTECTED_METADATA', 'Only metadata.note may be authored');
-    } else scoped = scopeTextStructuredEditorCommand(snapshot, { workspace: tree, cards: tree.blocks, speakerRegistry: state.speakers }, command);
+    } else scoped = scopeTextStructuredEditorCommand(snapshot, { workspace: tree, cards: tree.blocks, speakerRegistry: state.speakers }, scoped);
     if (type === 'block.create' && tree.documentType !== 'mixed' && payload.blockType !== tree.documentType) fail('INVALID_COMMAND', 'Card kind must match this Workspace');
   }
-  return { snapshot, selected, scoped };
+  return { snapshot, selected, scoped: bookAuthoring === true
+    ? prepareBookAuthoringCommand(snapshot, scoped, selected.workspaceId, bookFields)
+    : scoped };
 };
 
 /** Native command application, explicitly restricted to an in-memory disposable boundary. */
-export const applyTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], now = Date.now() } = {}) => {
-  const { snapshot, scoped } = validateAndScopeTextDataManagementCommand(candidate, command, { selection, boundary, permissions });
+export const applyTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], bookAuthoring = false, now = Date.now() } = {}) => {
+  const { snapshot, scoped } = validateAndScopeTextDataManagementCommand(candidate, command, { selection, boundary, permissions, bookAuthoring });
   try {
     const outcome = applyTextLibraryCommand(snapshot, scoped, now);
     validateTextManagementSnapshot(outcome.snapshot);

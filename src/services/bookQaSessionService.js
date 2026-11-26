@@ -12,7 +12,7 @@ for (const host of ['localhost', '127.0.0.1', '[::1]']) {
 
 export const isBookQaOrigin = origin => origins.has(origin);
 
-const access = { boundary: 'disposable', permissions: ['catalog', 'content'] };
+const access = { boundary: 'disposable', permissions: ['catalog', 'content'], bookAuthoring: true };
 const failure = (code, message) => new TextDataManagementError(code, message);
 
 const reconcileSelection = (snapshot, previous) => {

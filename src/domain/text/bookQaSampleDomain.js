@@ -6,12 +6,12 @@ export const createBookQaSample = async (type, createDocument, dispatch) => {
     collectionId: null
   });
   if (!document?.id) return;
-  const createCard = async (blockType, title) => dispatch({
+  const createCard = async (blockType, en, id) => dispatch({
     type: 'block.create',
-    payload: { documentId: document.id, blockType, title }
+    payload: { documentId: document.id, blockType, heading: { en, id } }
   });
   const createParagraph = async (title, rows) => {
-    const block = await createCard('paragraph', title);
+    const block = await createCard('paragraph', title, 'Latihan harian');
     if (!block?.id) return;
     const section = await dispatch({ type: 'contentUnit.create', payload: { blockId: block.id, kind: 'paragraph' } });
     if (!section?.id) return;
@@ -21,12 +21,17 @@ export const createBookQaSample = async (type, createDocument, dispatch) => {
     }
   };
   const createConversation = async (title, turns) => {
-    const block = await createCard('conversation', title);
-    if (!block?.id) return;
+    const speakers = new Map();
     for (const turn of turns) {
+      if (speakers.has(turn.speaker)) continue;
       const speaker = await dispatch({ type: 'speaker.register', payload: { documentId: document.id, label: turn.speaker } });
       if (!speaker?.id) return;
-      const unit = await dispatch({ type: 'contentUnit.create', payload: { blockId: block.id, kind: 'turn', speakerId: speaker.id } });
+      speakers.set(turn.speaker, speaker.id);
+    }
+    const block = await createCard('conversation', title, 'Latihan percakapan');
+    if (!block?.id) return;
+    for (const turn of turns) {
+      const unit = await dispatch({ type: 'contentUnit.create', payload: { blockId: block.id, kind: 'turn', speakerId: speakers.get(turn.speaker) } });
       if (!unit?.id) return;
       const segment = await dispatch({ type: 'segment.create', payload: { blockId: block.id, unitId: unit.id, text: turn.text, meaning: turn.meaning, joinAfter: 'line' } });
       if (!segment?.id) return;

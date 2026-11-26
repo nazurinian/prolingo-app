@@ -524,10 +524,13 @@ try {
     // The Classic surface starts with a different document geometry. Return
     // to its top controls before testing the native pointer hit.
     await evaluate('window.scrollTo({ top: 0, behavior: "instant" })');
+    await evaluate('window.a6.stableLayout()');
     await pointerClick('[data-text-main-reader-option="shared"]');
-    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await until(visible(readingToggle), 'Mobile Shared Reader mounted after Classic return');
+    await resize(false);
   });
   await run('Reload restores only safe reader/view preferences and no audio or content mutation', async () => {
+    await openDesktopReading();
     await readerMode('segment');
     await click('[data-shared-card-layout-option="meaning-only"]');
     const audio = await evaluate('localStorage.getItem("prolingo_text_structured_preferences_v1")');

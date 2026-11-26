@@ -93,7 +93,8 @@ export default function BookQaHost() {
     const adapter = createTextDataManagementPersistenceAdapter({
       dbName: safeName,
       boundary: 'disposable',
-      permissions: ['catalog', 'content']
+      permissions: ['catalog', 'content'],
+      bookAuthoring: true
     });
     const loaded = await adapter.loadState();
     const nextConnection = createBookQaConnection(adapter, loaded);

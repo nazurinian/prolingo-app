@@ -12,14 +12,14 @@ import { normalizeTextExternalImportRegistry } from '../domain/text/textExternal
  * Navigation never calls document.setActive. Drafts survive rejection/navigation and are identity scoped.
  */
 export const createTextDataManagementSession = ({ snapshot: initial, selection: initialSelection = {},
-  boundary = 'read-only', permissions = [], sourceAttachments = [], externalImports = [], metaRecords = null, audio = null, execute = null } = {}) => {
+  boundary = 'read-only', permissions = [], bookAuthoring = false, sourceAttachments = [], externalImports = [], metaRecords = null, audio = null, execute = null } = {}) => {
   if (execute && (execute === executeTextLibraryCommand || execute.__unsafeNonTransactionalExecutor || execute.name === 'executeTextLibraryCommand')) {
     throw new TextDataManagementError('INVALID_EXECUTOR', 'executeTextLibraryCommand cannot be passed directly as session execute callback');
   }
   let snapshot, selection = {}, revision = 0, pending = false, error = null, disposed = false, state;
   let sidecars = structuredClone({ sourceAttachments, externalImports });
   let authoritativeMetaRecords = Array.isArray(metaRecords) ? structuredClone(metaRecords) : null;
-  const access = { boundary, permissions: [...permissions] };
+  const access = { boundary, permissions: [...permissions], bookAuthoring };
   const drafts = new Map(), listeners = new Set();
   const emit = () => {
     let view = null;

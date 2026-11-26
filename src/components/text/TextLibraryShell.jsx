@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TEXT_LIBRARY_COMMAND_TYPES } from '../../domain/text/textLibraryCommandDomain.js';
+import { resolveBookMainTitle } from '../../domain/text/textBookHeadingDomain.js';
 import {
   TEXT_LIBRARY_FILTER_OPTIONS,
   TEXT_WORKSPACE_CREATE_OPTIONS,
@@ -10,6 +11,28 @@ import {
 import { AlertTriangle, BookOpen, ChevronRight, Copy, Database, Download, Edit3, FileText, Layers, Link2, Loader2, PlayCircle, Plus, RefreshCcw, Save, Search, SkipForward, Trash2, Unlink, Upload, X } from 'lucide-react';
 
 const formatBytes = value => { const bytes = Math.max(0, Number(value || 0)); if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; };
+
+const LINKED_TITLE_DRAFT = { mode: 'workspace-name', en: '', id: '' };
+const toMainTitleInput = ({ mode, en, id }) => ({ mode, ...(mode === 'custom' ? { en } : {}), id });
+const BookMainTitleFields = ({ value, onChange, disabled }) => {
+  const inputClass = 'block w-full min-h-10 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-sm';
+  return (
+    <fieldset disabled={disabled} className="space-y-1.5 text-xs text-slate-700 dark:text-slate-200">
+      <legend className="font-semibold">Main Title</legend>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={value.mode === 'workspace-name'}
+          onChange={event => onChange({ ...value, mode: event.target.checked ? 'workspace-name' : 'custom' })} />
+        Use Workspace Name as Main Title
+      </label>
+      {value.mode === 'custom' && <label className="block">Main Title EN
+        <input required className={inputClass} value={value.en} onChange={event => onChange({ ...value, en: event.target.value })} />
+      </label>}
+      <label className="block">Main Title ID (optional)
+        <input className={inputClass} value={value.id} onChange={event => onChange({ ...value, id: event.target.value })} />
+      </label>
+    </fieldset>
+  );
+};
 
 export const TextLibraryShell = ({
   catalog,
@@ -44,6 +67,11 @@ export const TextLibraryShell = ({
   const [collectionRenameTitle, setCollectionRenameTitle] = useState('');
   const [deleteDocumentArmed, setDeleteDocumentArmed] = useState(false);
   const [renameTitle, setRenameTitle] = useState('');
+  const [newMainTitle, setNewMainTitle] = useState(LINKED_TITLE_DRAFT);
+  const [renameMainTitle, setRenameMainTitle] = useState(LINKED_TITLE_DRAFT);
+  const [renameWorkspaceId, setRenameWorkspaceId] = useState(null);
+  const activeBookTitle = bookQaMode && activeDocument ? resolveBookMainTitle(activeDocument) : null;
+  const showRename = renameOpen && (!bookQaMode || renameWorkspaceId === activeDocumentId);
   const sourceAttachInputRef = useRef(null);
   const sourceCopyInputRef = useRef(null);
   const externalJsonInputRef = useRef(null);
@@ -131,11 +159,13 @@ export const TextLibraryShell = ({
       title,
       documentType: newDocumentType === 'legacy' ? 'mixed' : newDocumentType,
       editorModel: newDocumentType === 'legacy' ? 'legacy-line-v1' : 'structured-v1',
-      collectionId: newDocumentCollectionId || null
+      collectionId: newDocumentCollectionId || null,
+      ...(bookQaMode ? { mainTitle: toMainTitleInput(newMainTitle) } : {})
     });
     if (!result) return;
     setNewDocumentTitle('');
     setNewDocumentType('paragraph');
+    if (bookQaMode) setNewMainTitle(LINKED_TITLE_DRAFT);
     setCreateMode(null);
   };
 
@@ -150,10 +180,25 @@ export const TextLibraryShell = ({
 
   const submitRename = async () => {
     const title = renameTitle.trim();
-    if (!activeDocument?.id || !title || isBusy) return;
-    const result = await onRenameDocument?.(activeDocument.id, title);
+    if (!activeDocument?.id || !title || isBusy || !showRename) return;
+    let mainTitle;
+    if (activeBookTitle && (!activeBookTitle.saved || renameMainTitle.edited)) {
+      const { mode, en, id, idEdited } = renameMainTitle;
+      mainTitle = { mode, ...(mode === 'custom' ? { en } : {}), ...(idEdited ? { id } : {}) };
+    }
+    const result = await onRenameDocument?.(activeDocument.id, title, mainTitle);
     if (!result) return;
     setRenameOpen(false);
+  };
+
+  const toggleRename = () => {
+    setRenameTitle(activeDocument.title || '');
+    if (activeBookTitle) {
+      setRenameWorkspaceId(activeDocument.id);
+      setRenameMainTitle({ mode: activeBookTitle.mode, en: activeBookTitle.en, id: activeBookTitle.id });
+    }
+    setRenameOpen(!showRename);
+    setDeleteDocumentArmed(false);
   };
 
   const submitMove = async () => {
@@ -597,10 +642,14 @@ export const TextLibraryShell = ({
             <p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Workspace actions</p>
             <p className="text-[8px] text-slate-400 truncate">{getTextWorkspaceLabel(activeDocument)} • {activeDocument.id}</p>
           </div>
-          <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title || ''); setRenameOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300"><Edit3 className="w-3 h-3 inline mr-1"/>Rename</button>
+          <button type="button" disabled={isBusy} onClick={toggleRename} className="min-h-10 px-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300"><Edit3 className="w-3 h-3 inline mr-1"/>Rename</button>
           {onMoveDocument && <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={() => { setMoveCollectionId(activeDocument.collectionId || ''); setMoveOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300 disabled:opacity-40" title={activeDocumentAttachment ? 'Attached source Workspaces keep source ownership location. Detach first before moving.' : 'Move Workspace to Unfiled / Library Root or another Book Collection'}><Layers className="w-3 h-3 inline mr-1"/>Move</button>}
           {!bookQaMode && <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={requestDeleteDocument} className={`min-h-10 px-2.5 rounded-lg border text-[8px] font-black disabled:opacity-40 ${deleteDocumentArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`} title={activeDocumentAttachment ? 'This Workspace belongs to an attached source. Detach or Remove Source Data first.' : 'Delete local Workspace'}><Trash2 className="w-3 h-3 inline mr-1"/>{deleteDocumentArmed ? 'Confirm delete Workspace' : 'Delete Workspace'}</button>}
         </div>
+        {activeBookTitle?.diagnostic && <p className="text-xs text-amber-700 dark:text-amber-300" data-book-title-diagnostic={activeBookTitle.diagnostic}>
+          {activeBookTitle.diagnostic === 'BOOK_MAIN_TITLE_INVALID' ? 'Saved Main Title is invalid.' : 'Main Title has not been saved.'}
+          {activeBookTitle.en ? ` Linked preview: ${activeBookTitle.en}.` : ''} Use Rename to save a valid Main Title.
+        </p>}
         {activeDocumentAttachment && <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 px-2.5 py-2 text-[8px] leading-relaxed text-amber-700 dark:text-amber-300">This Workspace is owned by attached source <b>{activeDocumentAttachment.packageId}</b>. Direct Move/Delete is intentionally locked. Use TRANSFER → Attached sources → <b>Detach (keep local)</b> or <b>Remove Source Data</b>.</p>}
         {activeCollection && <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
           <div className="min-w-0 flex-1"><p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Book Collection</p><p className="text-[8px] text-slate-400 truncate">{activeCollection.title} • {activeCollection.id}</p></div>
@@ -626,11 +675,17 @@ export const TextLibraryShell = ({
         <button type="button" onClick={() => setCollectionRenameOpen(false)} className="p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-400"><X className="w-3.5 h-3.5"/></button>
       </div>}
 
-      {dataSection === 'manage' && renameOpen && <div className="flex gap-1.5">
+      {dataSection === 'manage' && showRename && <>
+        <div className="flex gap-1.5">
         <input value={renameTitle} onChange={event => setRenameTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitRename()} disabled={isBusy} className="flex-1 min-w-0 min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white" autoFocus={!compact} />
-        <button type="button" disabled={isBusy || !renameTitle.trim()} onClick={submitRename} className="p-1.5 rounded bg-indigo-600 text-white disabled:opacity-40"><Save className="w-3.5 h-3.5"/></button>
+        <button type="button" aria-label="Save Workspace" disabled={isBusy || !renameTitle.trim()} onClick={submitRename} className="p-1.5 rounded bg-indigo-600 text-white disabled:opacity-40"><Save className="w-3.5 h-3.5"/></button>
         <button type="button" disabled={isBusy} onClick={() => setRenameOpen(false)} className="p-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500"><X className="w-3.5 h-3.5"/></button>
-      </div>}
+        </div>
+        {bookQaMode && <BookMainTitleFields value={renameMainTitle} disabled={isBusy}
+          onChange={next => setRenameMainTitle(previous => ({
+            ...next, edited: true, idEdited: previous.idEdited || next.id !== previous.id
+          }))} />}
+      </>}
 
       {dataSection === 'manage' && moveOpen && activeDocument && <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/30 p-2.5 space-y-2" data-text-document-move="true">
         <div><p className="text-[9px] font-black text-slate-600 dark:text-slate-300">Move Workspace</p><p className="text-[8px] text-slate-400">Permanent DOC_ID stays unchanged. Only its Library/Book Collection location changes.</p></div>
@@ -656,7 +711,8 @@ export const TextLibraryShell = ({
             {(catalog?.collections || []).map(collection => <option key={collection.id} value={collection.id}>{collection.title}</option>)}
           </select>
         </div>
-        {newDocumentType === 'mixed' && <p className="text-[8px] leading-relaxed text-sky-600 dark:text-sky-300">Mixed can combine Paragraph Cards (Title and Paragraph roles) and Conversation Cards inside one Workspace. Paragraph uses narrator rules; each Conversation Card uses only its referenced speakers.</p>}
+        {bookQaMode && <BookMainTitleFields value={newMainTitle} onChange={setNewMainTitle} disabled={isBusy} />}
+        {newDocumentType === 'mixed' && <p className="text-[8px] leading-relaxed text-sky-600 dark:text-sky-300">Mixed can combine Paragraph Cards{bookQaMode ? '' : ' (Title and Paragraph roles)'} and Conversation Cards inside one Workspace. Paragraph uses narrator rules. Each Conversation Card uses only its referenced speakers.</p>}
         <button type="button" disabled={isBusy || !newDocumentTitle.trim()} onClick={submitDocument} className="w-full flex items-center justify-center gap-1 py-1.5 rounded bg-indigo-600 text-white text-[10px] font-bold disabled:opacity-40"><Plus className="w-3 h-3"/>Create & Open</button>
       </div>}
 
