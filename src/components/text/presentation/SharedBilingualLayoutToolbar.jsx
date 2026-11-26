@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlignJustify,
@@ -31,8 +31,10 @@ import {
 import {
   OVERLAY_SOURCES,
   announcePresentationOverlayOpen,
+  openReadingHistoryEntry,
   subscribeOtherPresentationOverlayOpen
 } from './sharedOverlayCoordinator.js';
+import { usePresentationOverlayFocus } from './usePresentationOverlayFocus.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -609,7 +611,7 @@ export const SharedBilingualLayoutToolbar = ({
   const toolbarRef = useRef(null);
   const toggleBtnRef = useRef(null);
   const overlayPanelRef = useRef(null);
-  const pushedHistoryRef = useRef(false);
+  const releaseHistoryRef = useRef(null);
 
   const measureOverlayAnchor = useCallback(() => {
     if (typeof window === 'undefined' || !toolbarRef.current) return;
@@ -620,72 +622,38 @@ export const SharedBilingualLayoutToolbar = ({
     setOverlayTopPx(nextTop);
   }, []);
 
-  const closeSettings = useCallback(({ restoreFocus = false, fromPopState = false } = {}) => {
+  const closeSettings = useCallback(() => {
+    releaseHistoryRef.current?.();
+    releaseHistoryRef.current = null;
     setSettingsOpen(false);
-    if (!fromPopState && pushedHistoryRef.current && typeof window !== 'undefined') {
-      pushedHistoryRef.current = false;
-      try {
-        if (window.history?.state?.prolingoOverlay === 'reading-view') {
-          window.history.back();
-        }
-      } catch {
-        // Ignore restricted history APIs in sandboxed contexts.
-      }
-    } else if (fromPopState) {
-      pushedHistoryRef.current = false;
-    }
-    if (restoreFocus) {
-      requestAnimationFrame(() => {
-        toggleBtnRef.current?.focus({ preventScroll: true });
-      });
-    }
   }, []);
 
-  useEffect(() => (
-    subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.READING_VIEW, () => {
-      closeSettings({ restoreFocus: false });
-    })
-  ), [closeSettings]);
+  useEffect(() => subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.READING_VIEW, closeSettings), [closeSettings]);
+  useLayoutEffect(() => () => releaseHistoryRef.current?.(), []);
+  useLayoutEffect(() => {
+    if (!isCompactViewport && releaseHistoryRef.current) closeSettings();
+  }, [isCompactViewport, closeSettings]);
+  const returnToToggle = useCallback(() => toggleBtnRef.current, []);
+  usePresentationOverlayFocus({ open: settingsOpen && isCompactViewport, panelRef: overlayPanelRef, onClose: closeSettings, returnFocus: returnToToggle });
 
   useEffect(() => {
-    if (!settingsOpen || typeof window === 'undefined') return undefined;
-    if (isCompactViewport) {
-      measureOverlayAnchor();
-      try {
-        if (typeof window.history?.pushState === 'function' && window.history.state?.prolingoOverlay !== 'reading-view') {
-          window.history.pushState({ ...(window.history.state || {}), prolingoOverlay: 'reading-view' }, '');
-          pushedHistoryRef.current = true;
-        }
-      } catch {
-        pushedHistoryRef.current = false;
-      }
-      requestAnimationFrame(() => {
-        overlayPanelRef.current?.focus({ preventScroll: true });
-      });
-    }
+    if (!settingsOpen) return undefined;
     const handleKeyDown = event => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         event.preventDefault();
-        closeSettings({ restoreFocus: true });
+        closeSettings();
+        toggleBtnRef.current?.focus({ preventScroll: true });
       }
     };
-    const handlePopState = () => {
-      if (pushedHistoryRef.current) {
-        closeSettings({ restoreFocus: true, fromPopState: true });
-      }
-    };
-    const handleViewportUpdate = () => {
-      if (isCompactViewport) measureOverlayAnchor();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('resize', handleViewportUpdate);
-    window.addEventListener('scroll', handleViewportUpdate, { passive: true });
+    if (!isCompactViewport) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+    window.addEventListener('resize', measureOverlayAnchor);
+    window.addEventListener('scroll', measureOverlayAnchor, { passive: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('resize', handleViewportUpdate);
-      window.removeEventListener('scroll', handleViewportUpdate);
+      window.removeEventListener('resize', measureOverlayAnchor);
+      window.removeEventListener('scroll', measureOverlayAnchor);
     };
   }, [settingsOpen, isCompactViewport, measureOverlayAnchor, closeSettings]);
 
@@ -766,12 +734,15 @@ export const SharedBilingualLayoutToolbar = ({
 
   const handleToggleReadingSettings = () => {
     if (settingsOpen) {
-      closeSettings({ restoreFocus: false });
+      closeSettings();
       return;
     }
     setSettingsTab('reading');
-    if (isCompactViewport) measureOverlayAnchor();
     announcePresentationOverlayOpen(OVERLAY_SOURCES.READING_VIEW);
+    if (isCompactViewport) {
+      measureOverlayAnchor();
+      releaseHistoryRef.current = openReadingHistoryEntry(closeSettings);
+    }
     setSettingsOpen(true);
   };
 
@@ -1009,7 +980,7 @@ export const SharedBilingualLayoutToolbar = ({
           )}
           <button
             type="button"
-            onClick={() => closeSettings({ restoreFocus: true })}
+            onClick={closeSettings}
             data-shared-reading-settings-close="true"
             aria-label="Close Reading Settings"
             className={`min-h-8 sm:min-h-7 px-2 sm:px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
@@ -1045,8 +1016,7 @@ export const SharedBilingualLayoutToolbar = ({
                 <button
                   type="button"
                   onClick={() => {
-                    closeSettings({ restoreFocus: false });
-                    announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
+                    closeSettings();
                     onOpenMobileData();
                   }}
                   className={`min-h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
@@ -1072,7 +1042,10 @@ export const SharedBilingualLayoutToolbar = ({
                     disabled={workspaceCommandBusy}
                     aria-pressed={selectedDoc}
                     onClick={() => {
-                      if (!workspaceCommandBusy && !selectedDoc) onSelectWorkspace(doc.id);
+                      if (!workspaceCommandBusy && !selectedDoc) {
+                        closeSettings();
+                        onSelectWorkspace(doc.id);
+                      }
                     }}
                     className={`shrink-0 min-h-8 max-w-[190px] rounded-lg border px-2 py-0.5 text-left inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
                       selectedDoc
@@ -1288,7 +1261,7 @@ export const SharedBilingualLayoutToolbar = ({
                 {workspaceTitle || (workspaceType === 'conversation' ? 'Conversation' : workspaceType === 'mixed' ? 'Mixed Workspace' : 'Workspace')}
               </span>
               {mobilePlayAction?.activeStatusLabel && (
-                <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold leading-none ${mobilePlayAction.activeToneClass}`}>
+                <span data-mobile-workspace-playback-status="true" className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold leading-none ${mobilePlayAction.activeToneClass}`}>
                   <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current" />
                   <span>{mobilePlayAction.activeStatusLabel}</span>
                 </span>
@@ -1327,8 +1300,7 @@ export const SharedBilingualLayoutToolbar = ({
               <button
                 type="button"
                 onClick={() => {
-                  closeSettings({ restoreFocus: false });
-                  announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
+                  closeSettings();
                   onOpenMobileData();
                 }}
                 data-mobile-workspace-data="true"
@@ -1598,8 +1570,9 @@ export const SharedBilingualLayoutToolbar = ({
             <button
               type="button"
               aria-label="Close Reading Settings backdrop"
+              tabIndex={-1}
               data-shared-reading-settings-backdrop="true"
-              onClick={() => closeSettings({ restoreFocus: true })}
+              onClick={closeSettings}
               className="fixed inset-0 bg-slate-950/50 dark:bg-slate-950/70 backdrop-blur-[1px]"
             />
             <div

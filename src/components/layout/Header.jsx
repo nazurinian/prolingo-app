@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { APP_CHECKPOINT_ID, APP_CHECKPOINT_LABEL, APP_VERSION_LABEL } from '../../constants/appMetadata';
 import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDomain';
 import {
@@ -11,6 +12,7 @@ import {
   announcePresentationOverlayOpen,
   subscribeOtherPresentationOverlayOpen
 } from '../text/presentation/sharedOverlayCoordinator';
+import { usePresentationOverlayFocus } from '../text/presentation/usePresentationOverlayFocus';
 import { SHARED_CONTROL_TOKENS } from '../text/presentation/sharedDesignTokens';
 
 /**
@@ -65,6 +67,7 @@ const Header = ({
   const [mobileStudyQueueExpanded, setMobileStudyQueueExpanded] = useState(false);
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false);
   const overflowTriggerRef = useRef(null);
+  const overflowPanelRef = useRef(null);
   const studyQueueDrawerOpen = Boolean(
     isMobile && mode === 'table' && tableViewMode === 'study' && mobileTab === 'player' && mobileStudyQueueExpanded
   );
@@ -76,24 +79,15 @@ const Header = ({
     })
   ), []);
 
-  useEffect(() => {
-    if (!overflowMenuOpen || typeof window === 'undefined') return undefined;
-    const onKeyDown = event => {
-      if (event.key === 'Escape') {
-        setMobileOverflowOpen(false);
-        overflowTriggerRef.current?.focus({ preventScroll: true });
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [overflowMenuOpen]);
+  useEffect(() => { if (!isMobile) setMobileOverflowOpen(false); }, [isMobile]);
+  usePresentationOverlayFocus({
+    open: overflowMenuOpen, panelRef: overflowPanelRef,
+    onClose: () => setMobileOverflowOpen(false), returnFocus: () => overflowTriggerRef.current
+  });
 
   const toggleMobileOverflow = () => {
-    setMobileOverflowOpen(prev => {
-      const next = !prev;
-      if (next) announcePresentationOverlayOpen(OVERLAY_SOURCES.APPBAR_OVERFLOW);
-      return next;
-    });
+    if (!overflowMenuOpen) announcePresentationOverlayOpen(OVERLAY_SOURCES.APPBAR_OVERFLOW);
+    setMobileOverflowOpen(!overflowMenuOpen);
   };
 
   const openMobileToolsSection = section => {
@@ -211,7 +205,6 @@ const Header = ({
             onClick={() => {
               setMobileOverflowOpen(false);
               const nextTab = mobileTab === 'tools' ? 'player' : 'tools';
-              if (nextTab === 'tools') announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
               handleMobileTabSwitch?.(nextTab);
             }}
             className={`h-9 w-9 rounded-lg border inline-flex items-center justify-center transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
@@ -245,19 +238,22 @@ const Header = ({
               <MoreVertical aria-hidden="true" className="w-4 h-4" />
             </button>
 
-            {overflowMenuOpen && (
+            {overflowMenuOpen && createPortal(
               <>
                 <button
                   type="button"
                   aria-label="Close app menu"
+                  tabIndex={-1}
                   onClick={() => setMobileOverflowOpen(false)}
                   className="fixed inset-0 z-[70] bg-slate-950/20"
                 />
                 <div
+                  ref={overflowPanelRef}
+                  tabIndex={-1}
                   role="menu"
                   aria-label="Application options"
                   data-mobile-appbar-overflow-menu="true"
-                  className="absolute right-0 top-11 z-[75] w-56 rounded-xl border border-slate-200/95 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl space-y-2 text-left"
+                  className="fixed right-2.5 top-[50px] z-[75] w-56 max-h-[calc(100dvh-58px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200/95 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl space-y-2 text-left"
                 >
                   {typeof setTheme === 'function' && (
                     <div className="space-y-1 px-1">
@@ -334,7 +330,7 @@ const Header = ({
                     </div>
                   )}
                 </div>
-              </>
+              </>, document.body
             )}
           </div>
         </div>

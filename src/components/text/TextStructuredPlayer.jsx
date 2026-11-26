@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { matchesStructuredPlaybackControl } from '../../domain/playback/nowPlayingDomain.js';
+import { presentGlobalPlayer } from '../../domain/playback/globalPlayerPresentationDomain.js';
 import { ChevronDown, ChevronRight, FileDown, FileText, MessageSquare, Play, PlayCircle, SkipForward, SlidersHorizontal, Square, Upload, Volume2, Wand2, X } from 'lucide-react';
 import {
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
@@ -32,6 +33,7 @@ import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutTo
 import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
 import { WorkspaceReaderScrollContext } from './presentation/useWorkspaceReaderScroll.js';
 import { useSharedReaderSelectionStore } from './presentation/useSharedReaderSelectionStore.js';
+import { usePresentationOverlayFocus } from './presentation/usePresentationOverlayFocus.js';
 import {
   buildCardUnitLookup,
   resolveCursorAuthoredPosition,
@@ -43,6 +45,7 @@ import {
   SHARED_SPACING_TOKENS,
   SHARED_SURFACE_TOKENS,
   SHARED_UI_TERMINOLOGY,
+  resolveGlobalPlayerSemanticTone,
   resolvePlaybackSemanticTone
 } from './presentation/sharedDesignTokens.js';
 import {
@@ -55,7 +58,7 @@ import {
 } from '../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
 import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
-import { OVERLAY_SOURCES, announcePresentationOverlayOpen } from './presentation/sharedOverlayCoordinator.js';
+import { OVERLAY_SOURCES, announcePresentationOverlayOpen, subscribeOtherPresentationOverlayOpen } from './presentation/sharedOverlayCoordinator.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -411,7 +414,10 @@ const StructuredPlayerCard = ({
           <button
             type="button"
             disabled={playbackBusy}
-            onClick={() => setAudioPanelOpen(true)}
+            onClick={() => {
+              announcePresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO);
+              setAudioPanelOpen(true);
+            }}
             className={`min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[11px] font-semibold disabled:opacity-35 transition-colors inline-flex items-center justify-center gap-1 ${SHARED_CONTROL_TOKENS.focusRing}`}
             title="Card audio & voice overrides"
             aria-label="Open card audio controls"
@@ -653,6 +659,7 @@ const StructuredPlayerCard = ({
 
 export const TextStructuredPlayer = ({
   documentTree,
+  readPlayer,
   isPlaying,
   isPaused,
   speakingPart,
@@ -811,6 +818,17 @@ export const TextStructuredPlayer = ({
   const effectiveRepresentationMode = structuredSessionActive && activeSessionRepresentationMode ? activeSessionRepresentationMode : playbackRepresentationMode;
   const activeBlockId = resolveActiveTextCardId({ blocks, playingIndex, activeCursorSegmentId, playbackRepresentationMode: effectiveRepresentationMode, isSessionActive: structuredSessionActive });
   const activeCardNumber = useMemo(() => (activeBlockId ? blocks.findIndex(item => item.id === activeBlockId) + 1 : 0), [blocks, activeBlockId]);
+  const playerSnapshot = readPlayer?.();
+  const ownedWorkspace = playerSnapshot?.transport.workspace;
+  const workspacePlayer = ownedWorkspace && ownedWorkspace.id === documentTree?.id
+    && (ownedWorkspace.uid ?? null) === (documentTree?.uid ?? null)
+    ? presentGlobalPlayer(playerSnapshot) : null;
+  const workspaceStatusLabel = workspacePlayer && [
+    workspacePlayer.cardCode,
+    workspacePlayer.phase !== 'playing' && workspacePlayer.stateLabel,
+    workspacePlayer.channelLabel
+  ].filter(Boolean).join(' · ');
+  const workspaceStatusTone = resolveGlobalPlayerSemanticTone(workspacePlayer || {}).solid;
   const expandedCardIds = useMemo(() => resolveExpandedTextCardIds({ mode: expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds }), [expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds]);
   const generationBusy = Boolean(generationState?.running);
   const controlsBusy = structuredSessionActive || generationBusy;
@@ -825,14 +843,14 @@ export const TextStructuredPlayer = ({
     setBookAudioPanelBlockId(null);
   }, [documentTree?.id]);
 
-  // E4: Coordinate modal presentation disclosures with mobile overlays without touching playback
+  const playbackSettingsRef = useRef(null);
+  usePresentationOverlayFocus({
+    open: controlsWorkspaceOpen, panelRef: playbackSettingsRef, onClose: onCloseControlsWorkspace,
+    returnFocus: () => document.querySelector('[data-global-player] [aria-controls][aria-expanded]')
+  });
   useEffect(() => {
-    if (controlsWorkspaceOpen) announcePresentationOverlayOpen(OVERLAY_SOURCES.PLAYBACK_SETTINGS);
-  }, [controlsWorkspaceOpen]);
-
-  useEffect(() => {
-    if (bookAudioPanelBlockId) announcePresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO);
-  }, [bookAudioPanelBlockId]);
+    if (controlsWorkspaceOpen) return subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.PLAYBACK_SETTINGS, () => onCloseControlsWorkspace?.());
+  }, [controlsWorkspaceOpen, onCloseControlsWorkspace]);
 
   const bookAudioPanelBlock = useMemo(
     () => (bookAudioPanelBlockId ? blocks.find(item => item.id === bookAudioPanelBlockId) || null : null),
@@ -1106,7 +1124,7 @@ export const TextStructuredPlayer = ({
 
       {controlsWorkspaceOpen && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[155] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-2 md:p-6" data-text-player-workspace="true" onMouseDown={event => { if (event.target === event.currentTarget) onCloseControlsWorkspace?.(); }}>
-          <div className="w-full max-w-2xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
+          <div ref={playbackSettingsRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={SHARED_UI_TERMINOLOGY.playbackSettings} className="w-full max-w-2xl max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-shrink-0">
               <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><PlayCircle className="w-4 h-4"/></div>
               <div className="min-w-0 flex-1">
@@ -1169,14 +1187,8 @@ export const TextStructuredPlayer = ({
               onPlay: onPlayDocument,
               disabled: !playableList.length || generationBusy,
               stopsWorkspace,
-              activeStatusLabel: structuredSessionActive && activeCardNumber > 0
-                ? `C${activeCardNumber} · ${isPaused ? 'Paused' : speakingPart === 'meaning' ? 'ID' : 'EN'}`
-                : null,
-              activeToneClass: isPaused
-                ? SHARED_SEMANTIC_COLORS.paused.solid
-                : speakingPart === 'meaning'
-                  ? SHARED_SEMANTIC_COLORS.id.solid
-                  : SHARED_SEMANTIC_COLORS.en.solid
+              activeStatusLabel: workspaceStatusLabel,
+              activeToneClass: workspaceStatusTone
             }}
             workspaceHeaderSlot={(
               <div
@@ -1202,16 +1214,10 @@ export const TextStructuredPlayer = ({
                     </span>
                   </span>
 
-                  {structuredSessionActive && activeCardNumber > 0 && (
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 shadow-xs ${
-                      isPaused
-                        ? SHARED_SEMANTIC_COLORS.paused.solid
-                        : speakingPart === 'meaning'
-                          ? SHARED_SEMANTIC_COLORS.id.solid
-                          : SHARED_SEMANTIC_COLORS.en.solid
-                    }`}>
+                  {workspaceStatusLabel && (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 shadow-xs ${workspaceStatusTone}`}>
                       <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                      <span>C{activeCardNumber} · {isPaused ? 'Paused' : speakingPart === 'meaning' ? 'ID' : 'EN'}</span>
+                      <span>{workspaceStatusLabel}</span>
                     </span>
                   )}
                 </div>
@@ -1305,7 +1311,10 @@ export const TextStructuredPlayer = ({
               <button
                 type="button"
                 disabled={structuredSessionActive}
-                onClick={() => setBookAudioPanelBlockId(card.id)}
+                onClick={() => {
+                  announcePresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO);
+                  setBookAudioPanelBlockId(card.id);
+                }}
                 className={`min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[11px] font-semibold disabled:opacity-35 transition-colors inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.focusRing}`}
                 title="Card audio & voice overrides"
                 aria-label="Open card audio controls"

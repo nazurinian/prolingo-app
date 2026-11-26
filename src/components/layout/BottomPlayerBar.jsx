@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useReducer, useState } from 'react';
+import React, { useEffect, useId, useReducer, useRef, useState } from 'react';
 import {
   AlignLeft,
   BookOpen,
@@ -31,6 +31,7 @@ import {
   announcePresentationOverlayOpen,
   subscribeOtherPresentationOverlayOpen
 } from '../text/presentation/sharedOverlayCoordinator.js';
+import { usePresentationOverlayFocus } from '../text/presentation/usePresentationOverlayFocus.js';
 
 const mediaEvents = ['timeupdate', 'durationchange', 'loadedmetadata', 'ratechange'];
 
@@ -202,6 +203,8 @@ export default function BottomPlayerBar({
   const [expanded, setExpanded] = useState(false);
   const [, refresh] = useReducer(revision => revision + 1, 0);
   const detailsId = useId();
+  const toggleRef = useRef(null);
+  const detailsRef = useRef(null);
   const snapshot = readPlayer?.() ?? idle;
   const { media } = snapshot;
   const player = presentGlobalPlayer(snapshot);
@@ -234,23 +237,14 @@ export default function BottomPlayerBar({
     setExpanded(false);
   }), []);
 
-  useEffect(() => {
-    if (!expanded || typeof window === 'undefined') return undefined;
-    const onKeyDown = event => {
-      if (event.key === 'Escape') {
-        setExpanded(false);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [expanded]);
+  usePresentationOverlayFocus({
+    open: expanded, panelRef: detailsRef, onClose: () => setExpanded(false),
+    contain: false, returnFocus: () => toggleRef.current
+  });
 
   const toggleExpanded = () => {
-    setExpanded(prev => {
-      const next = !prev;
-      if (next) announcePresentationOverlayOpen(OVERLAY_SOURCES.GLOBAL_PLAYER);
-      return next;
-    });
+    if (!expanded) announcePresentationOverlayOpen(OVERLAY_SOURCES.GLOBAL_PLAYER);
+    setExpanded(!expanded);
   };
 
   const ownedDomainLabel = player.domain === 'structured-text'
@@ -388,6 +382,7 @@ export default function BottomPlayerBar({
                 type="button"
                 className={secondaryControlClass}
                 aria-label={expanded ? 'Collapse player details' : 'Expand player details'}
+                ref={toggleRef}
                 aria-expanded={expanded}
                 aria-controls={detailsId}
                 onClick={toggleExpanded}
@@ -478,6 +473,7 @@ export default function BottomPlayerBar({
                 type="button"
                 className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-slate-200/90 dark:border-slate-700/90 bg-slate-50/90 dark:bg-slate-800/90 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing}`}
                 aria-label={expanded ? 'Collapse player details' : 'Expand player details'}
+                ref={toggleRef}
                 aria-expanded={expanded}
                 aria-controls={detailsId}
                 onClick={toggleExpanded}
@@ -492,6 +488,8 @@ export default function BottomPlayerBar({
         {/* Expanded Player Drawer (D3 & D4): Now Playing -> Media Timeline -> Playback Info -> Settings -> Secondary Technical Details */}
         <div
           id={detailsId}
+          ref={detailsRef}
+          tabIndex={-1}
           hidden={!expanded}
           className="mt-2.5 max-h-[52dvh] overflow-y-auto overscroll-contain border-t border-slate-200/85 pt-2.5 dark:border-slate-800 md:max-h-[54dvh] custom-scrollbar"
         >
@@ -668,7 +666,11 @@ export default function BottomPlayerBar({
                       <button
                         type="button"
                         className={`inline-flex min-h-9 items-center gap-1.5 px-2.5 text-xs font-semibold ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
-                        onClick={onOpenTextPlayer}
+                        data-player-open-text-settings="true"
+                        onClick={() => {
+                          announcePresentationOverlayOpen(OVERLAY_SOURCES.PLAYBACK_SETTINGS);
+                          onOpenTextPlayer?.();
+                        }}
                       >
                         <SlidersHorizontal aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
                         <span>Open Text Player settings</span>

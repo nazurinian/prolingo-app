@@ -13,7 +13,7 @@ const compiled = (await build({
   absWorkingDir: root, entryPoints: ['scripts/fixtures/main-reader-a6/browser-app.jsx'],
   bundle: true, write: false, format: 'esm', jsx: 'automatic',
   loader: { '.css': 'empty', '.svg': 'dataurl' },
-  define: { 'import.meta.env.DEV': 'false', 'process.env.NODE_ENV': '"production"' }
+  define: { 'import.meta.env.DEV': 'false', 'process.env.NODE_ENV': '"development"' }
 })).outputFiles[0].text;
 const assets = await fs.readdir(path.join(root, 'dist/assets'));
 const css = await fs.readFile(path.join(root, 'dist/assets', assets.find(n => /^index-.*\.css$/.test(n))));
@@ -53,7 +53,7 @@ window.a6Media = [];
 window.a6ContentAudio = null;
 class ControlledAudio extends EventTarget {
   constructor(url) { super(); this.src = url || ''; this.currentTime = 0; this.duration = 60; this.paused = true; this.readyState = 4; this.playbackRate = 1; }
-  play() { this.paused = false; if (!this.loop) window.a6ContentAudio = this; window.a6Media.push({ type: 'play', src: this.src, rate: this.playbackRate, loop: Boolean(this.loop) }); this.onplay?.(); return Promise.resolve(); }
+  play() { this.paused = false; if (!this.loop) window.a6ContentAudio = this; window.a6Media.push({ type: 'play', src: this.src, rate: this.playbackRate, loop: Boolean(this.loop) }); this.onplay?.(); this.onplaying?.(); return Promise.resolve(); }
   pause() { this.paused = true; window.a6Media.push({ type: 'pause', src: this.src, time: this.currentTime }); this.onpause?.(); }
   load() {}
   removeAttribute() {}
@@ -103,6 +103,7 @@ try {
   diagnose = async error => {
     await fs.writeFile(path.join(evidence, 'failure.json'), JSON.stringify({
       error: String(error), text: await evaluate('document.body.innerText'), errors: await evaluate('window.a6Errors'),
+      activeElement: await evaluate('document.activeElement?.outerHTML.slice(0, 400)'),
       ancestors: await evaluate(`(() => { const list=[]; let el=document.querySelector('[data-shared-card-level-option]'); while(el) { const s=getComputedStyle(el); const r=el.getBoundingClientRect(); list.push({tag:el.tagName,classes:el.className,width:r.width,left:r.left,minWidth:s.minWidth,display:s.display,overflow:s.overflow}); el=el.parentElement; } return list; })()`)
     }, null, 2));
     const shot = await call('Page.captureScreenshot', { format: 'png' });
@@ -118,6 +119,18 @@ try {
   const click = selector => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el || el.disabled) throw Error('Missing/disabled: ' + ${JSON.stringify(selector)}); el.click(); })()`);
   const textButton = (label, exact = true) => evaluate(`(() => { const b = [...document.querySelectorAll('button')].find(b => ${exact ? 'b.textContent.trim() ===' : 'b.textContent.includes'}(${JSON.stringify(label)}) && !b.disabled); if (!b) throw Error('Missing button '+${JSON.stringify(label)}); b.click(); })()`);
   const mode = value => click(`[data-text-main-reader-option="${value}"]`);
+  const readerMode = value => click(`[data-shared-reader-mode-option="${value === 'part' ? 'focus' : value}"]`);
+  const openDesktopReading = async () => {
+    const toggle = '[data-shared-reading-settings-toggle]';
+    if (!await evaluate(`document.querySelector(${JSON.stringify(toggle)})?.getAttribute('aria-expanded') === 'true'`)) await click(toggle);
+  };
+  const playerDetails = '[data-global-player] button[aria-controls][aria-expanded]';
+  const playbackSettings = '[data-player-open-text-settings]';
+  const expandPlayer = async () => {
+    await until(`document.querySelector(${JSON.stringify(playerDetails)})`);
+    if (await evaluate(`document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`)) await click(playerDetails);
+    await until(`document.querySelector(${JSON.stringify(playbackSettings)})?.getClientRects().length`);
+  };
   const selectWorkspace = async key => {
     await evaluate(`(() => {
       const id = window.a6.ids[${JSON.stringify(key)}];
@@ -126,11 +139,150 @@ try {
       select.value = id; select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     await until(`document.querySelector('select option[value="' + window.a6.ids[${JSON.stringify(key)}] + '"]:checked')`);
-    await until(`document.querySelector('[data-text-data-mini]')?.textContent.includes(document.querySelector('select option[value="' + window.a6.ids[${JSON.stringify(key)}] + '"]').textContent)`, 'committed Workspace tree in existing sidebar');
   };
   const screenshot = async name => {
     const data = await call('Page.captureScreenshot', { format: 'png' });
     await fs.writeFile(path.join(evidence, name + '.png'), Buffer.from(data.data, 'base64'));
+  };
+  const readingToggle = '[data-mobile-workspace-toolbar] [data-shared-reading-settings-toggle]';
+  const readingOverlay = '[data-shared-reading-settings-mobile-overlay]';
+  const statusBadge = '[data-mobile-workspace-playback-status]';
+  const visible = selector => `document.querySelector(${JSON.stringify(selector)})?.getClientRects().length`;
+  const key = async (name, windowsVirtualKeyCode, modifiers = 0) => {
+    await call('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: name, windowsVirtualKeyCode, modifiers });
+    await call('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: name, windowsVirtualKeyCode, modifiers });
+  };
+  const pointerClick = async selector => {
+    await until(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) return false;
+      const rect = element.getBoundingClientRect();
+      return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+    })()`, `Pointer ready: ${selector}`);
+    const point = await evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      const r = element.getBoundingClientRect();
+      const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2);
+      if (!element.contains(document.elementFromPoint(x, y))) throw Error('Pointer obstructed: ' + ${JSON.stringify(selector)});
+      return {x, y};
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) await call('Input.dispatchMouseEvent', { ...point, type, button: 'left', clickCount: 1 });
+  };
+  const resize = async (mobile, width = mobile ? 390 : 1440) => {
+    await call('Emulation.setDeviceMetricsOverride', { width, height: mobile ? 844 : 1000, deviceScaleFactor: 1, mobile });
+    await until(`innerWidth === ${width}`);
+  };
+
+  const checkMobileHistory = async () => {
+    await resize(true);
+    await until(visible(readingToggle));
+    const navigateHistory = async delta => {
+      const { entries, currentIndex } = await call('Page.getNavigationHistory');
+      await call('Page.navigateToHistoryEntry', { entryId: entries[currentIndex + delta].id });
+    };
+    const settled = '!history.state?.prolingoOverlay';
+    const closed = `!(${visible(readingOverlay)}) && ${settled}`;
+    const assertAtBase = async baseIndex => {
+      await until(closed);
+      let current = await call('Page.getNavigationHistory');
+      for (let attempt = 0; current.currentIndex !== baseIndex && attempt < 40; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+        current = await call('Page.getNavigationHistory');
+      }
+      check(current.currentIndex === baseIndex && new URL(current.entries[baseIndex].url).search === '?a6=base', 'Overlay dismissal changed browser position');
+    };
+    await evaluate('history.replaceState({ route: "before" }, "", "?a6=before"); history.pushState({ route: "base" }, "", "?a6=base")');
+    const baseIndex = (await call('Page.getNavigationHistory')).currentIndex;
+    const open = async () => {
+      await pointerClick(readingToggle);
+      await until(`${visible(readingOverlay)} && history.state?.prolingoOverlay`);
+    };
+    await open();
+    await navigateHistory(-1);
+    await assertAtBase(baseIndex);
+    await navigateHistory(1);
+    await until(closed);
+    check(await evaluate('history.state?.route === "base" && location.search === "?a6=base"'), 'Forward restored an active overlay marker or lost route state');
+    await navigateHistory(-1);
+    await assertAtBase(baseIndex);
+
+    await open();
+    await key('Tab', 9, 8);
+    await until('document.activeElement.closest("[data-shared-reading-overlay-anchored]")');
+    await key('Tab', 9);
+    check(await evaluate('Boolean(document.activeElement.closest("[data-shared-reading-overlay-anchored]"))'), 'Tab escaped Reading View');
+    const beforeScroll = await evaluate('scrollY');
+    await call('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 1, y: 300, deltaX: 0, deltaY: 480 });
+    await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    check(await evaluate(`scrollY === ${beforeScroll}`), 'Backdrop scroll moved the Reader');
+    await screenshot('4h1-reading-view-focused');
+    await pointerClick(`${readingOverlay} [data-shared-reading-settings-close]`);
+    await assertAtBase(baseIndex);
+    await until(`document.activeElement.matches(${JSON.stringify(readingToggle)})`);
+
+    await open(); await key('Escape', 27); await assertAtBase(baseIndex);
+    await open();
+    for (const type of ['mousePressed', 'mouseReleased']) await call('Input.dispatchMouseEvent', { x: 1, y: 300, type, button: 'left', clickCount: 1 });
+    await assertAtBase(baseIndex);
+
+    await open();
+    // Two committed inputs enqueued in the same task before History's async traversal settles.
+    await evaluate(`(() => {
+      const close = document.querySelector('[data-shared-reading-settings-close]');
+      close.click();
+      queueMicrotask(() => document.querySelector(${JSON.stringify(readingToggle)}).click());
+    })()`);
+    await until(`${visible(readingOverlay)} && history.state?.prolingoOverlay`);
+    await key('Escape', 27); await assertAtBase(baseIndex);
+
+    await open(); await resize(false); await assertAtBase(baseIndex);
+    await resize(true); await open();
+    await click('[data-text-main-reader-option="legacy"]');
+    await until('document.querySelector("[data-text-main-reader=legacy]")');
+    await assertAtBase(baseIndex);
+    await mode('shared');
+    await open();
+    await click('[data-mobile-mode-switch]');
+    await until('document.querySelector("[data-mobile-mode-switch]")?.textContent.trim() === "Text"');
+    await assertAtBase(baseIndex);
+    await click('[data-mobile-mode-switch]');
+    await until(visible(readingToggle));
+    await open();
+    await evaluate(`([...document.querySelectorAll('[data-mobile-overlay-workspace-switcher] button')].find(button => button.textContent.includes('Other Paragraph'))).click()`);
+    await until('document.querySelector("[data-mobile-workspace-title]")?.textContent.includes("Other Paragraph")');
+    await assertAtBase(baseIndex);
+    await open();
+    await evaluate(`([...document.querySelectorAll('[data-mobile-overlay-workspace-switcher] button')].find(button => !button.disabled && button.getAttribute('aria-pressed') === 'false' && !button.textContent.includes('unavailable'))).click()`);
+    await until('!document.querySelector("[data-mobile-workspace-title]")?.textContent.includes("Other Paragraph")');
+    await assertAtBase(baseIndex);
+    await navigateHistory(-1);
+    await until('location.search === "?a6=before" && history.state?.route === "before"');
+    await navigateHistory(1);
+    await assertAtBase(baseIndex);
+    await resize(true, 360);
+    await pointerClick('[data-mobile-appbar-overflow]');
+    await pointerClick('[data-mobile-appbar-overflow-menu] [role="menuitemradio"][aria-checked="false"]:last-child');
+    await key('Escape', 27);
+    await open();
+    check(await evaluate(`(() => {
+      const panel = document.querySelector('[data-shared-reading-overlay-anchored]');
+      const rect = panel.getBoundingClientRect();
+      return document.documentElement.classList.contains('dark') && rect.left >= 0 && rect.right <= 360 && panel.scrollWidth <= panel.clientWidth;
+    })()`), '360px Dark Reading View overflowed');
+    await screenshot('4h1-reading-view-dark-360');
+    await key('Escape', 27);
+    await assertAtBase(baseIndex);
+    await open();
+    const previousDocument = await evaluate('performance.timeOrigin');
+    await call('Page.navigate', { url: `${origin}/?a6=second-page` });
+    await until(`performance.timeOrigin !== ${previousDocument} && location.search === '?a6=second-page' && window.a6`);
+    await navigateHistory(-1);
+    await until(`location.search === '?a6=base' && window.a6 && (${closed})`);
+    await navigateHistory(-1);
+    await assertAtBase(baseIndex);
+    if (await evaluate('document.querySelector("[data-mobile-mode-switch]")?.textContent.trim() === "Text"')) await click('[data-mobile-mode-switch]');
+    await until(visible(readingToggle));
+    await resize(false);
   };
   await call('Runtime.enable'); await call('Page.enable');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -153,13 +305,15 @@ try {
     check(await evaluate('window.a6PlayerNode === document.querySelector("[data-text-structured-player]") && JSON.stringify(window.a6OldCards) === JSON.stringify([...document.querySelectorAll("[data-text-player-card]")].map(e=>e.dataset.textPlayerCard))'), 'Host or identity changed');
     check(await evaluate('[...document.querySelectorAll("[data-shared-card-segment]")].some(e => e.dataset.sharedCardSegment === window.a6.ids.seg1Id)'), 'Shared Segment mismatch');
     check(await evaluate('JSON.stringify(window.a6OldSegments) === JSON.stringify([...new Set([...document.querySelectorAll("[data-shared-card-segment]")].map(e=>e.dataset.sharedCardSegment))].sort())'), 'Sentence identities differ between readers');
-    check(await evaluate(`!!document.querySelector('[aria-label="Open card audio controls"]') && !!document.querySelector('[title="Open Text Player settings"]')`), 'Existing controls missing');
+    check(await evaluate(`!!document.querySelector('[aria-label="Open card audio controls"]') && !!document.querySelector(${JSON.stringify(playerDetails)})`), 'Card Audio and Global Player Details must be available');
     await screenshot('a6-main-text-shared-desktop');
   });
   await run('Existing Player settings and Card download surfaces still open without content/audio writes', async () => {
     const before = await evaluate('window.a6Writes.length');
-    await click('[title="Open Text Player settings"]');
+    await expandPlayer();
+    await click(playbackSettings);
     await until('document.querySelector("[data-text-player-workspace]")');
+    check(await evaluate(`document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`), 'Playback Settings did not close Global Player Details');
     await evaluate(`[...document.querySelectorAll('[data-text-player-workspace] button')].find(b=>b.textContent.trim()==='Close').click()`);
     await click('[aria-label="Open card audio controls"]');
     await until('document.querySelector("[data-text-card-audio-panel]")');
@@ -169,25 +323,93 @@ try {
     await click('[aria-label="Close audio settings"]');
     check(before === await evaluate('window.a6Writes.length'), 'Opening controls wrote content or audio');
   });
+  await run('4H1 native Chromium history, modal focus/scroll, and Reader, Workspace, mode and resize transitions', checkMobileHistory);
+  await run('4H1 production Paragraph owned status and presentation handoffs preserve active playback', async () => {
+    await resize(true);
+    const cardAudio = '[aria-label="Open card audio controls"]';
+    const cardAudioPanel = '[data-text-card-audio-panel] [role="dialog"]';
+    const playbackPanel = '[data-text-player-workspace] [role="dialog"]';
+    const appbarMenu = '[data-mobile-appbar-overflow-menu]';
+    const tools = '[data-mobile-tools-surface]';
+    const exactStatus = value => `document.querySelector(${JSON.stringify(statusBadge)})?.textContent === ${JSON.stringify(value)}`;
+
+    await click('[data-mobile-workspace-play]');
+    await until(exactStatus('Starting playback…'));
+    await until(exactStatus('P1 · EN'));
+    const playing = await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media })');
+    await pointerClick(playerDetails);
+    await pointerClick('[data-mobile-appbar-overflow]');
+    await until(`${visible(appbarMenu)} && document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`);
+    check(await evaluate('document.elementFromPoint(5, 300)?.getAttribute("aria-label") === "Close app menu"'), 'AppBar backdrop does not shield Reader content');
+    await key('Tab', 9);
+    await until('document.activeElement.closest("[data-mobile-appbar-overflow-menu]")');
+    await key('Escape', 27);
+    await until(`!(${visible(appbarMenu)}) && document.activeElement.matches('[data-mobile-appbar-overflow]')`);
+    await pointerClick(playerDetails);
+    const controlsVisible = await evaluate(`(() => { const button = document.querySelector('[data-mobile-controls-toggle]'); const r = button.getBoundingClientRect(); return button.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`);
+    if (!controlsVisible) {
+      // Active-row following may hide the fixed bar. Reveal it via the existing scroll affordance.
+      await evaluate('window.scrollTo(0, 100); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      await evaluate('window.scrollTo(0, 0)');
+    }
+    await pointerClick('[data-mobile-controls-toggle]');
+    await until(`${visible(tools)} && document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`);
+    await pointerClick(playerDetails);
+    await until(`!(${visible(tools)}) && document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'true'`);
+    await expandPlayer();
+    await click(playbackSettings);
+    await until(`${visible(playbackPanel)} && document.activeElement.matches(${JSON.stringify(playbackPanel)})`);
+    await key('Tab', 9, 8);
+    await until('document.activeElement.closest("[data-text-player-workspace]")');
+    await key('Escape', 27);
+    await until(`!(${visible(playbackPanel)}) && document.activeElement.matches(${JSON.stringify(playerDetails)})`);
+    await pointerClick(readingToggle);
+    await until(visible(readingOverlay));
+    await evaluate(`([...document.querySelectorAll('[data-mobile-overlay-workspace-switcher] button')].find(button => button.textContent.includes('Other Paragraph'))).click()`);
+    await until(`document.querySelector('[data-mobile-workspace-title]')?.textContent.includes('Other Paragraph') && !document.querySelector(${JSON.stringify(statusBadge)})`);
+    check(await evaluate(`JSON.stringify({ speech: window.a6Speech, media: window.a6Media }) === ${JSON.stringify(playing)}`), 'Overlay or Workspace browsing interrupted owned audio');
+    check(await evaluate('document.querySelector("[data-global-player]").dataset.playerPhase === "playing"'), 'Workspace switch changed transport');
+    await click('[aria-label="Stop playback"]');
+    await resize(false);
+    await selectWorkspace('documentId');
+    await until('document.querySelector(\'[data-shared-card-id="\' + window.a6.ids.cardId + \'"]\')');
+    await click('[data-shared-reader-mode-option="card"]');
+    await expandPlayer();
+    await click(cardAudio);
+    await until(`${visible(cardAudioPanel)} && document.activeElement.matches(${JSON.stringify(cardAudioPanel)})`);
+    check(await evaluate(`document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`), 'Embedded Card Audio left Player Details open');
+    await key('Tab', 9, 8);
+    await until('document.activeElement.closest("[data-text-card-audio-panel]")');
+    await key('Escape', 27);
+    await until(`!(${visible(cardAudioPanel)})`);
+    await click('[data-shared-reader-mode-option="full"]');
+  });
   await run('Full Book Page, Card Mode, Part/Segment, bilingual layouts and Workspace Style remain view-only', async () => {
     const before = await evaluate('JSON.stringify({ writes: window.a6Writes.length, speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1") })');
     check(await evaluate('Boolean(document.querySelector("[data-shared-book-page=true]"))'), 'Default Shared view is not continuous Book Page');
     await click('[data-shared-reader-mode-option="card"]');
     await until('!document.querySelector("[data-shared-book-page=true]") && Boolean(document.querySelector("[data-text-card-expansion-toolbar=true]"))');
+    await openDesktopReading();
+    await click('[data-shared-reading-settings-tab="workspace"]');
     await click('[data-shared-workspace-align-option="left"]');
     await click('[data-shared-workspace-indent-toggle="true"]');
     await click('[data-shared-workspace-accents-toggle="true"]');
     check(await evaluate('document.querySelector("[data-shared-workspace-style-reset]").disabled === false'), 'Reset Style did not enable when dirty');
     await click('[data-shared-workspace-style-reset="true"]');
     check(await evaluate('document.querySelector("[data-shared-workspace-style-reset]").disabled === true'), 'Reset Style did not disable after reset');
+    await click('[data-shared-reading-settings-tab="reading"]');
     for (const level of ['full', 'part', 'segment']) {
-      await click(`[data-shared-card-level-option="${level}"]`);
+      await readerMode(level);
       if (level === 'full') {
         await until('Boolean(document.querySelector("[data-shared-book-page=true]"))');
       } else {
         await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-level="${level}"]')`);
       }
       for (const layout of ['interlinear', 'separated', 'text-only', 'meaning-only']) {
+        if (level === 'segment' && layout === 'separated') {
+          check(await evaluate('document.querySelector("[data-shared-bilingual-style-option=separated]").disabled'), 'Segment context allows Separated');
+          continue;
+        }
         await click(`[data-shared-card-layout-option="${layout}"]`);
         await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-layout="${layout}"]')`);
       }
@@ -196,9 +418,10 @@ try {
         await until(`document.querySelector('[data-shared-card-embedded][data-shared-card-part-layout="${layout}"]')`);
       }
     }
-    await evaluate(`[...document.querySelectorAll('[data-shared-segment-next]')].find(b=>!b.disabled).click()`);
+    await evaluate(`[...document.querySelectorAll('[data-study-box-local-segment]')].find(button => button.textContent.trim() === '2' && !button.disabled).click()`);
     check(before === await evaluate('JSON.stringify({ writes: window.a6Writes.length, speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1") })'), 'View change wrote audio/content or invoked playback');
-    await click('[data-shared-card-level-option="full"]'); await click('[data-shared-card-layout-option="interlinear"]');
+    await readerMode('full'); await click('[data-shared-card-layout-option="interlinear"]');
+    await key('Escape', 27);
   });
   // Additional scenarios below use the actual existing toolbar and sidebar actions.
   await run('Split playback survives old/shared and layout changes, pause, resume and stop', async () => {
@@ -207,14 +430,15 @@ try {
     await evaluate('window.a6PlayingUtterance = window.a6Synth.current');
     const before = await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1"), writes: window.a6Writes.length })');
     await mode('legacy'); await until('document.querySelector("[data-text-paragraph-unified]") && !document.querySelector("[data-shared-card-embedded]")');
-    await mode('shared'); await click('[data-shared-card-layout-option="separated"]');
+    await mode('shared'); await openDesktopReading(); await click('[data-shared-card-layout-option="separated"]');
+    await key('Escape', 27);
     check(before === await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1"), writes: window.a6Writes.length })'), 'Mode change interrupted Split');
     check(await evaluate('window.a6PlayingUtterance === window.a6Synth.current'), 'Mode switch replaced the active utterance');
     await click('[aria-label="Pause playback"]'); await until('window.a6Synth.paused');
     const paused = await evaluate('JSON.stringify(window.a6Speech)');
     await mode('legacy'); await mode('shared');
     check(paused === await evaluate('JSON.stringify(window.a6Speech)'), 'Mode change resumed/cancelled pause');
-    await click('[aria-label="Start playback"]'); await until('!window.a6Synth.paused');
+    await click('[aria-label="Resume playback"]'); await until('!window.a6Synth.paused');
     await click('[aria-label="Stop playback"]');
     await until('![...document.querySelectorAll("[data-shared-card-precision]")].some(e=>e.dataset.sharedCardPrecision !== "none")');
   });
@@ -227,13 +451,15 @@ try {
     await click('[aria-label="Stop playback"]');
   });
   await run('Real Cached Full binding keeps Card precision and continuous media across mode switches', async () => {
-    await click('[title="Toggle global Split / Full"]');
-    await until(`[...document.querySelectorAll('[title="Toggle global Split / Full"]')].some(b=>b.textContent==="FULL")`);
+    await expandPlayer();
+    await click('[data-text-global-player-controls] button');
+    await until(`document.querySelector('[data-text-global-player-controls] button').textContent === 'Saved Full'`);
+    await click(playerDetails);
     await evaluate('document.querySelector(\'[data-text-player-card="\' + window.a6.ids.cardId + \'"] [data-text-card-play-compact]\').click()');
     await until('window.a6Media.some(m=>m.type==="play" && !m.loop && m.src.startsWith("blob:")) && document.querySelector("[data-shared-card-precision=card]")', 'Cached Full actual artifact');
     await evaluate('window.a6PlayingFull = window.a6ContentAudio; window.a6PlayingFull.currentTime = 12.5');
     const before = await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1"), writes: window.a6Writes.length })');
-    await mode('legacy'); await mode('shared'); await click('[data-shared-card-level-option="part"]');
+    await mode('legacy'); await mode('shared'); await readerMode('part');
     await until('document.querySelector("[data-shared-card-precision=card]")');
     check(before === await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media, audio: localStorage.getItem("prolingo_text_structured_preferences_v1"), writes: window.a6Writes.length })'), 'Cached Full restarted or reconfigured');
     check(await evaluate('!document.querySelector("[data-shared-card-precision=segment]")'), 'Cached Full fabricated Sentence timing');
@@ -242,14 +468,16 @@ try {
     const paused = await evaluate('JSON.stringify(window.a6Media)');
     await mode('legacy'); await mode('shared');
     check(paused === await evaluate('JSON.stringify(window.a6Media)'), 'Paused Full changed media');
-    await click('[aria-label="Start playback"]'); await click('[aria-label="Stop playback"]');
+    await click('[aria-label="Resume playback"]'); await click('[aria-label="Stop playback"]');
   });
   await run('Search in actual DATA Workspace reveals matching Sentence in Full, Part and Segment', async () => {
     await textButton('DATA');
     const geometries = [];
     for (const level of ['full', 'part', 'segment']) {
-      await click(`[data-shared-card-level-option="${level}"]`);
+      await readerMode(level);
+      await openDesktopReading();
       await click('[data-shared-card-layout-option="interlinear"]');
+      await key('Escape', 27);
       await evaluate('window.a6.stableLayout()');
       await textButton('OPEN DATA WORKSPACE');
       await until('document.querySelector("[data-text-library-search-input]")');
@@ -279,17 +507,22 @@ try {
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await until('window.innerWidth === 390');
     await evaluate('window.a6.stableLayout()');
-    const size = await evaluate(`[...document.querySelectorAll('[data-text-main-reader-option]')].map(e=>{const r=e.getBoundingClientRect(); return {left:r.left,right:r.right,height:r.height,pressed:e.getAttribute('aria-pressed')};})`);
-    check(size.length === 2 && size.every(s=>s.left>=0 && s.right<=390 && s.height>=44), 'Mobile choices clipped or too small');
+    await pointerClick(readingToggle);
+    await until(visible(readingOverlay));
+    const size = await evaluate(`[...document.querySelectorAll('${readingOverlay} [data-text-main-reader-option]')].map(e=>{const r=e.getBoundingClientRect(); const target=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return {left:r.left,right:r.right,height:r.height,hit:e.contains(target),pressed:e.getAttribute('aria-pressed')};})`);
+    check(size.length === 2 && size.every(s=>s.left>=0 && s.right<=390 && s.height>=32 && s.hit) && size.filter(s => s.pressed === 'true').length === 1, 'Mobile Reader choices are clipped or unreachable');
     const toolbar = await evaluate(`[...document.querySelectorAll('[data-shared-card-level-option], [data-shared-card-layout-option]')].map(e=>{const r=e.getBoundingClientRect();return {label:e.textContent,left:r.left,right:r.right};})`);
     await fs.writeFile(path.join(evidence, 'mobile-toolbar.json'), JSON.stringify(toolbar, null, 2));
     check(toolbar.every(s=>s.left>=0 && s.right<=390), 'Mobile Shared toolbar clipped');
     await screenshot('a6-main-text-shared-mobile');
-    await mode('legacy'); await screenshot('a6-main-text-old-mobile'); await mode('shared');
+    await pointerClick(`${readingOverlay} [data-text-main-reader-option="legacy"]`);
+    await until('document.querySelector("[data-text-main-reader=legacy]")');
+    await screenshot('a6-main-text-old-mobile');
+    await pointerClick('[data-text-main-reader-option="shared"]');
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   });
   await run('Reload restores only safe reader/view preferences and no audio or content mutation', async () => {
-    await click('[data-shared-card-level-option="segment"]');
+    await readerMode('segment');
     await click('[data-shared-card-layout-option="meaning-only"]');
     const audio = await evaluate('localStorage.getItem("prolingo_text_structured_preferences_v1")');
     const content = await evaluate('(async()=>{const s=await window.a6.readSnapshot(); return JSON.stringify({documents:s.documents,blocks:s.blocks,segments:s.segments,audioVariants:s.audioVariants,counters:s.counters});})()');

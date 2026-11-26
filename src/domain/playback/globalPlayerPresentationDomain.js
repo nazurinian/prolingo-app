@@ -19,6 +19,7 @@ export const resolveGlobalPlayerTransport = ({ session, paused, audible, structu
   const queue = session?.nowPlayingCardOrder ?? session?.orderedList;
   return {
     phase: !session ? 'idle' : session.pending ? 'pending' : paused ? 'paused' : audible ? 'playing' : 'waiting',
+    workspace: session?.documentTree ?? null,
     navKind: session ? (session.nowPlayingCardOrder ? 'card' : session.context === 'text-structured' ? 'segment' : 'item')
       : structuredView ? (savedRepresentation === 'full' ? 'card' : 'segment') : 'item',
     canNavigate: !session || Boolean(session.restart && queue?.length > 1)

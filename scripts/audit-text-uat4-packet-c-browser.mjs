@@ -265,7 +265,7 @@ function PacketCApp() {
     },
     executeBrowserTts: args => new Promise(resolve => {
       uatEventsRef.current.push({ args, finish: outcome => resolve(outcome || { status: 'played' }) });
-      playbackLogRef.current.push(['uat:tts', args?.text || null]);
+      playbackLogRef.current.push(['uat:tts', args?.textToRead || null]);
     }),
     executeRuntimeAudio: args => new Promise(resolve => {
       uatEventsRef.current.push({ args, finish: outcome => resolve(outcome || { status: 'played' }) });
@@ -1086,12 +1086,8 @@ try {
           c1AlignedSpeaker: Boolean(c1.querySelector('[data-shared-segment-context] [data-shared-turn-aligned-grid]')),
           studyBoxJustified: [...document.querySelectorAll('[data-shared-reading-kind="study-box"]')].every(el => getComputedStyle(el).textAlign === 'justify'),
           studyBoxButtonsNotJustified: [...document.querySelectorAll('[data-shared-segment-study-box] button')].every(b => getComputedStyle(b).textAlign !== 'justify'),
-          pendingControlsDisabled: studyBoxes.every(box => (
-            box.querySelector('[data-study-box-action="play-en"]').disabled
-            && box.querySelector('[data-study-box-action="play-id"]').disabled
-            && box.querySelector('[data-study-box-action="play-continue"]').disabled
-            && !box.querySelector('[data-study-box-action="play-segment"]').disabled
-          )),
+          commandsEnabled: studyBoxes.every(box => ['play-en', 'play-id', 'play-continue', 'play-segment']
+            .every(command => box.querySelector('[data-study-box-action="' + command + '"]:enabled'))),
           noOverflow: document.documentElement.scrollWidth <= window.innerWidth,
           zeroPlaybackCalls: window.__packetC.getPlaybackLog().length === 0
         };
@@ -1114,11 +1110,45 @@ try {
       assert.equal(segOverview.c1AlignedSpeaker, true, 'Natural Conversation context must preserve Aligned speaker layout');
       assert.equal(segOverview.studyBoxJustified, true, 'Shared Justify alignment must apply to Study Box reading bodies');
       assert.equal(segOverview.studyBoxButtonsNotJustified, true);
-      assert.equal(segOverview.pendingControlsDisabled, true, 'Unsupported EN/ID/Continue scopes must stay cleanly disabled');
+      assert.equal(segOverview.commandsEnabled, true, 'Approved London EN/ID/Continue and generic Segment commands must be enabled');
       assert.equal(segOverview.noOverflow, true);
       assert.equal(segOverview.zeroPlaybackCalls, true);
 
       await captureFullPage('06-segment-mode-all-four-study-boxes.png');
+    });
+
+    await run('Study Box starts the exact EN and ID requests and Continue stops at the selected Section boundary', async () => {
+      const ids = await evaluate('window.__packetC.londonIds');
+      const box = `[data-shared-card-id="${ids.cards.P1}"] [data-shared-segment-study-box]`;
+      const startSegment = ids.segmentIdsByUnitKey.P1_SC1.at(-1);
+      const sentence = await evaluate('window.__packetC.londonSpec[0].units[0].segments.at(-1)');
+      await click(`${box} [data-shared-segment-pill="${startSegment}"]`);
+      const play = async (action, channel, spokenText) => {
+        const before = await evaluate('window.__packetC.getUatEvents().length');
+        await click(`${box} [data-study-box-action="${action}"]`);
+        await until(`window.__packetC.getUatEvents().length === ${before + 1} && document.querySelector('[data-unified-reader]').dataset.readerCursorSegment === "${startSegment}"`);
+        assert.equal(await evaluate('window.__packetC.getPlaybackLog().at(-1)[1]'), spokenText);
+        await until(`document.querySelector('[data-shared-card-id="${ids.cards.P1}"] [data-shared-card-status-pill]')?.textContent.includes('Playing ${channel}')`);
+        await evaluate('window.__packetC.finishLatestUatEvent("played")');
+        await until('document.querySelector("[data-unified-reader]").dataset.readerCursorPrecision === "none"');
+        assert.equal(await evaluate('window.__packetC.getUatEvents().length'), before + 1);
+      };
+      await play('play-en', 'EN', sentence.text);
+      await play('play-id', 'ID', sentence.meaning);
+      await evaluate(`(() => {
+        for (const [selector, value] of [['select[aria-label="Audio channel"]', 'text-only'], [${JSON.stringify(`${box} [data-study-box-continue-scope]`)}, 'unit']]) {
+          const select = document.querySelector(selector);
+          select.value = value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      })()`);
+      await play('play-continue', 'EN', sentence.text);
+      await evaluate(`(() => {
+        const channel = document.querySelector('select[aria-label="Audio channel"]');
+        channel.value = 'text-meaning';
+        channel.dispatchEvent(new Event('change', { bubbles: true }));
+        window.__packetC.clearPlaybackLog();
+      })()`);
     });
 
     await run('4B3-2: Per-Unit selection memory (SC1 SG3 <-> SC2 SG2), tap-to-select silent update, Play Segment & Return to Playing', async () => {
@@ -1204,7 +1234,7 @@ try {
       await waitFrames();
       assert.equal(await evaluate('window.__packetC.getUatCancels()'), cancelsBeforeBrowse, 'Tap-to-select while playing must NOT cancel audio');
       assert.equal(await evaluate('document.querySelector("[data-unified-reader]").dataset.readerCursorSegment'), c1T2Sg2);
-      assert.ok(await evaluate(`document.querySelector('[data-shared-card-id="${c1Id}"] [data-study-box-return-to-playing="true"]')?.textContent?.includes('T2 Ticket Officer SG2')`));
+      assert.match(await evaluate(`document.querySelector('[data-shared-card-id="${c1Id}"] [data-study-box-return-to-playing="true"]').textContent.trim()`), /Return to Playing · T2 Ticket Officer · SG2\/3/u);
 
       // Pause playback -> distinct paused highlight state on c1T2Sg2 while c1T1Sg1 stays selected!
       await clickButtonText('Pause');
@@ -1496,7 +1526,7 @@ try {
       assert.equal(heldAfterGrace.cursorSegment, p1Sc1Sg3, 'Actual playback cursor must advance normally to SG3');
       assert.equal(heldAfterGrace.playingHighlighted, true, 'Actual playing segment SG3 must remain accurately highlighted');
       assert.equal(heldAfterGrace.selectedStillMarked, true, 'Selected segment SC2 SG2 must remain distinctly marked');
-      assert.ok(heldAfterGrace.returnText && heldAfterGrace.returnText.includes('Return to Playing') && heldAfterGrace.returnText.includes('SC1 SG3'));
+      assert.match(heldAfterGrace.returnText, /Return to Playing · SC1 · SG3\/4/u);
 
       await captureElement(`[data-shared-card-id="${p1Id}"]`, 'chf1-03-manual-selection-vs-advancing-playback.png');
 

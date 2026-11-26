@@ -171,6 +171,9 @@ const createReactHarness = () => {
   const resetHooks = () => { hookValues = []; hookSlot = 0; };
   const mockReact = {
     Fragment: Symbol('Fragment'),
+    createContext: value => ({ value, Provider: ({ children }) => children }),
+    useContext: context => context.value,
+    useId: () => 'audit-panel',
     createElement: (type, props, ...children) => ({
       type,
       props: { ...(props || {}), children: children.length === 1 ? children[0] : children }
@@ -193,11 +196,14 @@ const createReactHarness = () => {
   const cache = new Map();
   const loadModule = relPath => {
     const resolvedAbs = path.resolve(root, relPath);
+    if (path.extname(resolvedAbs) === '.css') return {};
     if (cache.has(resolvedAbs)) return cache.get(resolvedAbs).exports;
     const source = fs.readFileSync(resolvedAbs, 'utf8');
     const mod = { exports: {} };
     cache.set(resolvedAbs, mod);
     const req = specifier => {
+      if (specifier === 'swiper/css') return {};
+      if (specifier === 'swiper/react' || specifier === 'swiper/modules') return load(specifier);
       if (specifier === 'react') return { ...mockReact, default: mockReact, __esModule: true };
       if (specifier === 'lucide-react') return fakeIcons;
       if (specifier === 'react-dom') return { createPortal: children => children };

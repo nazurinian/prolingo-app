@@ -55,6 +55,9 @@ const resetHooks = () => {
 };
 const mockReact = {
   Fragment: Symbol('Fragment'),
+  createContext: value => ({ value, Provider: ({ children }) => children }),
+  useContext: context => context.value,
+  useId: () => 'audit-panel',
   createElement: (type, props, ...children) => ({
     type,
     props: { ...(props || {}), children: children.length === 1 ? children[0] : children }
@@ -75,6 +78,7 @@ const fakeIcons = new Proxy({}, { get: (_, key) => typeof key === 'string' ? fun
 const moduleCache = new Map();
 const loadModule = absPath => {
   const normalized = path.normalize(absPath);
+  if (path.extname(normalized) === '.css') return {};
   if (moduleCache.has(normalized)) return moduleCache.get(normalized);
   const exportsObj = {};
   const mod = { exports: exportsObj };
@@ -82,6 +86,7 @@ const loadModule = absPath => {
   const source = fs.readFileSync(normalized, 'utf8');
   const code = transpile(source, normalized);
   const localRequire = specifier => {
+    if (specifier === 'swiper/css') return {};
     if (specifier === 'react' || specifier === 'react/jsx-runtime') {
       if (specifier === 'react/jsx-runtime') {
         const jsx = (type, props, key) => ({ type, props: props || {}, key });
@@ -168,20 +173,21 @@ test('Fixture snapshots stay immutable and v2 multi-section + v1 compat structur
   assert.equal(JSON.stringify(v1.snapshot), v1Original);
 });
 
-test('Interlinear default renders paired EN + ID from exact same Segment records without nested boxes', () => {
+test('Selecting Sentence Interlinear renders paired EN + ID from exact same Segment records without nested boxes', () => {
   resetHooks();
   const tree = renderTree(mockReact.createElement(SharedParagraphWorkspaceReader, {
     presentation: v2Pres,
+    presentationState: { readingLanguage: 'en-id', bilingualStyle: 'interlinear' },
     audioCoverageMap: v2.audioCoverageMap
   }));
-  const pairs = collectNodes(tree, n => Boolean(n.props?.['data-shared-card-segment-pair']));
+  const pairs = collectNodes(tree, n => Boolean(n.props?.['data-shared-interlinear-segment']));
   assert.equal(pairs.length, 7);
-  const dup1 = pairs.find(n => n.props['data-shared-card-segment-pair'] === v2.ids.duplicateSeg1Id);
-  const dup2 = pairs.find(n => n.props['data-shared-card-segment-pair'] === v2.ids.duplicateSeg2Id);
+  const dup1 = pairs.find(n => n.props['data-shared-interlinear-segment'] === v2.ids.duplicateSeg1Id);
+  const dup2 = pairs.find(n => n.props['data-shared-interlinear-segment'] === v2.ids.duplicateSeg2Id);
   assert.match(extractText(dup1), /Pintu kereta itu/);
   assert.match(extractText(dup2), /Pintu gerbang stasiun/);
   assert.doesNotMatch(extractText(dup1), /Pintu gerbang stasiun/);
-  assert.equal(collectNodes(tree, n => n.props?.['data-shared-card-empty-section'] === v2Pres.cards[1].units[2].viewKey).length, 1);
+  assert.equal(collectNodes(tree, n => n.props?.['data-shared-unit-empty'] === v2Pres.cards[1].units[2].viewKey).length, 1);
   assert.equal(collectNodes(tree, n => n.props?.['data-shared-card-empty'] === 'zero-units').length, 1);
 });
 
@@ -202,7 +208,9 @@ test('All four bilingual layouts preserve Section/Segment identity, Missing Mean
       assert.ok(segTargets.every(n => n.props['data-shared-card-channel'] === 'text'));
     } else if (layout === 'meaning-only') {
       assert.ok(segTargets.every(n => n.props['data-shared-card-channel'] === 'meaning'));
-      assert.equal(collectNodes(tree, n => n.props?.['data-shared-card-missing-meaning'] === v2.ids.missingMeaningSegId).length, 1);
+      assert.deepEqual(segTargets.map(node => node.props['data-shared-card-segment']),
+        v2Pres.cards.flatMap(card => card.units.flatMap(unit => unit.segments.filter(segment => segment.meaning?.trim()).map(segment => segment.id))));
+      assert.ok(!segTargets.some(node => node.props['data-shared-card-segment'] === v2.ids.missingMeaningSegId));
     }
   }
 });
@@ -289,8 +297,8 @@ test('Guarded presentation preference service isolates view storage and handles 
     playbackRepresentationMode: 'full',
     displayMode: 'text-active-meaning'
   });
-  assert.deepEqual(saved, { level: 'full', bilingualLayout: 'separated', partLayout: 'vertical-list' });
-  assert.equal(loadTextCardPresentationPreferences().bilingualLayout, 'separated');
+  assert.deepEqual(saved, { ...DEFAULT_TEXT_CARD_PRESENTATION_STATE, bilingualLayout: 'separated', readingLanguage: 'en-id', bilingualStyle: 'separated' });
+  assert.deepEqual(loadTextCardPresentationPreferences(), saved);
   assert.equal(store.get('prolingo_text_structured_preferences_v1'), '{"playbackRepresentationMode":"split","displayMode":"text-meaning"}');
 
   store.set(TEXT_CARD_PRESENTATION_PREFERENCE_STORAGE_KEY, '{not-json');
@@ -306,11 +314,7 @@ test('Guarded presentation preference service isolates view storage and handles 
     }
   };
   assert.deepEqual(loadTextCardPresentationPreferences(), DEFAULT_TEXT_CARD_PRESENTATION_STATE);
-  assert.deepEqual(saveTextCardPresentationPreferences({ bilingualLayout: 'text-only' }), {
-    level: 'full',
-    bilingualLayout: 'text-only',
-    partLayout: 'vertical-list'
-  });
+  assert.deepEqual(saveTextCardPresentationPreferences({ bilingualLayout: 'text-only' }), DEFAULT_TEXT_CARD_PRESENTATION_STATE);
   delete globalThis.window;
 });
 

@@ -99,6 +99,7 @@ import { executeGlobalPlaybackSessionService } from './services/playback/globalP
 import { bindNowPlayingRuntime, matchesStructuredPlaybackControl, readOwnedNowPlaying, readOwnedNowPlayingMedia } from './domain/playback/nowPlayingDomain.js';
 import { resolveGlobalPlayerTransport } from './domain/playback/globalPlayerPresentationDomain.js';
 import { NowPlayingContext } from './components/playback/NowPlayingContext.js';
+import { OVERLAY_SOURCES, announcePresentationOverlayOpen } from './components/text/presentation/sharedOverlayCoordinator.js';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
 import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
@@ -2033,11 +2034,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setCurrentIndex, addLog
   });
 
-  const handleMobileTabSwitch = (targetMobileTab) => executeMobileTabSwitch({
-    targetMobileTab, mobileTab, mode, viewScrollPosRef, tableViewMode, isPlaying,
-    currentIndex, currentPlayerList, rowHeights, setShowAppBar, setScrollTop,
-    pendingScrollRestoration, isAutoScrolling, setMobileTab
-  });
+  const handleMobileTabSwitch = targetMobileTab => {
+    if (targetMobileTab === 'tools' && mobileTab !== 'tools') announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
+    executeMobileTabSwitch({
+      targetMobileTab, mobileTab, mode, viewScrollPosRef, tableViewMode, isPlaying,
+      currentIndex, currentPlayerList, rowHeights, setShowAppBar, setScrollTop,
+      pendingScrollRestoration, isAutoScrolling, setMobileTab
+    });
+  };
 
   const getBasePlaybackListForContext = (context) => {
     if (context === 'study') return playlist.filter(item => studyQueueSet.has(item.id));
@@ -7663,6 +7667,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (mode === 'text' && activeTextEditorModel === 'structured-v1') {
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
+        readPlayer={readGlobalPlayer}
         useSharedCardReader={sharedTextReaderActive}
         mobileWorkspaceMeta={{
           documents: mobileTextWorkspaceDocuments,

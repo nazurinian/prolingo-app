@@ -35,7 +35,7 @@ import {
   resolveTextStructuredBrowserVoiceResolution,
   resolveTextStructuredEffectiveVoiceProfile
 } from '../src/domain/text/textStructuredVoiceAssignmentDomain.js';
-import { bindNowPlayingRuntime } from '../src/domain/playback/nowPlayingDomain.js';
+import { bindNowPlayingRuntime, readOwnedNowPlaying } from '../src/domain/playback/nowPlayingDomain.js';
 import { executeMediaSessionLifecycleService } from '../src/services/playback/mediaSessionLifecycleService.js';
 import { buildTextStructuredAudioSyncProfileMetadata } from '../src/domain/text/textStructuredAudioSyncProfileDomain.js';
 
@@ -666,14 +666,36 @@ await runCheck('H4-D', 'G012-1', 'resolveScopedStructuredTextPlaybackSourceStatu
   );
 });
 
-await runCheck('H4-D', 'G012-2', 'App.jsx clears playbackSourceStatus on Stop, Doc switch, Mode switch, Restart, and stamps documentId/sessionId + stale guard', () => {
-  const appSource = readRepoText('src/App.jsx');
-  assert.match(appSource, /useEffect\(\(\)\s*=>\s*\{\s*setStructuredTextPlaybackSourceStatus\(null\);\s*\},\s*\[activeTextDocumentTree\?\.id,\s*mode,\s*activeTextEditorModel\]\)/);
-  assert.match(appSource, /const forceStopAll[\s\S]{0,600}setStructuredTextPlaybackSourceStatus\(null\)/);
-  assert.match(appSource, /const handleTextLibrarySelectDocument[\s\S]{0,600}setStructuredTextPlaybackSourceStatus\(null\)/);
-  assert.match(appSource, /const startStructuredTextPlayback[\s\S]{0,700}setStructuredTextPlaybackSourceStatus\(null\)/);
-  assert.match(appSource, /const speakStructuredTextBrowserTts[\s\S]{0,700}playbackSessionRef\.current\s*!==\s*playbackSessionId/);
-  assert.match(appSource, /const scopedStructuredTextPlaybackSourceStatus = resolveScopedStructuredTextPlaybackSourceStatus/);
+await runCheck('H4-D', 'G012-2', 'Passive browsing hides foreign source status while Stop and Restart reject stale runtime evidence', () => {
+  const refs = createMediaAuditRefs();
+  const documentTree = buildParagraphDocument();
+  const target = { cardId: documentTree.blocks[0].id, representation: 'full', channel: 'text' };
+  const start = () => {
+    refs.stopSignalRef.current = false;
+    refs.playbackContextRef.current = { sessionId: refs.playbackSessionRef.current, context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, documentTree };
+    return bindNowPlayingRuntime(refs, target);
+  };
+  const lateRuntime = start();
+  lateRuntime({ source: 'local' });
+  const nowPlaying = () => readOwnedNowPlaying(refs, 'h4', { isPlaying: true });
+  const status = { source: 'local', documentId: documentTree.id, sessionId: nowPlaying().sessionId };
+  const scoped = (view = {}) => resolveScopedStructuredTextPlaybackSourceStatus({
+    status, mode: 'text', activeEditorModel: 'structured-v1', activeDocumentId: documentTree.id,
+    activeSessionId: refs.playbackSessionRef.current, ...view
+  });
+  assert.equal(scoped(), status);
+  assert.equal(scoped({ activeDocumentId: 'foreign' }), null);
+  assert.equal(scoped({ mode: 'table' }), null);
+  assert.equal(nowPlaying().source, 'local');
+  executeForceStopPlaybackService({ ...refs, synth: { cancel() {} }, settlePlaybackPromise() {}, currentUtteranceRef: { current: null },
+    setIsPlaying() {}, setIsPaused() {}, setSpeakingPart() {}, setIndependentPlayingId() {} });
+  lateRuntime({ source: 'tts' });
+  assert.equal(scoped(), null);
+  assert.equal(nowPlaying().state, 'idle');
+  start()({ source: 'generated' });
+  lateRuntime({ source: 'tts' });
+  assert.equal(scoped(), null);
+  assert.equal(nowPlaying().source, 'generated');
 });
 
 const failed = results.filter(r => !r.ok);

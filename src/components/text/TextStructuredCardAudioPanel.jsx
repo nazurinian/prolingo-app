@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { OVERLAY_SOURCES, subscribeOtherPresentationOverlayOpen } from './presentation/sharedOverlayCoordinator.js';
+import { usePresentationOverlayFocus } from './presentation/usePresentationOverlayFocus.js';
 import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Download, FileDown, Headphones, ListOrdered, Play, Plus, RotateCcw, Server, Square, Trash2, Users, Volume2, X } from 'lucide-react';
 import {
   collectTextStructuredCardSpeakers,
@@ -351,6 +353,9 @@ export const TextStructuredCardAudioPanel = memoComponent(({
   });
   const includeMissingFullAudio = Boolean(block?.id && includeMissingFullByBlockId[block.id]);
   const overlayRef = useLiveOverlayViewportRef(true);
+  const dialogRef = useRef(null);
+  usePresentationOverlayFocus({ open: true, panelRef: dialogRef, onClose });
+  useEffect(() => subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO, () => onClose?.()), [onClose]);
   const segments = useMemo(() => (Array.isArray(block?.segments) ? block.segments : []), [block?.segments]);
   const savedPlayerBaseline = useMemo(() => buildInitialPlayerDraft(block, segments), [block, segments]);
   const savedPlayerSignature = useMemo(
@@ -528,14 +533,6 @@ export const TextStructuredCardAudioPanel = memoComponent(({
       respectConversationSync: true
     })
   }), [documentTree, draftBlock, firstSegment, defaultTextVoiceName, defaultMeaningVoiceName, englishVoices, indonesianVoices]);
-
-  useEffect(() => {
-    const handleKeyDown = event => {
-      if (event.key === 'Escape') onClose?.();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
 
   const findBrowserVoiceEntry = (voiceName, channel = 'text') => {
     const cleanName = clean(voiceName);
@@ -745,6 +742,8 @@ export const TextStructuredCardAudioPanel = memoComponent(({
     onClick={onClose}
   >
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="prolingo-text-audio-sheet flex w-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
       role="dialog"
       aria-modal="true"

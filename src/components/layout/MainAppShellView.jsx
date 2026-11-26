@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Header from './Header';
 import BottomPlayerBar from './BottomPlayerBar';
@@ -16,6 +16,33 @@ import ManualEditorModal from '../modals/ManualEditorModal';
 import { RevertAllConfirmModal, DeleteVocabularyModal, ClearViewModal, DeleteDeckModal } from '../modals/ConfirmDialog';
 import { createEmptySourcePack } from '../../utils/multiSourceUtils';
 import { MOBILE_AUX_TOP_OFFSET, MOBILE_BOTTOM_PLAYER_RESERVE_CSS, getMobilePlayerTopOffset } from '../../constants/layoutConstants';
+import { OVERLAY_SOURCES, subscribeOtherPresentationOverlayOpen } from '../text/presentation/sharedOverlayCoordinator.js';
+import { usePresentationOverlayFocus } from '../text/presentation/usePresentationOverlayFocus.js';
+
+const MobileToolsSurface = ({ open, onClose, children }) => {
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (open) return subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS, onClose);
+  }, [open, onClose]);
+  usePresentationOverlayFocus({
+    open, panelRef, onClose, contain: false,
+    returnFocus: () => document.querySelector('[data-mobile-controls-toggle]')
+  });
+  return (
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      role="region"
+      aria-label="Mobile Tools"
+      data-mobile-tools-surface="true"
+      hidden={!open}
+      className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-slate-50 dark:bg-slate-900 md:hidden"
+      style={{ paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS }}
+    >
+      {children}
+    </div>
+  );
+};
 import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDomain';
 
 export const renderMainAppShellView = (props) => {
@@ -344,12 +371,12 @@ export const renderMainAppShellView = (props) => {
             {/* 4. TABLE WORKSPACE SHELL (Desktop) */}
             {!isMobile && mode === 'table' && renderWorkspaceTabs(false)}
 
-            <div
-              className={`absolute inset-0 bg-slate-50 dark:bg-slate-900 z-30 overflow-y-auto ${mobileTab === 'tools' ? 'block md:hidden' : 'hidden'}`}
-              style={isMobile ? { paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS } : undefined}
+            <MobileToolsSurface
+              open={isMobile && mobileTab === 'tools'}
+              onClose={() => handleMobileTabSwitch?.('player')}
             >
-                {renderMobileTools()}
-            </div>
+              {renderMobileTools()}
+            </MobileToolsSurface>
 
             <div className={`${mobileTab === 'player' ? 'block' : 'hidden'} md:block ${isMobile ? '' : 'flex-1 overflow-hidden p-0'}`}>
                  {/* 5. SPACER OTOMATIS */}

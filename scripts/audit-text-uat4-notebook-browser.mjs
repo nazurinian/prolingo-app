@@ -147,7 +147,14 @@ try {
   let nextId = 0;
   const call = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++nextId;
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`CDP timeout: ${method}`));
+    }, method === 'Browser.close' ? 2500 : 15000);
+    pending.set(id, {
+      resolve: value => { clearTimeout(timer); resolve(value); },
+      reject: error => { clearTimeout(timer); reject(error); }
+    });
     socket.send(JSON.stringify({ id, method, params }));
   });
   socket.onmessage = event => {

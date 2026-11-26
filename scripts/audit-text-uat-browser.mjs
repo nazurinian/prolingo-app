@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const compile = async (entry, dev, stub = false) => (await build({ absWorkingDir: root, entryPoints: [entry], bundle: true, write: false, jsx: 'automatic', format: 'esm', loader: { '.css': 'empty' },
@@ -30,20 +31,34 @@ await new Promise(r => server.listen(0, '127.0.0.1', r));
 const origin = 'http://127.0.0.1:' + server.address().port, profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-r3-beta-'));
 let processHandle, socket;
 const launch = async () => {
+  const devToolsPortFile = path.join(profile, 'DevToolsActivePort');
+  await fs.rm(devToolsPortFile, { force: true });
   processHandle = spawn(process.env.P15_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
     ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
   let port;
-  for (let i = 0; i < 150; i++) { try { port = Number((await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]); const response = await fetch('http://127.0.0.1:' + port + '/json/list'); if (response.ok) break; } catch { port = null; } await new Promise(r => setTimeout(r, 100)); }
-  if (!port) throw Error('Edge did not start');
+  for (let i = 0; i < 200; i++) { try { port = Number((await fs.readFile(devToolsPortFile, 'utf8')).split('\n')[0]); const response = await fetch('http://127.0.0.1:' + port + '/json/list'); if (response.ok) break; } catch { port = null; } await delay(100); }
+  if (!port) throw Error(`Chromium did not start with the disposable profile (exit ${processHandle.exitCode})`);
   const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list')).json(); socket = new WebSocket(pages.find(t => t.type === 'page').webSocketDebuggerUrl);
   await new Promise((r, reject) => { socket.onopen = r; socket.onerror = reject; });
   let id = 0; const requests = new Map();
-  const call = (method, params = {}) => new Promise((resolve, reject) => { requests.set(++id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
+  const call = (method, params = {}) => new Promise((resolve, reject) => {
+    const requestId = ++id;
+    const timer = setTimeout(() => { requests.delete(requestId); reject(Error(`CDP timeout: ${method}`)); }, method === 'Browser.close' ? 2500 : 20000);
+    requests.set(requestId, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
+    socket.send(JSON.stringify({ id: requestId, method, params }));
+  });
   socket.onmessage = event => { const msg = JSON.parse(event.data), target = requests.get(msg.id); if (target) { requests.delete(msg.id); msg.error ? target.reject(Error(JSON.stringify(msg.error))) : target.resolve(msg.result); } };
   const evaluate = async expression => { const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); if (result.exceptionDetails) throw Error(JSON.stringify(result.exceptionDetails)); return result.result.value; };
   await call('Runtime.enable');
   const navigate = async url => { await call('Page.navigate', { url: origin + url }); await evaluate('(async()=>{const end=performance.now()+15000;while(!window.tests && !document.querySelector("[data-structured-text-beta]") && !document.querySelector("[data-unified-text-demo]") && !document.body?.textContent.includes("Safe production App stub")){if(performance.now()>end)throw Error("Load timeout");await new Promise(requestAnimationFrame)}})()'); };
-  const close = async () => { const exiting = new Promise(r => processHandle.once('exit', r)); await call('Browser.close').catch(() => {}); socket.close(); await Promise.race([exiting, new Promise(r => setTimeout(r, 5000))]); };
+  const close = async () => {
+    if (processHandle.exitCode === null && processHandle.signalCode === null) {
+      const exiting = new Promise(resolve => processHandle.once('exit', () => resolve(true)));
+      await call('Browser.close').catch(() => {});
+      if (!await Promise.race([exiting, delay(5000, false)])) throw Error('Chromium did not exit before the profile restart');
+    }
+    socket.close();
+  };
   return { call, evaluate, navigate, close };
 };
 try {
