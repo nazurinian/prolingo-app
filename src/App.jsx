@@ -1871,8 +1871,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const handleMenuToggle = (rowId) => executeMenuToggle({ rowId, setActiveMenuId });
 
   // --- AUDIO ENGINE v5.8 ---
+  const mediaSessionBindingRef = useRef(null);
   const [, setNowPlayingRevision] = useState(0);
-  const refreshNowPlaying = useCallback(() => setNowPlayingRevision(revision => revision + 1), []);
+  const refreshNowPlaying = useCallback(() => {
+    mediaSessionBindingRef.current?.sync();
+    setNowPlayingRevision(revision => revision + 1);
+  }, []);
   const nowPlayingRefs = { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef, onChange: refreshNowPlaying };
   const readNowPlaying = () => readOwnedNowPlaying(nowPlayingRefs, 'main', { isPlaying });
   const readGlobalPlayer = () => {
@@ -1971,7 +1975,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       selectedIndonesianVoiceRef,
       playTTS,
       addLog,
-      onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, { item, part, queueIndex })
+      onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, { item, part, queueIndex, playedText: textToRead })
     });
   };
 
@@ -1984,18 +1988,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     }
   }, [rate, currentAudioObjRef]);
 
+  const publishPauseState = value => {
+    setIsPaused(value);
+    mediaSessionBindingRef.current?.sync();
+  };
   const pausePlayback = (options = {}) => executePausePlayback({
-    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog,
+    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, isMobile, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused: publishPauseState, addLog,
     ttsReplayRef, pauseSource: options?.source || 'ui'
   });
 
   const resumePlayback = () => executeResumePlayback({
-    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused, addLog, ttsReplayRef
+    isPlaying: Boolean(readOwnedPlaybackSession(nowPlayingRefs)), isPaused, pauseStateRef, currentAudioObjRef, synth, silentAudioRef, setIsPaused: publishPauseState, addLog, ttsReplayRef
   });
 
   const safePlayTransition = async (actionCallback, pendingSession) => executeSafePlayTransition({
     forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession,
     onPending: refreshNowPlaying,
+    onStarted: refreshNowPlaying,
     onError: error => addLog('Playback', error?.message || 'Playback failed.')
   });
 
@@ -6040,43 +6049,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setPlayingContext, startGlobalPlayback
   });
   
-    // --- NEW: MEDIA SESSION API INTEGRATION (ANDROID WIDGET) ---// --- MEDIA SESSION API (STABLE, NO WIDGET FLICKER) ---
-    const playRef = useRef(handlePlayerGlobalPlay);
-    const pausePlaybackRef = useRef(pausePlayback);
-    const resumePlaybackRef = useRef(resumePlayback);
-    const navRef = useRef(handlePlayerSmartNav);
-    const stopRef = useRef(forceStopAll);
-    const mediaIntervalRef = useRef(null); // --- ADD: Ref untuk Teks Berjalan ---
-
-    // Always update ref values to latest functions
-    playRef.current = handlePlayerGlobalPlay;
-    pausePlaybackRef.current = pausePlayback;
-    resumePlaybackRef.current = resumePlayback;
-    navRef.current = handlePlayerSmartNav;
-    stopRef.current = forceStopAll;
-
-    const activeStructuredFullCursorKey = (isPlaying || isPaused)
-      && playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT
-      && (playingIndex === null || playingIndex === undefined)
-      ? `${activeTextDocumentTree?.id || ''}:${playbackContextRef.current?.blockId || ''}:${playbackContextRef.current?.cursorSegmentId || currentIndex || ''}`
-      : null;
-
-    useEffect(() => {
-        return executeMediaSessionLifecycleService({
-            currentPlayerList, playbackContextRef, playingIndex, currentIndex, speakingPart, currentDeckName, isPlaying, isPaused,
-            currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
-        });
-    }, [
-        playingIndex,
-        currentIndex,
-        activeStructuredFullCursorKey,
-        activeTextDocumentTree?.id,
-        speakingPart,
-        currentPlayerList,
-        currentDeckName,
-        isPlaying,
-        isPaused
-    ]);
+  const mediaActionsRef = useRef(null);
+  useLayoutEffect(() => {
+    mediaActionsRef.current = { pause: pausePlayback, resume: resumePlayback, stop: forceStopAll };
+  });
+  useEffect(() => {
+    const binding = executeMediaSessionLifecycleService({
+      refs: { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef },
+      actionsRef: mediaActionsRef,
+      readCollectionTitle: id => textLibrarySnapshotRef.current?.collections?.find(collection => collection.id === id)?.title
+    });
+    mediaSessionBindingRef.current = binding;
+    return () => {
+      mediaSessionBindingRef.current = null;
+      binding?.dispose();
+    };
+  }, [playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef]);
+  useEffect(() => { mediaSessionBindingRef.current?.sync(); }, [textLibrarySnapshot]);
 
   const cyclePlaybackMode = () => {
       setPlaybackMode(resolveNextPlaybackMode(playbackMode));

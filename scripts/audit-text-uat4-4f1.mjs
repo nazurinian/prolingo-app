@@ -108,16 +108,29 @@ function ShellFixture() {
 }
 if (location.pathname === '/app') {
   sessionStorage.setItem('prolingo:view:v1', 'app');
+  const instrumentMedia = new URLSearchParams(location.search).has('media-session');
+  if (instrumentMedia) {
+    const handlers = {};
+    const position = [];
+    const session = { metadata: null, playbackState: 'none', setActionHandler(action, callback) { handlers[action] = callback; }, setPositionState(value) { position.push(value); } };
+    window.mediaAudit = { session, handlers, position, constructions: 0 };
+    Object.defineProperty(navigator, 'mediaSession', { value: session });
+    window.MediaMetadata = class { constructor(value) { window.mediaAudit.constructions++; Object.assign(this, value); } };
+  }
   const utterances = [];
-  Object.defineProperty(window, 'speechSynthesis', { value: { speak(utterance) { utterances.push(utterance); utterance.onstart?.(); }, cancel() {}, pause() {}, resume() {}, getVoices() { return []; }, addEventListener() {}, removeEventListener() {} } });
+  Object.defineProperty(window, 'speechSynthesis', { value: { speak(utterance) { utterances.push(utterance); utterance.onstart?.(); },
+    cancel() { if (instrumentMedia) utterances.at(-1)?.onend?.(); }, pause() {}, resume() {}, getVoices() { return []; }, addEventListener() {}, removeEventListener() {} } });
   window.utterances = utterances;
 }
-createRoot(document.getElementById('root')).render(location.pathname === '/app' ? <App/> : <ShellFixture/>);
+const appRoot = createRoot(document.getElementById('root'));
+window.unmountAuditApp = () => appRoot.unmount();
+appRoot.render(location.pathname === '/app' ? <App/> : <ShellFixture/>);
 `;
-const [bundle, styles] = await Promise.all([
+const [bundle, styles, artwork] = await Promise.all([
   build({ absWorkingDir: root, stdin: { contents: entry, resolveDir: root, loader: 'jsx' }, bundle: true, write: false, format: 'esm', jsx: 'automatic',
     loader: { '.css': 'empty', '.mp3': 'dataurl', '.svg': 'dataurl', '.png': 'dataurl' }, define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } }),
-  fs.readFile(path.join(root, 'src/index.css'), 'utf8').then(source => postcss([tailwindcss({ ...tailwindConfig, content: [path.join(root, 'src/**/*.{js,jsx}')] })]).process(source, { from: path.join(root, 'src/index.css') }))
+  fs.readFile(path.join(root, 'src/index.css'), 'utf8').then(source => postcss([tailwindcss({ ...tailwindConfig, content: [path.join(root, 'src/**/*.{js,jsx}')] })]).process(source, { from: path.join(root, 'src/index.css') })),
+  fs.readFile(path.join(root, 'public/text-uat-icon-512.png'))
 ]);
 const audio = Buffer.alloc(44 + 8 * 8000 * 2); // Eight seconds of real PCM media in Chromium.
 audio.write('RIFF'); audio.writeUInt32LE(audio.length - 8, 4); audio.write('WAVEfmt ', 8);
@@ -125,7 +138,8 @@ audio.writeUInt32LE(16, 16); audio.writeUInt16LE(1, 20); audio.writeUInt16LE(1, 
 audio.writeUInt32LE(8000, 24); audio.writeUInt32LE(16000, 28); audio.writeUInt16LE(2, 32); audio.writeUInt16LE(16, 34);
 audio.write('data', 36); audio.writeUInt32LE(audio.length - 44, 40);
 const server = http.createServer((req, res) => {
-  const [type, body] = ({ '/app.js': ['text/javascript', bundle.outputFiles[0].contents], '/style.css': ['text/css', styles.css], '/audio.wav': ['audio/wav', audio] })[req.url]
+  const [type, body] = ({ '/app.js': ['text/javascript', bundle.outputFiles[0].contents], '/style.css': ['text/css', styles.css],
+    '/audio.wav': ['audio/wav', audio], '/text-uat-icon-512.png': ['image/png', artwork] })[req.url]
     ?? ['text/html', '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/style.css"><div id="root"></div><script>window.auditErrors=[]; addEventListener("error", e=>auditErrors.push(e.message)); addEventListener("unhandledrejection", e=>auditErrors.push(String(e.reason)));</script><script type="module" src="/app.js"></script>'];
   res.writeHead(200, { 'Content-Type': type }); res.end(body);
 });
@@ -231,7 +245,8 @@ try {
   console.log('PASS Main App shell London fixture, handoff/gap, owned transport, local timeline refresh, desktop and 390px mobile');
 
   await size(1100, 760);
-  await call('Page.navigate', { url: origin + '/app' });
+  const mediaAudit = process.argv.includes('--media-session');
+  await call('Page.navigate', { url: origin + '/app' + (mediaAudit ? '?media-session=1' : '') });
   await until(`document.querySelector('[data-csv-import-input]')`);
   const csv = ['VOCAB_ID,NO,WORDS,PART OF SPEECH,MEANING,INFO,EN,IDN',
     'VOCAB_12,12,abandon,verb,meninggalkan,,We abandon it.,Kami meninggalkannya.',
@@ -240,10 +255,30 @@ try {
   await until('document.body.textContent.includes("Abandon") || document.body.textContent.includes("abandon")');
   await tap('Start playback'); await title('Abandon');
   assert.match(await evaluate(`document.querySelector('[data-player-context]').textContent`), /Word 12/u);
+  await until(`navigator.mediaSession?.metadata?.title === 'Abandon'`);
+  assert.equal(await evaluate(`navigator.mediaSession.metadata.artwork[0].src.endsWith('/text-uat-icon-512.png')`), true);
+  if (mediaAudit) {
+    assert.equal(await evaluate('window.mediaAudit.session.metadata.title'), 'Abandon');
+    await evaluate('window.oldNextTrack = window.mediaAudit.handlers.nexttrack; window.notificationBeforeBrowse = window.mediaAudit.session.metadata');
+  }
   await evaluate(`[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Text').click()`);
   await title('Abandon');
-  await tap('Next item'); await title('Ability');
-  await tap('Previous item'); await title('Abandon');
+  if (mediaAudit) {
+    assert.equal(await evaluate('window.mediaAudit.session.metadata === window.notificationBeforeBrowse'), true);
+    await evaluate('window.mediaAudit.handlers.play(); window.mediaAudit.handlers.play()');
+    await phase('playing');
+    await evaluate('window.mediaAudit.handlers.nexttrack()');
+    await title('Ability');
+    const utterances = await evaluate('window.utterances.length');
+    await evaluate('window.oldNextTrack()');
+    await title('Ability');
+    assert.equal(await evaluate('window.utterances.length'), utterances);
+    await evaluate('window.mediaAudit.handlers.previoustrack()');
+    await title('Abandon');
+  } else {
+    await tap('Next item'); await title('Ability');
+    await tap('Previous item'); await title('Abandon');
+  }
   await tap('Expand player details');
   assert.equal(await evaluate(`document.querySelector('[data-player-timeline]') === null`), true);
   await capture('desktop-table-expanded.png');
@@ -252,14 +287,42 @@ try {
   await title('Abandon');
   assert.equal(await evaluate('window.utterances.length'), utteranceCount);
   await evaluate(`(() => { const select = document.querySelector('[data-global-player] select'); select.value = 'once'; select.dispatchEvent(new Event('change', {bubbles:true})); })()`);
-  await tap('Stop playback'); await phase('idle');
+  if (mediaAudit) await evaluate('window.mediaAudit.handlers.stop()');
+  else await tap('Stop playback');
+  await phase('idle');
   await tap('Start playback'); await title('Hello world.');
-  await tap('Pause playback'); await phase('paused');
-  await tap('Resume playback'); await phase('playing');
+  if (mediaAudit) {
+    const count = await evaluate('window.utterances.length');
+    const constructions = await evaluate('window.mediaAudit.constructions');
+    assert.equal(await evaluate(`window.mediaAudit.position.every(position => !('duration' in position))`), true, 'TTS never borrows the silent anchor timeline');
+    await evaluate('window.mediaAudit.handlers.pause(); window.mediaAudit.handlers.pause()'); await phase('paused');
+    await evaluate('window.mediaAudit.handlers.play(); window.mediaAudit.handlers.play()'); await phase('playing');
+    await until(`window.utterances.length === ${count + 1}`, 'system Resume replays the same logical TTS part');
+    assert.deepEqual(await evaluate('window.utterances.slice(-2).map(utterance => utterance.text)'), ['Hello world.', 'Hello world.']);
+    assert.equal(await evaluate('window.mediaAudit.constructions'), constructions, 'Pause and replay keep the same notification metadata');
+  } else {
+    await tap('Pause playback'); await phase('paused');
+    await tap('Resume playback'); await phase('playing');
+  }
   await evaluate('window.utterances.at(-1).onend?.()');
   await phase('waiting');
   await phase('idle');
+  assert.equal(await evaluate('navigator.mediaSession.metadata'), null);
+  if (mediaAudit) {
+    assert.equal(await evaluate('window.mediaAudit.session.metadata'), null);
+    await tap('Start playback'); await title('Hello world.');
+    await evaluate('window.unmountAuditApp()');
+    await until(`window.mediaAudit.session.metadata === null && window.mediaAudit.session.playbackState === 'none' && Object.values(window.mediaAudit.handlers).every(handler => handler == null)`);
+    console.log('PASS production Main App Media Session metadata, idempotent actions, stale callbacks, TTS replay without timeline, completion and unmount');
+  }
   assert.deepEqual(await evaluate('window.auditErrors'), []);
+  if (mediaAudit) {
+    await fs.writeFile(path.join(artifacts, '4f2-media-session-browser.json'), JSON.stringify({
+      status: 'PASS', platform: 'Chrome, production Main App with instrumented Media Session and TTS',
+      checks: ['passive browsing', 'owned Prev/Next', 'stale actions', 'idempotent Play/Pause', 'logical TTS replay', 'completion and unmount'],
+      hardwareAndroid: 'NOT TESTED'
+    }, null, 2));
+  }
   console.log('PASS production Main App Table/Legacy, passive mode browse, cross-tab Next, Pause/Resume, and natural completion');
 } finally {
   await call?.('Browser.close').catch(() => {});

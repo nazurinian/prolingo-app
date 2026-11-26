@@ -1,218 +1,204 @@
-import { getItemPartText } from '../../utils/audioUtils.js';
+import { describeAuthoredPlayback } from '../../domain/playback/globalPlayerPresentationDomain.js';
+import { readNowPlayingMediaTimeline, readOwnedNowPlaying, readOwnedNowPlayingMedia } from '../../domain/playback/nowPlayingDomain.js';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils.js';
-import { TEXT_STRUCTURED_PLAYBACK_CONTEXT, resolveStructuredTextPlayerTitle } from '../../domain/text/textStructuredPlaybackDomain.js';
-import { TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
+import { navigateOwnedPlayback, readOwnedPlaybackSession } from './playbackRuntimeControlService.js';
 
+const join = (...parts) => parts.filter(Boolean).join(' · ');
+const channels = { text: 'EN', meaning: 'ID' };
+const artwork = [{
+  src: '/text-uat-icon-512.png', sizes: '512x512', type: 'image/png'
+}];
+const transportActions = ['play', 'pause', 'previoustrack', 'nexttrack', 'stop'];
+const seekActions = ['seekto', 'seekbackward', 'seekforward'];
+const positionEvents = ['loadedmetadata', 'durationchange', 'timeupdate', 'ratechange', 'seeking', 'seeked', 'progress', 'emptied'];
+
+export const formatMediaSessionMetadata = (nowPlaying, readCollectionTitle = () => null) => {
+  const { domain, precision, workspace, card, item } = nowPlaying;
+  const channel = channels[nowPlaying.channel];
+  if (domain === 'structured-text' && card && ['segment', 'card'].includes(precision)) {
+    const { cardCode, cardPosition, shortUnitCode, speaker, segmentCode } = describeAuthoredPlayback(nowPlaying);
+    const cardLabel = cardCode || cardPosition || card.title;
+    return {
+      title: precision === 'card' ? join(cardLabel, 'Full') : join(cardLabel, speaker, shortUnitCode, segmentCode),
+      artist: join(workspace?.title, channel),
+      album: (workspace?.collectionId && readCollectionTitle(workspace.collectionId)) || 'ProLingo'
+    };
+  }
+  if (!item) return null;
+  if (domain === 'legacy-text') return { title: item.playedText || item.title || '', artist: 'ProLingo Audio', album: 'ProLingo' };
+  if (domain !== 'table') return null;
+
+  const word = capitalizeDisplayText(item.title);
+  const spoken = item.playedText;
+  const expression = /^exp([1-5])_(en|idn)$/u.exec(item.part ?? '');
+  if (expression) return {
+    title: spoken ? `EXP${expression[1]}${expression[2] === 'idn' ? ' IDN' : ''}: ${spoken}` : `EXP${expression[1]}`,
+    artist: join(word, 'Advanced Practice', channel), album: 'ProLingo'
+  };
+  const translatedPart = { word_idn: 'Arti kata', meaning: 'Terjemahan kalimat' }[item.part];
+  if (translatedPart) return {
+    title: spoken ? `${translatedPart}: ${spoken}` : translatedPart,
+    artist: join(word, channel), album: 'ProLingo'
+  };
+  return item.part === 'sentence'
+    ? { title: spoken || 'Sentence practice', artist: join(word, 'Sentence practice', channel), album: 'ProLingo' }
+    : { title: word || capitalizeDisplayText(spoken), artist: join(item.part === 'word' && 'Word practice', channel), album: 'ProLingo' };
+};
+
+const safe = operation => {
+  try { operation(); } catch { /* Media Session support varies by browser and action. */ }
+};
+
+const seekPosition = (media, duration, requested) => {
+  const ranges = media.seekable;
+  let closest = null;
+  for (let index = 0; index < ranges.length; index++) {
+    const start = ranges.start(index);
+    const end = ranges.end(index);
+    const lower = Math.max(0, start);
+    const upper = Math.min(duration, end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || lower > upper) continue;
+    const position = Math.max(lower, Math.min(upper, requested));
+    if (closest === null || Math.abs(position - requested) < Math.abs(closest - requested)) closest = position;
+  }
+  return closest;
+};
+
+/** Host lifecycle binding. The only retained values are the published UI state and its listeners. */
 export const executeMediaSessionLifecycleService = ({
-  currentPlayerList, playbackContextRef, playingIndex, currentIndex = null, speakingPart, currentDeckName, isPlaying, isPaused,
-  currentAudioObjRef, mediaIntervalRef, resumePlaybackRef, playRef, pausePlaybackRef, navRef, stopRef, pauseStateRef
+  refs, actionsRef, readCollectionTitle, owner = 'main',
+  mediaSession = globalThis.navigator?.mediaSession, Metadata = globalThis.MediaMetadata
 }) => {
-        if (!('mediaSession' in navigator)) return;
+  if (!mediaSession) return null;
 
-        // D2: metadata belongs to the active playback session, not the current
-        // filtered/visible UI list. The visible list is only a compatibility fallback.
-        const sessionContext = playbackContextRef?.current || null;
-        const sessionList = sessionContext?.orderedList;
-        const candidateList = Array.isArray(sessionList) ? sessionList : (Array.isArray(currentPlayerList) ? currentPlayerList : []);
-        const isStructuredSession = sessionContext?.context === TEXT_STRUCTURED_PLAYBACK_CONTEXT;
-        const structuredFullActive = Boolean(
-            isStructuredSession
-            && (isPlaying || isPaused)
-            && (playingIndex === null || playingIndex === undefined)
-        );
-        let activeItem = playingIndex !== null && playingIndex !== undefined
-            ? candidateList.find(p => p.id === playingIndex)
-            : null;
-        if (!activeItem && structuredFullActive) {
-            const fullCursorId = sessionContext?.cursorSegmentId || currentIndex || null;
-            activeItem = (fullCursorId ? candidateList.find(p => p.id === fullCursorId || p.segmentId === fullCursorId) : null)
-                || (sessionContext?.blockId ? candidateList.find(p => p.blockId === sessionContext.blockId) : null)
-                || null;
-        }
-        // If Structured Text playback has stopped before playingIndex resets, do not republish stale metadata.
-        if (activeItem?.isTextStructuredSegment && !isPlaying && !isPaused && !sessionContext) {
-            activeItem = null;
-        }
-        if (!activeItem) {
-            // A real Stop or workspace switch removes the active item. Clear any interval,
-            // stale metadata, and timeline previously published for local/generated audio.
-            if (mediaIntervalRef?.current) {
-                clearInterval(mediaIntervalRef.current);
-                mediaIntervalRef.current = null;
-            }
-            if (!isPlaying && !isPaused) {
-                try {
-                    navigator.mediaSession.playbackState = 'none';
-                } catch { /* ignore */ }
-            }
-            try {
-                navigator.mediaSession.metadata = null;
-            } catch { /* ignore */ }
-            try {
-                navigator.mediaSession.setPositionState?.({});
-            } catch { /* ignore */ }
-            return;
-        }
+  let disposed = false;
+  let installedSessionId = null;
+  let mediaBinding = null;
+  let metadataKey;
+  let positionKey;
+  let playbackState;
+  const setAction = (name, handler) => safe(() => mediaSession.setActionHandler?.(name, handler));
 
-        const isStructuredFullMode = Boolean(
-            structuredFullActive
-            || (activeItem?.isTextStructuredSegment
-                && sessionContext?.playbackRepresentationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
-                && (playingIndex === null || playingIndex === undefined))
-        );
+  const publishPosition = position => {
+    const key = JSON.stringify(position);
+    if (key === positionKey) return;
+    safe(() => {
+      mediaSession.setPositionState?.(position ?? {});
+      positionKey = key;
+    });
+  };
 
-        // 2. Tentukan Metadata Awal
-        let title = activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.text ? capitalizeDisplayText(activeItem.text) : "Unknown Item");
-        let artist = "ProLingo Audio";
-        let album = currentDeckName || "ProLingo Deck";
+  const publishMetadata = metadata => {
+    const key = JSON.stringify(metadata);
+    if (key === metadataKey) return;
+    safe(() => {
+      mediaSession.metadata = metadata && typeof Metadata === 'function' ? new Metadata({ ...metadata, artwork }) : null;
+      metadataKey = key;
+    });
+  };
 
-        const structuredTextMetadata = resolveStructuredTextPlayerTitle(activeItem, {
-            representationMode: isStructuredFullMode
-                ? TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
-                : TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
-            speakingPart
-        });
-        if (structuredTextMetadata) {
-            title = structuredTextMetadata.title;
-            artist = structuredTextMetadata.artist;
-            album = structuredTextMetadata.album;
-        }
+  const publishPlaybackState = state => {
+    if (state === playbackState) return;
+    safe(() => { mediaSession.playbackState = state; playbackState = state; });
+  };
 
-        // Jika mode Table
-        if (activeItem.isStructured) {
-            artist = activeItem.sentence || "Sentence Practice";
-        }
+  const bindActions = sessionId => {
+    if (installedSessionId === sessionId) return;
+    installedSessionId = sessionId;
+    if (sessionId == null) {
+      transportActions.forEach(action => setAction(action, null));
+      return;
+    }
+    const guard = command => () => {
+      const session = readOwnedPlaybackSession(refs);
+      if (disposed || installedSessionId !== sessionId || session?.sessionId !== sessionId) return;
+      command(session);
+    };
+    setAction('play', guard(session => {
+      if (!session.pending && refs.pauseStateRef.current) actionsRef.current?.resume?.();
+    }));
+    setAction('pause', guard(session => {
+      if (!session.pending && !refs.pauseStateRef.current) actionsRef.current?.pause?.({ source: 'mediaSession' });
+    }));
+    setAction('previoustrack', guard(session => navigateOwnedPlayback(session, 'prev')));
+    setAction('nexttrack', guard(session => navigateOwnedPlayback(session, 'next')));
+    setAction('stop', guard(() => actionsRef.current?.stop?.()));
+  };
 
-        // Jika sedang memutar bagian Meaning
-        if (speakingPart === 'word_idn') {
-            title = `Arti kata: ${capitalizeDisplayText(activeItem.meaningWord)}`;
-            artist = activeItem.word ? capitalizeDisplayText(activeItem.word) : 'Word Translation';
-        }
-        if (speakingPart === "meaning") {
-            if (activeItem.isTextStructuredSegment) {
-                if (!isStructuredFullMode) {
-                    // P4-A7: structured Text keeps the Document title stable while the
-                    // active audio channel switches from Text to Meaning.
-                    title = activeItem.documentTitle || "Text Document";
-                    const detail = activeItem.speaker || activeItem.blockTitle || (activeItem.blockType === 'conversation' ? 'Conversation' : 'Paragraph');
-                    artist = [detail, `Segment ${Number(activeItem.displayId) || 1}`, 'Meaning'].filter(Boolean).join(' • ');
-                }
-            } else {
-                title = `Terjemahan kalimat: ${activeItem.meaning}`;
-            }
-        }
-        const activeExpMatch = String(speakingPart || '').match(/^exp([1-5])_(en|idn)$/i);
-        if (activeExpMatch) {
-            const expNo = activeExpMatch[1];
-            const lang = activeExpMatch[2].toLowerCase();
-            const expText = getItemPartText(activeItem, `exp${expNo}_${lang}`);
-            title = `EXP${expNo}${lang === 'idn' ? ' IDN' : ''}: ${expText}`;
-            artist = `${activeItem.word ? capitalizeDisplayText(activeItem.word) : (activeItem.vocabId || 'ProLingo')} • Advanced Practice`;
-        }
+  const observeMedia = (media, sessionId) => {
+    if (mediaBinding && mediaBinding.media === media && mediaBinding.sessionId === sessionId) {
+      mediaBinding.sync();
+      return;
+    }
+    mediaBinding?.dispose();
+    mediaBinding = null;
+    publishPosition(null);
+    if (!media || sessionId == null) return;
 
-        // --- FUNGSI UPDATE METADATA (Helper) ---
-        const updateMetadata = (t, a, albumLabel = album) => {
-             navigator.mediaSession.metadata = new MediaMetadata({
-                title: t,
-                artist: a,
-                album: albumLabel,
-                artwork: [
-                    { 
-                        src: "https://cdn-icons-png.flaticon.com/512/2995/2995101.png",
-                        sizes: "512x512",
-                        type: "image/png"
-                    }
-                ]
-            });
-        };
+    let seekingEnabled = false;
+    let observing = true;
+    const isCurrent = () => observing && !disposed && readOwnedPlaybackSession(refs)?.sessionId === sessionId
+      && readOwnedNowPlayingMedia(refs) === media;
+    const seek = (action, details) => {
+      if (!seekingEnabled || !isCurrent()) return;
+      const timeline = readNowPlayingMediaTimeline(media);
+      if (!timeline?.seekable || timeline.elapsedSeconds == null) return;
+      const offset = details?.seekOffset ?? 10;
+      if (action !== 'seekto' && (!Number.isFinite(offset) || offset <= 0)) return;
+      const requested = action === 'seekto' ? details?.seekTime
+        : timeline.elapsedSeconds + (action === 'seekforward' ? offset : -offset);
+      if (!Number.isFinite(requested)) return;
+      safe(() => {
+        const position = seekPosition(media, timeline.durationSeconds, requested);
+        if (position == null) return;
+        if (details?.fastSeek && typeof media.fastSeek === 'function') media.fastSeek(position);
+        else media.currentTime = position;
+        sync();
+      });
+    };
+    const sync = () => {
+      if (!isCurrent()) return;
+      const timeline = readNowPlayingMediaTimeline(media);
+      const rate = media.playbackRate;
+      const canSeek = Boolean(timeline?.seekable && timeline.elapsedSeconds != null && Number.isFinite(rate) && rate > 0
+        && seekPosition(media, timeline.durationSeconds, timeline.elapsedSeconds) != null);
+      publishPosition(canSeek ? { duration: timeline.durationSeconds, position: timeline.elapsedSeconds, playbackRate: rate } : null);
+      if (canSeek === seekingEnabled) return;
+      seekingEnabled = canSeek;
+      seekActions.forEach(action => setAction(action, canSeek ? details => seek(action, details) : null));
+    };
+    mediaBinding = {
+      media, sessionId, sync,
+      dispose() {
+        observing = false;
+        positionEvents.forEach(event => media.removeEventListener?.(event, sync));
+        if (seekingEnabled) seekActions.forEach(action => setAction(action, null));
+      }
+    };
+    positionEvents.forEach(event => media.addEventListener?.(event, sync));
+    sync();
+  };
 
-        // Set Awal (Static)
-        updateMetadata(title, artist, album);
+  const sync = () => {
+    if (disposed) return;
+    const session = readOwnedPlaybackSession(refs);
+    const active = Boolean(session && !session.pending);
+    bindActions(session?.sessionId ?? null);
+    publishPlaybackState(!active ? 'none' : refs.pauseStateRef.current ? 'paused' : 'playing');
+    publishMetadata(formatMediaSessionMetadata(readOwnedNowPlaying(refs, owner, { isPlaying: active }), readCollectionTitle));
+    observeMedia(readOwnedNowPlayingMedia(refs), session?.sessionId);
+  };
+  sync();
 
-        // Keep Android/system media metadata static for the lifetime of the
-        // current logical playback part. Replacing MediaMetadata every 200 ms
-        // for a marquee can make the OS media notification rebuild its artwork
-        // and timing surface repeatedly (visible as flicker/reset).
-        if (mediaIntervalRef.current) {
-            clearInterval(mediaIntervalRef.current);
-            mediaIntervalRef.current = null;
-        }
-
-        // Publish the timeline from the REAL local/generated MP3, not from the
-        // 30-second silent background anchor. Android can otherwise alternate
-        // between the anchor duration and the real track, which presents as a
-        // missing/incorrect progress bar. MediaSession position state is designed
-        // specifically to tell the OS which duration/position belongs to the
-        // logical media currently being presented.
-        const syncLocalAudioPosition = () => {
-            const audio = currentAudioObjRef?.current;
-            if (!audio || typeof navigator.mediaSession.setPositionState !== 'function') return;
-
-            const duration = Number(audio.duration);
-            if (!Number.isFinite(duration) || duration <= 0) return;
-
-            const rawPosition = Number(audio.currentTime);
-            const position = Math.min(
-                duration,
-                Math.max(0, Number.isFinite(rawPosition) ? rawPosition : 0)
-            );
-            const rawRate = Number(audio.playbackRate);
-            const playbackRate = Number.isFinite(rawRate) && rawRate !== 0 ? rawRate : 1;
-
-            try {
-                navigator.mediaSession.setPositionState({
-                    duration,
-                    playbackRate,
-                    position
-                });
-            } catch {
-                // Position state is an enhancement. Never let an unsupported or
-                // transient media value interrupt the actual playback session.
-            }
-        };
-
-        // One immediate attempt plus a light sync cadence catches loadedmetadata
-        // on newly-created Audio elements. The OS can extrapolate between these
-        // reports, so there is no need for the old 200 ms metadata churn.
-        syncLocalAudioPosition();
-        mediaIntervalRef.current = setInterval(syncLocalAudioPosition, 500);
-
-        // 4. Set Action Handlers (STABLE with refs)
-        // Media-session actions can arrive while React rendering is throttled in
-        // the Android background. Do not decide Play vs Resume from captured
-        // isPaused/isPlaying values; playbackState is updated synchronously by
-        // the playback controls and remains the media-session source of truth.
-        const registerAction = (action, handler) => {
-            try {
-                navigator.mediaSession.setActionHandler(action, handler);
-            } catch (error) {
-                console.warn(`MediaSession action unsupported: ${action}`, error);
-            }
-        };
-
-        registerAction("play", () => {
-            // Android may derive playbackState from the silent HTMLAudioElement
-            // and update it later than ProLingo's own Pause state. Use the
-            // realtime pause ref first so a lock-screen Play always resumes the
-            // existing TTS/local session instead of being ignored.
-            if (pauseStateRef?.current) {
-                resumePlaybackRef.current();
-                return;
-            }
-            if (navigator.mediaSession.playbackState !== "playing") {
-                playRef.current();
-            }
-        });
-        registerAction("pause", () => pausePlaybackRef.current({ source: 'mediaSession' }));
-        registerAction("previoustrack", () => navRef.current("prev"));
-        registerAction("nexttrack", () => navRef.current("next"));
-        registerAction("stop", () => stopRef.current());
-
-        // Cleanup saat unmount atau track berubah
-        return () => {
-            if (mediaIntervalRef.current) {
-                clearInterval(mediaIntervalRef.current);
-            }
-        };
-
+  return {
+    sync,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      bindActions(null);
+      observeMedia(null);
+      publishMetadata(null);
+      publishPlaybackState('none');
+    }
+  };
 };

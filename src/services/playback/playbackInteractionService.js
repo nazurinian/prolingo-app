@@ -117,8 +117,6 @@ export const executeForceStopPlaybackService = ({
         silentAudioRef.current.currentTime = 0;
     }
 
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "none";
-
     setIsPlaying(false);
     setIsPaused(false);
     setSpeakingPart(null);

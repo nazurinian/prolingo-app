@@ -7,8 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
   resolveScopedStructuredTextPlaybackSourceStatus,
-  resolveStructuredTextPlaybackList,
-  resolveStructuredTextPlayerTitle
+  resolveStructuredTextPlaybackList
 } from '../src/domain/text/textStructuredPlaybackDomain.js';
 import { TEXT_STRUCTURED_AUDIO_SOURCE_MODES, TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES } from '../src/domain/text/textStructuredPlaybackPreferenceDomain.js';
 import {
@@ -36,6 +35,7 @@ import {
   resolveTextStructuredBrowserVoiceResolution,
   resolveTextStructuredEffectiveVoiceProfile
 } from '../src/domain/text/textStructuredVoiceAssignmentDomain.js';
+import { bindNowPlayingRuntime } from '../src/domain/playback/nowPlayingDomain.js';
 import { executeMediaSessionLifecycleService } from '../src/services/playback/mediaSessionLifecycleService.js';
 import { buildTextStructuredAudioSyncProfileMetadata } from '../src/domain/text/textStructuredAudioSyncProfileDomain.js';
 
@@ -180,234 +180,96 @@ const installMockNavigatorMediaSession = () => {
 // ============================================================================
 // H4-A (P10-G009): MediaSession in Structured Text Full Mode
 // ============================================================================
-await runCheck('H4-A', 'G009-1', 'Full mode with playingIndex=null populates card-level MediaSession metadata for active & paused states and registers working hardware handlers', () => {
+const createMediaAuditRefs = () => ({
+  playbackSessionRef: { current: 1 }, playbackContextRef: { current: null },
+  stopSignalRef: { current: false }, pauseStateRef: { current: false },
+  currentAudioObjRef: { current: null }, silentAudioRef: { current: null }
+});
+
+await runCheck('H4-A', 'G009-1', 'Actual Full audio publishes Card metadata and uses owned hardware handlers', () => {
   const mock = installMockNavigatorMediaSession();
+  const doc = buildParagraphDocument();
+  const refs = createMediaAuditRefs();
+  const calls = [];
+  const owner = {
+    sessionId: 1, context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, documentTree: doc,
+    blockId: doc.blocks[0].id, orderedList: resolveStructuredTextPlaybackList(doc),
+    nowPlayingCardOrder: doc.blocks.map(block => block.id), restart: item => calls.push(item.blockId)
+  };
+  refs.playbackContextRef.current = owner;
+  const runtime = { ...refs, isPlaying: true, synth: { cancel() {}, pause() {}, resume() {} }, addLog() {},
+    setIsPaused: () => binding.sync() };
+  const actionsRef = { current: {
+    pause: options => executePausePlayback({ ...runtime, pauseSource: options.source }),
+    resume: () => executeResumePlayback(runtime),
+    stop: () => {
+      executeForceStopPlaybackService({ ...runtime, settlePlaybackPromise() {}, currentUtteranceRef: { current: null },
+        setIsPlaying() {}, setSpeakingPart() {}, setIndependentPlayingId() {} });
+      binding.sync();
+    }
+  } };
+  const binding = executeMediaSessionLifecycleService({ refs, actionsRef });
+  const publish = channel => bindNowPlayingRuntime(refs, { cardId: owner.blockId, representation: 'full', channel })({ source: 'tts' });
   try {
-    const doc = buildParagraphDocument();
-    const list = resolveStructuredTextPlaybackList(doc);
-    const mediaIntervalRef = { current: null };
-    const ctxRef = {
-      current: {
-        context: TEXT_STRUCTURED_PLAYBACK_CONTEXT,
-        documentId: doc.id,
-        orderedList: list,
-        cursorSegmentId: 'SEGMENT_000001',
-        playbackRepresentationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
-      }
-    };
-    const calls = [];
-    const navRef = { current: dir => calls.push(`nav:${dir}`) };
-    const pausePlaybackRef = { current: opts => calls.push(`pause:${opts?.source || ''}`) };
-    const resumePlaybackRef = { current: () => calls.push('resume') };
-    const playRef = { current: () => calls.push('play') };
-    const stopRef = { current: () => calls.push('stop') };
-    const pauseStateRef = { current: false };
-
-    // Active session lifecycle mirrors executeStructuredTextPlaybackSessionService + Pause/Resume controls
-    mock.mediaSession.playbackState = 'playing';
-    const cleanupPlaying = executeMediaSessionLifecycleService({
-      isPlaying: true,
-      isPaused: false,
-      playingIndex: null,
-      currentIndex: 'SEGMENT_000001',
-      speakingPart: 'text',
-      currentPlayerList: list,
-      mode: 'text',
-      currentAudioObjRef: { current: null },
-      mediaIntervalRef,
-      playbackContextRef: ctxRef,
-      pauseStateRef,
-      playRef,
-      pausePlaybackRef,
-      resumePlaybackRef,
-      navRef,
-      stopRef
-    });
-
+    assert.equal(mock.mediaSession.metadata, null, 'Waiting state has no audible metadata');
+    publish('text'); binding.sync();
     assert.equal(mock.mediaSession.playbackState, 'playing');
-    assert.ok(mock.mediaSession.metadata, 'Expected MediaMetadata in Full mode with playingIndex=null');
-    assert.equal(mock.mediaSession.metadata.title, 'H4 Sample Doc');
-    assert.match(mock.mediaSession.metadata.artist, /Paragraph Card 1 • Card 1 • Full/);
-    assert.equal(mock.mediaSession.metadata.album, 'ProLingo Text Library');
-    assert.equal(typeof mock.handlers.pause, 'function');
-    assert.equal(typeof mock.handlers.play, 'function');
-    assert.equal(typeof mock.handlers.nexttrack, 'function');
-    assert.equal(typeof mock.handlers.previoustrack, 'function');
-    assert.equal(typeof mock.handlers.stop, 'function');
+    assert.equal(mock.mediaSession.metadata.title, 'P1 · Full');
+    assert.equal(mock.mediaSession.metadata.artist, 'H4 Sample Doc · EN');
+    assert.equal(mock.mediaSession.metadata.album, 'ProLingo');
+    for (const action of ['play', 'pause', 'nexttrack', 'previoustrack', 'stop']) assert.equal(typeof mock.handlers[action], 'function');
     mock.handlers.pause();
+    assert.equal(mock.mediaSession.playbackState, 'paused');
+    assert.equal(refs.pauseStateRef.current, true);
+    assert.equal(mock.mediaSession.metadata.title, 'P1 · Full');
+    mock.handlers.play();
+    assert.equal(mock.mediaSession.playbackState, 'playing');
+    assert.equal(refs.pauseStateRef.current, false);
+    publish('meaning'); binding.sync();
+    assert.equal(mock.mediaSession.metadata.artist, 'H4 Sample Doc · ID');
     mock.handlers.nexttrack();
     mock.handlers.previoustrack();
+    assert.deepEqual(calls, [doc.blocks[1].id, doc.blocks[1].id]);
     mock.handlers.stop();
-    cleanupPlaying();
-
-    // Pause control transitions playbackState cleanly and Resume/pause preserves Full meaning metadata
-    let pausedFlag = false;
-    const synthMock = { cancel() {}, pause() {}, resume() {} };
-    executePausePlayback({
-      isPlaying: true,
-      isMobile: false,
-      pauseStateRef,
-      currentAudioObjRef: { current: null },
-      synth: synthMock,
-      silentAudioRef: { current: null },
-      setIsPaused: value => { pausedFlag = value; },
-      addLog: () => {},
-      ttsReplayRef: { current: null },
-      pauseSource: 'button'
-    });
-    assert.equal(pausedFlag, true);
-    assert.equal(pauseStateRef.current, true);
-    assert.equal(mock.mediaSession.playbackState, 'paused');
-
-    const cleanupPaused = executeMediaSessionLifecycleService({
-      isPlaying: true,
-      isPaused: true,
-      playingIndex: null,
-      currentIndex: 'SEGMENT_000001',
-      speakingPart: 'meaning',
-      currentPlayerList: list,
-      mode: 'text',
-      currentAudioObjRef: { current: null },
-      mediaIntervalRef,
-      playbackContextRef: ctxRef,
-      pauseStateRef,
-      playRef,
-      pausePlaybackRef,
-      resumePlaybackRef,
-      navRef,
-      stopRef
-    });
-    assert.equal(mock.mediaSession.playbackState, 'paused');
-    assert.match(mock.mediaSession.metadata.artist, /Card 1 • Full • Meaning/);
-    mock.handlers.play();
-    executeResumePlayback({
-      isPlaying: true,
-      pauseStateRef,
-      currentAudioObjRef: { current: null },
-      synth: synthMock,
-      silentAudioRef: { current: null },
-      setIsPaused: value => { pausedFlag = value; },
-      addLog: () => {},
-      ttsReplayRef: { current: null }
-    });
-    assert.equal(pausedFlag, false);
-    assert.equal(mock.mediaSession.playbackState, 'playing');
-    assert.deepEqual(calls, ['pause:mediaSession', 'nav:next', 'nav:prev', 'stop', 'resume']);
-    cleanupPaused();
-
-    executeForceStopPlaybackService({
-      playbackSessionRef: { current: 1 },
-      stopSignalRef: { current: false },
-      pauseStateRef,
-      currentAudioObjRef: { current: null },
-      synth: synthMock,
-      settlePlaybackPromise: () => {},
-      currentUtteranceRef: { current: null },
-      silentAudioRef: { current: null },
-      setIsPlaying: () => {},
-      setIsPaused: () => {},
-      setSpeakingPart: () => {},
-      setIndependentPlayingId: () => {},
-      playbackContextRef: ctxRef
-    });
     assert.equal(mock.mediaSession.playbackState, 'none');
+    assert.equal(mock.mediaSession.metadata, null);
   } finally {
+    binding.dispose();
     mock.restore();
   }
 });
 
-await runCheck('H4-A', 'G009-2', 'Stop and workspace switch clear stale Structured Text MediaSession metadata while preserving Split and Table modes', () => {
+await runCheck('H4-A', 'G009-2', 'Owner replacement clears stale metadata, then publishes Split and Table from observed steps', () => {
   const mock = installMockNavigatorMediaSession();
+  const refs = createMediaAuditRefs();
+  const doc = buildParagraphDocument();
+  const block = doc.blocks[0];
+  const structured = { sessionId: 1, context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, documentTree: doc };
+  refs.playbackContextRef.current = structured;
+  const binding = executeMediaSessionLifecycleService({ refs });
+  const observe = (representation, segmentId) => bindNowPlayingRuntime(refs, {
+    cardId: block.id, representation, segmentId, channel: 'text'
+  })({ source: 'tts' });
   try {
-    const doc = buildParagraphDocument();
-    const list = resolveStructuredTextPlaybackList(doc);
-    const mediaIntervalRef = { current: null };
-    const sharedRefs = {
-      currentAudioObjRef: { current: null },
-      mediaIntervalRef,
-      pauseStateRef: { current: false },
-      playRef: { current: () => {} },
-      pausePlaybackRef: { current: () => {} },
-      resumePlaybackRef: { current: () => {} },
-      navRef: { current: () => {} },
-      stopRef: { current: () => {} }
-    };
-
-    // Active Full state first
-    executeMediaSessionLifecycleService({
-      isPlaying: true,
-      isPaused: false,
-      playingIndex: null,
-      currentIndex: 'SEGMENT_000001',
-      speakingPart: 'text',
-      currentPlayerList: list,
-      mode: 'text',
-      playbackContextRef: {
-        current: {
-          context: TEXT_STRUCTURED_PLAYBACK_CONTEXT,
-          documentId: doc.id,
-          orderedList: list,
-          cursorSegmentId: 'SEGMENT_000001',
-          playbackRepresentationMode: 'full'
-        }
-      },
-      ...sharedRefs
-    })();
-    assert.ok(mock.mediaSession.metadata);
-
-    // After Stop / workspace switch (isPlaying=false, isPaused=false, playbackContextRef=null, playingIndex=null)
-    executeMediaSessionLifecycleService({
-      isPlaying: false,
-      isPaused: false,
-      playingIndex: null,
-      currentIndex: 'SEGMENT_000001',
-      speakingPart: 'text',
-      currentPlayerList: list,
-      mode: 'text',
-      playbackContextRef: { current: null },
-      ...sharedRefs
-    });
+    observe('full'); binding.sync();
+    assert.equal(mock.mediaSession.metadata.title, 'P1 · Full');
+    refs.playbackContextRef.current = null;
+    refs.playbackSessionRef.current++;
+    binding.sync();
     assert.equal(mock.mediaSession.metadata, null);
     assert.equal(mock.mediaSession.playbackState, 'none');
+    refs.playbackContextRef.current = { ...structured, sessionId: refs.playbackSessionRef.current };
+    observe('split', block.segments[0].id); binding.sync();
+    assert.equal(mock.mediaSession.metadata.title, 'P1 · SG1/2');
 
-    // Split mode keeps segment-level formatting
-    const splitTitle = resolveStructuredTextPlayerTitle(list[0]);
-    assert.match(splitTitle.artist, /Segment 1/);
-    executeMediaSessionLifecycleService({
-      isPlaying: true,
-      isPaused: false,
-      playingIndex: 'SEGMENT_000001',
-      currentIndex: 'SEGMENT_000001',
-      speakingPart: 'text',
-      currentPlayerList: list,
-      mode: 'text',
-      playbackContextRef: {
-        current: {
-          context: TEXT_STRUCTURED_PLAYBACK_CONTEXT,
-          documentId: doc.id,
-          orderedList: list,
-          playbackRepresentationMode: 'split'
-        }
-      },
-      ...sharedRefs
-    })();
-    assert.match(mock.mediaSession.metadata.artist, /Segment 1/);
-
-    // Table mode remains untouched
-    const tableList = [{ id: 'VOCAB_1', word: 'apple', meaning: 'apel', example: 'An apple a day' }];
-    executeMediaSessionLifecycleService({
-      isPlaying: true,
-      isPaused: false,
-      playingIndex: 'VOCAB_1',
-      currentIndex: 'VOCAB_1',
-      speakingPart: 'meaning',
-      currentPlayerList: tableList,
-      mode: 'table',
-      playbackContextRef: { current: null },
-      ...sharedRefs
-    })();
+    refs.playbackSessionRef.current++;
+    refs.playbackContextRef.current = { sessionId: refs.playbackSessionRef.current, context: 'master' };
+    bindNowPlayingRuntime(refs, { item: { id: 'VOCAB_1', word: 'apple' }, part: 'meaning', playedText: 'apel' })({ source: 'tts' });
+    binding.sync();
     assert.equal(mock.mediaSession.metadata.title, 'Terjemahan kalimat: apel');
+    assert.equal(mock.mediaSession.metadata.artist, 'Apple · ID');
   } finally {
+    binding.dispose();
     mock.restore();
   }
 });

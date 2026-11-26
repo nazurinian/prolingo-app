@@ -47,9 +47,8 @@ const buildScopedBlockGroups = ({ scopedList, documentTree }) => {
 const shouldStop = ({ stopSignalRef, playbackSessionRef, playbackSession }) =>
   stopSignalRef.current || playbackSession !== playbackSessionRef.current;
 
-const prepareMediaPlayingState = ({ silentAudioRef }) => {
+const resumeSilentAnchor = ({ silentAudioRef }) => {
   if (silentAudioRef.current?.paused) silentAudioRef.current.play().catch(() => {});
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 };
 
 export const executeStructuredTextPlaybackSessionService = args => {
@@ -171,7 +170,6 @@ export const executeStructuredTextPlaybackSessionService = args => {
     addLog?.('Text Player', `${documentTree.title || documentTree.id} • ${scope} • ${scopedList.length} segment${scopedList.length === 1 ? '' : 's'} • ${playbackChannelMode} • ${representationLabel} • ${playbackOrderMode} • ${repeatLabel}.`);
 
     if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 
     let pass = 0;
     let fastPassStreak = 0;
@@ -191,7 +189,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
           await waitWhilePaused();
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
 
-          prepareMediaPlayingState({ silentAudioRef });
+          resumeSilentAnchor({ silentAudioRef });
           const suppressHighlight = !partialBlock && normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
           setPlayingIndex(suppressHighlight ? null : item.id);
           setCurrentIndex(item.id);
@@ -279,7 +277,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
             await playSplitItems(group.items, 0, { partialBlock: group.block, hasNextGroup, plans });
             continue;
           }
-          prepareMediaPlayingState({ silentAudioRef });
+          resumeSilentAnchor({ silentAudioRef });
           const cardFirstSegment = group.items[0]?.id || null;
           if (cardFirstSegment) {
             if (playbackContextRef?.current?.sessionId === playbackSession) {
@@ -307,7 +305,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
               if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
               await waitWhilePaused();
               if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
-              prepareMediaPlayingState({ silentAudioRef });
+              resumeSilentAnchor({ silentAudioRef });
 
               const item = step.segmentId
                 ? group.items.find(candidate => candidate.id === step.segmentId) || group.items[0]

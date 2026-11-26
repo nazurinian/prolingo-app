@@ -129,7 +129,6 @@ export const executeGlobalPlaybackSessionService = args => {
       if (silentAudioRef.current) {
           silentAudioRef.current.play().catch(e => console.warn("Silent Play Failed", e));
       }
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
       // ---------------------------------
 
       while (index >= 0 && index < listToPlay.length && !stopSignalRef.current && playbackSession === playbackSessionRef.current) {
@@ -139,7 +138,6 @@ export const executeGlobalPlaybackSessionService = args => {
         if (silentAudioRef.current && silentAudioRef.current.paused) {
              silentAudioRef.current.play().catch(() => {});
         }
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
         // -----------------------
 
         const item = listToPlay[index];

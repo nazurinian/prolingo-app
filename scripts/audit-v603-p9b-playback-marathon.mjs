@@ -112,7 +112,8 @@ const {
 const { executeBrowserTtsPlaybackService } = await import('../src/services/audio/audioPlaybackSideEffectService.js');
 
 const { executeForceStopPlaybackService } = loadMod('src/services/playback/playbackInteractionService.js');
-const { executeMediaSessionLifecycleService } = loadMod('src/services/playback/mediaSessionLifecycleService.js');
+const { executeMediaSessionLifecycleService } = await import('../src/services/playback/mediaSessionLifecycleService.js');
+const { bindNowPlayingRuntime } = await import('../src/domain/playback/nowPlayingDomain.js');
 const { executeModeSwitch } = loadMod('src/services/navigation/viewNavigationService.js');
 const BottomPlayerBar = loadMod('src/components/layout/BottomPlayerBar.jsx').default;
 const TextStructuredAudioControls = loadMod('src/components/text/TextStructuredAudioControls.jsx').default;
@@ -347,31 +348,22 @@ await runCheck('S1', 'DEFECT', '[DEFECT S1-A] FROM_HERE starting at Seg 2 in Ful
   assert.equal(playedSegments.includes('SEGMENT_000001'), false, `Seg 1 was replayed unexpectedly in FROM_HERE: ${JSON.stringify(playedSegments)}`);
 });
 
-await runCheck('S1', 'DEFECT', '[DEFECT S1-B] MediaSession updates metadata while Structured Text Full mode is actively playing (playingIndex=null)', () => {
+await runCheck('S1', 'DEFECT', '[DEFECT S1-B] MediaSession publishes Card precision from actual Full playback', () => {
   const doc = makeDocTree();
-  const list = resolveStructuredTextPlaybackList(doc);
-  globalThis.navigator.mediaSession.metadata = null;
-  const cleanup = executeMediaSessionLifecycleService({
-    currentPlayerList: list,
-    playbackContextRef: { current: { context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, orderedList: list, cursorSegmentId: 'SEGMENT_000001', playbackRepresentationMode: 'full' } },
-    playingIndex: null,
-    speakingPart: 'text',
-    currentDeckName: 'Deck',
-    isPlaying: true,
-    isPaused: false,
-    currentAudioObjRef: { current: null },
-    mediaIntervalRef: { current: null },
-    resumePlaybackRef: { current: () => {} },
-    playRef: { current: () => {} },
-    pausePlaybackRef: { current: () => {} },
-    navRef: { current: () => {} },
-    stopRef: { current: () => {} },
+  const refs = {
+    playbackContextRef: { current: { context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, documentTree: doc, sessionId: 1 } },
+    playbackSessionRef: { current: 1 }, stopSignalRef: { current: false },
     pauseStateRef: { current: false }
-  });
+  };
+  const binding = executeMediaSessionLifecycleService({ refs });
   try {
-    assert.ok(globalThis.navigator.mediaSession.metadata, 'MediaSession metadata stayed null during active Full mode playback because playingIndex is null');
+    assert.equal(navigator.mediaSession.metadata, null);
+    bindNowPlayingRuntime(refs, { cardId: doc.blocks[0].id, representation: 'full', channel: 'text' })({ source: 'tts' });
+    binding.sync();
+    assert.equal(navigator.mediaSession.metadata.title, 'P1 · Full');
+    assert.equal(navigator.mediaSession.metadata.artist, `${doc.title} · EN`);
   } finally {
-    cleanup?.();
+    binding.dispose();
   }
 });
 

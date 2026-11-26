@@ -25,16 +25,24 @@ export const resolveGlobalPlayerTransport = ({ session, paused, audible, structu
   };
 };
 
-export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
-  const { workspace, card, precision, item, queue } = nowPlaying;
+export const describeAuthoredPlayback = ({ card, precision, unit: activeUnit, segment: activeSegment, speaker: activeSpeaker }) => {
   const precise = precision === 'segment';
-  const unit = precise ? nowPlaying.unit : null;
-  const segment = precise ? nowPlaying.segment : null;
-  const speaker = precise ? nowPlaying.speaker?.name : null;
+  const unit = precise ? activeUnit : null;
+  const segment = precise ? activeSegment : null;
+  const speaker = precise ? activeSpeaker?.name : null;
   const cardPrefix = { paragraph: 'P', conversation: 'C' }[card?.kind];
   const cardCode = cardPrefix && card.kindOrdinal ? `${cardPrefix}${card.kindOrdinal}` : null;
-  const unitCode = numbered(unit?.kind === 'turn' || card?.kind === 'conversation' ? 'T' : 'SC', unit);
-  const authored = join(numbered('Card ', card), cardCode, unitCode, speaker, numbered('SG', segment), precision === 'card' && 'Full');
+  const unitPrefix = unit?.kind === 'turn' || card?.kind === 'conversation' ? 'T' : 'SC';
+  return {
+    cardCode, cardPosition: numbered('Card ', card), unitCode: numbered(unitPrefix, unit),
+    shortUnitCode: numbered(unitPrefix, { ordinal: unit?.ordinal }), segmentCode: numbered('SG', segment), speaker, segment
+  };
+};
+
+export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
+  const { workspace, card, precision, item, queue } = nowPlaying;
+  const { cardCode, cardPosition, unitCode, segmentCode, speaker, segment } = describeAuthoredPlayback(nowPlaying);
+  const authored = join(cardPosition, cardCode, unitCode, speaker, segmentCode, precision === 'card' && 'Full');
   const table = nowPlaying.domain === 'table';
   const itemContext = item?.displayNumber != null ? `${table ? 'Word' : 'Item'} ${item.displayNumber}` : null;
   const channel = { text: 'EN', meaning: 'ID' }[nowPlaying.channel];

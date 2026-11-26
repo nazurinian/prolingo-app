@@ -96,16 +96,17 @@ const tableChannel = part => {
   return null;
 };
 
-const readItem = (item, part, domain) => item ? Object.freeze({
+const readItem = (item, part, domain, playedText) => item ? Object.freeze({
   id: item.id ?? null,
   vocabId: domain === 'table' ? item.vocabId ?? null : null,
   // The authored label may be non-numeric. Never derive it from queue position.
   displayNumber: item.displayId ?? null,
   title: value(domain === 'table' ? item.word : item.text),
-  part: value(part)
+  part: value(part),
+  playedText: value(playedText)
 }) : null;
 
-const readTimeline = media => {
+export const readNowPlayingMediaTimeline = media => {
   if (!media || !Number.isFinite(media.duration) || media.duration <= 0) return null;
   const elapsed = media.currentTime;
   return Object.freeze({
@@ -136,7 +137,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
   if (!domain) return IDLE;
   const target = runtime ? evidence.target : null;
   const structure = domain === 'structured-text' ? readStructuredIdentity(context.documentTree, target) : {};
-  const item = readItem(target?.item, target?.part, domain);
+  const item = readItem(target?.item, target?.part, domain, target?.playedText);
   const rate = runtime?.media?.playbackRate ?? runtime?.rate;
   const structured = domain === 'structured-text';
   const commandRepresentation = structured
@@ -160,7 +161,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
     commandTarget: structured ? context.commandTarget ?? null : null,
     queue: target ? readQueue(context, target) : null,
-    timeline: readTimeline(runtime?.media)
+    timeline: readNowPlayingMediaTimeline(runtime?.media)
   });
 };
 

@@ -61,7 +61,6 @@ export const executePausePlayback = ({
       // Pause the media host so Android changes the notification icon to Resume.
       if (silentAudioRef.current) silentAudioRef.current.pause();
 
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
       setIsPaused(true);
       addLog("Playback", shouldSuspendTtsForReplay
         ? "Paused. Mobile Browser TTS part armed for restart on Resume."
@@ -88,7 +87,6 @@ export const executeResumePlayback = ({
       }
 
       if (silentAudioRef.current?.paused) silentAudioRef.current.play().catch(() => {});
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
       setIsPaused(false);
       addLog("Playback", restartedTtsPart
         ? "Resumed. Browser TTS restarted current part."
@@ -96,7 +94,7 @@ export const executeResumePlayback = ({
 };
 
 export const executeSafePlayTransition = async ({
-  forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession, onPending, onError
+  forceStopAll, playbackSessionRef, playbackContextRef, stopSignalRef, pauseStateRef, actionCallback, pendingSession, onPending, onStarted, onError
 }) => {
     forceStopAll();
     const transitionSession = playbackSessionRef.current;
@@ -115,7 +113,9 @@ export const executeSafePlayTransition = async ({
     stopSignalRef.current = false;
     pauseStateRef.current = false;
     try {
-      await actionCallback();
+      const execution = actionCallback();
+      if (transitionSession === playbackSessionRef.current) onStarted?.();
+      await execution;
       return true;
     } catch (error) {
       if (transitionSession === playbackSessionRef.current) {

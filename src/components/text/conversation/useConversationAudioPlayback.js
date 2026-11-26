@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   resolveStructuredTextPlaybackList,
   TEXT_STRUCTURED_PLAYBACK_CONTEXT,
@@ -22,6 +22,7 @@ import {
   isBrowserTtsSpeechSupported
 } from '../../../services/audio/audioPlaybackSideEffectService.js';
 import { executeForceStopPlaybackService } from '../../../services/playback/playbackInteractionService.js';
+import { executeMediaSessionLifecycleService } from '../../../services/playback/mediaSessionLifecycleService.js';
 import {
   executePausePlayback,
   executeResumePlayback,
@@ -114,8 +115,12 @@ export const useConversationAudioPlayback = ({
   const isPlayingRef = useRef(false);
   const isPausedRef = useRef(false);
   const objectUrlsByBlobRef = useRef(new Map());
+  const mediaSessionBindingRef = useRef(null);
   const [, setNowPlayingRevision] = useState(0);
-  const refreshNowPlaying = useCallback(() => setNowPlayingRevision(revision => revision + 1), []);
+  const refreshNowPlaying = useCallback(() => {
+    mediaSessionBindingRef.current?.sync();
+    setNowPlayingRevision(revision => revision + 1);
+  }, []);
   const bindRuntime = useCallback((status) => bindNowPlayingRuntime(
     { playbackContextRef, playbackSessionRef, stopSignalRef, onChange: refreshNowPlaying },
     {
@@ -159,6 +164,7 @@ export const useConversationAudioPlayback = ({
     isPausedRef.current = bool;
     pauseStateRef.current = bool;
     setIsPausedState(bool);
+    mediaSessionBindingRef.current?.sync();
   }, []);
 
   const addLog = useCallback((tag, message) => {
@@ -207,9 +213,11 @@ export const useConversationAudioPlayback = ({
       pauseStateRef,
       actionCallback,
       pendingSession,
+      onPending: refreshNowPlaying,
+      onStarted: refreshNowPlaying,
       onError: error => addLog('Playback', error?.message || 'Playback failed.')
     }),
-    [forceStopAll, addLog]
+    [forceStopAll, addLog, refreshNowPlaying]
   );
 
   const resolveBlobObjectUrl = useCallback(runtime => {
@@ -843,7 +851,7 @@ export const useConversationAudioPlayback = ({
     repeatMode: boundary === undefined ? normalizedConfig.repeatMode : 'once', toggle: true
   }), [startSession, normalizedConfig.repeatMode]);
 
-  const pausePlayback = useCallback(() => {
+  const pausePlayback = useCallback(({ source = 'ui' } = {}) => {
     executePausePlayback({
       isPlaying: isPlayingRef.current,
       isMobile,
@@ -854,7 +862,7 @@ export const useConversationAudioPlayback = ({
       setIsPaused,
       addLog,
       ttsReplayRef,
-      pauseSource: 'ui'
+      pauseSource: source
     });
   }, [isMobile, synth, setIsPaused, addLog]);
 
@@ -887,6 +895,24 @@ export const useConversationAudioPlayback = ({
   const stopPlayback = useCallback(() => {
     forceStopAll();
   }, [forceStopAll]);
+
+  const mediaActionsRef = useRef(null);
+  useLayoutEffect(() => {
+    mediaActionsRef.current = { pause: pausePlayback, resume: resumePlayback, stop: stopPlayback };
+  }, [pausePlayback, resumePlayback, stopPlayback]);
+  useEffect(() => {
+    const binding = executeMediaSessionLifecycleService({
+      refs: { playbackContextRef, playbackSessionRef, stopSignalRef, pauseStateRef },
+      actionsRef: mediaActionsRef,
+      owner: 'isolated-uat',
+      readCollectionTitle: id => prevSnapshotRef.current?.collections?.find(collection => collection.id === id)?.title
+    });
+    mediaSessionBindingRef.current = binding;
+    return () => {
+      mediaSessionBindingRef.current = null;
+      binding?.dispose();
+    };
+  }, []);
 
   // Scalar evidence from the existing session refs, read at render time. In
   // particular, an old source status cannot supply its own session authority.
