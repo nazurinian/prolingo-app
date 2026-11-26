@@ -53,7 +53,8 @@ export const renderMainAppShellView = (props) => {
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy, textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
-    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap,
+    hideMobileTextDocumentStrip = false
   } = props;
 
   const mobileTextDocuments = mode === 'text' ? [
@@ -106,6 +107,9 @@ export const renderMainAppShellView = (props) => {
         rangeInput={rangeInput}
         setRangeInput={setRangeInput}
         handleRangeAdd={handleRangeAdd}
+        theme={theme}
+        setTheme={setTheme}
+        setSidebarSection={setSidebarSection}
       />
 
       <div className="flex-1 flex overflow-hidden relative z-0">
@@ -354,7 +358,7 @@ export const renderMainAppShellView = (props) => {
                           paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode)}px` : '0'
                       }}
                  >
-                    {isMobile && mode === 'text' && <div className="mb-1.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-1.5 py-1 shadow-xs" data-mobile-text-document-strip="true">
+                    {isMobile && mode === 'text' && !hideMobileTextDocumentStrip && <div className="mb-1.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-1.5 py-1 shadow-xs" data-mobile-text-document-strip="true">
                       <div className="flex items-center gap-1 overflow-x-auto overscroll-x-contain custom-scrollbar">
                         {mobileTextDocuments.map(document => <button key={document.id} type="button" aria-busy={textLibraryCommandBusy || undefined} onClick={() => { if (!textLibraryCommandBusy) handleTextLibrarySelectDocument?.(document.id); }} className={`shrink-0 min-h-9 max-w-[200px] rounded-lg border px-2.5 py-1 text-left inline-flex items-center gap-1.5 transition-colors ${document.id === activeTextDocumentId ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>
                           <span className="truncate text-[11px] font-bold">{document.title}</span><span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase ${document.id === activeTextDocumentId ? 'bg-indigo-500/70 text-indigo-50' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-300'}`}>{getTextWorkspaceBadge(document)}</span>

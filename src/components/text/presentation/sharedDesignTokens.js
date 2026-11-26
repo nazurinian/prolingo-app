@@ -123,8 +123,8 @@ export const SHARED_CONTROL_TOKENS = Object.freeze({
 });
 
 export const SHARED_SPACING_TOKENS = Object.freeze({
-  // Ensures programmatic scrollIntoView never hides Card or Book headings behind the fixed 64px mobile header.
-  mobileScrollMargin: 'scroll-mt-[72px] md:scroll-mt-4',
+  // Ensures programmatic scrollIntoView never hides Card or Book headings behind the fixed 48px mobile AppBar.
+  mobileScrollMargin: 'scroll-mt-[60px] md:scroll-mt-4',
   // Reserves clearance for the fixed mobile Global Player bar below docked mobile drawers.
   mobileSheetBottomOffset: 'calc(108px + env(safe-area-inset-bottom, 0px))'
 });

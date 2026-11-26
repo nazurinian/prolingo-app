@@ -54,7 +54,8 @@ import {
   resolveTextReaderModeFromState
 } from '../../domain/text/textCardPresentationStateDomain.js';
 import { TEXT_CARD_EXPANSION_MODES, normalizeTextCardExpansionMode, resolveActiveTextCardId, resolveExpandedTextCardIds, toggleTextCardExpandedId } from '../../domain/text/textStructuredCardExpansionDomain.js';
-import { getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
+import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/textWorkspaceTaxonomyDomain.js';
+import { OVERLAY_SOURCES, announcePresentationOverlayOpen } from './presentation/sharedOverlayCoordinator.js';
 
 const blockLabel = type => type === 'conversation' ? 'Conversation' : 'Paragraph';
 
@@ -747,7 +748,8 @@ export const TextStructuredPlayer = ({
   sharedWorkspaceStyleCanOverride = false,
   onSharedWorkspaceStyleChange = null,
   onResetSharedWorkspaceStyle = null,
-  sharedPlaybackCursor = null
+  sharedPlaybackCursor = null,
+  mobileWorkspaceMeta = null
 }) => {
   const [customExpandedIds, setCustomExpandedIds] = useState(() => new Set());
   const [lastActiveBlockId, setLastActiveBlockId] = useState(null);
@@ -822,6 +824,15 @@ export const TextStructuredPlayer = ({
     setCustomExpandedIds(new Set());
     setBookAudioPanelBlockId(null);
   }, [documentTree?.id]);
+
+  // E4: Coordinate modal presentation disclosures with mobile overlays without touching playback
+  useEffect(() => {
+    if (controlsWorkspaceOpen) announcePresentationOverlayOpen(OVERLAY_SOURCES.PLAYBACK_SETTINGS);
+  }, [controlsWorkspaceOpen]);
+
+  useEffect(() => {
+    if (bookAudioPanelBlockId) announcePresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO);
+  }, [bookAudioPanelBlockId]);
 
   const bookAudioPanelBlock = useMemo(
     () => (bookAudioPanelBlockId ? blocks.find(item => item.id === bookAudioPanelBlockId) || null : null),
@@ -1146,6 +1157,27 @@ export const TextStructuredPlayer = ({
             showWorkspaceStyle={Boolean(onSharedWorkspaceStyleChange)}
             unitKind={sharedPresentation.workspace?.documentType === 'conversation' ? 'turn' : 'paragraph'}
             workspaceType={sharedPresentation.workspace?.documentType || documentTree?.documentType || null}
+            workspaceTitle={documentTree?.title || sharedPresentation.workspace?.title || null}
+            workspaceBadge={getTextWorkspaceBadge(documentTree)}
+            mobileWorkspaceDocuments={mobileWorkspaceMeta?.documents || null}
+            activeWorkspaceId={mobileWorkspaceMeta?.activeDocumentId ?? documentTree?.id ?? null}
+            onSelectWorkspace={mobileWorkspaceMeta?.onSelectDocument || null}
+            workspaceCommandBusy={Boolean(mobileWorkspaceMeta?.busy || generationBusy)}
+            onOpenMobileData={mobileWorkspaceMeta?.onOpenData || null}
+            mobileReaderSwitchSlot={readerSwitchSlot}
+            mobilePlayAction={{
+              onPlay: onPlayDocument,
+              disabled: !playableList.length || generationBusy,
+              stopsWorkspace,
+              activeStatusLabel: structuredSessionActive && activeCardNumber > 0
+                ? `C${activeCardNumber} · ${isPaused ? 'Paused' : speakingPart === 'meaning' ? 'ID' : 'EN'}`
+                : null,
+              activeToneClass: isPaused
+                ? SHARED_SEMANTIC_COLORS.paused.solid
+                : speakingPart === 'meaning'
+                  ? SHARED_SEMANTIC_COLORS.id.solid
+                  : SHARED_SEMANTIC_COLORS.en.solid
+            }}
             workspaceHeaderSlot={(
               <div
                 className="flex items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 bg-slate-50/60 dark:bg-slate-900/50"

@@ -26,6 +26,11 @@ import {
   SHARED_SEMANTIC_COLORS,
   resolveGlobalPlayerSemanticTone
 } from '../text/presentation/sharedDesignTokens.js';
+import {
+  OVERLAY_SOURCES,
+  announcePresentationOverlayOpen,
+  subscribeOtherPresentationOverlayOpen
+} from '../text/presentation/sharedOverlayCoordinator.js';
 
 const mediaEvents = ['timeupdate', 'durationchange', 'loadedmetadata', 'ratechange'];
 
@@ -224,6 +229,45 @@ export default function BottomPlayerBar({
     };
   }, [expanded, media]);
 
+  // E4: Close expanded drawer when another presentation overlay opens (never touches playback/ownership)
+  useEffect(() => subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.GLOBAL_PLAYER, () => {
+    setExpanded(false);
+  }), []);
+
+  useEffect(() => {
+    if (!expanded || typeof window === 'undefined') return undefined;
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [expanded]);
+
+  const toggleExpanded = () => {
+    setExpanded(prev => {
+      const next = !prev;
+      if (next) announcePresentationOverlayOpen(OVERLAY_SOURCES.GLOBAL_PLAYER);
+      return next;
+    });
+  };
+
+  const ownedDomainLabel = player.domain === 'structured-text'
+    ? 'Structured Text'
+    : player.domain === 'table'
+      ? 'Table'
+      : player.domain === 'legacy-text'
+        ? 'Legacy Text'
+        : null;
+  const browsedDomainLabel = structuredTextModeActive ? 'Structured Text' : 'Table / Legacy';
+  const settingsDomainDiffersFromOwned = Boolean(
+    active
+    && ownedDomainLabel
+    && ((structuredTextModeActive && player.domain !== 'structured-text')
+      || (!structuredTextModeActive && player.domain === 'structured-text'))
+  );
+
   const secondaryControlClass = `flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200/90 dark:border-slate-700/90 bg-slate-50/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-colors motion-reduce:transition-none disabled:opacity-35 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.focusRing}`;
   const playControlClass = `flex h-9 w-9 md:h-10 md:w-10 shrink-0 items-center justify-center rounded-full transition-colors motion-reduce:transition-none disabled:opacity-45 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.focusRing} ${accent.playButton}`;
 
@@ -346,7 +390,7 @@ export default function BottomPlayerBar({
                 aria-label={expanded ? 'Collapse player details' : 'Expand player details'}
                 aria-expanded={expanded}
                 aria-controls={detailsId}
-                onClick={() => setExpanded(value => !value)}
+                onClick={toggleExpanded}
               >
                 <ExpandIcon aria-hidden="true" size={17} />
               </button>
@@ -436,7 +480,7 @@ export default function BottomPlayerBar({
                 aria-label={expanded ? 'Collapse player details' : 'Expand player details'}
                 aria-expanded={expanded}
                 aria-controls={detailsId}
-                onClick={() => setExpanded(value => !value)}
+                onClick={toggleExpanded}
               >
                 <span>{expanded ? 'Hide' : 'Details'}</span>
                 <ExpandIcon aria-hidden="true" size={15} />
@@ -490,10 +534,10 @@ export default function BottomPlayerBar({
                       {player.speaker && (
                         <span
                           data-player-detail="Speaker"
-                          className="inline-flex items-center rounded-full border border-slate-200/90 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-2 py-0.5 text-[11px] font-semibold text-slate-800 dark:text-slate-100 max-w-[14rem] truncate"
+                          className="inline-flex items-center rounded-full border border-slate-200/90 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 px-2 py-0.5 text-[11px] font-semibold text-slate-800 dark:text-slate-100 max-w-[14rem] min-w-0"
                           title={player.speaker}
                         >
-                          {player.speaker}
+                          <span className="truncate">{player.speaker}</span>
                         </span>
                       )}
                     </div>
@@ -595,8 +639,19 @@ export default function BottomPlayerBar({
                 data-player-section="settings"
                 className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/75 px-3 py-2"
               >
+                {settingsDomainDiffersFromOwned && (
+                  <p
+                    data-player-settings-domain-note="true"
+                    className="mb-1.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/70 bg-indigo-50/75 dark:bg-indigo-950/35 px-2 py-1 text-[11px] font-medium text-indigo-800 dark:text-indigo-200"
+                  >
+                    Browsed view settings ({browsedDomainLabel}) · Active audio owned by {ownedDomainLabel}
+                  </p>
+                )}
                 {structuredTextModeActive ? (
                   <div className="space-y-1.5" data-text-global-player-controls="true">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      Saved defaults (next play)
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"

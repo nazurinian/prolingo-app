@@ -7650,6 +7650,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   });
 
   const sharedTextPlaybackCursor = resolveNowPlayingReaderCursor({ presentation: textMainReader.presentation, nowPlaying: readNowPlaying() });
+  const inlineSharedTextShell = mode === 'text' && activeTextEditorModel === 'structured-v1' && sharedTextReaderActive && textDatabaseStatus === 'ready';
+  const mobileTextWorkspaceDocuments = mode === 'text' ? [
+    ...(textLibraryCatalog?.rootDocuments || []),
+    ...(textLibraryCatalog?.collections || []).flatMap(collection => (collection.documents || []).map(document => ({ ...document, collectionTitle: collection.title })))
+  ] : [];
 
   const renderPlaylistContent = () => {
     if (mode === 'text' && textDatabaseStatus !== 'ready') {
@@ -7659,6 +7664,16 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
         useSharedCardReader={sharedTextReaderActive}
+        mobileWorkspaceMeta={{
+          documents: mobileTextWorkspaceDocuments,
+          activeDocumentId: activeTextDocumentId,
+          onSelectDocument: handleTextLibrarySelectDocument,
+          onOpenData: () => {
+            setSidebarSection('data');
+            handleMobileTabSwitch('tools');
+          },
+          busy: textLibraryCommandBusy || structuredTextAudioGenerationState.running || isSystemBusy
+        }}
         readerSwitchSlot={sharedTextReaderActive ? (
           <TextMainReaderControl
             compact
@@ -7910,7 +7925,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     textLibraryCatalog, activeTextDocument, activeTextDocumentTree: textLibraryShellDocumentTree, activeTextDocumentId, activeTextEditorModel,
     textLibraryCommandBusy: (textLibraryCommandBusy || structuredTextAudioGenerationState.running), textLibraryCommandError, handleTextLibrarySelectDocument, handleTextLibraryCreateDocument,
     handleTextLibraryCreateCollection, handleTextLibraryRenameDocument, handleTextLibraryMoveDocument, handleTextLibraryDeleteDocument, handleTextLibraryRenameCollection, handleTextLibraryDeleteCollection, handleTextLibraryStructuredCommand,
-    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
+    structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap,
+    hideMobileTextDocumentStrip: inlineSharedTextShell
   })}</NowPlayingContext.Provider>;
 };
 

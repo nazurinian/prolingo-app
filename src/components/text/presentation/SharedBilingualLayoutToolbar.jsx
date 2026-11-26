@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlignJustify,
@@ -8,6 +8,7 @@ import {
   BookOpen,
   ChevronDown,
   Columns,
+  Database,
   Eye,
   Focus,
   GalleryHorizontalEnd,
@@ -18,13 +19,20 @@ import {
   List,
   MessageSquareText,
   Palette,
+  Play,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Target,
   Type,
   X
 } from 'lucide-react';
+import {
+  OVERLAY_SOURCES,
+  announcePresentationOverlayOpen,
+  subscribeOtherPresentationOverlayOpen
+} from './sharedOverlayCoordinator.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
   DEFAULT_TEXT_WORKSPACE_STYLE_STATE,
@@ -578,6 +586,15 @@ export const SharedBilingualLayoutToolbar = ({
   workspaceStyleScopeLabel = null,
   unitKind = 'paragraph',
   workspaceType = null,
+  workspaceTitle = null,
+  workspaceBadge = null,
+  mobileWorkspaceDocuments = null,
+  activeWorkspaceId = null,
+  onSelectWorkspace = null,
+  workspaceCommandBusy = false,
+  onOpenMobileData = null,
+  mobilePlayAction = null,
+  mobileReaderSwitchSlot = null,
   subtitle = null,
   rightSlot = null,
   workspaceHeaderSlot = null,
@@ -586,19 +603,91 @@ export const SharedBilingualLayoutToolbar = ({
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState('reading');
+  const [overlayTopPx, setOverlayTopPx] = useState(108);
   const isCompactViewport = useIsCompactViewport();
   const settingsPanelId = useId();
+  const toolbarRef = useRef(null);
+  const toggleBtnRef = useRef(null);
+  const overlayPanelRef = useRef(null);
+  const pushedHistoryRef = useRef(false);
+
+  const measureOverlayAnchor = useCallback(() => {
+    if (typeof window === 'undefined' || !toolbarRef.current) return;
+    const rect = toolbarRef.current.getBoundingClientRect();
+    const minTop = 56;
+    const maxTop = Math.max(minTop + 20, Math.round(window.innerHeight * 0.36));
+    const nextTop = Math.round(Math.max(minTop, Math.min(maxTop, rect.bottom + 6)));
+    setOverlayTopPx(nextTop);
+  }, []);
+
+  const closeSettings = useCallback(({ restoreFocus = false, fromPopState = false } = {}) => {
+    setSettingsOpen(false);
+    if (!fromPopState && pushedHistoryRef.current && typeof window !== 'undefined') {
+      pushedHistoryRef.current = false;
+      try {
+        if (window.history?.state?.prolingoOverlay === 'reading-view') {
+          window.history.back();
+        }
+      } catch {
+        // Ignore restricted history APIs in sandboxed contexts.
+      }
+    } else if (fromPopState) {
+      pushedHistoryRef.current = false;
+    }
+    if (restoreFocus) {
+      requestAnimationFrame(() => {
+        toggleBtnRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, []);
+
+  useEffect(() => (
+    subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.READING_VIEW, () => {
+      closeSettings({ restoreFocus: false });
+    })
+  ), [closeSettings]);
 
   useEffect(() => {
     if (!settingsOpen || typeof window === 'undefined') return undefined;
+    if (isCompactViewport) {
+      measureOverlayAnchor();
+      try {
+        if (typeof window.history?.pushState === 'function' && window.history.state?.prolingoOverlay !== 'reading-view') {
+          window.history.pushState({ ...(window.history.state || {}), prolingoOverlay: 'reading-view' }, '');
+          pushedHistoryRef.current = true;
+        }
+      } catch {
+        pushedHistoryRef.current = false;
+      }
+      requestAnimationFrame(() => {
+        overlayPanelRef.current?.focus({ preventScroll: true });
+      });
+    }
     const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        setSettingsOpen(false);
+        event.preventDefault();
+        closeSettings({ restoreFocus: true });
       }
     };
+    const handlePopState = () => {
+      if (pushedHistoryRef.current) {
+        closeSettings({ restoreFocus: true, fromPopState: true });
+      }
+    };
+    const handleViewportUpdate = () => {
+      if (isCompactViewport) measureOverlayAnchor();
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen]);
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('resize', handleViewportUpdate);
+    window.addEventListener('scroll', handleViewportUpdate, { passive: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('resize', handleViewportUpdate);
+      window.removeEventListener('scroll', handleViewportUpdate);
+    };
+  }, [settingsOpen, isCompactViewport, measureOverlayAnchor, closeSettings]);
 
   const activeState = normalizeTextCardPresentationState(presentationState);
   const terms = getSharedUnitTerms(workspaceType === 'mixed' ? { documentType: 'mixed' } : unitKind);
@@ -676,10 +765,14 @@ export const SharedBilingualLayoutToolbar = ({
   };
 
   const handleToggleReadingSettings = () => {
-    setSettingsOpen(open => {
-      if (!open) setSettingsTab('reading');
-      return !open;
-    });
+    if (settingsOpen) {
+      closeSettings({ restoreFocus: false });
+      return;
+    }
+    setSettingsTab('reading');
+    if (isCompactViewport) measureOverlayAnchor();
+    announcePresentationOverlayOpen(OVERLAY_SOURCES.READING_VIEW);
+    setSettingsOpen(true);
   };
 
   const shouldShowWorkspaceStyle = Boolean(
@@ -694,13 +787,169 @@ export const SharedBilingualLayoutToolbar = ({
   const activeStyleSummary = STYLE_BADGE_LABELS[bilingualResolution.effectiveBilingualStyle]
     || STYLE_BADGE_LABELS[activeState.bilingualStyle]
     || 'Interlinear';
+  const activeModeLabel = supportsFourModes
+    ? (READER_MODE_OPTIONS.find(option => option.id === activeReaderMode)?.label || 'Full')
+    : (SHARED_LEVEL_OPTIONS.find(option => option.id === activeState.level)?.label || 'Full');
+  const activeLanguageSummary = SHARED_READING_LANGUAGE_OPTIONS.find(
+    option => option.id === activeState.readingLanguage
+  )?.label || 'EN Only';
+  const mobileEffectiveSummaryParts = [
+    activeModeLabel,
+    activeLanguageSummary,
+    bilingualResolution.isBilingual && activeReaderMode !== 'segment' ? activeStyleSummary : null,
+    activeReaderMode === 'focus'
+      ? (focusOrientation === 'horizontal-focus' ? 'Horizontal' : 'Vertical')
+      : null
+  ].filter(Boolean);
+  const mobileEffectiveViewSummary = mobileEffectiveSummaryParts.join(' · ');
   const hasSettingsCustomizations = Boolean(appearanceDirty || hasWorkspaceStyleOverride);
+
+  const mobileReaderControlsBlock = (
+    <div className="space-y-2.5 pb-2.5 border-b border-slate-200/80 dark:border-slate-800" data-mobile-overlay-primary-controls="true">
+      {/* Reader Mode */}
+      <div className="space-y-1 text-left">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          {supportsFourModes ? SHARED_UI_TERMINOLOGY.readerMode : 'View'}
+        </span>
+        {supportsFourModes ? (
+          <div
+            role="group"
+            aria-label="Reader presentation mode (display only)"
+            className={`grid grid-cols-4 w-full items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+          >
+            {READER_MODE_OPTIONS.map(item => {
+              const active = activeReaderMode === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handleSelectReaderMode(item.id)}
+                  title={item.description}
+                  data-shared-reader-mode-option={item.id}
+                  className={`min-h-9 px-1.5 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    active ? SHARED_CONTROL_TOKENS.segmentActivePrimary : SHARED_CONTROL_TOKENS.segmentInactive
+                  }`}
+                >
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            role="group"
+            aria-label="Reading view level (display only)"
+            className={`grid grid-cols-3 w-full items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+          >
+            {SHARED_LEVEL_OPTIONS.map(option => {
+              const active = activeState.level === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => emitPatch({ level: option.id })}
+                  title={describe(option)}
+                  data-shared-card-level-option={option.id}
+                  className={`min-h-9 px-2 py-1 rounded-lg text-[11px] font-semibold inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    active ? SHARED_CONTROL_TOKENS.segmentActivePrimary : SHARED_CONTROL_TOKENS.segmentInactive
+                  }`}
+                >
+                  <span className="truncate">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Focus Orientation (contextually shown only when Focus mode is active) */}
+      {showContextualFocusBar && (
+        <div
+          className="flex items-center justify-between gap-2 text-left"
+          data-shared-part-layout-bar="true"
+          data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
+            Focus Flow
+          </span>
+          <div
+            role="group"
+            aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
+            className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
+          >
+            {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
+              const active = supportsFourModes ? focusOrientation === option.id : activeState.partLayout === option.id;
+              const Icon = PART_LAYOUT_ICONS[option.id] || List;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    if (supportsFourModes && readerMode !== 'focus') onChangeReaderMode?.('focus');
+                    emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
+                  }}
+                  title={describe(option)}
+                  data-shared-card-part-layout-option={option.id}
+                  data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
+                  className={`min-h-8 px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    active
+                      ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                      : SHARED_CONTROL_TOKENS.segmentInactive
+                  }`}
+                >
+                  <Icon aria-hidden="true" className="w-3 h-3 shrink-0" />
+                  <span>{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Reading Language */}
+      <div className="space-y-1 text-left">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Language
+        </span>
+        <div
+          role="group"
+          aria-label="Reading language and display order (display only)"
+          data-shared-reading-language-group="true"
+          className={`grid grid-cols-4 w-full items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+        >
+          {SHARED_READING_LANGUAGE_OPTIONS.map(option => {
+            const active = activeState.readingLanguage === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={active}
+                aria-label={option.label}
+                onClick={() => handleSelectReadingLanguage(option.id)}
+                title={option.description}
+                data-shared-reading-language-option={option.id}
+                data-shared-card-layout-option={option.legacyLayoutId || undefined}
+                className={`min-h-9 px-1 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                  active ? SHARED_CONTROL_TOKENS.segmentActiveNeutral : SHARED_CONTROL_TOKENS.segmentInactive
+                }`}
+              >
+                <span>{option.shortLabel || option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 
   const readingSettingsBody = (
     <div className="space-y-3">
-      {/* Panel Header: Tabs + Reset View + Close */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
+      {/* Panel Header: Tabs + Reset View + Close (single compact row on mobile & desktop) */}
+      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
           {shouldShowWorkspaceStyle ? (
             <div
               role="tablist"
@@ -709,8 +958,8 @@ export const SharedBilingualLayoutToolbar = ({
               data-shared-reading-settings-tabs="true"
             >
               {[
-                { id: 'reading', label: 'Style & Typography' },
-                { id: 'workspace', label: 'Workspace Style', badge: hasWorkspaceStyleOverride }
+                { id: 'reading', label: 'Style & Typography', compactLabel: 'Reading' },
+                { id: 'workspace', label: 'Workspace Style', compactLabel: 'Style', badge: hasWorkspaceStyleOverride }
               ].map(tab => {
                 const active = settingsTab === tab.id;
                 return (
@@ -721,11 +970,12 @@ export const SharedBilingualLayoutToolbar = ({
                     aria-selected={active}
                     data-shared-reading-settings-tab={tab.id}
                     onClick={() => setSettingsTab(tab.id)}
-                    className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    className={`min-h-8 sm:min-h-7 px-2 sm:px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors motion-reduce:transition-none whitespace-nowrap ${SHARED_CONTROL_TOKENS.focusRing} ${
                       active ? SHARED_CONTROL_TOKENS.segmentActiveNeutral : SHARED_CONTROL_TOKENS.segmentInactive
                     }`}
                   >
-                    <span>{tab.label}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.compactLabel}</span>
                     {tab.badge && (
                       <span
                         aria-label="Workspace override active"
@@ -743,25 +993,26 @@ export const SharedBilingualLayoutToolbar = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           {onResetView && isCustomView && (
             <button
               type="button"
               onClick={onResetView}
-              className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+              className={`min-h-8 sm:min-h-7 px-2 sm:px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
               title="Restore default reader view and typography without changing Workspace Style or audio"
               data-shared-card-reset-view="true"
             >
               <RotateCcw aria-hidden="true" className="w-3 h-3" />
-              <span>Reset View</span>
+              <span className="hidden sm:inline">Reset View</span>
+              <span className="sm:hidden">Reset</span>
             </button>
           )}
           <button
             type="button"
-            onClick={() => setSettingsOpen(false)}
+            onClick={() => closeSettings({ restoreFocus: true })}
             data-shared-reading-settings-close="true"
             aria-label="Close Reading Settings"
-            className={`min-h-9 sm:min-h-7 px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+            className={`min-h-8 sm:min-h-7 px-2 sm:px-2.5 py-0.5 text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
           >
             <X aria-hidden="true" className="w-3.5 h-3.5" />
             <span>Done</span>
@@ -769,12 +1020,89 @@ export const SharedBilingualLayoutToolbar = ({
         </div>
       </div>
 
-      {/* Tab 1: Reading Style + Contextual Position + Card Visibility + Appearance / Typography */}
+      {/* Mobile-only Workspace identity + Switcher inside the overlay so long titles & Workspace management stay accessible */}
+      {isCompactViewport && (workspaceTitle || (Array.isArray(mobileWorkspaceDocuments) && mobileWorkspaceDocuments.length > 0)) && (
+        <div
+          className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 px-2.5 py-2 space-y-2 text-left"
+          data-mobile-overlay-workspace-section="true"
+        >
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Active Workspace
+              </p>
+              <p className="text-xs font-bold text-slate-900 dark:text-slate-50 break-words [overflow-wrap:anywhere]">
+                {workspaceTitle || 'Workspace'}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {workspaceBadge && (
+                <span className="rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-1.5 py-0.5 text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300">
+                  {workspaceBadge}
+                </span>
+              )}
+              {typeof onOpenMobileData === 'function' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeSettings({ restoreFocus: false });
+                    announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
+                    onOpenMobileData();
+                  }}
+                  className={`min-h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+                >
+                  <Database aria-hidden="true" className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
+                  <span>Data</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {Array.isArray(mobileWorkspaceDocuments) && mobileWorkspaceDocuments.length > 1 && typeof onSelectWorkspace === 'function' && (
+            <div
+              className="flex items-center gap-1 overflow-x-auto pb-0.5"
+              data-mobile-overlay-workspace-switcher="true"
+            >
+              {mobileWorkspaceDocuments.map(doc => {
+                const selectedDoc = doc.id === activeWorkspaceId;
+                return (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    disabled={workspaceCommandBusy}
+                    aria-pressed={selectedDoc}
+                    onClick={() => {
+                      if (!workspaceCommandBusy && !selectedDoc) onSelectWorkspace(doc.id);
+                    }}
+                    className={`shrink-0 min-h-8 max-w-[190px] rounded-lg border px-2 py-0.5 text-left inline-flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                      selectedDoc
+                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <span className="truncate">{doc.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {mobileReaderSwitchSlot && (
+            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-200/70 dark:border-slate-700/70">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Reader UI</span>
+              {mobileReaderSwitchSlot}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 1: Mobile Mode/Language + Reading Style + Contextual Position + Card Visibility + Appearance / Typography */}
       <div
         hidden={shouldShowWorkspaceStyle && settingsTab !== 'reading'}
         className="space-y-2.5"
         data-shared-reading-settings-reading-tab="true"
       >
+        {isCompactViewport && mobileReaderControlsBlock}
         {/* Reading Style: Separated | Sentence Interlinear | Notebook | Contextual */}
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-1.5 sm:gap-2.5 text-left">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0">
@@ -922,8 +1250,13 @@ export const SharedBilingualLayoutToolbar = ({
     </div>
   );
 
+  const workspaceAccentDot = workspaceType === 'paragraph'
+    ? 'bg-teal-500 dark:bg-teal-400'
+    : 'bg-indigo-500 dark:bg-indigo-400';
+
   return (
     <div
+      ref={toolbarRef}
       className={`${SHARED_SURFACE_TOKENS.shellCard} overflow-hidden`}
       data-shared-card-bilingual-toolbar="true"
       data-shared-reader-mode={activeReaderMode}
@@ -933,193 +1266,103 @@ export const SharedBilingualLayoutToolbar = ({
       data-shared-contextual-placement={activeState.contextualPlacement}
       data-shared-reading-settings-open={settingsOpen ? 'true' : 'false'}
     >
-      {/* Optional integrated compact Workspace header strip */}
-      {workspaceHeaderSlot && (
-        <div className={`border-b ${SHARED_SURFACE_TOKENS.dividerHairline}`}>
-          {workspaceHeaderSlot}
-        </div>
-      )}
-
-      {/* Primary Reading-First Bar: Reader Mode + Language + Focus Orientation (if Focus) + Reading Settings */}
-      <div className="px-2 py-1.5 sm:px-3 sm:py-2 space-y-1.5 sm:space-y-0">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 sm:gap-2">
-          {/* Reader Mode (Full | Card | Focus | Segment) */}
-          <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
-            <span className="hidden xl:inline text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
-              {supportsFourModes ? SHARED_UI_TERMINOLOGY.readerMode : 'View'}
-            </span>
-            {supportsFourModes ? (
-              <div
-                role="group"
-                aria-label="Reader presentation mode (display only)"
-                className={`grid grid-cols-4 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+      {/* MOBILE (E2): Single-Row Concise Workspace Toolbar when closed */}
+      {isCompactViewport ? (
+        <div
+          className="flex items-center justify-between gap-2 px-2.5 py-1.5 min-h-[48px]"
+          data-mobile-workspace-toolbar="true"
+        >
+          <button
+            type="button"
+            onClick={handleToggleReadingSettings}
+            title={`${workspaceTitle || 'Workspace'} — ${mobileEffectiveViewSummary}`}
+            aria-label={`Reading view: ${workspaceTitle || 'Workspace'}, ${mobileEffectiveViewSummary}. Tap to open Reading View settings.`}
+            className={`min-w-0 flex-1 text-left rounded-lg px-1 py-0.5 -ml-1 hover:bg-slate-100/80 dark:hover:bg-slate-800/70 transition-colors ${SHARED_CONTROL_TOKENS.focusRing}`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${workspaceAccentDot}`} />
+              <span
+                data-mobile-workspace-title="true"
+                className="truncate text-xs font-bold leading-4 text-slate-900 dark:text-slate-50"
               >
-                {READER_MODE_OPTIONS.map(item => {
-                  const active = activeReaderMode === item.id;
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => handleSelectReaderMode(item.id)}
-                      title={item.description}
-                      data-shared-reader-mode-option={item.id}
-                      className={`min-h-9 sm:min-h-8 px-1.5 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
-                        active
-                          ? SHARED_CONTROL_TOKENS.segmentActivePrimary
-                          : SHARED_CONTROL_TOKENS.segmentInactive
-                      }`}
-                    >
-                      <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div
-                role="group"
-                aria-label="Reading view level (display only)"
-                className={`grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
-              >
-                {SHARED_LEVEL_OPTIONS.map(option => {
-                  const active = activeState.level === option.id;
-                  const Icon = LEVEL_ICONS[option.id] || BookOpen;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => emitPatch({ level: option.id })}
-                      title={describe(option)}
-                      data-shared-card-level-option={option.id}
-                      className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
-                        active
-                          ? SHARED_CONTROL_TOKENS.segmentActivePrimary
-                          : SHARED_CONTROL_TOKENS.segmentInactive
-                      }`}
-                    >
-                      <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{option.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Language + Focus Orientation (when Focus) + Reading Settings Trigger */}
-          <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 min-w-0 flex-1">
-            {/* Reading Language & Order: EN | ID | EN–ID | ID–EN */}
-            <div
-              role="group"
-              aria-label="Reading language and display order (display only)"
-              data-shared-reading-language-group="true"
-              className={`grid grid-cols-4 sm:inline-flex flex-1 sm:flex-initial items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
-            >
-              {SHARED_READING_LANGUAGE_OPTIONS.map(option => {
-                const active = activeState.readingLanguage === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    aria-label={option.label}
-                    onClick={() => handleSelectReadingLanguage(option.id)}
-                    title={option.description}
-                    data-shared-reading-language-option={option.id}
-                    data-shared-card-layout-option={option.legacyLayoutId || undefined}
-                    className={`min-h-9 sm:min-h-8 px-1 sm:px-2 py-1 rounded-lg text-[11px] sm:text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
-                      active
-                        ? SHARED_CONTROL_TOKENS.segmentActiveNeutral
-                        : SHARED_CONTROL_TOKENS.segmentInactive
-                    }`}
-                  >
-                    <span className="sm:hidden">{option.shortLabel || option.label}</span>
-                    <span className="hidden sm:inline">{option.label}</span>
-                  </button>
-                );
-              })}
+                {workspaceTitle || (workspaceType === 'conversation' ? 'Conversation' : workspaceType === 'mixed' ? 'Mixed Workspace' : 'Workspace')}
+              </span>
+              {mobilePlayAction?.activeStatusLabel && (
+                <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold leading-none ${mobilePlayAction.activeToneClass}`}>
+                  <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current" />
+                  <span>{mobilePlayAction.activeStatusLabel}</span>
+                </span>
+              )}
             </div>
+            <p
+              data-mobile-workspace-view-summary="true"
+              className="truncate text-[11px] font-medium leading-4 text-slate-500 dark:text-slate-400"
+            >
+              {mobileEffectiveViewSummary}
+            </p>
+          </button>
 
-            {/* Focus Orientation (inline single-row pill ONLY when Focus Mode is active on desktop/tablet) */}
-            {showContextualFocusBar && !isCompactViewport && (
-              <div
-                className="inline-flex items-center gap-1 shrink-0"
-                data-shared-part-layout-bar="true"
-                data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+          <div className="flex items-center gap-1 shrink-0">
+            {mobilePlayAction && (
+              <button
+                type="button"
+                disabled={mobilePlayAction.disabled}
+                onClick={mobilePlayAction.onPlay}
+                data-mobile-workspace-play="true"
+                aria-label={mobilePlayAction.stopsWorkspace ? 'Stop Workspace playback' : 'Play entire Workspace'}
+                title={mobilePlayAction.stopsWorkspace ? 'Stop All' : 'Play All'}
+                className={`h-9 w-9 rounded-lg inline-flex items-center justify-center shrink-0 disabled:opacity-35 transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                  mobilePlayAction.stopsWorkspace
+                    ? (mobilePlayAction.activeToneClass || 'bg-blue-600 text-white')
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
+                }`}
               >
-                <div
-                  role="group"
-                  aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
-                  className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
-                >
-                  {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
-                    const active = supportsFourModes
-                      ? focusOrientation === option.id
-                      : activeState.partLayout === option.id;
-                    const Icon = PART_LAYOUT_ICONS[option.id] || List;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => {
-                          if (supportsFourModes && readerMode !== 'focus') {
-                            onChangeReaderMode?.('focus');
-                          }
-                          emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
-                        }}
-                        title={describe(option)}
-                        data-shared-card-part-layout-option={option.id}
-                        data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
-                        className={`min-h-8 px-2 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
-                          active
-                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
-                            : SHARED_CONTROL_TOKENS.segmentInactive
-                        }`}
-                      >
-                        <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-                        <span>{option.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                {mobilePlayAction.stopsWorkspace
+                  ? <Square aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+                  : <Play aria-hidden="true" className="w-3.5 h-3.5 fill-current" />}
+              </button>
             )}
 
-            {/* Progressive-Disclosure Reading Settings Trigger */}
+            {typeof onOpenMobileData === 'function' && (
+              <button
+                type="button"
+                onClick={() => {
+                  closeSettings({ restoreFocus: false });
+                  announcePresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS);
+                  onOpenMobileData();
+                }}
+                data-mobile-workspace-data="true"
+                aria-label="Open Workspace Data"
+                title="Manage Workspaces & Data"
+                className={`h-9 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 ${SHARED_CONTROL_TOKENS.secondaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
+              >
+                <Database aria-hidden="true" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-300 shrink-0" />
+                <span className="hidden min-[380px]:inline">Data</span>
+              </button>
+            )}
+
             <button
+              ref={toggleBtnRef}
               type="button"
               aria-expanded={settingsOpen}
               aria-controls={settingsPanelId}
               onClick={handleToggleReadingSettings}
               data-shared-reading-settings-toggle="true"
               data-shared-appearance-toggle="true"
-              title="Open Reading Settings: Reading Style, Typography, Card Visibility, and Workspace Style"
-              className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-xl border text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+              title="Open Reading View & Settings"
+              aria-label={settingsOpen ? 'Close Reading View settings' : 'Open Reading View settings'}
+              className={`h-9 px-2.5 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
                 settingsOpen || hasSettingsCustomizations
-                  ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/85 dark:bg-indigo-950/55 text-indigo-800 dark:text-indigo-200'
+                  ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/90 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200'
                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700'
               }`}
             >
               <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">{SHARED_UI_TERMINOLOGY.readingSettings}</span>
-              <span className="sm:hidden">Settings</span>
-              <span className="hidden md:inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                {activeStyleSummary}
-              </span>
-              {appearanceDirty && (
+              <span>View</span>
+              {hasSettingsCustomizations && (
                 <span
-                  aria-label="Custom typography active"
-                  data-shared-appearance-dirty-dot="true"
-                  className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
-                />
-              )}
-              {!appearanceDirty && hasWorkspaceStyleOverride && (
-                <span
-                  aria-label="Workspace style override active"
+                  aria-label="Custom view active"
+                  data-shared-appearance-dirty-dot={appearanceDirty ? 'true' : undefined}
                   className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
                 />
               )}
@@ -1128,64 +1371,212 @@ export const SharedBilingualLayoutToolbar = ({
                 className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${settingsOpen ? 'rotate-180' : ''}`}
               />
             </button>
-
-            {rightSlot}
           </div>
         </div>
-
-        {/* Mobile-only compact Focus Orientation row when Focus Mode is active */}
-        {showContextualFocusBar && isCompactViewport && (
-          <div
-            className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80"
-            data-shared-part-layout-bar="true"
-            data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
-          >
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Focus Flow
-            </span>
-            <div
-              role="group"
-              aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
-              className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrackCompact}`}
-            >
-              {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
-                const active = supportsFourModes
-                  ? focusOrientation === option.id
-                  : activeState.partLayout === option.id;
-                const Icon = PART_LAYOUT_ICONS[option.id] || List;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => {
-                      if (supportsFourModes && readerMode !== 'focus') {
-                        onChangeReaderMode?.('focus');
-                      }
-                      emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
-                    }}
-                    title={describe(option)}
-                    data-shared-card-part-layout-option={option.id}
-                    data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
-                    className={`min-h-8 px-2.5 py-0.5 rounded-md text-[11px] font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
-                      active
-                        ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
-                        : SHARED_CONTROL_TOKENS.segmentInactive
-                    }`}
-                  >
-                    <Icon aria-hidden="true" className="w-3 h-3 shrink-0" />
-                    <span>{option.label}</span>
-                  </button>
-                );
-              })}
+      ) : (
+        <>
+          {/* DESKTOP: Accepted 4G-A compact Workspace header strip + Reading-First Bar */}
+          {workspaceHeaderSlot && (
+            <div className={`border-b ${SHARED_SURFACE_TOKENS.dividerHairline}`}>
+              {workspaceHeaderSlot}
             </div>
-          </div>
-        )}
+          )}
 
-        {subtitle && (
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-left">{subtitle}</p>
-        )}
-      </div>
+          <div className="px-2 py-1.5 sm:px-3 sm:py-2 space-y-1.5 sm:space-y-0">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-1.5 sm:gap-2">
+              {/* Reader Mode (Full | Card | Focus | Segment) */}
+              <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
+                <span className="hidden xl:inline text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+                  {supportsFourModes ? SHARED_UI_TERMINOLOGY.readerMode : 'View'}
+                </span>
+                {supportsFourModes ? (
+                  <div
+                    role="group"
+                    aria-label="Reader presentation mode (display only)"
+                    className={`grid grid-cols-4 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                  >
+                    {READER_MODE_OPTIONS.map(item => {
+                      const active = activeReaderMode === item.id;
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => handleSelectReaderMode(item.id)}
+                          title={item.description}
+                          data-shared-reader-mode-option={item.id}
+                          className={`min-h-9 sm:min-h-8 px-1.5 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                            active
+                              ? SHARED_CONTROL_TOKENS.segmentActivePrimary
+                              : SHARED_CONTROL_TOKENS.segmentInactive
+                          }`}
+                        >
+                          <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div
+                    role="group"
+                    aria-label="Reading view level (display only)"
+                    className={`grid grid-cols-3 sm:inline-flex w-full sm:w-auto items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                  >
+                    {SHARED_LEVEL_OPTIONS.map(option => {
+                      const active = activeState.level === option.id;
+                      const Icon = LEVEL_ICONS[option.id] || BookOpen;
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => emitPatch({ level: option.id })}
+                          title={describe(option)}
+                          data-shared-card-level-option={option.id}
+                          className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-semibold inline-flex items-center justify-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                            active
+                              ? SHARED_CONTROL_TOKENS.segmentActivePrimary
+                              : SHARED_CONTROL_TOKENS.segmentInactive
+                          }`}
+                        >
+                          <Icon aria-hidden="true" className="hidden sm:inline-block w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Language + Focus Orientation (when Focus) + Reading Settings Trigger */}
+              <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 min-w-0 flex-1">
+                <div
+                  role="group"
+                  aria-label="Reading language and display order (display only)"
+                  data-shared-reading-language-group="true"
+                  className={`grid grid-cols-4 sm:inline-flex flex-1 sm:flex-initial items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                >
+                  {SHARED_READING_LANGUAGE_OPTIONS.map(option => {
+                    const active = activeState.readingLanguage === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={active}
+                        aria-label={option.label}
+                        onClick={() => handleSelectReadingLanguage(option.id)}
+                        title={option.description}
+                        data-shared-reading-language-option={option.id}
+                        data-shared-card-layout-option={option.legacyLayoutId || undefined}
+                        className={`min-h-9 sm:min-h-8 px-1 sm:px-2 py-1 rounded-lg text-[11px] sm:text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                          active
+                            ? SHARED_CONTROL_TOKENS.segmentActiveNeutral
+                            : SHARED_CONTROL_TOKENS.segmentInactive
+                        }`}
+                      >
+                        <span className="sm:hidden">{option.shortLabel || option.label}</span>
+                        <span className="hidden sm:inline">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {showContextualFocusBar && (
+                  <div
+                    className="inline-flex items-center gap-1 shrink-0"
+                    data-shared-part-layout-bar="true"
+                    data-shared-focus-orientation-bar={supportsFourModes ? 'true' : undefined}
+                  >
+                    <div
+                      role="group"
+                      aria-label={supportsFourModes ? `Focus ${terms.lower} orientation (display only)` : `Part ${terms.lower} layout (display only)`}
+                      className={`inline-flex items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                    >
+                      {(supportsFourModes ? SHARED_FOCUS_ORIENTATION_OPTIONS : SHARED_PART_LAYOUT_OPTIONS).map(option => {
+                        const active = supportsFourModes
+                          ? focusOrientation === option.id
+                          : activeState.partLayout === option.id;
+                        const Icon = PART_LAYOUT_ICONS[option.id] || List;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => {
+                              if (supportsFourModes && readerMode !== 'focus') {
+                                onChangeReaderMode?.('focus');
+                              }
+                              emitPatch(supportsFourModes ? { level: 'part', partLayout: option.id } : { partLayout: option.id });
+                            }}
+                            title={describe(option)}
+                            data-shared-card-part-layout-option={option.id}
+                            data-shared-focus-orientation-option={supportsFourModes ? option.id : undefined}
+                            className={`min-h-8 px-2 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                              active
+                                ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-200/70 dark:ring-slate-600'
+                                : SHARED_CONTROL_TOKENS.segmentInactive
+                            }`}
+                          >
+                            <Icon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                            <span>{option.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  ref={toggleBtnRef}
+                  type="button"
+                  aria-expanded={settingsOpen}
+                  aria-controls={settingsPanelId}
+                  onClick={handleToggleReadingSettings}
+                  data-shared-reading-settings-toggle="true"
+                  data-shared-appearance-toggle="true"
+                  title="Open Reading Settings: Reading Style, Typography, Card Visibility, and Workspace Style"
+                  className={`min-h-9 sm:min-h-8 px-2 sm:px-2.5 py-1 rounded-xl border text-[11px] sm:text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 transition-colors duration-150 motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                    settingsOpen || hasSettingsCustomizations
+                      ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/85 dark:bg-indigo-950/55 text-indigo-800 dark:text-indigo-200'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700'
+                  }`}
+                >
+                  <SlidersHorizontal aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
+                  <span>{SHARED_UI_TERMINOLOGY.readingSettings}</span>
+                  <span className="hidden md:inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                    {activeStyleSummary}
+                  </span>
+                  {appearanceDirty && (
+                    <span
+                      aria-label="Custom typography active"
+                      data-shared-appearance-dirty-dot="true"
+                      className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
+                    />
+                  )}
+                  {!appearanceDirty && hasWorkspaceStyleOverride && (
+                    <span
+                      aria-label="Workspace style override active"
+                      className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-300 shrink-0"
+                    />
+                  )}
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${settingsOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {rightSlot}
+              </div>
+            </div>
+
+            {subtitle && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 text-left">{subtitle}</p>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Visible return-to-playing banner when user manually diverges from playing Card */}
       {divergedBannerSlot && (
@@ -1194,10 +1585,10 @@ export const SharedBilingualLayoutToolbar = ({
         </div>
       )}
 
-      {/* Reading Settings Disclosure:
-          - Closed: hidden inline container (0px visual height, excluded from AT/tab flow, preserves selector stability)
-          - Open Desktop: clean inline disclosure panel with live reading preview directly underneath
-          - Open Mobile: bottom-docked floating sheet positioned safely above the Global Player */}
+      {/* Reading View / Settings Overlay (E3):
+          - Closed: hidden inline container (0px height, excluded from AT/tab flow, preserves selector stability)
+          - Open Desktop: clean inline disclosure panel with live reading preview underneath
+          - Open Mobile: anchored directly below the Workspace toolbar over a dimmed backdrop, clearing the fixed Global Player */}
       {settingsOpen && isCompactViewport && typeof document !== 'undefined' ? (
         createPortal(
           <div
@@ -1207,18 +1598,23 @@ export const SharedBilingualLayoutToolbar = ({
             <button
               type="button"
               aria-label="Close Reading Settings backdrop"
-              onClick={() => setSettingsOpen(false)}
-              className="fixed inset-0 bg-slate-950/30"
+              data-shared-reading-settings-backdrop="true"
+              onClick={() => closeSettings({ restoreFocus: true })}
+              className="fixed inset-0 bg-slate-950/50 dark:bg-slate-950/70 backdrop-blur-[1px]"
             />
             <div
+              ref={overlayPanelRef}
+              tabIndex={-1}
               id={settingsPanelId}
               role="dialog"
-              aria-label={SHARED_UI_TERMINOLOGY.readingSettings}
+              aria-modal="true"
+              aria-label="Reading View and Settings"
               data-shared-reading-settings-panel="true"
-              className={`fixed inset-x-2 z-[65] flex flex-col overflow-hidden ${SHARED_SURFACE_TOKENS.mobileSheet}`}
+              data-shared-reading-overlay-anchored="true"
+              className={`fixed inset-x-2 z-[65] flex flex-col overflow-hidden outline-none ${SHARED_SURFACE_TOKENS.mobileSheet}`}
               style={{
-                bottom: SHARED_SPACING_TOKENS.mobileSheetBottomOffset,
-                maxHeight: '56dvh'
+                top: `${overlayTopPx}px`,
+                maxHeight: `calc(100dvh - ${overlayTopPx}px - 108px - env(safe-area-inset-bottom, 0px))`
               }}
             >
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-3">

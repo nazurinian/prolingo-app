@@ -329,6 +329,13 @@ const ContextualBlockCallout = ({
   const secondaryText = normalizeSegmentDisplayText(
     secondaryChannel === 'meaning' ? target.segment?.meaning : target.segment?.text
   );
+  const primaryAnchorChannel = secondaryChannel === 'meaning' ? 'text' : 'meaning';
+  const primaryAnchorFull = normalizeSegmentDisplayText(
+    primaryAnchorChannel === 'meaning' ? target.segment?.meaning : target.segment?.text
+  );
+  const primaryAnchorSnippet = primaryAnchorFull
+    ? (primaryAnchorFull.length > 54 ? `${primaryAnchorFull.slice(0, 53).trimEnd()}…` : primaryAnchorFull)
+    : '';
 
   return (
     <div
@@ -370,6 +377,18 @@ const ContextualBlockCallout = ({
           )}
         </div>
       </div>
+      {primaryAnchorSnippet && (
+        <p
+          data-shared-contextual-anchor-snippet="true"
+          title={primaryAnchorFull}
+          className="text-[11px] leading-snug text-slate-500 dark:text-slate-400 truncate select-none"
+        >
+          <span aria-hidden="true" className="mr-1 text-indigo-500/80 dark:text-indigo-400/80">
+            {placement === 'above' ? '↓' : '↑'}
+          </span>
+          <span>“{primaryAnchorSnippet}”</span>
+        </p>
+      )}
       <div
         lang={secMeta.lang}
         data-shared-reading-body="true"

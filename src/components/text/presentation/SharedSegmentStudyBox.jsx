@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Square, Target } from 'lucide-react';
 import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import {
@@ -64,8 +64,32 @@ export const SharedSegmentStudyBox = ({
   onPlayContinueFromSegment = null
 }) => {
   const [continueScope, setContinueScope] = useState('card');
+  const unitRailRef = useRef(null);
   const units = lookup?.units || card?.units || [];
   const entries = lookup?.entries || [];
+  const activeUnitViewKeyForRail = units.length > 0 && entries.length > 0
+    ? (selection?.selectedUnit?.viewKey || units[0]?.viewKey || null)
+    : null;
+
+  // E5: Keep the selected Unit chip horizontally visible inside its scrollable rail
+  // without triggering any vertical page scroll or fighting manual scroll ownership.
+  useEffect(() => {
+    const rail = unitRailRef.current;
+    if (!rail || !activeUnitViewKeyForRail) return;
+    if (rail.scrollWidth <= rail.clientWidth + 1) return;
+    const buttons = rail.querySelectorAll('[data-study-box-unit-option]');
+    let targetBtn = null;
+    for (const btn of buttons) {
+      if (btn.getAttribute('data-study-box-unit-option') === activeUnitViewKeyForRail) {
+        targetBtn = btn;
+        break;
+      }
+    }
+    if (!targetBtn) return;
+    const desiredLeft = targetBtn.offsetLeft - (rail.clientWidth - targetBtn.clientWidth) / 2;
+    const maxScroll = Math.max(0, rail.scrollWidth - rail.clientWidth);
+    rail.scrollLeft = Math.max(0, Math.min(maxScroll, desiredLeft));
+  }, [activeUnitViewKeyForRail, units.length]);
   const speakerAppearanceMap = useMemo(() => buildCardSpeakerAppearanceMap(card), [card]);
   const resolvedStyle = useMemo(() => normalizeTextWorkspaceStyleState(workspaceStyle), [workspaceStyle]);
   const normalizedView = useMemo(() => (
@@ -342,11 +366,14 @@ export const SharedSegmentStudyBox = ({
           data-shared-reading-role={role}
           data-shared-reading-kind="study-box"
           data-shared-reading-align={bodyStyle.textAlign}
+          data-study-box-effective-align={bodyStyle.textAlign === 'justify' ? 'left-mobile-adapted' : bodyStyle.textAlign}
           data-shared-reading-size={sizeToken}
           data-study-box-text={!isMeaningChannel ? segment.id : undefined}
           data-study-box-meaning={isMeaningChannel ? segment.id : undefined}
           style={bodyStyle.inlineStyle}
-          className={`max-w-[66ch] break-words whitespace-pre-line ${textTone} ${bodyStyle.className}`}
+          className={`max-w-[66ch] break-words whitespace-pre-line ${textTone} ${bodyStyle.className} ${
+            bodyStyle.textAlign === 'justify' ? 'max-sm:!text-left' : ''
+          }`}
         >
           {hasContent ? content : (
             <span
@@ -451,6 +478,8 @@ export const SharedSegmentStudyBox = ({
             {activeSpeakerInfo && (
               <span
                 data-shared-segment-speaker-name="true"
+                title={activeSpeakerInfo.displayName}
+                aria-label={`Speaker: ${activeSpeakerInfo.displayName}`}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold max-w-full ${activeSpeakerInfo.palette.pill}`}
               >
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${activeSpeakerInfo.palette.dot}`} />
@@ -518,9 +547,10 @@ export const SharedSegmentStudyBox = ({
               {isConversation ? 'Turn' : 'Section'}
             </span>
             <div
+              ref={unitRailRef}
               role="group"
               aria-label={`Select ${activeUnitTerms.lower} in Study Box`}
-              className="flex flex-nowrap sm:flex-wrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 min-w-0 flex-1"
+              className="relative flex flex-nowrap sm:flex-wrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 min-w-0 flex-1"
             >
               {units.map((unit, uIdx) => {
                 const selected = unit.viewKey === activeUnit.viewKey;
@@ -736,14 +766,16 @@ export const SharedSegmentStudyBox = ({
 
           {/* Row 2: Continue through [Boundary] / Play & Continue */}
           <div
-            className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-800 sm:pt-0 sm:border-t-0"
+            className="flex flex-nowrap sm:flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-800 sm:pt-0 sm:border-t-0"
             data-study-box-continue-actions="true"
           >
             {supportsContinuePlay && (
-              <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 shrink-0">
-                <span className="whitespace-nowrap">Continue through</span>
+              <label className="inline-flex items-center gap-1 sm:gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 shrink-0">
+                <span className="hidden sm:inline whitespace-nowrap">Continue through</span>
+                <span className="sm:hidden whitespace-nowrap">Through</span>
                 <select
                   data-study-box-continue-scope="true"
+                  aria-label="Continue playback through boundary"
                   className={`min-h-9 sm:min-h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 sm:px-2 text-xs font-semibold text-slate-800 dark:text-slate-100 ${SHARED_CONTROL_TOKENS.focusRing}`}
                   value={continueScope}
                   disabled={disabled}
@@ -765,14 +797,14 @@ export const SharedSegmentStudyBox = ({
               title={stopsContinue ? 'Stop continuous playback' : supportsContinuePlay
                 ? 'Play from this sentence and continue through the configured boundary'
                 : 'Play & Continue — awaits 4E bounded Continue playback callback'}
-              className={`flex-1 sm:flex-none min-h-9 sm:min-h-8 px-2.5 sm:px-3 rounded-lg border text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+              className={`flex-1 sm:flex-none min-w-0 min-h-9 sm:min-h-8 px-2 sm:px-3 rounded-lg border text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1 sm:gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
                 stopsContinue
                   ? `${playbackTone.solid} border-transparent shadow-xs`
                   : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-200'
               }`}
             >
               <ContinueIcon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-              <span>{stopsContinue ? 'Stop Continue' : 'Play & Continue'}</span>
+              <span className="truncate">{stopsContinue ? 'Stop Continue' : 'Play & Continue'}</span>
             </button>
           </div>
 
