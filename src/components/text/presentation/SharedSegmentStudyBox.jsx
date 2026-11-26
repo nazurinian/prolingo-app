@@ -14,14 +14,19 @@ import {
   IDLE_SHARED_CURSOR,
   buildCardSpeakerAppearanceMap,
   buildParagraphBodyStyle,
-  getSharedUnitHeading,
   getSharedUnitShortCode,
   getSharedUnitTerms,
   normalizeSegmentDisplayText,
+  resolveCursorAuthoredPosition,
   resolveReaderAppearancePresentation,
   resolveSegmentCoverageStatuses,
   resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
+import {
+  SHARED_CONTROL_TOKENS,
+  SHARED_SEMANTIC_COLORS,
+  resolvePlaybackSemanticTone
+} from './sharedDesignTokens.js';
 
 /**
  * 4B3 / 4C1 Segment Mode Surface (One Study Box per Card):
@@ -171,6 +176,8 @@ export const SharedSegmentStudyBox = ({
   const globalLogicalIndex = segmentEntry ? segmentEntry.logicalIndex : -1;
 
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
+  const cursorAuthored = resolveCursorAuthoredPosition({ card, lookup, cursor });
+  const playbackTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
   const isSelectedAudible = Boolean(
     segment
     && isSpeakingCard
@@ -221,8 +228,9 @@ export const SharedSegmentStudyBox = ({
     : null;
   const audibleUnit = audibleEntry?.unit || null;
   const audibleUnitIndex = audibleEntry ? audibleEntry.unitIndex : -1;
+  const audibleUnitSegments = audibleUnit?.segments || [];
   const audibleLocalIndex = audibleUnit && audibleEntry
-    ? (audibleUnit.segments || []).findIndex(item => item.id === audibleEntry.segment.id)
+    ? audibleUnitSegments.findIndex(item => item.id === audibleEntry.segment.id)
     : -1;
   const audibleShortCode = audibleUnit ? getSharedUnitShortCode(audibleUnit, audibleUnitIndex) : null;
   const audibleSpeakerInfo = audibleUnit?.kind === 'turn'
@@ -282,39 +290,48 @@ export const SharedSegmentStudyBox = ({
     const isMeaningChannel = channel === 'meaning';
     const isPrimaryRole = role === 'primary';
     const bodyStyle = isPrimaryRole ? studyPrimaryBodyStyle : studySecondaryBodyStyle;
+    const sizeToken = isPrimaryRole
+      ? appearancePres.appearance.primaryFontSize
+      : appearancePres.appearance.secondaryFontSize;
     const isChannelPlaying = isMeaningChannel ? isSelectedPlayingMeaning : isSelectedPlayingText;
     const isChannelPaused = isSelectedPaused && cursor.channel === channel;
     const content = isMeaningChannel ? meaningContent : textContent;
     const hasContent = isMeaningChannel ? hasMeaning : hasText;
     const langTag = isMeaningChannel ? meaningLang : textLang;
     const labelText = isMeaningChannel ? 'Indonesian (ID)' : 'English (EN)';
-    const labelTone = isMeaningChannel
-      ? 'text-emerald-700 dark:text-emerald-300'
-      : 'text-indigo-700 dark:text-indigo-300';
+    const semantic = isMeaningChannel ? SHARED_SEMANTIC_COLORS.id : SHARED_SEMANTIC_COLORS.en;
     const textTone = isPrimaryRole
       ? 'font-medium text-slate-900 dark:text-slate-50'
       : appearancePres.secondaryTextClass;
+    const activeSurface = isChannelPaused
+      ? `${SHARED_SEMANTIC_COLORS.paused.rowActive} rounded-lg px-2.5 py-2 -mx-2.5`
+      : isChannelPlaying
+        ? `${semantic.rowActive} rounded-lg px-2.5 py-2 -mx-2.5`
+        : '';
 
     return (
       <div
         key={channel}
-        className={isPrimaryRole ? 'space-y-1' : 'pt-3.5 border-t border-slate-100 dark:border-slate-800 space-y-1'}
+        className={`${isPrimaryRole ? 'space-y-1' : 'pt-2.5 border-t border-slate-100 dark:border-slate-800/90 space-y-1'} ${activeSurface} transition-colors motion-reduce:transition-none`}
         data-shared-segment-channel-block={channel}
         data-study-box-channel={channel}
         data-study-box-role={role}
+        data-study-box-channel-state={isChannelPaused ? 'paused' : isChannelPlaying ? 'playing' : 'idle'}
       >
         <div className="flex items-center gap-2 text-left">
-          <span className={`text-[10px] font-bold uppercase tracking-wider select-none ${labelTone}`}>
+          <span className={`text-[10px] font-bold uppercase tracking-wider select-none ${semantic.text}`}>
             {labelText}
           </span>
           {isChannelPlaying && (
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${isMeaningChannel ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
-              Playing {isMeaningChannel ? 'ID' : 'EN'}
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${semantic.solid}`}>
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-white" />
+              <span>Playing {isMeaningChannel ? 'ID' : 'EN'}</span>
             </span>
           )}
           {isChannelPaused && (
-            <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
-              Paused
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${SHARED_SEMANTIC_COLORS.paused.badge}`}>
+              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${SHARED_SEMANTIC_COLORS.paused.dot}`} />
+              <span>Paused {isMeaningChannel ? 'ID' : 'EN'}</span>
             </span>
           )}
         </div>
@@ -325,6 +342,7 @@ export const SharedSegmentStudyBox = ({
           data-shared-reading-role={role}
           data-shared-reading-kind="study-box"
           data-shared-reading-align={bodyStyle.textAlign}
+          data-shared-reading-size={sizeToken}
           data-study-box-text={!isMeaningChannel ? segment.id : undefined}
           data-study-box-meaning={isMeaningChannel ? segment.id : undefined}
           style={bodyStyle.inlineStyle}
@@ -346,7 +364,7 @@ export const SharedSegmentStudyBox = ({
 
   return (
     <div
-      className="space-y-5"
+      className="space-y-4"
       data-shared-segment-view="true"
       data-shared-segment-context-lang={primaryChannel}
       data-shared-segment-context-style={bilingualResolution.effectiveRenderMode}
@@ -356,10 +374,10 @@ export const SharedSegmentStudyBox = ({
         data-shared-segment-context={card?.id}
         data-shared-segment-context-channel={primaryChannel}
         data-shared-segment-context-style={bilingualResolution.effectiveRenderMode}
-        className="space-y-2"
+        className="space-y-1.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-left">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 select-none">
             {contextLabel}
           </span>
         </div>
@@ -393,30 +411,42 @@ export const SharedSegmentStudyBox = ({
         data-shared-segment-local-index={localIndex >= 0 ? localIndex + 1 : undefined}
         data-shared-segment-focus-index={globalLogicalIndex >= 0 ? globalLogicalIndex + 1 : undefined}
         data-shared-turn-speaker-palette={activeSpeakerInfo?.palette?.id || undefined}
-        className={`rounded-2xl border ${studyBoxAccentBorder} bg-slate-50/80 dark:bg-slate-900/75 p-4 sm:p-5 space-y-4 shadow-sm transition-colors motion-reduce:transition-none text-left ${
+        className={`rounded-2xl border ${studyBoxAccentBorder} bg-slate-50/85 dark:bg-slate-900/75 p-3 sm:p-4 space-y-2.5 sm:space-y-3 shadow-xs transition-colors motion-reduce:transition-none text-left ${
           isSelectedPaused
-            ? 'border-amber-400/90 dark:border-amber-600/80 ring-1 ring-amber-400/20'
+            ? SHARED_SEMANTIC_COLORS.paused.cardActive
             : isSelectedPlayingMeaning
-              ? 'border-emerald-400/90 dark:border-emerald-500/80 ring-1 ring-emerald-500/15'
+              ? SHARED_SEMANTIC_COLORS.id.cardActive
               : isSelectedPlayingText
-                ? 'border-indigo-400/90 dark:border-indigo-500/80 ring-1 ring-indigo-500/15'
-                : 'border-slate-200/95 dark:border-slate-700/90'
+                ? SHARED_SEMANTIC_COLORS.en.cardActive
+                : selection.isCardPrecisionPlaying
+                  ? playbackTone.cardActive
+                  : 'border-slate-200/95 dark:border-slate-700/90'
         }`}
       >
-        {/* Study Box Header */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/80 dark:border-slate-800">
-          <div className="flex flex-wrap items-center gap-2 text-xs min-w-0">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600/10 dark:bg-indigo-500/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-200">
+        {/* Compact Study Box Header */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/75 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs min-w-0">
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+              isConversation ? SHARED_SEMANTIC_COLORS.conversation.badge : SHARED_SEMANTIC_COLORS.paragraph.badge
+            }`}>
               <Target aria-hidden="true" className="w-3 h-3 shrink-0" />
               <span>Study Box</span>
             </span>
             <span
-              className="font-semibold text-slate-700 dark:text-slate-200 tabular-nums"
+              className="font-semibold text-slate-800 dark:text-slate-100 tabular-nums shrink-0"
               data-shared-segment-unit-context="true"
             >
               {activeUnitShortCode}
-              {!activeUnitIsTurn ? ` · ${getSharedUnitHeading(activeUnit, activeUnitIndex)}` : ''}
-              {isV1Compat ? ' (Compatibility)' : ''}
+              {isV1Compat ? ' (Compat)' : ''}
+            </span>
+            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
+            <span
+              className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums shrink-0"
+              data-shared-segment-position="true"
+            >
+              {activeUnitSegments.length > 0
+                ? `SG${localIndex + 1}/${activeUnitSegments.length}`
+                : '0 SG (empty)'}
             </span>
             {activeSpeakerInfo && (
               <span
@@ -424,24 +454,16 @@ export const SharedSegmentStudyBox = ({
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold max-w-full ${activeSpeakerInfo.palette.pill}`}
               >
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${activeSpeakerInfo.palette.dot}`} />
-                <span className="truncate max-w-[16rem]">{activeSpeakerInfo.displayName}</span>
+                <span className="truncate max-w-[11rem] sm:max-w-[16rem]">{activeSpeakerInfo.displayName}</span>
               </span>
             )}
-            <span
-              className="text-slate-500 dark:text-slate-400 tabular-nums"
-              data-shared-segment-position="true"
-            >
-              {activeUnitSegments.length > 0
-                ? `SG ${localIndex + 1} of ${activeUnitSegments.length}`
-                : '0 SG (empty)'}
-            </span>
             {!activeUnitIsTurn && legacySegmentSpeaker && (
-              <span className="rounded-md bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+              <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                 {legacySegmentSpeaker}
               </span>
             )}
             {coverageStatuses && (
-              <span className="text-[11px] text-slate-500 dark:text-slate-400" data-shared-segment-coverage="true">
+              <span className="hidden sm:inline text-[11px] text-slate-400 dark:text-slate-500" data-shared-segment-coverage="true">
                 {[
                   coverageStatuses.text ? `EN ${coverageStatuses.text}` : null,
                   coverageStatuses.meaning ? `ID ${coverageStatuses.meaning}` : null
@@ -454,10 +476,20 @@ export const SharedSegmentStudyBox = ({
             {selection.isCardPrecisionPlaying && (
               <span
                 data-shared-segment-full-notice="true"
-                className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${playbackTone.bgSoft} ${playbackTone.border} ${playbackTone.text}`}
               >
                 <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
-                <span>Playing Full {isConversation ? 'Scene' : 'Card'} audio · Browse freely</span>
+                <span>
+                  {cursor.state === 'paused' ? 'Paused' : 'Playing'} {cursor.channel === 'meaning' ? 'ID' : 'EN'} · Full {isConversation ? 'Scene' : 'Card'} · Browse freely
+                </span>
+              </span>
+            )}
+            {isSelectedAudible && cursorAuthored.variationLabel && (
+              <span
+                data-shared-playback-variation={cursorAuthored.variationKind}
+                className="inline-flex items-center rounded-full border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/90 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+              >
+                {cursorAuthored.variationLabel}
               </span>
             )}
             {studyBoxDivergedFromAudible && (
@@ -466,29 +498,29 @@ export const SharedSegmentStudyBox = ({
                 onClick={onFollowAudible}
                 data-shared-segment-follow-audio="true"
                 data-study-box-return-to-playing="true"
-                className="min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className={`min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${playbackTone.bgSoft} ${playbackTone.border} ${playbackTone.text} hover:brightness-95 dark:hover:brightness-110`}
               >
                 <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
                 <span>
                   Return to Playing · {audibleShortCode}
                   {audibleSpeakerInfo?.isAssigned ? ` ${audibleSpeakerInfo.displayName}` : ''}
-                  {audibleLocalIndex >= 0 ? ` SG${audibleLocalIndex + 1}` : ''}
+                  {audibleLocalIndex >= 0 ? ` · SG${audibleLocalIndex + 1}/${audibleUnitSegments.length}` : ''}
                 </span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Hierarchical Unit Selector (hidden for single-Unit Cards like P2!) */}
+        {/* Hierarchical Unit Selector (hidden for single-Unit Cards like P2; scrollable on mobile) */}
         {hasMultipleUnits && (
-          <div className="space-y-1.5" data-study-box-unit-picker="true">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {isConversation ? 'Turn & Speaker' : 'Section'}
+          <div className="flex items-center gap-2 min-w-0" data-study-box-unit-picker="true">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+              {isConversation ? 'Turn' : 'Section'}
             </span>
             <div
               role="group"
               aria-label={`Select ${activeUnitTerms.lower} in Study Box`}
-              className="flex flex-wrap items-center gap-1.5 min-w-0"
+              className="flex flex-nowrap sm:flex-wrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 min-w-0 flex-1"
             >
               {units.map((unit, uIdx) => {
                 const selected = unit.viewKey === activeUnit.viewKey;
@@ -512,34 +544,37 @@ export const SharedSegmentStudyBox = ({
                     data-study-box-unit-id={unit.id || undefined}
                     data-study-box-unit-code={shortCode}
                     onClick={() => onSelectUnit?.(unit.viewKey)}
-                    className={`min-h-11 sm:min-h-8 max-w-full px-2.5 py-1 rounded-xl text-xs font-semibold tabular-nums inline-flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    className={`min-h-8 shrink-0 max-w-full px-2.5 py-0.5 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center gap-1.5 transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
                       selected
-                        ? 'bg-indigo-600 text-white shadow-sm'
+                        ? SHARED_SEMANTIC_COLORS.manual.pillActive
                         : isAudible
-                          ? 'border border-indigo-400 bg-indigo-50 dark:bg-indigo-950/45 text-indigo-800 dark:text-indigo-200'
+                          ? playbackTone.chipAudible
                           : segCount === 0
-                            ? 'border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:border-indigo-300'
-                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300'
+                            ? 'border border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:border-slate-400'
+                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
                     }`}
                   >
                     {uSpeaker && (
                       <span
                         aria-hidden="true"
-                        className={`h-2 w-2 rounded-full shrink-0 ${selected ? 'bg-white/90' : uSpeaker.palette.dot}`}
+                        className={`h-2 w-2 rounded-full shrink-0 ${selected ? 'bg-current opacity-80' : uSpeaker.palette.dot}`}
                       />
                     )}
                     <span className="shrink-0 font-bold">{shortCode}</span>
                     {uSpeaker && (
-                      <span className="truncate max-w-[9.5rem] sm:max-w-[11rem] font-medium">
+                      <span className="truncate max-w-[7rem] sm:max-w-[10.5rem] font-medium">
                         {uSpeaker.displayName}
                       </span>
                     )}
-                    <span aria-hidden="true" className={selected ? 'text-indigo-200' : 'text-slate-300 dark:text-slate-600'}>
-                      {' · '}
+                    <span aria-hidden="true" className={selected ? 'opacity-50' : 'text-slate-300 dark:text-slate-600'}>
+                      ·
                     </span>
-                    <span className={`shrink-0 text-[11px] ${selected ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'}`}>
+                    <span className={`shrink-0 text-[11px] ${selected ? 'opacity-80' : 'text-slate-500 dark:text-slate-400'}`}>
                       {segCount} SG
                     </span>
+                    {isAudible && !selected && (
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full shrink-0 ${playbackTone.dot}`} />
+                    )}
                   </button>
                 );
               })}
@@ -547,18 +582,18 @@ export const SharedSegmentStudyBox = ({
           </div>
         )}
 
-        {/* Unit-Local Segment Selector (1..N within active Unit) + Prev/Next */}
+        {/* Unit-Local Segment Selector (1..N within active Unit) + Compact Prev/Next */}
         <div
-          className="flex flex-wrap items-center justify-between gap-2"
+          className="flex items-center justify-between gap-2 min-w-0"
           onKeyDown={handleSegmentKeys}
           data-study-box-segment-picker="true"
         >
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mr-1">
-              Sentence
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto pb-0.5 sm:pb-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+              Segment
             </span>
             {activeUnitSegments.length > 0 ? (
-              <div role="group" aria-label={`Jump to sentence in ${activeUnitShortCode}`} className="flex flex-wrap items-center gap-1">
+              <div role="group" aria-label={`Jump to sentence in ${activeUnitShortCode}`} className="flex flex-nowrap sm:flex-wrap items-center gap-1">
                 {activeUnitSegments.map((seg, idx) => {
                   const selected = seg.id === segment?.id;
                   const isAudible = seg.id === selection.audibleSegmentId;
@@ -568,21 +603,21 @@ export const SharedSegmentStudyBox = ({
                       type="button"
                       aria-pressed={selected}
                       aria-label={`${activeUnitShortCode} Sentence ${idx + 1}${isAudible ? ' (playing audio)' : ''}`}
-                      title={`${activeUnitShortCode} · SG${idx + 1}${isAudible ? ' (playing audio)' : ''}`}
+                      title={`${activeUnitShortCode} · SG${idx + 1}/${activeUnitSegments.length}${isAudible ? ' (playing audio)' : ''}`}
                       data-shared-segment-pill={seg.id}
                       data-study-box-local-segment={idx + 1}
                       onClick={() => onSelectSegment?.(seg.id)}
-                      className={`min-h-11 min-w-10 sm:min-h-8 sm:min-w-8 px-2.5 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center justify-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                      className={`min-h-8 min-w-8 shrink-0 px-2 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center justify-center gap-1 transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
                         selected
-                          ? 'bg-slate-900 dark:bg-sky-500 text-white dark:text-slate-950 shadow-sm'
+                          ? (isAudible ? `${playbackTone.solid} shadow-xs` : SHARED_SEMANTIC_COLORS.manual.pillActive)
                           : isAudible
-                            ? 'border border-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-200'
-                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300'
+                            ? playbackTone.chipAudible
+                            : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                     >
                       <span>{idx + 1}</span>
                       {isAudible && !selected && (
-                        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${playbackTone.dot}`} />
                       )}
                     </button>
                   );
@@ -593,17 +628,18 @@ export const SharedSegmentStudyBox = ({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               disabled={atUnitStart}
               onClick={() => stepLocalSegment(-1)}
               data-shared-segment-prev="true"
               aria-label={`Previous sentence in ${activeUnitShortCode}`}
-              className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className={`min-h-8 px-2 sm:px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-0.5 disabled:opacity-35 hover:border-slate-300 dark:hover:border-slate-600 transition-colors ${SHARED_CONTROL_TOKENS.focusRing}`}
             >
               <ChevronLeft aria-hidden="true" className="w-3.5 h-3.5" />
-              <span>Previous</span>
+              <span className="hidden sm:inline">Previous</span>
+              <span className="sm:hidden">Prev</span>
             </button>
             <button
               type="button"
@@ -611,7 +647,7 @@ export const SharedSegmentStudyBox = ({
               onClick={() => stepLocalSegment(1)}
               data-shared-segment-next="true"
               aria-label={`Next sentence in ${activeUnitShortCode}`}
-              className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 hover:border-indigo-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className={`min-h-8 px-2 sm:px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-0.5 disabled:opacity-35 hover:border-slate-300 dark:hover:border-slate-600 transition-colors ${SHARED_CONTROL_TOKENS.focusRing}`}
             >
               <span>Next</span>
               <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
@@ -619,24 +655,28 @@ export const SharedSegmentStudyBox = ({
           </div>
         </div>
 
-        {/* Exact Bilingual Pair Display (respects shared Workspace Style alignment, reading order, and Typography) */}
+        {/* Primary Bilingual Sentence Pair Display */}
         {segment ? (
-          <div className="rounded-xl border border-slate-200/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-4 sm:p-5 space-y-3.5">
+          <div className="rounded-xl border border-slate-200/85 dark:border-slate-800 bg-white dark:bg-slate-900/95 p-3.5 sm:p-4 space-y-2.5">
             {renderStudyChannelBlock(primaryChannel, 'primary')}
             {renderStudyChannelBlock(secondaryChannel, 'secondary')}
           </div>
         ) : (
           <div
             data-study-box-empty-unit={activeUnit.viewKey}
-            className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/60 p-4 text-sm italic text-slate-500 dark:text-slate-400"
+            className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-900/60 p-3.5 text-sm italic text-slate-500 dark:text-slate-400"
           >
             Empty {activeUnitTerms.lower} ({activeUnitShortCode}) — no sentences to study yet.
           </div>
         )}
 
-        {/* Integration-Ready Study Box Playback Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <div className="flex flex-wrap items-center gap-1.5">
+        {/* Study Box Playback Bar: 2 structured rows on mobile, unified horizontal strip on desktop */}
+        <div
+          className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 pt-0.5"
+          data-study-box-playback-bar="true"
+        >
+          {/* Row 1: Play EN / Play ID / Play Segment */}
+          <div className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,0.82fr)_minmax(0,1.36fr)] sm:flex sm:flex-wrap items-center gap-1.5" data-study-box-primary-actions="true">
             <button
               type="button"
               disabled={playEnDisabled}
@@ -647,9 +687,13 @@ export const SharedSegmentStudyBox = ({
               title={stopsEn ? 'Stop English playback' : supportsChannelPlay
                 ? 'Play English only for this sentence (one-time Split override)'
                 : 'Play EN — awaits 4E exact-channel Split override callback'}
-              className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-indigo-200/90 dark:border-indigo-800/80 bg-indigo-50/75 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className={`min-h-9 sm:min-h-8 px-1.5 sm:px-2.5 rounded-lg border text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1 disabled:opacity-45 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                stopsEn
+                  ? `${SHARED_SEMANTIC_COLORS.en.solid} border-blue-600 shadow-xs`
+                  : `${SHARED_SEMANTIC_COLORS.en.border} ${SHARED_SEMANTIC_COLORS.en.bgSoft} ${SHARED_SEMANTIC_COLORS.en.text} hover:bg-blue-100/90 dark:hover:bg-blue-900/60`
+              }`}
             >
-              <EnIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <EnIcon aria-hidden="true" className="w-3 h-3 fill-current shrink-0" />
               <span>{stopsEn ? 'Stop EN' : 'Play EN'}</span>
             </button>
             <button
@@ -662,9 +706,13 @@ export const SharedSegmentStudyBox = ({
               title={stopsId ? 'Stop Indonesian playback' : supportsChannelPlay
                 ? 'Play Indonesian only for this sentence (one-time Split override)'
                 : 'Play ID — awaits 4E exact-channel Split override callback'}
-              className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-emerald-200/90 dark:border-emerald-800/80 bg-emerald-50/75 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className={`min-h-9 sm:min-h-8 px-1.5 sm:px-2.5 rounded-lg border text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1 disabled:opacity-45 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                stopsId
+                  ? `${SHARED_SEMANTIC_COLORS.id.solid} border-violet-600 shadow-xs`
+                  : `${SHARED_SEMANTIC_COLORS.id.border} ${SHARED_SEMANTIC_COLORS.id.bgSoft} ${SHARED_SEMANTIC_COLORS.id.text} hover:bg-violet-100/90 dark:hover:bg-violet-900/60`
+              }`}
             >
-              <IdIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <IdIcon aria-hidden="true" className="w-3 h-3 fill-current shrink-0" />
               <span>{stopsId ? 'Stop ID' : 'Play ID'}</span>
             </button>
             <button
@@ -675,17 +723,28 @@ export const SharedSegmentStudyBox = ({
               data-study-box-action="play-segment"
               data-reader-playback-action={stopsSegment ? 'stop' : 'play'}
               title={stopsSegment ? 'Stop Segment playback' : 'Play this sentence using current host playback configuration'}
-              className="min-h-11 sm:min-h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
+              className={`min-h-9 sm:min-h-8 px-2 sm:px-3 rounded-lg text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                stopsSegment
+                  ? `${playbackTone.solid}`
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
             >
-              <SegmentIcon aria-hidden="true" className="w-3.5 h-3.5 fill-current" />
+              <SegmentIcon aria-hidden="true" className="w-3 h-3 fill-current shrink-0" />
               <span>{stopsSegment ? 'Stop Segment' : 'Play Segment'}</span>
             </button>
+          </div>
+
+          {/* Row 2: Continue through [Boundary] / Play & Continue */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-800 sm:pt-0 sm:border-t-0"
+            data-study-box-continue-actions="true"
+          >
             {supportsContinuePlay && (
-              <label className="inline-flex items-center gap-1 text-xs">
-                Continue through
+              <label className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 shrink-0">
+                <span className="whitespace-nowrap">Continue through</span>
                 <select
                   data-study-box-continue-scope="true"
-                  className="min-h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2"
+                  className={`min-h-9 sm:min-h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 sm:px-2 text-xs font-semibold text-slate-800 dark:text-slate-100 ${SHARED_CONTROL_TOKENS.focusRing}`}
                   value={continueScope}
                   disabled={disabled}
                   onChange={event => setContinueScope(event.target.value)}
@@ -706,16 +765,21 @@ export const SharedSegmentStudyBox = ({
               title={stopsContinue ? 'Stop continuous playback' : supportsContinuePlay
                 ? 'Play from this sentence and continue through the configured boundary'
                 : 'Play & Continue — awaits 4E bounded Continue playback callback'}
-              className="min-h-11 sm:min-h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold inline-flex items-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className={`flex-1 sm:flex-none min-h-9 sm:min-h-8 px-2.5 sm:px-3 rounded-lg border text-xs font-semibold whitespace-nowrap inline-flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed transition-colors ${SHARED_CONTROL_TOKENS.focusRing} ${
+                stopsContinue
+                  ? `${playbackTone.solid} border-transparent shadow-xs`
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-200'
+              }`}
             >
-              <ContinueIcon aria-hidden="true" className="w-3.5 h-3.5" />
+              <ContinueIcon aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
               <span>{stopsContinue ? 'Stop Continue' : 'Play & Continue'}</span>
             </button>
           </div>
+
           {(!supportsChannelPlay || !supportsContinuePlay) && (
             <span
               data-study-box-pending-note="true"
-              className="text-[11px] text-slate-400 dark:text-slate-500"
+              className="w-full text-[11px] text-slate-400 dark:text-slate-500"
             >
               EN/ID channel &amp; Continue scopes pending 4E playback integration
             </span>

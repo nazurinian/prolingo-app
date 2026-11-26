@@ -15,7 +15,15 @@ export const SHARED_SEMANTIC_COLORS = Object.freeze({
     border: 'border-blue-200/90 dark:border-blue-800/80',
     badge: 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-200',
     solid: 'bg-blue-600 text-white',
-    ring: 'ring-blue-500/25'
+    dot: 'bg-blue-600 dark:bg-blue-400',
+    ring: 'ring-blue-500/25',
+    cardActive: 'border-blue-500/90 dark:border-blue-400/90 ring-2 ring-blue-500/20 dark:ring-blue-400/25',
+    headerTint: 'bg-blue-50/65 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/50',
+    bookActive: 'ring-2 ring-blue-500/25 rounded-xl px-3 py-2.5 -mx-3 bg-blue-50/25 dark:bg-blue-950/15',
+    rowActive: 'bg-blue-50/70 dark:bg-blue-950/30 ring-1 ring-blue-300/80 dark:ring-blue-700/70',
+    chipAudible: 'border border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-950/45 text-blue-800 dark:text-blue-200',
+    segmentSpeaking: 'bg-blue-200/85 dark:bg-blue-800/70 text-blue-950 dark:text-blue-50 font-semibold ring-1 ring-blue-400/60 dark:ring-blue-500/60',
+    segmentFull: 'bg-blue-100/85 dark:bg-blue-900/55 text-blue-950 dark:text-blue-50'
   }),
   id: Object.freeze({
     hex: '#8B5CF6',
@@ -24,7 +32,15 @@ export const SHARED_SEMANTIC_COLORS = Object.freeze({
     border: 'border-violet-200/90 dark:border-violet-800/80',
     badge: 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-200',
     solid: 'bg-violet-600 text-white',
-    ring: 'ring-violet-500/25'
+    dot: 'bg-violet-600 dark:bg-violet-400',
+    ring: 'ring-violet-500/25',
+    cardActive: 'border-violet-500/90 dark:border-violet-400/90 ring-2 ring-violet-500/20 dark:ring-violet-400/25',
+    headerTint: 'bg-violet-50/65 dark:bg-violet-950/30 border-b border-violet-100 dark:border-violet-900/50',
+    bookActive: 'ring-2 ring-violet-500/25 rounded-xl px-3 py-2.5 -mx-3 bg-violet-50/25 dark:bg-violet-950/15',
+    rowActive: 'bg-violet-50/70 dark:bg-violet-950/30 ring-1 ring-violet-300/80 dark:ring-violet-700/70',
+    chipAudible: 'border border-violet-400 dark:border-violet-500 bg-violet-50 dark:bg-violet-950/45 text-violet-800 dark:text-violet-200',
+    segmentSpeaking: 'bg-violet-200/85 dark:bg-violet-800/70 text-violet-950 dark:text-violet-50 font-semibold ring-1 ring-violet-400/60 dark:ring-violet-500/60',
+    segmentFull: 'bg-violet-100/85 dark:bg-violet-900/55 text-violet-950 dark:text-violet-50'
   }),
   paused: Object.freeze({
     hex: '#D97706',
@@ -33,30 +49,50 @@ export const SHARED_SEMANTIC_COLORS = Object.freeze({
     border: 'border-amber-200/90 dark:border-amber-800/80',
     badge: 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200',
     solid: 'bg-amber-600 text-white',
-    ring: 'ring-amber-500/25'
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    ring: 'ring-amber-500/25',
+    cardActive: 'border-amber-400/90 dark:border-amber-500/85 ring-2 ring-amber-400/25 dark:ring-amber-500/25',
+    headerTint: 'bg-amber-50/70 dark:bg-amber-950/30 border-b border-amber-100 dark:border-amber-900/50',
+    bookActive: 'ring-2 ring-amber-400/35 rounded-xl px-3 py-2.5 -mx-3 bg-amber-50/30 dark:bg-amber-950/20',
+    rowActive: 'bg-amber-50/80 dark:bg-amber-950/30 ring-1 ring-amber-300/80 dark:ring-amber-700/70',
+    chipAudible: 'border border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-950/45 text-amber-800 dark:text-amber-200',
+    segmentPaused: '!bg-amber-100/95 dark:!bg-amber-950/65 !text-amber-950 dark:!text-amber-100 ring-1 ring-amber-400/80 dark:ring-amber-600/80',
+    segmentFull: 'bg-amber-100/80 dark:bg-amber-950/55 text-amber-950 dark:text-amber-100'
   }),
   paragraph: Object.freeze({
     hex: '#0D9488',
     text: 'text-teal-700 dark:text-teal-300',
     bgSoft: 'bg-teal-50/85 dark:bg-teal-950/40',
     border: 'border-teal-200/90 dark:border-teal-800/80',
-    badge: 'bg-teal-100/90 text-teal-800 dark:bg-teal-950/70 dark:text-teal-200'
+    badge: 'bg-teal-100/90 text-teal-800 dark:bg-teal-950/70 dark:text-teal-200',
+    focusRing: 'border-2 border-teal-400/85 dark:border-teal-600/80 ring-1 ring-teal-400/15'
   }),
   conversation: Object.freeze({
     hex: '#4F46E5',
     text: 'text-indigo-700 dark:text-indigo-300',
     bgSoft: 'bg-indigo-50/85 dark:bg-indigo-950/40',
     border: 'border-indigo-200/90 dark:border-indigo-800/80',
-    badge: 'bg-indigo-100/90 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-200'
+    badge: 'bg-indigo-100/90 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-200',
+    focusRing: 'border-2 border-indigo-300/90 dark:border-indigo-600/80 ring-1 ring-indigo-400/15'
   }),
   manual: Object.freeze({
     hex: '#475569',
     text: 'text-slate-700 dark:text-slate-200',
     bgSoft: 'bg-slate-100/90 dark:bg-slate-800/75',
-    border: 'border-slate-200/90 dark:border-slate-700/80',
-    badge: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+    border: 'border-slate-300/90 dark:border-slate-600/85',
+    badge: 'bg-slate-200/85 text-slate-700 dark:bg-slate-700/80 dark:text-slate-200',
+    pillActive: 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-950 shadow-xs',
+    rowSelected: 'bg-slate-100/85 dark:bg-slate-800/70 ring-1 ring-slate-300/90 dark:ring-slate-600/80',
+    segmentSelected: '!bg-slate-200/85 dark:!bg-slate-700/75 !text-slate-950 dark:!text-white underline decoration-slate-500 dark:decoration-slate-300 decoration-2 underline-offset-4 ring-1 ring-slate-300/90 dark:ring-slate-600/80',
+    segmentSelectedOverAudible: 'underline decoration-slate-700 dark:decoration-slate-200 decoration-2 underline-offset-4'
   })
 });
+
+export const resolvePlaybackSemanticTone = ({ state, channel } = {}) => {
+  if (state === 'paused') return SHARED_SEMANTIC_COLORS.paused;
+  if (channel === 'meaning') return SHARED_SEMANTIC_COLORS.id;
+  return SHARED_SEMANTIC_COLORS.en;
+};
 
 export const SHARED_SURFACE_TOKENS = Object.freeze({
   shellCard: 'rounded-2xl border border-slate-200/85 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-xs',

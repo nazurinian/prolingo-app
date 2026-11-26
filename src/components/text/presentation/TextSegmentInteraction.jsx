@@ -1,4 +1,5 @@
 import React from 'react';
+import { SHARED_SEMANTIC_COLORS } from './sharedDesignTokens.js';
 
 /**
  * Reusable inline Segment target. `interactive` is a capability, not an audio or
@@ -7,13 +8,21 @@ import React from 'react';
  */
 export const TextSegmentInteraction = ({
   segmentId, channel, children, interactive = false, disabled = false,
-  active = false, speaking = false, focused = false, fullChannelHighlighted = false,
+  active = false, speaking = false, paused = false, focused = false, fullChannelHighlighted = false,
   title, accessibleLabel, className = '', dataAttributes = {}, onActivate
 }) => {
+  const fullHighlightTone = paused
+    ? SHARED_SEMANTIC_COLORS.paused.segmentFull
+    : channel === 'meaning'
+      ? SHARED_SEMANTIC_COLORS.id.segmentFull
+      : SHARED_SEMANTIC_COLORS.en.segmentFull;
+  const speakingTone = channel === 'meaning'
+    ? SHARED_SEMANTIC_COLORS.id.segmentSpeaking
+    : SHARED_SEMANTIC_COLORS.en.segmentSpeaking;
   const baseClasses = fullChannelHighlighted
-    ? `inline align-baseline transition-colors rounded-sm ${interactive ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ' : ''}${interactive && !disabled ? 'cursor-pointer' : ''} ${channel === 'meaning' ? 'bg-emerald-200/80 dark:bg-emerald-800/70 text-emerald-950 dark:text-emerald-50' : 'bg-indigo-200/80 dark:bg-indigo-800/70 text-indigo-950 dark:text-indigo-50'}`
+    ? `inline align-baseline transition-colors rounded-sm ${interactive ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ' : ''}${interactive && !disabled ? 'cursor-pointer' : ''} ${fullHighlightTone}`
     : interactive
-      ? `inline align-baseline transition-colors duration-150 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60'} ${speaking ? (channel === 'meaning' ? 'bg-emerald-200/90 dark:bg-emerald-800/75 text-emerald-950 dark:text-emerald-50 font-semibold ring-1 ring-emerald-400/50' : 'bg-indigo-200/90 dark:bg-indigo-800/75 text-indigo-950 dark:text-indigo-50 font-semibold ring-1 ring-indigo-400/50') : active ? 'bg-slate-200/60 dark:bg-slate-800/50 underline decoration-indigo-400/60 decoration-2 underline-offset-4' : focused ? 'bg-amber-100/90 dark:bg-amber-950/45 ring-1 ring-amber-300/70 dark:ring-amber-700/60' : ''}`
+      ? `inline align-baseline transition-colors duration-150 rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60'} ${speaking ? speakingTone : active ? 'bg-slate-200/60 dark:bg-slate-800/50 underline decoration-slate-400/70 decoration-2 underline-offset-4' : focused ? 'bg-amber-100/90 dark:bg-amber-950/45 ring-1 ring-amber-300/70 dark:ring-amber-700/60' : ''}`
       : `inline transition-colors ${focused ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`;
   const classes = className ? `${baseClasses} ${className}` : baseClasses;
   const activate = event => {

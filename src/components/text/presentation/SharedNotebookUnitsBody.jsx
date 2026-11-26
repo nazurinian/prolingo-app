@@ -5,7 +5,7 @@ import './sharedNotebookParallelFlow.css';
 export default function SharedNotebookUnitsBody({
   segments, primaryChannel, secondaryChannel, primaryStyle, secondaryStyle,
   primaryClassName, secondaryClassName, primaryLang, secondaryLang,
-  guides, spacing, resolveFlags, onActivate, renderFallback, inlineLeadIn
+  guides, spacing, cursorPaused = false, resolveFlags, onActivate, renderFallback, inlineLeadIn
 }) {
   const rootRef = useRef(null);
   const primaryRef = useRef(null);
@@ -100,6 +100,8 @@ export default function SharedNotebookUnitsBody({
     if (!text) return null;
     const segment = segments[fragment.index];
     const flags = resolveFlags(fragment.index, channel);
+    const isNotebookPaused = flags.paused || (flags.fullChannelHighlighted && cursorPaused);
+    const isNotebookSpeaking = !isNotebookPaused && (flags.speaking || flags.fullChannelHighlighted);
     return (
       <span
         lang={lang}
@@ -110,7 +112,8 @@ export default function SharedNotebookUnitsBody({
         data-text-player-segment={segment.id}
         data-text-player-segment-active={flags.speaking || flags.paused ? 'true' : undefined}
         data-text-search-focus-segment={flags.focused ? 'true' : undefined}
-        data-notebook-speaking={flags.speaking || flags.fullChannelHighlighted ? 'true' : undefined}
+        data-notebook-speaking={isNotebookSpeaking ? 'true' : undefined}
+        data-notebook-paused={isNotebookPaused ? 'true' : undefined}
         data-notebook-target={segment.id + ':' + channel}
         className={`prolingo-notebook-fragment ${className} ${flags.className}${flags.focused ? ' outline outline-1 outline-amber-400' : ''}${flags.segmentDisabled ? '' : ' cursor-pointer'}`}
         style={{

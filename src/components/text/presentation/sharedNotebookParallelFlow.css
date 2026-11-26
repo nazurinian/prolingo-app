@@ -43,12 +43,29 @@
 }
 
 .prolingo-notebook-fragment[data-notebook-speaking="true"] {
-  background-color: rgb(99 102 241 / .22);
+  background-color: rgb(37 99 235 / .22);
   border-radius: .15em;
 }
 
+.dark .prolingo-notebook-fragment[data-notebook-speaking="true"] {
+  background-color: rgb(59 130 246 / .32);
+}
+
 .prolingo-notebook-fragment[data-notebook-speaking="true"][data-shared-card-channel="meaning"] {
-  background-color: rgb(16 185 129 / .22);
+  background-color: rgb(139 92 246 / .24);
+}
+
+.dark .prolingo-notebook-fragment[data-notebook-speaking="true"][data-shared-card-channel="meaning"] {
+  background-color: rgb(167 139 250 / .32);
+}
+
+.prolingo-notebook-fragment[data-notebook-paused="true"] {
+  background-color: rgb(217 119 6 / .26);
+  border-radius: .15em;
+}
+
+.dark .prolingo-notebook-fragment[data-notebook-paused="true"] {
+  background-color: rgb(245 158 11 / .34);
 }
 
 .prolingo-notebook-actions button:not(:focus-visible) {

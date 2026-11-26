@@ -18,6 +18,7 @@ import {
   resolveTurnSpeakerPresentation,
   stepCardUnitViewKey
 } from './sharedCardPresentationUtils.js';
+import { resolvePlaybackSemanticTone } from './sharedDesignTokens.js';
 
 const isConsecutiveSpeakerTurn = (units, unitIndex, speakerAppearanceMap) => {
   const unit = units[unitIndex];
@@ -36,11 +37,17 @@ const FocusUnitTopHeader = ({
   rolePrefix = null,
   segCount = 0,
   isAudible = false,
+  cursorState = 'idle',
+  cursorChannel = null,
   isRepeatedSpeaker = false,
   emphasize = false,
   showSpeakerInHeader = false
 }) => {
   const shortCode = getSharedUnitShortCode(unit, unitIndex);
+  const playbackTone = resolvePlaybackSemanticTone({ state: cursorState, channel: cursorChannel });
+  const audibleLabel = cursorState === 'paused'
+    ? `Paused${cursorChannel === 'meaning' ? ' ID' : cursorChannel === 'text' ? ' EN' : ''}`
+    : `Playing${cursorChannel === 'meaning' ? ' ID' : cursorChannel === 'text' ? ' EN' : ''}`;
   if (unit?.kind !== 'turn') {
     return (
       <div className="flex flex-wrap items-center gap-2 text-xs min-w-0 text-left">
@@ -64,10 +71,12 @@ const FocusUnitTopHeader = ({
         {isAudible && (
           <span
             data-shared-focus-audible-badge="true"
-            className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              cursorState === 'paused' ? playbackTone.badge : playbackTone.solid
+            }`}
           >
             <Radio aria-hidden="true" className="w-3 h-3" />
-            <span>Audible</span>
+            <span>{audibleLabel}</span>
           </span>
         )}
       </div>
@@ -113,10 +122,12 @@ const FocusUnitTopHeader = ({
       {isAudible && (
         <span
           data-shared-focus-audible-badge="true"
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white shrink-0"
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 ${
+            cursorState === 'paused' ? playbackTone.badge : playbackTone.solid
+          }`}
         >
           <Radio aria-hidden="true" className="w-3 h-3" />
-          <span>Audible</span>
+          <span>{audibleLabel}</span>
         </span>
       )}
     </div>
@@ -133,6 +144,7 @@ const FocusNavigationRail = ({
   units,
   speakerAppearanceMap,
   selection,
+  playbackCursor = IDLE_SHARED_CURSOR,
   orientation = 'vertical-focus',
   onSelectUnit,
   onFollowAudible
@@ -142,9 +154,12 @@ const FocusNavigationRail = ({
     selectedUnitIndex,
     audibleUnitViewKey,
     audibleUnitIndex,
+    audibleSegmentId,
     unitDivergedFromAudible,
     isCardPrecisionPlaying
   } = selection;
+  const cursor = playbackCursor || IDLE_SHARED_CURSOR;
+  const playbackTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
   const activeUnit = selectedUnitIndex >= 0 ? units[selectedUnitIndex] : null;
   const isTurnMode = (activeUnit?.kind || card?.blockType) === 'turn' || card?.blockType === 'conversation';
   const unitTerms = getSharedUnitTerms(activeUnit || card);
@@ -157,6 +172,10 @@ const FocusNavigationRail = ({
     ? resolveTurnSpeakerPresentation({ unit: audibleUnit, appearanceMap: speakerAppearanceMap })
     : null;
   const audibleShortCode = audibleUnit ? getSharedUnitShortCode(audibleUnit, audibleUnitIndex) : null;
+  const audibleUnitSegments = audibleUnit?.segments || [];
+  const audibleLocalIndex = audibleUnit && audibleSegmentId
+    ? audibleUnitSegments.findIndex(item => item.id === audibleSegmentId)
+    : -1;
 
   const atStart = selectedUnitIndex <= 0;
   const atEnd = selectedUnitIndex >= units.length - 1;
@@ -223,10 +242,12 @@ const FocusNavigationRail = ({
           {isCardPrecisionPlaying && (
             <span
               data-shared-part-full-notice="true"
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${playbackTone.bgSoft} ${playbackTone.border} ${playbackTone.text}`}
             >
               <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
-              <span>Playing Full {isTurnMode ? 'Scene' : 'Card'} audio · Browse {unitTerms.plural} freely</span>
+              <span>
+                {cursor.state === 'paused' ? 'Paused' : 'Playing'} {cursor.channel === 'meaning' ? 'ID' : 'EN'} · Full {isTurnMode ? 'Scene' : 'Card'} · Browse {unitTerms.plural} freely
+              </span>
             </span>
           )}
           {!isCardPrecisionPlaying && unitDivergedFromAudible && (
@@ -235,12 +256,13 @@ const FocusNavigationRail = ({
               onClick={onFollowAudible}
               data-shared-part-follow-audio="true"
               data-shared-focus-return-to-playing="true"
-              className="min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className={`min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${playbackTone.bgSoft} ${playbackTone.border} ${playbackTone.text} hover:brightness-95 dark:hover:brightness-110`}
             >
               <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
               <span>
                 Return to Playing · {audibleShortCode}
                 {audibleSpeakerInfo?.isAssigned ? ` ${audibleSpeakerInfo.displayName}` : ''}
+                {audibleLocalIndex >= 0 ? ` · SG${audibleLocalIndex + 1}/${audibleUnitSegments.length}` : ''}
               </span>
             </button>
           )}
@@ -307,12 +329,12 @@ const FocusNavigationRail = ({
               onClick={() => onSelectUnit?.(unit.viewKey)}
               className={`min-h-9 sm:min-h-8 shrink-0 max-w-full px-2.5 py-1 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center gap-1.5 transition-all duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 selected
-                  ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500/40'
+                  ? (isAudible ? `${playbackTone.solid} shadow-xs` : (isTurnMode ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500/40' : 'bg-teal-600 text-white shadow-xs ring-1 ring-teal-500/40'))
                   : isAudible
-                    ? 'border border-indigo-400 bg-indigo-50 dark:bg-indigo-950/45 text-indigo-800 dark:text-indigo-200'
+                    ? playbackTone.chipAudible
                     : segCount === 0
-                      ? 'border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:border-indigo-300'
-                      : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/75 text-slate-700 dark:text-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 dark:hover:bg-slate-800'
+                      ? 'border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 hover:border-slate-400'
+                      : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/75 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
               {unitSpeaker && (
@@ -340,7 +362,7 @@ const FocusNavigationRail = ({
                 {segCount} SG
               </span>
               {isAudible && !selected && (
-                <Radio aria-hidden="true" className="w-3 h-3 text-indigo-600 dark:text-indigo-300 shrink-0" />
+                <Radio aria-hidden="true" className={`w-3 h-3 shrink-0 ${playbackTone.text}`} />
               )}
             </button>
           );
@@ -376,6 +398,8 @@ const FocusSingleUnitView = ({
   onDismissContextualTarget = null
 }) => {
   const resolvedStyle = normalizeTextWorkspaceStyleState(workspaceStyle);
+  const cursor = playbackCursor || IDLE_SHARED_CURSOR;
+  const playbackTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
   const isTurn = unit.kind === 'turn';
   const isAudible = unit.viewKey === selection.audibleUnitViewKey;
   const isV1Compat = unit.identitySource === 'v1-paragraph-compat';
@@ -401,10 +425,10 @@ const FocusSingleUnitView = ({
           {selection.isCardPrecisionPlaying && (
             <span
               data-shared-part-full-notice="true"
-              className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-200"
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${playbackTone.bgSoft} ${playbackTone.border} ${playbackTone.text}`}
             >
               <Radio aria-hidden="true" className="w-3 h-3" />
-              <span>Playing Full {isTurn ? 'Scene' : 'Card'} audio</span>
+              <span>{cursor.state === 'paused' ? 'Paused' : 'Playing'} {cursor.channel === 'meaning' ? 'ID' : 'EN'} · Full {isTurn ? 'Scene' : 'Card'}</span>
             </span>
           )}
         </div>
@@ -415,13 +439,13 @@ const FocusSingleUnitView = ({
         data-shared-part-active="true"
         data-shared-part-audible={isAudible ? 'true' : undefined}
         data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
-        className={`rounded-2xl border p-4 sm:p-6 bg-white dark:bg-slate-900/90 transition-colors motion-reduce:transition-none ${
-          isAudible
-            ? 'border-indigo-400/90 dark:border-indigo-500/80 ring-2 ring-indigo-500/15'
+        className={`rounded-2xl border p-4 sm:p-5 bg-white dark:bg-slate-900/90 transition-colors motion-reduce:transition-none ${
+          isAudible || selection.isCardPrecisionPlaying
+            ? playbackTone.cardActive
             : 'border-slate-200/90 dark:border-slate-800'
         }`}
       >
-        <div className="mb-3 pb-2.5 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+        <div className="mb-3 pb-2 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
           <FocusUnitTopHeader
             unit={unit}
             unitIndex={0}
@@ -429,6 +453,8 @@ const FocusSingleUnitView = ({
             speakerAppearanceMap={speakerAppearanceMap}
             segCount={unit.segments?.length || 0}
             isAudible={isAudible}
+            cursorState={cursor.state}
+            cursorChannel={cursor.channel}
             emphasize
           />
         </div>
@@ -495,12 +521,15 @@ export const SharedFocusView = ({
     onSelectUnit?.(viewKey);
   }, [onSelectUnit, selection.selectedUnitViewKey]);
 
+  const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const renderUnitHeader = useCallback(headerProps => (
     <FocusUnitTopHeader
       speakerAppearanceMap={speakerAppearanceMap}
+      cursorState={cursor.state}
+      cursorChannel={cursor.channel}
       {...headerProps}
     />
-  ), [speakerAppearanceMap]);
+  ), [speakerAppearanceMap, cursor.state, cursor.channel]);
 
   if (units.length === 1) {
     return (
@@ -537,6 +566,7 @@ export const SharedFocusView = ({
         units={units}
         speakerAppearanceMap={speakerAppearanceMap}
         selection={selection}
+        playbackCursor={playbackCursor}
         orientation={effectiveOrientation}
         onSelectUnit={effectiveOrientation === 'vertical-focus' ? navigateVertically : onSelectUnit}
         onFollowAudible={onFollowAudible}

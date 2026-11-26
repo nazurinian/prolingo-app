@@ -17,7 +17,11 @@ import {
   isPrefersReducedMotion,
   resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
-import { SHARED_SPACING_TOKENS } from './sharedDesignTokens.js';
+import {
+  SHARED_SEMANTIC_COLORS,
+  SHARED_SPACING_TOKENS,
+  resolvePlaybackSemanticTone
+} from './sharedDesignTokens.js';
 
 const SWIPER_MODULES = [A11y];
 const SWIPER_A11Y_CONFIG = Object.freeze({
@@ -312,6 +316,13 @@ export const SharedHorizontalFocusCarousel = ({
           const isAudible = unit.viewKey === selection.audibleUnitViewKey;
           const segCount = unit.segments?.length || 0;
           const isTurn = unit.kind === 'turn';
+          const playbackTone = resolvePlaybackSemanticTone({
+            state: playbackCursor?.state,
+            channel: playbackCursor?.channel
+          });
+          const focusSurface = isTurn
+            ? SHARED_SEMANTIC_COLORS.conversation.focusRing
+            : SHARED_SEMANTIC_COLORS.paragraph.focusRing;
           const speakerInfo = isTurn
             ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
             : null;
@@ -341,9 +352,11 @@ export const SharedHorizontalFocusCarousel = ({
                 className={`prolingo-focus-slide-inner rounded-2xl border ${peekAccentBorder} ${
                   isSelected
                     ? (isAudible
-                        ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-3.5 sm:p-5'
-                        : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-indigo-400/15 p-3.5 sm:p-5')
-                    : 'border-slate-200/85 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/60 p-3 sm:p-4 cursor-pointer select-none'
+                        ? `${playbackTone.cardActive} bg-white dark:bg-slate-900 shadow-md p-3.5 sm:p-5`
+                        : `${focusSurface} bg-white dark:bg-slate-900 shadow-sm p-3.5 sm:p-5`)
+                    : (isAudible
+                        ? `${playbackTone.border} ${playbackTone.bgSoft} p-3 sm:p-4 cursor-pointer select-none`
+                        : 'border-slate-200/85 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/60 p-3 sm:p-4 cursor-pointer select-none')
                 }`}
               >
                 {isSelected ? (
@@ -533,6 +546,13 @@ export const SharedVerticalScrollFocusView = ({
         const isSelected = unit.viewKey === selection.selectedUnitViewKey;
         const isAudible = unit.viewKey === selection.audibleUnitViewKey;
         const isTurn = unit.kind === 'turn';
+        const playbackTone = resolvePlaybackSemanticTone({
+          state: playbackCursor?.state,
+          channel: playbackCursor?.channel
+        });
+        const focusSurface = isTurn
+          ? SHARED_SEMANTIC_COLORS.conversation.focusRing
+          : SHARED_SEMANTIC_COLORS.paragraph.focusRing;
         const speakerInfo = isTurn
           ? resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap })
           : null;
@@ -572,10 +592,10 @@ export const SharedVerticalScrollFocusView = ({
             className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} prolingo-focus-vertical-unit rounded-2xl ${accentBorder} ${
               isSelected
                 ? (isAudible
-                    ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-3.5 sm:p-5'
-                    : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-indigo-400/15 p-3.5 sm:p-5')
+                    ? `border ${playbackTone.cardActive} bg-white dark:bg-slate-900 shadow-md p-3.5 sm:p-5`
+                    : `${focusSurface} bg-white dark:bg-slate-900 shadow-sm p-3.5 sm:p-5`)
                 : (isAudible
-                    ? 'border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/25 dark:bg-indigo-950/20 px-3 py-2.5 sm:px-4 sm:py-3'
+                    ? `border ${playbackTone.border} ${playbackTone.bgSoft} px-3 py-2.5 sm:px-4 sm:py-3`
                     : 'border border-slate-200/85 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/55 px-3 py-2.5 sm:px-4 sm:py-3')
             }`}
           >

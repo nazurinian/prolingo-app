@@ -35,13 +35,19 @@ import {
   getSharedUnitTerms,
   normalizeSegmentDisplayText,
   resolveCardChannelAvailability,
+  resolveCursorAuthoredPosition,
   resolveEffectiveCardSelection,
   resolveWorkspaceContextualTarget,
   resolveWorkspaceStylePresentation,
   summarizeCardPresentationCoverage,
   summarizeSceneSpeakers
 } from './sharedCardPresentationUtils.js';
-import { SHARED_CONTROL_TOKENS, SHARED_SEMANTIC_COLORS, SHARED_SPACING_TOKENS } from './sharedDesignTokens.js';
+import {
+  SHARED_CONTROL_TOKENS,
+  SHARED_SEMANTIC_COLORS,
+  SHARED_SPACING_TOKENS,
+  resolvePlaybackSemanticTone
+} from './sharedDesignTokens.js';
 
 export const SharedFullCardBody = props => <SharedBilingualUnitsBody {...props} />;
 
@@ -171,17 +177,12 @@ export const SharedBookPageView = ({
             );
             const effectiveFocusSegmentId = isFocusCard ? (focusTarget?.segmentId || null) : null;
             const lookup = buildCardUnitLookup(card);
-            const activeSegmentNumber = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId && lookup.entryBySegmentId.has(cursor.segmentId)
-              ? lookup.entryBySegmentId.get(cursor.segmentId).logicalIndex + 1
-              : null;
+            const cursorAuthored = resolveCursorAuthoredPosition({ card, lookup, cursor });
+            const playbackTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
             const channelBadge = cursor.channel === 'meaning' ? 'ID' : cursor.channel === 'text' ? 'EN' : 'Audio';
             const cardPlayable = hasText || hasMeaning;
             const speakingAccent = isSpeakingCard
-              ? (cursor.state === 'paused'
-                  ? 'ring-2 ring-amber-400/35 rounded-xl px-3 py-2.5 -mx-3 bg-amber-50/25 dark:bg-amber-950/15'
-                  : cursor.channel === 'meaning'
-                    ? 'ring-2 ring-emerald-500/25 rounded-xl px-3 py-2.5 -mx-3 bg-emerald-50/20 dark:bg-emerald-950/15'
-                    : 'ring-2 ring-indigo-500/25 rounded-xl px-3 py-2.5 -mx-3 bg-indigo-50/20 dark:bg-indigo-950/15')
+              ? playbackTone.bookActive
               : isFocusCard
                 ? 'ring-2 ring-amber-400/30 rounded-xl px-3 py-2.5 -mx-3 bg-amber-50/20 dark:bg-amber-950/15'
                 : '';
@@ -222,24 +223,26 @@ export const SharedBookPageView = ({
                         {typeTag} · {isTitleRole ? 'Title' : isConversationScene ? 'Conversation' : 'Paragraph'}
                       </span>
                       {isSpeakingCard && (
-                        <span
-                          data-shared-card-status-pill="true"
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            cursor.state === 'paused'
-                              ? SHARED_SEMANTIC_COLORS.paused.badge
-                              : cursor.channel === 'meaning'
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-indigo-600 text-white'
-                          }`}
-                        >
-                          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cursor.state === 'paused' ? 'bg-amber-500' : 'bg-white'}`} />
-                          {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
-                          {cursor.precision === 'card'
-                            ? (isConversationScene ? ' · Full Scene' : ' · Full Card')
-                            : activeSegmentNumber
-                              ? ` · S${activeSegmentNumber}`
-                              : ''}
-                        </span>
+                        <>
+                          <span
+                            data-shared-card-status-pill="true"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              cursor.state === 'paused' ? playbackTone.badge : playbackTone.solid
+                            }`}
+                          >
+                            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cursor.state === 'paused' ? playbackTone.dot : 'bg-white'}`} />
+                            {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
+                            {cursorAuthored.authoredLabel ? ` · ${cursorAuthored.authoredLabel}` : ''}
+                          </span>
+                          {cursorAuthored.variationLabel && (
+                            <span
+                              data-shared-playback-variation={cursorAuthored.variationKind}
+                              className="inline-flex items-center rounded-full border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/90 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+                            >
+                              {cursorAuthored.variationLabel}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -315,7 +318,9 @@ export const SharedBookPageView = ({
                       data-text-card-play-compact="true"
                       title={stopsCard() ? 'Stop Card' : `Play entire ${cardTerms.cardLower}`}
                       aria-label={stopsCard() ? 'Stop Card' : `Play ${cardTerms.cardLower} ${cardIndex + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
-                      className={`min-h-8 min-w-8 px-2.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-40 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing}`}
+                      className={`min-h-8 min-w-8 px-2.5 rounded-full text-[11px] font-semibold inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-40 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                        stopsCard() ? playbackTone.solid : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      }`}
                     >
                       {stopsCard() ? <Square aria-hidden="true" className="w-2.5 h-2.5 fill-current" /> : <Play aria-hidden="true" className="w-2.5 h-2.5 fill-current" />}
                       <span className="sr-only sm:not-sr-only">{stopsCard() ? 'Stop' : 'Play'}</span>
@@ -532,9 +537,11 @@ export const SharedCardReadingSurface = ({
     }
   }, [onFollowCardAudible, card?.id, standaloneSelectionStore]);
 
-  const activeSegmentNumber = cursor.precision === 'segment' && cursor.segmentId && lookup.entryBySegmentId.has(cursor.segmentId)
-    ? lookup.entryBySegmentId.get(cursor.segmentId).logicalIndex + 1
-    : null;
+  const cursorAuthored = useMemo(
+    () => resolveCursorAuthoredPosition({ card, lookup, cursor }),
+    [card, lookup, cursor]
+  );
+  const playbackTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
   const channelBadge = cursor.channel === 'meaning' ? 'ID' : cursor.channel === 'text' ? 'EN' : 'Audio';
   const effectiveFocusSegmentId = focusSegmentId ?? (isFocusCard ? focusTarget?.segmentId : null);
 
@@ -723,23 +730,26 @@ export const SharedCardReadingSurface = ({
             </button>
           </div>
           {isSpeakingCard && (
-            <span
-              data-shared-card-status-pill="true"
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                cursor.state === 'paused'
-                  ? SHARED_SEMANTIC_COLORS.paused.badge
-                  : cursor.channel === 'meaning'
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
-                    : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-200'
-              }`}
-            >
-              {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
-              {cursor.precision === 'card'
-                ? (isConversationScene ? ' · Full Scene' : ' · Full Card')
-                : activeSegmentNumber
-                  ? ` · S${activeSegmentNumber}`
-                  : ''}
-            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                data-shared-card-status-pill="true"
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                  cursor.state === 'paused' ? playbackTone.badge : playbackTone.solid
+                }`}
+              >
+                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cursor.state === 'paused' ? playbackTone.dot : 'bg-white'}`} />
+                {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
+                {cursorAuthored.authoredLabel ? ` · ${cursorAuthored.authoredLabel}` : ''}
+              </span>
+              {cursorAuthored.variationLabel && (
+                <span
+                  data-shared-playback-variation={cursorAuthored.variationKind}
+                  className="inline-flex items-center rounded-full border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/90 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+                >
+                  {cursorAuthored.variationLabel}
+                </span>
+              )}
+            </div>
           )}
         </div>
         {bodyNode}
@@ -749,11 +759,7 @@ export const SharedCardReadingSurface = ({
   }
 
   const cardSurfaceTone = isSpeakingCard
-    ? cursor.state === 'paused'
-      ? 'border-amber-400/90 dark:border-amber-600/80 ring-2 ring-amber-400/20'
-      : cursor.channel === 'meaning'
-        ? 'border-emerald-400/90 dark:border-emerald-500/80 ring-2 ring-emerald-500/15'
-        : 'border-indigo-400/90 dark:border-indigo-500/80 ring-2 ring-indigo-500/15'
+    ? playbackTone.cardActive
     : isFocusCard
       ? 'border-amber-400/90 dark:border-amber-600/80 ring-2 ring-amber-400/20'
       : 'border-slate-200/90 dark:border-slate-800';
@@ -842,27 +848,29 @@ export const SharedCardReadingSurface = ({
                 </>
               )}
               {isSpeakingCard && (
-                <span
-                  data-shared-card-status-pill="true"
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    cursor.state === 'paused'
-                      ? SHARED_SEMANTIC_COLORS.paused.badge
-                      : cursor.channel === 'meaning'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-indigo-600 text-white'
-                  }`}
-                >
+                <>
                   <span
-                    aria-hidden="true"
-                    className={`h-1.5 w-1.5 rounded-full ${cursor.state === 'paused' ? 'bg-amber-500' : 'bg-white'}`}
-                  />
-                  {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
-                  {cursor.precision === 'card'
-                    ? (isConversationScene ? ' · Full Scene' : ' · Full Card')
-                    : activeSegmentNumber
-                      ? ` · S${activeSegmentNumber}`
-                      : ''}
-                </span>
+                    data-shared-card-status-pill="true"
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                      cursor.state === 'paused' ? playbackTone.badge : playbackTone.solid
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`h-1.5 w-1.5 rounded-full ${cursor.state === 'paused' ? playbackTone.dot : 'bg-white'}`}
+                    />
+                    {cursor.state === 'paused' ? 'Paused' : 'Playing'} {channelBadge}
+                    {cursorAuthored.authoredLabel ? ` · ${cursorAuthored.authoredLabel}` : ''}
+                  </span>
+                  {cursorAuthored.variationLabel && (
+                    <span
+                      data-shared-playback-variation={cursorAuthored.variationKind}
+                      className="inline-flex items-center rounded-full border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/90 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+                    >
+                      {cursorAuthored.variationLabel}
+                    </span>
+                  )}
+                </>
               )}
             </div>
 
@@ -938,9 +946,7 @@ export const SharedCardReadingSurface = ({
             title={stopsCard() ? 'Stop Card' : `Play entire ${cardTerms.cardLower}`}
             aria-label={stopsCard() ? 'Stop Card' : `Play ${cardTerms.cardLower} ${index + 1}: ${card?.title || (isTitleRole ? 'Title' : isConversationScene ? 'Scene' : 'Paragraph')}`}
             className={`min-h-9 min-w-9 sm:min-h-8 sm:min-w-8 px-3 rounded-full text-xs font-semibold inline-flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 ${
-              isSpeakingCard
-                ? 'bg-indigo-700 text-white'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              stopsCard() ? playbackTone.solid : 'bg-indigo-600 hover:bg-indigo-700 text-white'
             }`}
           >
             {stopsCard() ? <Square aria-hidden="true" className="w-3 h-3 fill-current" /> : <Play aria-hidden="true" className="w-3 h-3 fill-current" />}

@@ -29,16 +29,24 @@ import {
   resolveTurnSpeakerPresentation,
   resolveWorkspaceStylePresentation
 } from './sharedCardPresentationUtils.js';
+import {
+  SHARED_SEMANTIC_COLORS,
+  resolvePlaybackSemanticTone
+} from './sharedDesignTokens.js';
 
-const AudibleTurnBadge = ({ speakerInfo, cursorState }) => (
-  <span
-    data-shared-turn-audible="true"
-    className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-700/70 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-200 shrink-0 select-none"
-  >
-    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${speakerInfo.palette.dot}`} />
-    <span>{cursorState === 'paused' ? 'Paused' : 'Speaking'}</span>
-  </span>
-);
+const AudibleTurnBadge = ({ cursorState, cursorChannel }) => {
+  const tone = resolvePlaybackSemanticTone({ state: cursorState, channel: cursorChannel });
+  const channelCode = cursorChannel === 'meaning' ? 'ID' : cursorChannel === 'text' ? 'EN' : '';
+  return (
+    <span
+      data-shared-turn-audible="true"
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shrink-0 select-none ${tone.bgSoft} ${tone.border} ${tone.text}`}
+    >
+      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      <span>{cursorState === 'paused' ? 'Paused' : 'Playing'}{channelCode ? ` ${channelCode}` : ''}</span>
+    </span>
+  );
+};
 
 const UnitHeadingBlock = ({
   unit,
@@ -47,6 +55,7 @@ const UnitHeadingBlock = ({
   isRepeatedSpeaker = false,
   isAudibleTurn = false,
   cursorState = 'idle',
+  cursorChannel = null,
   compact = false,
   showAccents = true,
   unitPlayButton = null
@@ -100,7 +109,7 @@ const UnitHeadingBlock = ({
       </div>
       {(isAudibleTurn || unitPlayButton) && (
         <div className="flex items-center gap-1.5 shrink-0">
-          {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+          {isAudibleTurn && <AudibleTurnBadge cursorState={cursorState} cursorChannel={cursorChannel} />}
           {unitPlayButton}
         </div>
       )}
@@ -115,6 +124,7 @@ const AlignedSpeakerColumn = ({
   isRepeatedSpeaker = false,
   isAudibleTurn = false,
   cursorState = 'idle',
+  cursorChannel = null,
   showAccents = true,
   unitPlayButton = null
 }) => (
@@ -151,7 +161,7 @@ const AlignedSpeakerColumn = ({
             · consecutive
           </span>
         )}
-        {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+        {isAudibleTurn && <AudibleTurnBadge cursorState={cursorState} cursorChannel={cursorChannel} />}
       </div>
     </div>
     {unitPlayButton && <div className="shrink-0 sm:pt-0.5">{unitPlayButton}</div>}
@@ -175,7 +185,7 @@ const InlineSpeakerLeadIn = ({ unit, speakerInfo }) => (
   </span>
 );
 
-const InlineTurnMetaStrip = ({ unit, unitIndex, speakerInfo, isRepeatedSpeaker, isAudibleTurn, cursorState, unitPlayButton = null }) => {
+const InlineTurnMetaStrip = ({ unit, unitIndex, isRepeatedSpeaker, isAudibleTurn, cursorState, cursorChannel = null, unitPlayButton = null }) => {
   if (!isRepeatedSpeaker && !isAudibleTurn && !unitPlayButton) return null;
   return (
     <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-left select-none" data-shared-turn-inline-meta={unit.viewKey}>
@@ -194,7 +204,7 @@ const InlineTurnMetaStrip = ({ unit, unitIndex, speakerInfo, isRepeatedSpeaker, 
             · consecutive turn
           </span>
         )}
-        {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+        {isAudibleTurn && <AudibleTurnBadge cursorState={cursorState} cursorChannel={cursorChannel} />}
       </div>
       {unitPlayButton}
     </div>
@@ -230,17 +240,18 @@ const channelDisplayMeta = (channel, workspace) => ({
   missingInline: channel === 'meaning' ? '[No Indonesian meaning]' : '[No English text]'
 });
 
-const ContextualSourceBadge = ({ source }) => {
+const ContextualSourceBadge = ({ source, channel = null }) => {
   if (source === 'audible') {
+    const tone = channel === 'meaning' ? SHARED_SEMANTIC_COLORS.id : SHARED_SEMANTIC_COLORS.en;
     return (
-      <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-        Playing
+      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone.solid}`}>
+        Playing{channel === 'meaning' ? ' ID' : channel === 'text' ? ' EN' : ''}
       </span>
     );
   }
   if (source === 'paused-cursor') {
     return (
-      <span className="rounded-full bg-amber-100 dark:bg-amber-950/70 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${SHARED_SEMANTIC_COLORS.paused.badge}`}>
         Paused
       </span>
     );
@@ -253,7 +264,7 @@ const ContextualSourceBadge = ({ source }) => {
     );
   }
   return (
-    <span className="rounded-full bg-sky-100 dark:bg-sky-900/60 px-2 py-0.5 text-[10px] font-semibold text-sky-800 dark:text-sky-200">
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${SHARED_SEMANTIC_COLORS.manual.badge}`}>
       Selected
     </span>
   );
@@ -261,18 +272,22 @@ const ContextualSourceBadge = ({ source }) => {
 
 const ContextualReturnToPlayingButton = ({ audibleTarget, onFollowContextualAudible }) => {
   if (!audibleTarget || typeof onFollowContextualAudible !== 'function') return null;
+  const tone = resolvePlaybackSemanticTone({ state: audibleTarget.state, channel: audibleTarget.channel });
+  const segLabel = audibleTarget.unitSegmentCount > 0
+    ? `SG${audibleTarget.localSegmentNumber}/${audibleTarget.unitSegmentCount}`
+    : `SG${audibleTarget.localSegmentNumber}`;
   return (
     <button
       type="button"
       onClick={onFollowContextualAudible}
       data-shared-contextual-return-to-playing="true"
-      className="min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className={`min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${tone.bgSoft} ${tone.border} ${tone.text} hover:brightness-95 dark:hover:brightness-110`}
     >
       <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
       <span>
         Return to Playing · {audibleTarget.unitShortCode}
         {audibleTarget.speakerLabel ? ` ${audibleTarget.speakerLabel}` : ''}
-        {` SG${audibleTarget.localSegmentNumber}`}
+        {` · ${segLabel}`}
       </span>
     </button>
   );
@@ -285,8 +300,9 @@ const ContextualTranslationText = ({ text, segmentId, channel, onPlaySegment, di
  return (
   <TextSegmentInteraction segmentId={segmentId} channel={channel}
     interactive={Boolean(onPlaySegment)} disabled={disabled}
-    active={audible} speaking={audible && !paused}
+    active={audible} speaking={audible && !paused} paused={paused}
     accessibleLabel={`${stop ? 'Stop' : 'Play'} ${channel === 'meaning' ? 'Indonesian translation' : 'English text'}`}
+    className={paused ? SHARED_SEMANTIC_COLORS.paused.segmentPaused : ''}
     dataAttributes={{ 'data-shared-card-segment': segmentId, 'data-shared-card-channel': channel,
       'data-reader-playback-action': stop ? 'stop' : 'play', 'data-shared-segment-paused': paused ? 'true' : undefined }}
     onActivate={() => onPlaySegment?.(segmentId, channel)}
@@ -329,9 +345,9 @@ const ContextualBlockCallout = ({
             <span>{secMeta.name} ({secMeta.code})</span>
           </span>
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums select-none">
-            · {target.unitShortCode} SG{target.localSegmentNumber}
+            · {target.unitShortCode} · SG{target.localSegmentNumber}{target.unitSegmentCount > 0 ? `/${target.unitSegmentCount}` : ''}
           </span>
-          <ContextualSourceBadge source={target.source} />
+          <ContextualSourceBadge source={target.source} channel={cursor?.channel} />
         </div>
         <div className="flex flex-wrap items-center gap-1.5 shrink-0">
           {divergedFromAudible && (
@@ -522,6 +538,7 @@ const UnitChannelStream = ({
                 disabled={flags.segmentDisabled}
                 active={flags.active}
                 speaking={flags.speaking}
+                paused={flags.paused || (flags.fullChannelHighlighted && cursor?.state === 'paused')}
                 focused={flags.focused}
                 fullChannelHighlighted={flags.fullChannelHighlighted}
                 title={flags.title}
@@ -558,8 +575,8 @@ const UnitChannelStream = ({
                 style={{ textIndent: '0' }}
                 className={`inline-flex items-center justify-center align-middle ${segment?.joinAfter === 'none' ? 'mx-0.5' : 'ml-0.5'} h-[18px] w-[18px] rounded border transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 select-none ${
                   isContextualTarget
-                    ? 'border-sky-500 bg-sky-600 text-white shadow-xs'
-                    : 'border-transparent bg-transparent text-slate-400/70 dark:text-slate-500/80 hover:border-indigo-300/80 hover:bg-indigo-50/80 hover:text-indigo-700 dark:hover:border-indigo-700/80 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-300 focus-visible:border-indigo-400 focus-visible:bg-indigo-50/80 focus-visible:text-indigo-700'
+                    ? 'border-slate-700 dark:border-slate-300 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-950 shadow-xs'
+                    : 'border-transparent bg-transparent text-slate-400/70 dark:text-slate-500/80 hover:border-slate-300 hover:bg-slate-100/90 hover:text-slate-700 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 focus-visible:border-slate-400 focus-visible:bg-slate-100 focus-visible:text-slate-800'
                 }`}
               >
                 <Languages aria-hidden="true" className="w-3 h-3" />
@@ -616,6 +633,7 @@ const SharedAuthoredUnitShell = ({
   isRepeatedSpeaker,
   isAudibleTurn,
   cursorState,
+  cursorChannel = null,
   showSectionHeaders,
   workspaceStylePresentation,
   isTitleRole,
@@ -682,6 +700,7 @@ const SharedAuthoredUnitShell = ({
             isRepeatedSpeaker={isRepeatedSpeaker}
             isAudibleTurn={isAudibleTurn}
             cursorState={cursorState}
+            cursorChannel={cursorChannel}
             showAccents={showAccents}
             unitPlayButton={unitPlayButton}
           />
@@ -703,10 +722,10 @@ const SharedAuthoredUnitShell = ({
           <InlineTurnMetaStrip
             unit={unit}
             unitIndex={authoredUnitIndex}
-            speakerInfo={speakerInfo}
             isRepeatedSpeaker={isRepeatedSpeaker}
             isAudibleTurn={isAudibleTurn}
             cursorState={cursorState}
+            cursorChannel={cursorChannel}
             unitPlayButton={unitPlayButton}
           />
         ) : (
@@ -727,7 +746,7 @@ const SharedAuthoredUnitShell = ({
                   · consecutive turn
                 </span>
               )}
-              {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+              {isAudibleTurn && <AudibleTurnBadge cursorState={cursorState} cursorChannel={cursorChannel} />}
             </div>
             {unitPlayButton}
           </div>
@@ -747,6 +766,7 @@ const SharedAuthoredUnitShell = ({
           isRepeatedSpeaker={isRepeatedSpeaker}
           isAudibleTurn={isAudibleTurn}
           cursorState={cursorState}
+          cursorChannel={cursorChannel}
           showAccents={showAccents}
           unitPlayButton={unitPlayButton}
           compact
@@ -971,6 +991,7 @@ export const SharedBilingualUnitsBody = ({
     };
     const stop = matchesStructuredPlaybackControl(cursor, { ...target, scope: 'unit' });
     const unitKindLabel = unit.kind === 'turn' ? 'Turn' : 'Section';
+    const activeStopTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
     return (
       <button
         type="button"
@@ -980,7 +1001,7 @@ export const SharedBilingualUnitsBody = ({
         title={`${stop ? 'Stop' : 'Play'} this ${unitKindLabel.toLowerCase()}`}
         className={`min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
           stop
-            ? 'border-indigo-500 bg-indigo-600 text-white shadow-xs hover:bg-indigo-700'
+            ? `${activeStopTone.solid} border-transparent shadow-xs`
             : 'border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/75 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-700 dark:hover:text-indigo-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/40'
         }`}
         onClick={() => onPlayUnit(target)}
@@ -1033,6 +1054,7 @@ export const SharedBilingualUnitsBody = ({
               isRepeatedSpeaker={meta.isRepeatedSpeaker}
               isAudibleTurn={meta.isAudibleTurn}
               cursorState={cursor.state}
+              cursorChannel={cursor.channel}
               showSectionHeaders={showSectionHeaders}
               workspaceStylePresentation={workspaceStylePresentation}
               isTitleRole={isTitleRole}
@@ -1049,6 +1071,7 @@ export const SharedBilingualUnitsBody = ({
                     const secondaryFlags = getFlags(segment, secondaryChannel);
                     const isRowActive = !isNotebook && (primaryFlags.active || secondaryFlags.active);
                     const isRowPaused = !isNotebook && (primaryFlags.paused || secondaryFlags.paused);
+                    const isRowMeaningActive = !isNotebook && ((primaryFlags.active && primaryChannel === 'meaning') || (secondaryFlags.active && secondaryChannel === 'meaning'));
                     const isRowSelected = primaryFlags.selected || secondaryFlags.selected;
                     const isRowFocused = primaryFlags.focused || secondaryFlags.focused;
 
@@ -1059,11 +1082,11 @@ export const SharedBilingualUnitsBody = ({
                         data-shared-interlinear-segment={segment.id}
                         className={`py-2 sm:py-2.5 px-2 -mx-2 rounded-lg first:pt-1 transition-colors duration-150 motion-reduce:transition-none ${
                           isRowPaused
-                            ? 'bg-amber-50/75 dark:bg-amber-950/25 ring-1 ring-amber-300/75 dark:ring-amber-700/65'
+                            ? SHARED_SEMANTIC_COLORS.paused.rowActive
                             : isRowActive
-                              ? 'bg-indigo-50/60 dark:bg-indigo-950/25 ring-1 ring-indigo-300/70 dark:ring-indigo-700/60'
+                              ? (isRowMeaningActive ? SHARED_SEMANTIC_COLORS.id.rowActive : SHARED_SEMANTIC_COLORS.en.rowActive)
                               : isRowSelected
-                                ? 'bg-sky-50/70 dark:bg-sky-950/25 ring-1 ring-sky-300/75 dark:ring-sky-700/65'
+                                ? SHARED_SEMANTIC_COLORS.manual.rowSelected
                                 : isRowFocused
                                   ? 'bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-300/60'
                                   : 'hover:bg-slate-50/75 dark:hover:bg-slate-800/40'
@@ -1095,6 +1118,7 @@ export const SharedBilingualUnitsBody = ({
                                   disabled={primaryFlags.segmentDisabled}
                                   active={isNotebook ? primaryFlags.speaking || primaryFlags.paused : primaryFlags.active}
                                   speaking={primaryFlags.speaking}
+                                  paused={primaryFlags.paused || (primaryFlags.fullChannelHighlighted && cursor.state === 'paused')}
                                   focused={primaryFlags.focused}
                                   fullChannelHighlighted={primaryFlags.fullChannelHighlighted}
                                   title={primaryFlags.title}
@@ -1134,6 +1158,7 @@ export const SharedBilingualUnitsBody = ({
                                   disabled={secondaryFlags.segmentDisabled}
                                   active={isNotebook ? secondaryFlags.speaking || secondaryFlags.paused : secondaryFlags.active}
                                   speaking={secondaryFlags.speaking}
+                                  paused={secondaryFlags.paused || (secondaryFlags.fullChannelHighlighted && cursor.state === 'paused')}
                                   focused={secondaryFlags.focused}
                                   fullChannelHighlighted={secondaryFlags.fullChannelHighlighted}
                                   title={secondaryFlags.title}
@@ -1182,6 +1207,7 @@ export const SharedBilingualUnitsBody = ({
                     secondaryLang={secondaryMeta.lang}
                     guides={appearancePres.appearance.notebookGuideLines}
                     spacing={appearancePres.appearance.notebookSpacing}
+                    cursorPaused={cursor.state === 'paused'}
                     inlineLeadIn={inlineLeadIn}
                     resolveFlags={(index, channel) => getFlags(meta.unitSegments[index], channel)}
                     onActivate={handleSegmentActivate}
@@ -1222,6 +1248,7 @@ export const SharedBilingualUnitsBody = ({
               isRepeatedSpeaker={meta.isRepeatedSpeaker}
               isAudibleTurn={meta.isAudibleTurn}
               cursorState={cursor.state}
+              cursorChannel={cursor.channel}
               showSectionHeaders={showSectionHeaders}
               workspaceStylePresentation={workspaceStylePresentation}
               isTitleRole={isTitleRole}
@@ -1437,7 +1464,7 @@ export const SharedBilingualUnitsBody = ({
                     data-shared-contextual-inline-controls="true"
                     className="mt-2 flex flex-wrap items-center gap-2 text-left"
                   >
-                    <ContextualSourceBadge source={resolvedUnitTarget.source} />
+                    <ContextualSourceBadge source={resolvedUnitTarget.source} channel={cursor.channel} />
                     {contextualDiverged && (
                       <ContextualReturnToPlayingButton
                         audibleTarget={contextualAudibleTarget}

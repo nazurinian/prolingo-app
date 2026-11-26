@@ -5,6 +5,7 @@ import {
   normalizeTextReaderAppearanceState,
   normalizeTextWorkspaceStyleState
 } from '../../../domain/text/textCardPresentationStateDomain.js';
+import { SHARED_SEMANTIC_COLORS } from './sharedDesignTokens.js';
 
 export const SHARED_READING_LANGUAGE_OPTIONS = Object.freeze([
   Object.freeze({
@@ -607,16 +608,16 @@ export const buildSharedSegmentRenderFlags = ({
 
   const visualStateClasses = [];
   if (paused && !fullChannelHighlighted) {
-    visualStateClasses.push('!bg-amber-100/95 dark:!bg-amber-950/60 !text-amber-950 dark:!text-amber-100 ring-1 ring-amber-400/75 dark:ring-amber-600/75');
+    visualStateClasses.push(SHARED_SEMANTIC_COLORS.paused.segmentPaused);
     if (!selected) {
       visualStateClasses.push('!no-underline');
     }
   }
   if (selected) {
     if (speaking || paused || fullChannelHighlighted) {
-      visualStateClasses.push('underline decoration-sky-500 dark:decoration-sky-300 decoration-2 underline-offset-4');
+      visualStateClasses.push(SHARED_SEMANTIC_COLORS.manual.segmentSelectedOverAudible);
     } else {
-      visualStateClasses.push('!bg-sky-100/85 dark:!bg-sky-900/45 !text-slate-950 dark:!text-sky-50 underline decoration-sky-500 dark:decoration-sky-400 decoration-2 underline-offset-4 ring-1 ring-sky-300/80 dark:ring-sky-700/80');
+      visualStateClasses.push(SHARED_SEMANTIC_COLORS.manual.segmentSelected);
     }
   }
 
@@ -783,6 +784,116 @@ export const SHARED_FOCUS_ORIENTATION_OPTIONS = Object.freeze([
 export const getSharedUnitShortCode = (unit, index) => (
   unit?.kind === 'turn' ? `T${index + 1}` : `SC${index + 1}`
 );
+
+/**
+ * Formats consistent Unit-local authored coordinates (C4):
+ * - Paragraph: `SC2 · SG3/4`
+ * - Conversation: `T2 · SG2/3`
+ */
+export const formatAuthoredUnitSegmentPosition = ({
+  unit,
+  unitIndex,
+  localIndex = -1,
+  unitSegmentCount = 0
+} = {}) => {
+  const unitCode = getSharedUnitShortCode(unit, Math.max(0, unitIndex));
+  if (localIndex >= 0 && unitSegmentCount > 0) {
+    return `${unitCode} · SG${localIndex + 1}/${unitSegmentCount}`;
+  }
+  return unitCode;
+};
+
+/**
+ * Resolves authoritative authored playback identity and representation variation
+ * directly from the scoped playback cursor without inventing competing indices or
+ * fabricating Segment precision during Untimed Full Card playback (C3 / C4).
+ */
+export const resolveCursorAuthoredPosition = ({ card, lookup = null, cursor = IDLE_SHARED_CURSOR } = {}) => {
+  const isConversation = card?.blockType === 'conversation';
+  const isSpeakingCard = Boolean(
+    card?.id
+    && cursor?.cardId === card.id
+    && (cursor.state === 'playing' || cursor.state === 'paused')
+  );
+  if (!isSpeakingCard) {
+    return {
+      isSpeakingCard: false,
+      precision: 'none',
+      unitCode: null,
+      segmentCode: null,
+      speakerLabel: '',
+      authoredLabel: null,
+      variationKind: null,
+      variationLabel: null
+    };
+  }
+
+  const variationKind = cursor.representationFallback === true
+    ? 'fallback'
+    : (
+        !cursor.representationFallback
+        && (cursor.savedRepresentation === 'full' || cursor.requestedRepresentation === 'full')
+        && cursor.commandRepresentation === 'split'
+      )
+      ? 'temp-split'
+      : null;
+  const variationLabel = variationKind === 'fallback'
+    ? 'Full → Split'
+    : variationKind === 'temp-split'
+      ? 'Temp Split'
+      : null;
+
+  if (cursor.precision === 'card') {
+    return {
+      isSpeakingCard: true,
+      precision: 'card',
+      unitCode: null,
+      segmentCode: null,
+      speakerLabel: '',
+      authoredLabel: isConversation ? 'Full Scene' : 'Full Card',
+      variationKind: null,
+      variationLabel: null
+    };
+  }
+
+  const resolvedLookup = lookup || buildCardUnitLookup(card);
+  const entry = cursor.precision === 'segment' && cursor.segmentId
+    ? (resolvedLookup?.entryBySegmentId?.get(cursor.segmentId) || null)
+    : null;
+  if (!entry) {
+    return {
+      isSpeakingCard: true,
+      precision: cursor.precision || 'none',
+      unitCode: null,
+      segmentCode: null,
+      speakerLabel: '',
+      authoredLabel: null,
+      variationKind,
+      variationLabel
+    };
+  }
+
+  const unitSegments = entry.unit?.segments || [];
+  const localIndex = unitSegments.findIndex(item => item.id === entry.segment.id);
+  const unitCode = getSharedUnitShortCode(entry.unit, entry.unitIndex);
+  const segmentCode = localIndex >= 0 && unitSegments.length > 0
+    ? `SG${localIndex + 1}/${unitSegments.length}`
+    : null;
+  const speakerLabel = entry.unit?.kind === 'turn'
+    ? normalizeSegmentDisplayText(entry.unit.speakerLabel)
+    : '';
+
+  return {
+    isSpeakingCard: true,
+    precision: 'segment',
+    unitCode,
+    segmentCode,
+    speakerLabel,
+    authoredLabel: segmentCode ? `${unitCode} · ${segmentCode}` : unitCode,
+    variationKind,
+    variationLabel
+  };
+};
 
 export const buildUnitPreviewExcerpt = (unit, viewOrLayout = 'interlinear', maxChars = 140) => {
   const segments = unit?.segments || [];
@@ -1098,7 +1209,8 @@ export const resolveWorkspaceContextualTarget = ({
             segment: segs[localIndex],
             segmentId: segs[localIndex].id,
             localIndex,
-            localSegmentNumber: localIndex + 1
+            localSegmentNumber: localIndex + 1,
+            unitSegmentCount: segs.length
           };
         }
       }
@@ -1166,6 +1278,7 @@ export const resolveWorkspaceContextualTarget = ({
           segmentId: resolved.segmentId,
           segment: resolved.segment,
           localSegmentNumber: resolved.localSegmentNumber,
+          unitSegmentCount: resolved.unitSegmentCount,
           source
         }
       : null,
@@ -1177,7 +1290,9 @@ export const resolveWorkspaceContextualTarget = ({
           speakerLabel: audibleLocation.speakerLabel,
           segmentId: audibleLocation.segmentId,
           localSegmentNumber: audibleLocation.localSegmentNumber,
-          state: cursor?.state || 'playing'
+          unitSegmentCount: audibleLocation.unitSegmentCount,
+          state: cursor?.state || 'playing',
+          channel: cursor?.channel || null
         }
       : null,
     divergedFromAudible,

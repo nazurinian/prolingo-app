@@ -8,7 +8,17 @@ export const resolveNowPlayingReaderCursor = ({ presentation, nowPlaying } = {})
   if (!workspace || nowPlaying?.domain !== 'structured-text'
     || nowPlaying.workspace?.id !== workspace.id || nowPlaying.workspace.uid !== workspace.uid) return idle;
   const active = Object.freeze({
-    ...idle, sessionId: nowPlaying.sessionId, state: nowPlaying.state, commandTarget: nowPlaying.commandTarget
+    ...idle,
+    sessionId: nowPlaying.sessionId,
+    state: nowPlaying.state,
+    commandTarget: nowPlaying.commandTarget,
+    savedRepresentation: nowPlaying.savedRepresentation ?? null,
+    requestedRepresentation: nowPlaying.requestedRepresentation ?? null,
+    commandRepresentation: nowPlaying.commandRepresentation ?? null,
+    actualRepresentation: nowPlaying.actualRepresentation ?? null,
+    representationFallback: nowPlaying.representationFallback ?? null,
+    scope: nowPlaying.scope ?? null,
+    boundary: nowPlaying.boundary ?? null
   });
   const cardId = nowPlaying.card?.id;
   if (!presentation.cardById[cardId]) return active;

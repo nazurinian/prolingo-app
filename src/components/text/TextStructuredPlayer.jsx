@@ -34,6 +34,7 @@ import { WorkspaceReaderScrollContext } from './presentation/useWorkspaceReaderS
 import { useSharedReaderSelectionStore } from './presentation/useSharedReaderSelectionStore.js';
 import {
   buildCardUnitLookup,
+  resolveCursorAuthoredPosition,
   resolveWorkspaceContextualTarget
 } from './presentation/sharedCardPresentationUtils.js';
 import {
@@ -41,7 +42,8 @@ import {
   SHARED_SEMANTIC_COLORS,
   SHARED_SPACING_TOKENS,
   SHARED_SURFACE_TOKENS,
-  SHARED_UI_TERMINOLOGY
+  SHARED_UI_TERMINOLOGY,
+  resolvePlaybackSemanticTone
 } from './presentation/sharedDesignTokens.js';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -272,11 +274,19 @@ const StructuredPlayerCard = ({
     blockId: block.id,
     cardChannel
   });
+  const sharedCursorAuthored = useMemo(
+    () => (useEmbeddedSharedParagraph ? resolveCursorAuthoredPosition({ card: sharedCard, cursor: effectiveSharedCursor }) : null),
+    [useEmbeddedSharedParagraph, sharedCard, effectiveSharedCursor]
+  );
+  const cardPlaybackState = effectiveSharedCursor?.state || (isPaused ? 'paused' : 'playing');
+  const cardPlaybackChannel = effectiveSharedCursor?.channel || speakingPart;
+  const cardPlaybackTone = resolvePlaybackSemanticTone({ state: cardPlaybackState, channel: cardPlaybackChannel });
+  const cardActiveVisible = Boolean(useEmbeddedSharedParagraph ? effectiveSharedCursor : isActiveCard);
 
   return (<>
     <article
       ref={cardRef}
-      className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:shadow-sm ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200/90 dark:border-slate-700/90'} bg-white dark:bg-slate-800`}
+      className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:shadow-sm ${cardActiveVisible ? cardPlaybackTone.cardActive : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200/90 dark:border-slate-700/90'} bg-white dark:bg-slate-800`}
       data-text-player-card={block.id}
       data-text-search-focus-card={isFocusCard ? 'true' : undefined}
       data-shared-card-id={useEmbeddedSharedParagraph ? block.id : undefined}
@@ -288,7 +298,7 @@ const StructuredPlayerCard = ({
       data-shared-card-precision={useEmbeddedSharedParagraph ? (effectiveSharedCursor ? effectiveSharedCursor.precision : 'none') : undefined}
       data-shared-card-expanded={useEmbeddedSharedParagraph ? (expanded ? 'true' : 'false') : undefined}
     >
-      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 px-3 py-2.5 sm:px-4 sm:py-3 transition-colors ${isActiveCard ? (speakingPart === 'meaning' ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50' : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/50') : 'bg-slate-50/70 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80'}`}>
+      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 px-3 py-2.5 sm:px-4 sm:py-3 transition-colors ${cardActiveVisible ? cardPlaybackTone.headerTint : 'bg-slate-50/70 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80'}`}>
         <div className="flex items-start gap-2 min-w-0 flex-1">
           <button
             type="button"
@@ -307,23 +317,40 @@ const StructuredPlayerCard = ({
               <span className={`inline-flex text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${block.blockType === 'conversation' ? SHARED_SEMANTIC_COLORS.conversation.badge : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-indigo-100/90 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200' : SHARED_SEMANTIC_COLORS.paragraph.badge}`}>
                 {block.blockType === 'conversation' ? 'Conversation' : paragraphRoleLabel}
               </span>
-              {isActiveCard && (
+              {!useEmbeddedSharedParagraph && isActiveCard && !isCardSpeaking && (
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200 shrink-0">ACTIVE</span>
               )}
-              {isCardSpeaking && (
+              {useEmbeddedSharedParagraph && sharedCursorAuthored?.isSpeakingCard ? (
+                <>
+                  <span
+                    data-shared-card-status-pill="true"
+                    className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 shadow-xs ${
+                      cardPlaybackState === 'paused' ? cardPlaybackTone.badge : cardPlaybackTone.solid
+                    }`}
+                  >
+                    <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cardPlaybackState === 'paused' ? cardPlaybackTone.dot : 'bg-white'}`} />
+                    {cardPlaybackState === 'paused' ? 'Paused' : 'Playing'} {cardPlaybackChannel === 'meaning' ? 'ID' : cardPlaybackChannel === 'text' ? 'EN' : 'Audio'}
+                    {sharedCursorAuthored.authoredLabel ? ` · ${sharedCursorAuthored.authoredLabel}` : ''}
+                  </span>
+                  {sharedCursorAuthored.variationLabel && (
+                    <span
+                      data-shared-playback-variation={sharedCursorAuthored.variationKind}
+                      className="inline-flex items-center rounded-full border border-amber-300/80 dark:border-amber-700/70 bg-amber-50/90 dark:bg-amber-950/50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200 shrink-0"
+                    >
+                      {sharedCursorAuthored.variationLabel}
+                    </span>
+                  )}
+                </>
+              ) : (!useEmbeddedSharedParagraph && isCardSpeaking && (
                 <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 shadow-xs ${
-                  isPaused
-                    ? 'bg-amber-500 text-white'
-                    : speakingPart === 'meaning'
-                      ? 'bg-emerald-600 text-white animate-pulse'
-                      : 'bg-indigo-600 text-white animate-pulse'
+                  isPaused ? cardPlaybackTone.badge : cardPlaybackTone.solid
                 }`}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  <span className={`h-1.5 w-1.5 rounded-full ${isPaused ? cardPlaybackTone.dot : 'bg-white'}`} />
                   {isPaused
                     ? `PAUSED${activeChannelBadgeLabel ? ` • ${activeChannelBadgeLabel}` : ''}`
                     : `PLAYING ${activeChannelBadgeLabel || 'AUDIO'} • ${isFullRepresentation ? 'FULL' : activeSegmentIndex >= 0 ? `S${activeSegmentIndex + 1}` : 'SPLIT'}`}
                 </span>
-              )}
+              ))}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400" data-text-card-compact-readiness="true">
               <span className="font-medium tabular-nums">{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'}</span>
@@ -396,7 +423,7 @@ const StructuredPlayerCard = ({
             disabled={!cardHasPlayableSegment || generationBusy}
             onClick={() => onPlayCard?.(block.id)}
             data-reader-playback-action={stopsCard() ? 'stop' : 'play'}
-            className={`min-h-8 min-w-8 px-2.5 shrink-0 rounded-full border transition-colors active:scale-95 inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-35 text-[11px] font-semibold ${SHARED_CONTROL_TOKENS.focusRing} ${isCardSpeaking ? 'border-indigo-600 bg-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-800' : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-500'}`}
+            className={`min-h-8 min-w-8 px-2.5 shrink-0 rounded-full border transition-colors active:scale-95 inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-35 text-[11px] font-semibold ${SHARED_CONTROL_TOKENS.focusRing} ${stopsCard() ? `${cardPlaybackTone.solid} border-transparent` : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-500'}`}
             title={stopsCard() ? 'Stop Card playback' : 'Play entire card with Manual Card settings'}
             aria-label={stopsCard() ? 'Stop this card' : 'Play this card'}
             data-text-card-play-compact="true"
