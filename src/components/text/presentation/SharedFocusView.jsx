@@ -76,9 +76,9 @@ const FocusUnitTopHeader = ({
 
   const speakerInfo = resolveTurnSpeakerPresentation({ unit, appearanceMap: speakerAppearanceMap });
   return (
-    <div className="flex flex-wrap items-center gap-2 min-w-0 text-left">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 text-left">
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold shrink-0 ${
           emphasize
             ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 ring-1 ring-indigo-200/80 dark:ring-indigo-800/70'
             : 'bg-slate-100/90 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300'
@@ -86,7 +86,7 @@ const FocusUnitTopHeader = ({
       >
         <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${speakerInfo.palette.dot}`} />
         <span>
-          {rolePrefix ? `${rolePrefix} · ` : ''}{shortCode} · {unit.label || 'Speaker Turn'} {unitIndex + 1}
+          {rolePrefix ? `${rolePrefix} · ` : ''}{shortCode}
         </span>
       </span>
       {showSpeakerInHeader && (
@@ -97,18 +97,23 @@ const FocusUnitTopHeader = ({
           {speakerInfo.displayName}
         </span>
       )}
-      <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
         {segCount} SG
       </span>
-      {isRepeatedSpeaker && (
+      {totalUnits > 1 && emphasize && (
+        <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums shrink-0">
+          ({unitIndex + 1}/{totalUnits})
+        </span>
+      )}
+      {isRepeatedSpeaker && !emphasize && (
         <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          · consecutive turn
+          · consecutive
         </span>
       )}
       {isAudible && (
         <span
           data-shared-focus-audible-badge="true"
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white"
+          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white shrink-0"
         >
           <Radio aria-hidden="true" className="w-3 h-3" />
           <span>Audible</span>
@@ -183,13 +188,13 @@ const FocusNavigationRail = ({
 
   return (
     <div
-      className="mb-4 pb-3 border-b border-slate-100 dark:border-slate-800/80 space-y-2.5 text-left"
+      className="mb-3 pb-2.5 border-b border-slate-100 dark:border-slate-800/80 space-y-2 text-left"
       data-shared-part-nav="true"
       data-shared-focus-nav="true"
       onKeyDown={handleKeyDown}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
           <span
             className="text-xs font-semibold text-slate-700 dark:text-slate-200 tabular-nums"
             data-shared-part-position="true"
@@ -203,7 +208,7 @@ const FocusNavigationRail = ({
               className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold max-w-full ${activeSpeakerInfo.palette.pill}`}
             >
               <span aria-hidden="true" className={`h-2 w-2 rounded-full shrink-0 ${activeSpeakerInfo.palette.dot}`} />
-              <span className="truncate max-w-[16rem]">{activeSpeakerInfo.displayName}</span>
+              <span className="truncate max-w-[10rem] sm:max-w-[16rem]">{activeSpeakerInfo.displayName}</span>
             </span>
           )}
           {isV1Compat && (
@@ -230,7 +235,7 @@ const FocusNavigationRail = ({
               onClick={onFollowAudible}
               data-shared-part-follow-audio="true"
               data-shared-focus-return-to-playing="true"
-              className="min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 inline-flex items-center gap-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <Radio aria-hidden="true" className="w-3 h-3 shrink-0" />
               <span>
@@ -249,7 +254,7 @@ const FocusNavigationRail = ({
             data-shared-part-prev="true"
             data-shared-focus-prev="true"
             aria-label={`Previous ${unitTerms.lower}`}
-            className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="min-h-9 sm:min-h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <ChevronLeft aria-hidden="true" className="w-3.5 h-3.5" />
             <span>Prev</span>
@@ -261,7 +266,7 @@ const FocusNavigationRail = ({
             data-shared-part-next="true"
             data-shared-focus-next="true"
             aria-label={`Next ${unitTerms.lower}`}
-            className="min-h-11 sm:min-h-8 px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="min-h-9 sm:min-h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 disabled:opacity-35 transition-colors hover:border-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             <span>Next</span>
             <ChevronRight aria-hidden="true" className="w-3.5 h-3.5" />
@@ -274,7 +279,7 @@ const FocusNavigationRail = ({
         role="group"
         aria-label={`Jump to ${unitTerms.lower}`}
         data-shared-focus-rail="true"
-        className="flex flex-wrap items-center gap-1.5 min-w-0"
+        className="flex flex-nowrap sm:flex-wrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 min-w-0 max-w-full"
       >
         {units.map((unit, idx) => {
           const selected = unit.viewKey === selectedUnitViewKey;
@@ -300,9 +305,9 @@ const FocusNavigationRail = ({
               data-shared-focus-rail-code={shortCode}
               data-shared-focus-rail-segments={segCount}
               onClick={() => onSelectUnit?.(unit.viewKey)}
-              className={`min-h-11 sm:min-h-8 max-w-full px-2.5 py-1 rounded-xl text-xs font-semibold tabular-nums inline-flex items-center gap-1.5 transition-all duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              className={`min-h-9 sm:min-h-8 shrink-0 max-w-full px-2.5 py-1 rounded-lg text-xs font-semibold tabular-nums inline-flex items-center gap-1.5 transition-all duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                 selected
-                  ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-500/40'
+                  ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500/40'
                   : isAudible
                     ? 'border border-indigo-400 bg-indigo-50 dark:bg-indigo-950/45 text-indigo-800 dark:text-indigo-200'
                     : segCount === 0
@@ -320,7 +325,7 @@ const FocusNavigationRail = ({
               {unitSpeaker && (
                 <>
                   {' '}
-                  <span className="truncate max-w-[9.5rem] sm:max-w-[11rem] font-medium">
+                  <span className="truncate max-w-[7.5rem] sm:max-w-[11rem] font-medium">
                     {unitSpeaker.displayName}
                   </span>
                 </>

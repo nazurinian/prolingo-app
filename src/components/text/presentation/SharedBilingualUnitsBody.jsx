@@ -1,5 +1,5 @@
 import React, { useContext, useMemo } from 'react';
-import { Languages, Radio, X } from 'lucide-react';
+import { Languages, Play, Radio, Square, X } from 'lucide-react';
 import './sharedReaderTypography.css';
 import {
   DEFAULT_TEXT_CARD_PRESENTATION_STATE,
@@ -48,25 +48,29 @@ const UnitHeadingBlock = ({
   isAudibleTurn = false,
   cursorState = 'idle',
   compact = false,
-  showAccents = true
+  showAccents = true,
+  unitPlayButton = null
 }) => {
   if (unit?.kind !== 'turn') {
     return (
-      <p
-        className={`${compact ? 'mb-2' : 'mb-2.5'} text-left text-[11px] font-semibold uppercase tracking-wider text-teal-700/80 dark:text-teal-300/80 select-none`}
-        data-shared-section-heading={unit.viewKey}
-      >
-        {getSharedUnitHeading(unit, unitIndex)}
-      </p>
+      <div className={`${compact ? 'mb-1.5' : 'mb-2'} flex flex-wrap items-center justify-between gap-2 text-left`}>
+        <p
+          className="text-left text-[11px] font-semibold uppercase tracking-wider text-teal-700/85 dark:text-teal-300/85 select-none"
+          data-shared-section-heading={unit.viewKey}
+        >
+          {getSharedUnitHeading(unit, unitIndex)}
+        </p>
+        {unitPlayButton}
+      </div>
     );
   }
 
   return (
     <div
-      className={`${compact ? 'mb-2' : 'mb-2.5'} flex flex-wrap items-center justify-between gap-2 text-left`}
+      className={`${compact ? 'mb-1.5' : 'mb-2'} flex flex-wrap items-center justify-between gap-2 text-left`}
       data-shared-turn-header={unit.viewKey}
     >
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
+      <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
         {showAccents && (
           <span
             aria-hidden="true"
@@ -94,7 +98,12 @@ const UnitHeadingBlock = ({
           </span>
         )}
       </div>
-      {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+      {(isAudibleTurn || unitPlayButton) && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+          {unitPlayButton}
+        </div>
+      )}
     </div>
   );
 };
@@ -106,42 +115,46 @@ const AlignedSpeakerColumn = ({
   isRepeatedSpeaker = false,
   isAudibleTurn = false,
   cursorState = 'idle',
-  showAccents = true
+  showAccents = true,
+  unitPlayButton = null
 }) => (
   <div
-    className="min-w-0 text-left space-y-1 sm:pt-0.5"
+    className="min-w-0 text-left sm:pt-0.5 flex items-start justify-between gap-2 sm:flex-col sm:justify-start sm:gap-1"
     data-shared-turn-header={unit.viewKey}
     data-shared-turn-speaker-column="true"
   >
-    <div className="flex items-start gap-2 min-w-0">
-      {showAccents && (
-        <span
-          aria-hidden="true"
-          className={`mt-1 h-2 w-2 rounded-full shrink-0 ${speakerInfo.palette.dot}`}
-        />
-      )}
-      <span className={`min-w-0 text-[13px] font-semibold leading-snug break-words [overflow-wrap:anywhere] text-left ${speakerInfo.palette.nameText}`}>
-        <span data-shared-turn-speaker={unit.viewKey}>{speakerInfo.displayName}</span>
-        <span aria-hidden="true">:</span>
-      </span>
-    </div>
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-left">
-      <span
-        data-shared-turn-label="true"
-        className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums select-none"
-      >
-        {unit.label || getSharedUnitTerms(unit).label} {unitIndex + 1}
-      </span>
-      {isRepeatedSpeaker && (
-        <span
-          data-shared-turn-consecutive="true"
-          className="text-[11px] text-slate-400 dark:text-slate-500 select-none"
-        >
-          · consecutive
+    <div className="min-w-0 flex-1 space-y-0.5">
+      <div className="flex items-start gap-2 min-w-0">
+        {showAccents && (
+          <span
+            aria-hidden="true"
+            className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${speakerInfo.palette.dot}`}
+          />
+        )}
+        <span className={`min-w-0 text-[13px] font-semibold leading-snug break-words [overflow-wrap:anywhere] text-left ${speakerInfo.palette.nameText}`}>
+          <span data-shared-turn-speaker={unit.viewKey}>{speakerInfo.displayName}</span>
+          <span aria-hidden="true">:</span>
         </span>
-      )}
-      {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-left">
+        <span
+          data-shared-turn-label="true"
+          className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums select-none"
+        >
+          {unit.label || getSharedUnitTerms(unit).label} {unitIndex + 1}
+        </span>
+        {isRepeatedSpeaker && (
+          <span
+            data-shared-turn-consecutive="true"
+            className="text-[11px] text-slate-400 dark:text-slate-500 select-none"
+          >
+            · consecutive
+          </span>
+        )}
+        {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+      </div>
     </div>
+    {unitPlayButton && <div className="shrink-0 sm:pt-0.5">{unitPlayButton}</div>}
   </div>
 );
 
@@ -162,25 +175,28 @@ const InlineSpeakerLeadIn = ({ unit, speakerInfo }) => (
   </span>
 );
 
-const InlineTurnMetaStrip = ({ unit, unitIndex, speakerInfo, isRepeatedSpeaker, isAudibleTurn, cursorState }) => {
-  if (!isRepeatedSpeaker && !isAudibleTurn) return null;
+const InlineTurnMetaStrip = ({ unit, unitIndex, speakerInfo, isRepeatedSpeaker, isAudibleTurn, cursorState, unitPlayButton = null }) => {
+  if (!isRepeatedSpeaker && !isAudibleTurn && !unitPlayButton) return null;
   return (
-    <div className="mb-1 flex flex-wrap items-center gap-2 text-left select-none" data-shared-turn-inline-meta={unit.viewKey}>
-      <span
-        data-shared-turn-label="true"
-        className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums"
-      >
-        {unit.label || getSharedUnitTerms(unit).label} {unitIndex + 1}
-      </span>
-      {isRepeatedSpeaker && (
+    <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-left select-none" data-shared-turn-inline-meta={unit.viewKey}>
+      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
         <span
-          data-shared-turn-consecutive="true"
-          className="text-[11px] text-slate-400 dark:text-slate-500"
+          data-shared-turn-label="true"
+          className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums"
         >
-          · consecutive turn
+          {unit.label || getSharedUnitTerms(unit).label} {unitIndex + 1}
         </span>
-      )}
-      {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+        {isRepeatedSpeaker && (
+          <span
+            data-shared-turn-consecutive="true"
+            className="text-[11px] text-slate-400 dark:text-slate-500"
+          >
+            · consecutive turn
+          </span>
+        )}
+        {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+      </div>
+      {unitPlayButton}
     </div>
   );
 };
@@ -304,7 +320,7 @@ const ContextualBlockCallout = ({
       data-shared-contextual-segment={target.segmentId}
       data-shared-contextual-source={target.source}
       data-shared-contextual-channel={secondaryChannel}
-      className={`${placement === 'above' ? 'mb-3' : 'mt-3'} rounded-xl border px-3.5 py-2.5 space-y-1.5 text-left transition-colors motion-reduce:transition-none ${appearancePres.contextualBoxClass}`}
+      className={`${placement === 'above' ? 'mb-2.5' : 'mt-2.5'} rounded-xl border border-l-2 border-l-indigo-500/80 dark:border-l-indigo-400/80 px-3 py-2 sm:px-3.5 sm:py-2.5 space-y-1 text-left transition-colors motion-reduce:transition-none ${appearancePres.contextualBoxClass}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 text-left">
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
@@ -345,6 +361,7 @@ const ContextualBlockCallout = ({
         data-shared-reading-role="secondary"
         data-shared-reading-kind="contextual"
         data-shared-reading-align={bodyStyle.textAlign}
+        data-shared-reading-size={appearancePres.appearance.secondaryFontSize}
         style={bodyStyle.inlineStyle}
         className={`max-w-[66ch] break-words whitespace-pre-line ${appearancePres.secondaryTextClass} ${bodyStyle.className}`}
       >
@@ -539,10 +556,10 @@ const UnitChannelStream = ({
                   onSelectContextualSegment(card, segment.id);
                 }}
                 style={{ textIndent: '0' }}
-                className={`inline-flex items-center justify-center align-middle ${segment?.joinAfter === 'none' ? 'mx-0.5' : 'ml-1'} h-[18px] w-[18px] rounded-md border transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 select-none ${
+                className={`inline-flex items-center justify-center align-middle ${segment?.joinAfter === 'none' ? 'mx-0.5' : 'ml-0.5'} h-[18px] w-[18px] rounded border transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 select-none ${
                   isContextualTarget
                     ? 'border-sky-500 bg-sky-600 text-white shadow-xs'
-                    : 'border-slate-200/90 dark:border-slate-700 bg-slate-50/85 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300'
+                    : 'border-transparent bg-transparent text-slate-400/70 dark:text-slate-500/80 hover:border-indigo-300/80 hover:bg-indigo-50/80 hover:text-indigo-700 dark:hover:border-indigo-700/80 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-300 focus-visible:border-indigo-400 focus-visible:bg-indigo-50/80 focus-visible:text-indigo-700'
                 }`}
               >
                 <Languages aria-hidden="true" className="w-3 h-3" />
@@ -561,11 +578,12 @@ const UnitChannelStream = ({
                 data-shared-reading-role="secondary"
                 data-shared-reading-kind="contextual"
                 data-shared-reading-align={bodyStyle.textAlign}
+                data-shared-reading-size={appearancePres.appearance.secondaryFontSize}
                 style={{
                   ...appearancePres.secondaryInlineStyle,
                   textIndent: '0'
                 }}
-                className={`inline align-baseline mx-1 px-1.5 py-0.5 rounded-md border ${appearancePres.contextualBoxClass} ${appearancePres.secondaryTextClass}`}
+                className={`inline align-baseline mx-1 px-1.5 py-0.5 rounded-md border border-l-2 border-l-indigo-500/75 dark:border-l-indigo-400/75 ${appearancePres.contextualBoxClass} ${appearancePres.secondaryTextClass}`}
               >
                 {inlineSecondaryText ? (
                   <ContextualTranslationText text={inlineSecondaryText} segmentId={segment.id} channel={secondaryChannel}
@@ -665,9 +683,9 @@ const SharedAuthoredUnitShell = ({
             isAudibleTurn={isAudibleTurn}
             cursorState={cursorState}
             showAccents={showAccents}
+            unitPlayButton={unitPlayButton}
           />
           <div className="min-w-0" data-shared-turn-body-column="true">
-            {unitPlayButton}
             {renderBody({ inlineLeadIn: null })}
           </div>
         </div>
@@ -681,20 +699,39 @@ const SharedAuthoredUnitShell = ({
       : null;
     return (
       <section {...commonAttrs} className={`min-w-0 ${accentClass}`}>
-        <InlineTurnMetaStrip
-          unit={unit}
-          unitIndex={authoredUnitIndex}
-          speakerInfo={speakerInfo}
-          isRepeatedSpeaker={isRepeatedSpeaker}
-          isAudibleTurn={isAudibleTurn}
-          cursorState={cursorState}
-        />
-        {!allowInlineLeadIn && (
-          <div className="mb-1.5 text-left">
-            <InlineSpeakerLeadIn unit={unit} speakerInfo={speakerInfo} />
+        {allowInlineLeadIn ? (
+          <InlineTurnMetaStrip
+            unit={unit}
+            unitIndex={authoredUnitIndex}
+            speakerInfo={speakerInfo}
+            isRepeatedSpeaker={isRepeatedSpeaker}
+            isAudibleTurn={isAudibleTurn}
+            cursorState={cursorState}
+            unitPlayButton={unitPlayButton}
+          />
+        ) : (
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-left">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <InlineSpeakerLeadIn unit={unit} speakerInfo={speakerInfo} />
+              <span
+                data-shared-turn-label="true"
+                className="text-[11px] font-medium text-slate-400 dark:text-slate-500 tabular-nums select-none"
+              >
+                {unit.label || getSharedUnitTerms(unit).label} {authoredUnitIndex + 1}
+              </span>
+              {isRepeatedSpeaker && (
+                <span
+                  data-shared-turn-consecutive="true"
+                  className="text-[11px] text-slate-400 dark:text-slate-500 select-none"
+                >
+                  · consecutive turn
+                </span>
+              )}
+              {isAudibleTurn && <AudibleTurnBadge speakerInfo={speakerInfo} cursorState={cursorState} />}
+            </div>
+            {unitPlayButton}
           </div>
         )}
-        {unitPlayButton}
         {renderBody({ inlineLeadIn })}
       </section>
     );
@@ -702,7 +739,7 @@ const SharedAuthoredUnitShell = ({
 
   return (
     <section {...commonAttrs} className={`min-w-0 ${accentClass}`}>
-      {showSectionHeaders && (
+      {showSectionHeaders ? (
         <UnitHeadingBlock
           unit={unit}
           unitIndex={authoredUnitIndex}
@@ -711,10 +748,14 @@ const SharedAuthoredUnitShell = ({
           isAudibleTurn={isAudibleTurn}
           cursorState={cursorState}
           showAccents={showAccents}
+          unitPlayButton={unitPlayButton}
           compact
         />
-      )}
-      {unitPlayButton}
+      ) : unitPlayButton ? (
+        <div className="mb-1.5 flex items-center justify-end text-left">
+          {unitPlayButton}
+        </div>
+      ) : null}
       {renderBody({ inlineLeadIn: null })}
     </section>
   );
@@ -929,12 +970,24 @@ export const SharedBilingualUnitsBody = ({
       workspaceId: workspace?.id, workspaceUid: workspace?.uid
     };
     const stop = matchesStructuredPlaybackControl(cursor, { ...target, scope: 'unit' });
+    const unitKindLabel = unit.kind === 'turn' ? 'Turn' : 'Section';
     return (
-    <button type="button" data-shared-unit-play={unit.viewKey}
-      data-reader-playback-action={stop ? 'stop' : 'play'}
-      className="mb-1 min-h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium"
-      onClick={() => onPlayUnit(target)}
-    >{stop ? 'Stop' : 'Play'} {unit.kind === 'turn' ? 'Turn' : 'Section'}</button>
+      <button
+        type="button"
+        data-shared-unit-play={unit.viewKey}
+        data-reader-playback-action={stop ? 'stop' : 'play'}
+        aria-label={`${stop ? 'Stop' : 'Play'} ${unitKindLabel}`}
+        title={`${stop ? 'Stop' : 'Play'} this ${unitKindLabel.toLowerCase()}`}
+        className={`min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+          stop
+            ? 'border-indigo-500 bg-indigo-600 text-white shadow-xs hover:bg-indigo-700'
+            : 'border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/75 text-slate-600 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-600 hover:text-indigo-700 dark:hover:text-indigo-200 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/40'
+        }`}
+        onClick={() => onPlayUnit(target)}
+      >
+        {stop ? <Square aria-hidden="true" className="w-2.5 h-2.5 fill-current" /> : <Play aria-hidden="true" className="w-2.5 h-2.5 fill-current" />}
+        <span>{stop ? 'Stop' : 'Play'} {unitKindLabel}</span>
+      </button>
     );
   };
   const contextualDiverged = Boolean(renderMode === 'contextual' && contextualState?.divergedFromAudible);
@@ -987,7 +1040,7 @@ export const SharedBilingualUnitsBody = ({
               allowInlineLeadIn={isNotebook}
               renderBody={({ inlineLeadIn }) => {
                 const renderSentenceBody = () => (
-                <div className={appearancePres.pairGapClass}>
+                <div className="divide-y divide-slate-100/90 dark:divide-slate-800/70">
                   {meta.unitSegments.map((segment, localIdx) => {
                     const logicalIndex = indexById.get(segment.id) ?? 0;
                     const primaryText = isNotebook ? String(segment[primaryChannel] ?? '') : normalizeSegmentDisplayText(segment[primaryChannel]);
@@ -1004,25 +1057,25 @@ export const SharedBilingualUnitsBody = ({
                         key={segment.id}
                         data-shared-card-segment-index={logicalIndex + 1}
                         data-shared-interlinear-segment={segment.id}
-                        className={`rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 transition-colors duration-150 motion-reduce:transition-none ${
+                        className={`py-2 sm:py-2.5 px-2 -mx-2 rounded-lg first:pt-1 transition-colors duration-150 motion-reduce:transition-none ${
                           isRowPaused
-                            ? 'bg-amber-50/70 dark:bg-amber-950/25 ring-1 ring-amber-300/75 dark:ring-amber-700/65'
+                            ? 'bg-amber-50/75 dark:bg-amber-950/25 ring-1 ring-amber-300/75 dark:ring-amber-700/65'
                             : isRowActive
-                              ? 'bg-indigo-50/55 dark:bg-indigo-950/25 ring-1 ring-indigo-300/70 dark:ring-indigo-700/60'
+                              ? 'bg-indigo-50/60 dark:bg-indigo-950/25 ring-1 ring-indigo-300/70 dark:ring-indigo-700/60'
                               : isRowSelected
                                 ? 'bg-sky-50/70 dark:bg-sky-950/25 ring-1 ring-sky-300/75 dark:ring-sky-700/65'
                                 : isRowFocused
                                   ? 'bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-300/60'
-                                  : 'bg-slate-50/45 dark:bg-slate-800/35 hover:bg-slate-50/90 dark:hover:bg-slate-800/55'
+                                  : 'hover:bg-slate-50/75 dark:hover:bg-slate-800/40'
                         }`}
                       >
                         <div className="flex items-start gap-2.5">
                           {showSegmentNumbers && (
-                            <span className="mt-1 text-[11px] font-semibold tabular-nums text-slate-400 dark:text-slate-500 select-none shrink-0 w-5 text-right">
+                            <span className="mt-1 text-[11px] font-medium tabular-nums text-slate-400/85 dark:text-slate-500 select-none shrink-0 w-4 text-right">
                               {localIdx + 1}
                             </span>
                           )}
-                          <div className="min-w-0 flex-1 space-y-1">
+                          <div className="min-w-0 flex-1 space-y-0.5">
                             <div
                               lang={primaryMeta.lang}
                               data-shared-reading-body="true"
@@ -1069,6 +1122,7 @@ export const SharedBilingualUnitsBody = ({
                               data-shared-reading-role="secondary"
                               data-shared-reading-kind={meta.readingKind}
                               data-shared-reading-align={secondaryBodyStyle.textAlign}
+                              data-shared-reading-size={appearancePres.appearance.secondaryFontSize}
                               style={secondaryBodyStyle.inlineStyle}
                               className={`max-w-[66ch] break-words ${isNotebook ? 'whitespace-pre-wrap' : ''} ${appearancePres.secondaryTextClass} ${secondaryBodyStyle.className}`}
                             >
@@ -1214,7 +1268,7 @@ export const SharedBilingualUnitsBody = ({
                     data-shared-card-flow={secondaryChannel}
                     data-shared-unit-channel-block="secondary"
                     data-shared-full-channel-highlight={fullSecondaryHighlighted ? 'true' : undefined}
-                    className={`${appearancePres.separatedGapClass} border-t border-slate-100/90 dark:border-slate-800/75`}
+                    className={`${appearancePres.separatedGapClass} border-t border-slate-200/70 dark:border-slate-800/80`}
                   >
                     <UnitChannelStream
                       card={card}

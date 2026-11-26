@@ -17,14 +17,14 @@
 }
 
 .prolingo-focus-swiper .swiper-slide {
-  width: 86%;
+  width: 84%;
   height: auto;
   box-sizing: border-box;
 }
 
 @media (min-width: 640px) {
   .prolingo-focus-swiper .swiper-slide {
-    width: 80%;
+    width: 76%;
   }
 }
 
@@ -34,8 +34,8 @@
 }
 
 .prolingo-focus-swiper .swiper-slide:not(.swiper-slide-active) .prolingo-focus-slide-inner {
-  transform: scale(0.94);
-  opacity: 0.72;
+  transform: scale(0.95);
+  opacity: 0.78;
 }
 
 .prolingo-focus-swiper .swiper-slide.swiper-slide-active .prolingo-focus-slide-inner {
@@ -58,8 +58,8 @@
 }
 
 .prolingo-focus-vertical-unit:not([data-shared-part-active="true"]) {
-  transform: scale(0.95);
-  opacity: 0.68;
+  transform: scale(0.97);
+  opacity: 0.76;
 }
 
 .prolingo-focus-vertical-unit:not([data-shared-part-active="true"]):hover {

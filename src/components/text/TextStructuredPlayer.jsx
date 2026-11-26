@@ -257,67 +257,163 @@ const StructuredPlayerCard = ({
       || sharedCursorSegment && sharedPlaybackCursor.unitId === (sharedCursorSegment.unitId ?? null))
     ? sharedPlaybackCursor : null;
   const useEmbeddedSharedParagraph = Boolean(useSharedCardReader && sharedCard);
+  const sharedCardViewState = useMemo(() => (
+    sharedPresentationState
+      ? normalizeTextCardPresentationState(sharedPresentationState)
+      : normalizeTextCardPresentationState({
+          bilingualLayout: sharedBilingualLayout || DEFAULT_TEXT_CARD_PRESENTATION_STATE.bilingualLayout
+        })
+  ), [sharedPresentationState, sharedBilingualLayout]);
+  const isTitleCardRole = isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
+  const cardHasText = segments.some(item => Boolean(String(item?.text || '').trim()));
+  const cardHasMeaning = segments.some(item => Boolean(String(item?.meaning || '').trim()));
+  const stopsCard = cardChannel => matchesStructuredPlaybackControl(effectiveSharedCursor, {
+    scope: 'card',
+    blockId: block.id,
+    cardChannel
+  });
 
   return (<>
-    <article ref={cardRef} className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:-translate-y-px hover:shadow-md ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200 dark:border-slate-700'} bg-white dark:bg-slate-800`} data-text-player-card={block.id} data-text-search-focus-card={isFocusCard ? 'true' : undefined}>
-      <div className={`flex items-start gap-2 p-2.5 sm:gap-2.5 sm:p-3.5 transition-colors ${isActiveCard ? (speakingPart === 'meaning' ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50' : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/50') : 'bg-slate-50/80 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80'}`}>
-        <button type="button" onClick={() => onToggleCardExpanded?.(block.id)} aria-expanded={expanded} className="w-9 h-9 shrink-0 rounded-xl border border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 transition-all duration-150 active:scale-95 flex items-center justify-center" aria-label={expanded ? 'Collapse card' : 'Expand card'} title={expanded ? 'Collapse card' : 'Expand card'}>
-          <ChevronRight className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''}`}/>
-        </button>
-        <div className="min-w-0 flex-1 py-0.5">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <span className="inline-flex items-center justify-center rounded-md bg-slate-200/80 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-black text-slate-600 dark:text-slate-300 shrink-0">#{index + 1}</span>
-            <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-white truncate">{block.title || (isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title Card' : `${blockLabel(block.blockType)} Card`)}</span>
-            <span className={`inline-flex text-[9px] font-black px-1.5 py-0.5 rounded-md shrink-0 ${block.blockType === 'conversation' ? 'bg-sky-100 dark:bg-sky-900/35 text-sky-700 dark:text-sky-300' : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-fuchsia-100 dark:bg-fuchsia-900/35 text-fuchsia-700 dark:text-fuchsia-300' : 'bg-violet-100 dark:bg-violet-900/35 text-violet-700 dark:text-violet-300'}`}>{block.blockType === 'conversation' ? 'CONVERSATION' : paragraphRoleLabel?.toUpperCase()}</span>
-            {isActiveCard && (
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200 shrink-0">ACTIVE</span>
-            )}
-            {isCardSpeaking && (
-              <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-sm ${
-                isPaused
-                  ? 'bg-amber-500 text-white'
-                  : speakingPart === 'meaning'
-                    ? 'bg-emerald-600 text-white animate-pulse'
-                    : 'bg-indigo-600 text-white animate-pulse'
-              }`}>
-                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                {isPaused
-                  ? `PAUSED${activeChannelBadgeLabel ? ` • ${activeChannelBadgeLabel}` : ''}`
-                  : `PLAYING ${activeChannelBadgeLabel || 'AUDIO'} • ${isFullRepresentation ? 'FULL' : activeSegmentIndex >= 0 ? `S${activeSegmentIndex + 1}` : 'SPLIT'}`}
-              </span>
-            )}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400" data-text-card-compact-readiness="true">
-            <span className="font-semibold">{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'}</span>
-            <span>•</span>
-            <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/40 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">READY {cardCoverage.covered}/{cardCoverage.total}</span>
-            {cardCoverage.needDownload ? (
-              <span className="rounded-md bg-amber-100 dark:bg-amber-950/40 px-1.5 py-0.5 font-black text-amber-700 dark:text-amber-300">MISSING {cardCoverage.needDownload}</span>
-            ) : (
-              <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/40 px-1.5 py-0.5 font-black text-emerald-700 dark:text-emerald-300">COMPLETE</span>
-            )}
-            {cardCoverage.stale > 0 && (
-              <span className="rounded-md bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 font-black text-rose-700 dark:text-rose-300">STALE {cardCoverage.stale}</span>
-            )}
-          </div>
-          {!expanded && <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300 line-clamp-2 animate-in fade-in duration-150">{preview}</p>}
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0" data-text-card-quick-actions="true">
-          <button type="button" disabled={playbackBusy} onClick={() => setAudioPanelOpen(true)} className="w-9 h-9 sm:w-auto sm:h-9 sm:px-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[10px] font-black disabled:opacity-35 transition-all duration-150 hover:shadow-sm active:scale-95 flex items-center justify-center" title="Card audio & voice overrides" aria-label="Open card audio controls">
-            <SlidersHorizontal className="w-3.5 h-3.5 sm:mr-1.5"/><span className="hidden sm:inline">Audio</span>
+    <article
+      ref={cardRef}
+      className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none hover:shadow-sm ${isActiveCard ? (speakingPart === 'meaning' ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/20 dark:ring-emerald-400/25 shadow-emerald-100/50 dark:shadow-none' : 'border-indigo-500 dark:border-indigo-400 ring-2 ring-indigo-500/20 dark:ring-indigo-400/25 shadow-indigo-100/50 dark:shadow-none') : isFocusCard ? 'border-amber-400 dark:border-amber-700 ring-2 ring-amber-100 dark:ring-amber-950/40' : 'border-slate-200/90 dark:border-slate-700/90'} bg-white dark:bg-slate-800`}
+      data-text-player-card={block.id}
+      data-text-search-focus-card={isFocusCard ? 'true' : undefined}
+      data-shared-card-id={useEmbeddedSharedParagraph ? block.id : undefined}
+      data-shared-card-embedded={useEmbeddedSharedParagraph ? 'true' : undefined}
+      data-shared-card-role={useEmbeddedSharedParagraph ? (isTitleCardRole ? 'title' : block.blockType === 'conversation' ? 'scene' : 'paragraph') : undefined}
+      data-shared-card-level={useEmbeddedSharedParagraph ? sharedCardViewState.level : undefined}
+      data-shared-card-part-layout={useEmbeddedSharedParagraph ? sharedCardViewState.partLayout : undefined}
+      data-shared-card-layout={useEmbeddedSharedParagraph ? sharedCardViewState.bilingualLayout : undefined}
+      data-shared-card-precision={useEmbeddedSharedParagraph ? (effectiveSharedCursor ? effectiveSharedCursor.precision : 'none') : undefined}
+      data-shared-card-expanded={useEmbeddedSharedParagraph ? (expanded ? 'true' : 'false') : undefined}
+    >
+      <div className={`flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 px-3 py-2.5 sm:px-4 sm:py-3 transition-colors ${isActiveCard ? (speakingPart === 'meaning' ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-b border-emerald-100 dark:border-emerald-900/50' : 'bg-indigo-50/70 dark:bg-indigo-950/30 border-b border-indigo-100 dark:border-indigo-900/50') : 'bg-slate-50/70 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80'}`}>
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onToggleCardExpanded?.(block.id)}
+            aria-expanded={expanded}
+            className={`w-8 h-8 shrink-0 rounded-lg border border-transparent hover:border-slate-200 dark:hover:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-indigo-600 hover:bg-white dark:hover:bg-slate-800 transition-all duration-150 active:scale-95 flex items-center justify-center ${SHARED_CONTROL_TOKENS.focusRing}`}
+            aria-label={expanded ? 'Collapse card' : 'Expand card'}
+            title={expanded ? 'Collapse card' : 'Expand card'}
+          >
+            <ChevronRight className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''}`}/>
           </button>
-          <button type="button" disabled={!cardHasPlayableSegment || generationBusy} onClick={() => onPlayCard?.(block.id)} className={`w-9 h-9 shrink-0 rounded-full border transition-all active:scale-95 flex items-center justify-center shadow-sm disabled:opacity-35 ${isCardSpeaking ? 'border-indigo-600 bg-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-800' : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-500'}`} title="Play entire card with Manual Card settings" aria-label="Play this card" data-text-card-play-compact="true">
-            <Play className="w-3.5 h-3.5 fill-current ml-0.5"/>
+          <div className="min-w-0 flex-1 pt-0.5 text-left">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
+              <span className="inline-flex items-center justify-center rounded-md bg-slate-200/75 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-600 dark:text-slate-300 shrink-0">#{index + 1}</span>
+              <span className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-white leading-snug break-words">{block.title || (isParagraphCard && paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'Title Card' : `${blockLabel(block.blockType)} Card`)}</span>
+              <span className={`inline-flex text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${block.blockType === 'conversation' ? SHARED_SEMANTIC_COLORS.conversation.badge : paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE ? 'bg-indigo-100/90 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200' : SHARED_SEMANTIC_COLORS.paragraph.badge}`}>
+                {block.blockType === 'conversation' ? 'Conversation' : paragraphRoleLabel}
+              </span>
+              {isActiveCard && (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200 shrink-0">ACTIVE</span>
+              )}
+              {isCardSpeaking && (
+                <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 shadow-xs ${
+                  isPaused
+                    ? 'bg-amber-500 text-white'
+                    : speakingPart === 'meaning'
+                      ? 'bg-emerald-600 text-white animate-pulse'
+                      : 'bg-indigo-600 text-white animate-pulse'
+                }`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  {isPaused
+                    ? `PAUSED${activeChannelBadgeLabel ? ` • ${activeChannelBadgeLabel}` : ''}`
+                    : `PLAYING ${activeChannelBadgeLabel || 'AUDIO'} • ${isFullRepresentation ? 'FULL' : activeSegmentIndex >= 0 ? `S${activeSegmentIndex + 1}` : 'SPLIT'}`}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400" data-text-card-compact-readiness="true">
+              <span className="font-medium tabular-nums">{segments.length} {isParagraphCard ? 'sentence' : 'segment'}{segments.length === 1 ? '' : 's'}</span>
+              <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span>
+              <span className="rounded-md bg-emerald-50/90 dark:bg-emerald-950/40 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">Ready {cardCoverage.covered}/{cardCoverage.total}</span>
+              {cardCoverage.needDownload ? (
+                <span className="rounded-md bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.5 font-semibold text-amber-700 dark:text-amber-300 tabular-nums">Missing {cardCoverage.needDownload}</span>
+              ) : (
+                <span className="rounded-md bg-emerald-50/90 dark:bg-emerald-950/40 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-300">Complete</span>
+              )}
+              {cardCoverage.stale > 0 && (
+                <span className="rounded-md bg-rose-50/90 dark:bg-rose-950/40 px-1.5 py-0.5 font-semibold text-rose-700 dark:text-rose-300 tabular-nums">Stale {cardCoverage.stale}</span>
+              )}
+            </div>
+            {!expanded && <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-300 line-clamp-2 animate-in fade-in duration-150">{preview}</p>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 pl-10 sm:pl-0" data-text-card-quick-actions="true">
+          {useEmbeddedSharedParagraph && (
+            <>
+              <button
+                type="button"
+                disabled={generationBusy || !cardHasText}
+                onClick={() => onPlayCard?.(block.id, { playbackChannelMode: 'text-only' })}
+                data-shared-card-play-channel="text"
+                data-reader-playback-action={stopsCard('text-only') ? 'stop' : 'play'}
+                title={stopsCard('text-only') ? 'Stop EN' : `Play EN — Play English only (entire ${block.blockType === 'conversation' ? 'scene' : 'card'}, one-time override)`}
+                aria-label={stopsCard('text-only') ? 'Stop EN' : 'EN — Play English only'}
+                className={`min-h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                  stopsCard('text-only')
+                    ? `${SHARED_SEMANTIC_COLORS.en.solid} border-blue-600`
+                    : `${SHARED_SEMANTIC_COLORS.en.border} ${SHARED_SEMANTIC_COLORS.en.bgSoft} ${SHARED_SEMANTIC_COLORS.en.text} hover:bg-blue-100/90 dark:hover:bg-blue-900/60`
+                }`}
+              >
+                {stopsCard('text-only') ? <Square aria-hidden="true" className="w-2.5 h-2.5 fill-current" /> : <Play aria-hidden="true" className="w-2.5 h-2.5 fill-current" />}
+                <span>{stopsCard('text-only') ? 'Stop EN' : 'EN'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={generationBusy || !cardHasMeaning}
+                onClick={() => onPlayCard?.(block.id, { playbackChannelMode: 'meaning-only' })}
+                data-shared-card-play-channel="meaning"
+                data-reader-playback-action={stopsCard('meaning-only') ? 'stop' : 'play'}
+                title={stopsCard('meaning-only') ? 'Stop ID' : `Play ID — Play Indonesian only (entire ${block.blockType === 'conversation' ? 'scene' : 'card'}, one-time override)`}
+                aria-label={stopsCard('meaning-only') ? 'Stop ID' : 'ID — Play Indonesian only'}
+                className={`min-h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 disabled:opacity-40 transition-colors motion-reduce:transition-none ${SHARED_CONTROL_TOKENS.focusRing} ${
+                  stopsCard('meaning-only')
+                    ? `${SHARED_SEMANTIC_COLORS.id.solid} border-violet-600`
+                    : `${SHARED_SEMANTIC_COLORS.id.border} ${SHARED_SEMANTIC_COLORS.id.bgSoft} ${SHARED_SEMANTIC_COLORS.id.text} hover:bg-violet-100/90 dark:hover:bg-violet-900/60`
+                }`}
+              >
+                {stopsCard('meaning-only') ? <Square aria-hidden="true" className="w-2.5 h-2.5 fill-current" /> : <Play aria-hidden="true" className="w-2.5 h-2.5 fill-current" />}
+                <span>{stopsCard('meaning-only') ? 'Stop ID' : 'ID'}</span>
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            disabled={playbackBusy}
+            onClick={() => setAudioPanelOpen(true)}
+            className={`min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[11px] font-semibold disabled:opacity-35 transition-colors inline-flex items-center justify-center gap-1 ${SHARED_CONTROL_TOKENS.focusRing}`}
+            title="Card audio & voice overrides"
+            aria-label="Open card audio controls"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5"/>
+            <span className="hidden sm:inline">Audio</span>
+          </button>
+          <button
+            type="button"
+            disabled={!cardHasPlayableSegment || generationBusy}
+            onClick={() => onPlayCard?.(block.id)}
+            data-reader-playback-action={stopsCard() ? 'stop' : 'play'}
+            className={`min-h-8 min-w-8 px-2.5 shrink-0 rounded-full border transition-colors active:scale-95 inline-flex items-center justify-center gap-1 shadow-xs disabled:opacity-35 text-[11px] font-semibold ${SHARED_CONTROL_TOKENS.focusRing} ${isCardSpeaking ? 'border-indigo-600 bg-indigo-600 text-white ring-2 ring-indigo-300 dark:ring-indigo-800' : 'border-indigo-200 bg-indigo-600 text-white hover:bg-indigo-700 dark:border-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-500'}`}
+            title={stopsCard() ? 'Stop Card playback' : 'Play entire card with Manual Card settings'}
+            aria-label={stopsCard() ? 'Stop this card' : 'Play this card'}
+            data-text-card-play-compact="true"
+          >
+            {stopsCard() ? <Square className="w-2.5 h-2.5 fill-current"/> : <Play className="w-3 h-3 fill-current"/>}
+            <span className="sr-only sm:not-sr-only">{stopsCard() ? 'Stop' : 'Play'}</span>
           </button>
         </div>
       </div>
 
-      {expanded && <div className="p-3 sm:p-4 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+      {expanded && <div className="px-3.5 py-3.5 sm:px-5 sm:py-4 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
         {!useEmbeddedSharedParagraph && segments.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 p-4 text-center text-xs text-slate-400">No segments in this card.</div>}
         {useEmbeddedSharedParagraph && (
           <>
             <SharedCardReadingSurface
               variant="embedded"
+              embeddedHeaderUnified
               card={sharedCard}
               index={index}
               workspace={sharedWorkspace}
@@ -1151,7 +1247,7 @@ export const TextStructuredPlayer = ({
                 type="button"
                 disabled={structuredSessionActive}
                 onClick={() => setBookAudioPanelBlockId(card.id)}
-                className="min-h-11 sm:min-h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-xs font-semibold disabled:opacity-35 transition-colors inline-flex items-center gap-1"
+                className={`min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[11px] font-semibold disabled:opacity-35 transition-colors inline-flex items-center gap-1 ${SHARED_CONTROL_TOKENS.focusRing}`}
                 title="Card audio & voice overrides"
                 aria-label="Open card audio controls"
               >

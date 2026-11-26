@@ -116,7 +116,9 @@ export default function SharedNotebookUnitsBody({
         style={{
           ...style, textIndent: 0, overflowWrap: 'normal', hyphens: 'none',
           width: role === 'primary' ? Math.min(fragment.width, fragment.end - fragment.x + 0.5) : fragment.secondaryWidth,
-          textAlignLast: role === 'primary' ? style.textAlign : style.textAlignLast
+          ...(role === 'secondary'
+            ? { textAlign: 'left', textAlignLast: 'start' }
+            : { textAlignLast: style.textAlign })
         }}
         onClick={flags.segmentDisabled ? undefined : () => onActivate(segment.id, channel)}
       >{text}</span>

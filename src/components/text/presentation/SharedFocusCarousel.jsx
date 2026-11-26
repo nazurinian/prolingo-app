@@ -17,6 +17,7 @@ import {
   isPrefersReducedMotion,
   resolveTurnSpeakerPresentation
 } from './sharedCardPresentationUtils.js';
+import { SHARED_SPACING_TOKENS } from './sharedDesignTokens.js';
 
 const SWIPER_MODULES = [A11y];
 const SWIPER_A11Y_CONFIG = Object.freeze({
@@ -278,7 +279,7 @@ export const SharedHorizontalFocusCarousel = ({
         runCallbacksOnInit={false}
         centeredSlides
         slidesPerView="auto"
-        spaceBetween={14}
+        spaceBetween={12}
         autoHeight
         loop={false}
         autoplay={false}
@@ -340,14 +341,14 @@ export const SharedHorizontalFocusCarousel = ({
                 className={`prolingo-focus-slide-inner rounded-2xl border ${peekAccentBorder} ${
                   isSelected
                     ? (isAudible
-                        ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-4 sm:p-6'
-                        : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-md ring-1 ring-indigo-400/15 p-4 sm:p-6')
-                    : 'border-slate-200/85 dark:border-slate-800 bg-slate-50/85 dark:bg-slate-900/55 p-3.5 sm:p-5 cursor-pointer select-none'
+                        ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-3.5 sm:p-5'
+                        : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-indigo-400/15 p-3.5 sm:p-5')
+                    : 'border-slate-200/85 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/60 p-3 sm:p-4 cursor-pointer select-none'
                 }`}
               >
                 {isSelected ? (
                   <>
-                    <div className="mb-3.5 pb-2.5 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                    <div className="mb-2.5 pb-2 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
                       {renderUnitHeader({
                         unit,
                         unitIndex,
@@ -390,9 +391,9 @@ export const SharedHorizontalFocusCarousel = ({
                     data-shared-part-focus={unit.viewKey}
                     data-shared-part-focus-unit-id={unit.id || undefined}
                     data-shared-focus-peek="true"
-                    className="w-full text-left space-y-2.5 rounded-xl"
+                    className="w-full text-left space-y-2 rounded-xl"
                   >
-                    <div className="pb-2 border-b border-slate-200/70 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                    <div className="pb-1.5 border-b border-slate-200/70 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-1.5">
                       {renderUnitHeader({
                         unit,
                         unitIndex,
@@ -404,11 +405,11 @@ export const SharedHorizontalFocusCarousel = ({
                         emphasize: false,
                         showSpeakerInHeader: isTurn
                       })}
-                      <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 shrink-0">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300 shrink-0">
                         Focus
                       </span>
                     </div>
-                    <p className="text-xs sm:text-sm leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-4 whitespace-pre-line break-words">
+                    <p className="text-xs sm:text-[13px] leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-4 whitespace-pre-line break-words">
                       {excerpt || `Empty ${getSharedUnitTerms(unit).lower} — no sentences yet.`}
                     </p>
                   </div>
@@ -568,17 +569,17 @@ export const SharedVerticalScrollFocusView = ({
             data-shared-part-active={isSelected ? 'true' : undefined}
             data-shared-part-audible={isAudible ? 'true' : undefined}
             data-shared-turn-speaker-palette={speakerInfo?.palette?.id || undefined}
-            className={`prolingo-focus-vertical-unit rounded-2xl ${accentBorder} ${
+            className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} prolingo-focus-vertical-unit rounded-2xl ${accentBorder} ${
               isSelected
                 ? (isAudible
-                    ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-4 sm:p-6'
-                    : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-md ring-1 ring-indigo-400/15 p-4 sm:p-6')
+                    ? 'border-2 border-indigo-500/90 dark:border-indigo-400 bg-white dark:bg-slate-900 shadow-md ring-2 ring-indigo-500/15 p-3.5 sm:p-5'
+                    : 'border-2 border-indigo-300/90 dark:border-indigo-600/80 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-indigo-400/15 p-3.5 sm:p-5')
                 : (isAudible
-                    ? 'border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/25 dark:bg-indigo-950/20 p-3.5 sm:p-5'
-                    : 'border border-slate-200/85 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/55 p-3.5 sm:p-5')
+                    ? 'border border-indigo-300/90 dark:border-indigo-700 bg-indigo-50/25 dark:bg-indigo-950/20 px-3 py-2.5 sm:px-4 sm:py-3'
+                    : 'border border-slate-200/85 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/55 px-3 py-2.5 sm:px-4 sm:py-3')
             }`}
           >
-            <div className="mb-3 pb-2 border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+            <div className={`${isSelected ? 'mb-2.5 pb-2' : 'mb-1.5 pb-1.5'} border-b border-slate-100/90 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2`}>
               {renderUnitHeader({
                 unit,
                 unitIndex,
@@ -597,7 +598,7 @@ export const SharedVerticalScrollFocusView = ({
                   data-shared-part-focus={unit.viewKey}
                   data-shared-part-focus-unit-id={unit.id || undefined}
                   aria-label={`Focus ${getSharedUnitShortCode(unit, unitIndex)}${speakerInfo ? ` ${speakerInfo.displayName}` : ''}`}
-                  className="min-h-9 sm:min-h-7 px-2.5 py-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/80 bg-white dark:bg-slate-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 shrink-0"
+                  className="min-h-8 sm:min-h-7 px-2.5 py-0.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/80 bg-white dark:bg-slate-800 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 shrink-0"
                 >
                   View {getSharedUnitShortCode(unit, unitIndex)}
                 </button>
@@ -630,7 +631,7 @@ export const SharedVerticalScrollFocusView = ({
               <div
                 role="presentation"
                 onClick={() => onNavigateUnit?.(unit.viewKey)}
-                className="cursor-pointer"
+                className="cursor-pointer relative max-h-[4.75rem] sm:max-h-[5.75rem] overflow-hidden"
               >
                 <div inert aria-hidden="true" className="pointer-events-none">
                   <SharedBilingualUnitsBody
@@ -648,9 +649,13 @@ export const SharedVerticalScrollFocusView = ({
                     playableSegmentIds={playableSegmentIds}
                     audioCoverageMap={audioCoverageMap}
                     disabled
-                    forceSectionHeaders={isTurn}
+                    forceSectionHeaders={false}
                   />
                 </div>
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-slate-50/95 via-slate-50/55 to-transparent dark:from-slate-900/95 dark:via-slate-900/55"
+                />
               </div>
             )}
           </div>

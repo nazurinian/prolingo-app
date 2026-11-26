@@ -23,6 +23,15 @@
     text-wrap: pretty;
   }
 
+  /* Local narrow-viewport safeguard: avoid extreme word-spacing rivers when enlarged
+   * typography (L/XL) combines with Justify on narrow mobile screens, without shrinking
+   * font size or altering the persisted Workspace Style alignment preference. */
+  [data-shared-reading-body="true"][data-shared-reading-align="justify"][data-shared-reading-size="lg"],
+  [data-shared-reading-body="true"][data-shared-reading-align="justify"][data-shared-reading-size="xl"] {
+    text-align: left !important;
+    text-align-last: auto;
+  }
+
   [data-shared-reading-body="true"][data-shared-reading-kind="paragraph"][data-shared-reading-size="lg"],
   [data-shared-reading-body="true"][data-shared-reading-kind="paragraph"][data-shared-reading-size="xl"] {
     text-indent: var(--prolingo-mobile-indent, 1em) !important;

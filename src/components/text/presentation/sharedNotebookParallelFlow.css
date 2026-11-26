@@ -15,19 +15,20 @@
 
 .prolingo-notebook-lines {
   display: grid;
-  gap: .25rem;
+  gap: .3rem;
 }
 
-[data-shared-notebook-spacing="normal"] > .prolingo-notebook-lines { gap: .5rem; }
-[data-shared-notebook-spacing="relaxed"] > .prolingo-notebook-lines { gap: .85rem; }
+[data-shared-notebook-spacing="normal"] > .prolingo-notebook-lines { gap: .55rem; }
+[data-shared-notebook-spacing="relaxed"] > .prolingo-notebook-lines { gap: .9rem; }
 
 .prolingo-notebook-line {
   display: grid;
   min-width: 0;
+  padding-bottom: .2rem;
 }
 
 [data-shared-notebook-guides="on"] .prolingo-notebook-line {
-  box-shadow: 0 1px color-mix(in srgb, currentColor 17%, transparent);
+  box-shadow: 0 1px color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .prolingo-notebook-fragment {
@@ -35,6 +36,10 @@
   white-space: pre-wrap;
   overflow-wrap: normal;
   word-break: normal;
+}
+
+.prolingo-notebook-fragment[data-shared-notebook-role="secondary"] {
+  margin-top: .08rem;
 }
 
 .prolingo-notebook-fragment[data-notebook-speaking="true"] {
