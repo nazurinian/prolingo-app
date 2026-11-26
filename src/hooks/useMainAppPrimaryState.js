@@ -3,14 +3,15 @@ import { DEFAULT_ROW_HEIGHT_PC } from '../constants/datasetConstants';
 import { initialEdgeVoices } from '../constants/voiceConstants';
 import { createEmptyManualForm } from '../utils/csvUtils';
 import { createEmptySourcePack } from '../utils/multiSourceUtils';
-import { createEmptyVocabularyOrder } from '../utils/playbackSequenceUtils';
+import { createDefaultPlaybackSequence, createEmptyVocabularyOrder, normalizePlaybackDelays } from '../utils/playbackSequenceUtils';
 import { loadControlSectionPreference, loadPlaybackDelaysPreference, loadPlaybackSequencePreference, loadVocabularyPlayOrderPreference } from '../services/persistence/preferencePersistenceService';
 import { loadTextIdentityState } from '../services/persistence/textIdentityPersistenceService';
 import { createEmptyTextIdentityState } from '../domain/text/textIdentityDomain.js';
 import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
+import { normalizeTextStructuredPreferences } from '../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
-export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBootstrap = false } = {}) => {
+export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = false } = {}) => {
   // P4-A0: Part 4 development starts in the isolated Text workspace.
   const [mode, setMode] = useState(initialMode);
   const [tableViewMode, setTableViewMode] = useState('master'); 
@@ -20,7 +21,7 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBo
   const [tableContent, setTableContent] = useState("");
   // P4-A2: legacy localStorage is migration input only. Keep it separate from the
   // visible runtime state so stale/default lines never flash before IndexedDB hydrates.
-  const [legacyTextBootstrapState] = useState(() => skipLegacyTextBootstrap ? null : loadTextIdentityState());
+  const [legacyTextBootstrapState] = useState(() => sessionOnly ? null : loadTextIdentityState());
   const [textIdentityState, setTextIdentityState] = useState(createEmptyTextIdentityState);
   const [textContent, setTextContent] = useState('');
   // P4-A1/A2: IndexedDB is the canonical Text persistence layer. Structured runtime
@@ -31,7 +32,7 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBo
   const [textDatabaseError, setTextDatabaseError] = useState(null);
   // P4-A7: Show and Play are independent Text-owned preferences. These are
   // intentionally separate from Table playback sequence/order/repeat state.
-  const [textStructuredPreferences, setTextStructuredPreferences] = useState(loadTextStructuredPreferences);
+  const [textStructuredPreferences, setTextStructuredPreferences] = useState(() => sessionOnly ? normalizeTextStructuredPreferences(null) : loadTextStructuredPreferences());
   const [playlist, setPlaylist] = useState([]); 
   const [newTextItem, setNewTextItem] = useState("");
   // v5.8.3: last CSV snapshot that has been imported or explicitly saved to disk.
@@ -92,12 +93,12 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBo
   const [pitch, setPitch] = useState(1); 
 
   // v5.11.6: one ordered list controls part order, enabled state, and per-part repeat count.
-  const [playbackSequence, setPlaybackSequence] = useState(loadPlaybackSequencePreference);
+  const [playbackSequence, setPlaybackSequence] = useState(() => sessionOnly ? createDefaultPlaybackSequence() : loadPlaybackSequencePreference());
   // v5.11.6: configurable delay between sequence parts and between repeats.
   // Defaults preserve v5.11.2 behaviour (300 ms transition gap).
-  const [playbackDelays, setPlaybackDelays] = useState(loadPlaybackDelaysPreference);
+  const [playbackDelays, setPlaybackDelays] = useState(() => sessionOnly ? normalizePlaybackDelays(null) : loadPlaybackDelaysPreference());
   // v5.11.6: item order is independent from the per-item playback sequence.
-  const [vocabularyPlayOrder, setVocabularyPlayOrder] = useState(loadVocabularyPlayOrderPreference);
+  const [vocabularyPlayOrder, setVocabularyPlayOrder] = useState(() => sessionOnly ? 'sequential' : loadVocabularyPlayOrderPreference());
   const [activeVocabularyOrder, setActiveVocabularyOrder] = useState(createEmptyVocabularyOrder);
   const [expandedAdvancedId, setExpandedAdvancedId] = useState(null);
 
@@ -116,7 +117,7 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBo
   // FIX: Initialize sidebar state based on window width to prevent glitch/flash on mobile load
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true); 
   // v5.11.6: one shared control category for desktop sidebar + mobile Tools.
-  const [sidebarSection, setSidebarSection] = useState(loadControlSectionPreference);
+  const [sidebarSection, setSidebarSection] = useState(() => sessionOnly ? 'data' : loadControlSectionPreference());
   const [showLogs, setShowLogs] = useState(false); 
 
   const [mobileTab, setMobileTab] = useState('player'); 

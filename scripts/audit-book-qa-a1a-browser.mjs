@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkBookQaHostBoundaries } from './fixtures/p15-integrated/book-qa-hf1-browser.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -13,8 +14,7 @@ const productionRoot = path.join(root, 'dist');
 const qaDbName = 'prolingo_text_library_d3b_qa_a1a_browser';
 const qaPrefix = 'prolingo_text_library_d3b_qa_';
 const canonicalName = 'prolingo_text_library';
-const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'));
-const evidenceDir = path.join(root, 'artifacts');
+const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
 
 const assertDir = async directory => {
@@ -39,6 +39,35 @@ export const readLibrary = async dbName => {
   const loaded = await adapter.loadState();
   const s = loaded.snapshot;
   return { schemaVersion: s.schemaVersion, counts: { collections: s.collections.length, documents: s.documents.length, blocks: s.blocks.length, contentUnits: (s.contentUnits || []).length, segments: s.segments.length, audioVariants: s.audioVariants.length }, documents: s.documents.map(d => ({ id: d.id, title: d.title, documentType: d.documentType })), segmentTexts: s.segments.map(segment => segment.text), collections: s.collections.map(c => c.title) };
+};
+export const readCompleteLibrary = dbName => createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable' }).loadState();
+export const executeExternal = async (dbName, selection, command) => {
+  const { session } = await connect(dbName);
+  try { session.navigate(selection); return await session.dispatch(command); }
+  finally { session.dispose(); }
+};
+const requestResult = request => new Promise((resolve, reject) => {
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => reject(request.error);
+});
+export const setMetaValue = async (name, key, value) => {
+  const db = await requestResult(indexedDB.open(name));
+  try {
+    const tx = db.transaction(['meta'], 'readwrite'), store = tx.objectStore('meta');
+    const done = new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+    const row = await requestResult(store.get(key));
+    store.put({ ...row, key, value });
+    await done;
+  } finally { db.close(); }
+};
+export const checkSentinels = async (names, seed) => {
+  return Promise.all(names.map(async name => {
+    const request = window.__bookQaNativeOpen(name);
+    if (seed) request.onupgradeneeded = () => request.result.createObjectStore('sentinel').put({ key: name, content: 'keep this unchanged' }, 'seed');
+    const db = await requestResult(request);
+    try { return { name, version: db.version, rows: await requestResult(db.transaction(['sentinel']).objectStore('sentinel').getAll()) }; }
+    finally { db.close(); }
+  }));
 };
 export const runConflict = async dbName => {
   const left = await connect(dbName), right = await connect(dbName);
@@ -117,16 +146,20 @@ const startServer = async (serveRoot, uatMode) => {
       response.end('Not found');
     }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(uatMode ? 4173 : 0, '127.0.0.1', resolve);
+  });
   servers.push(server);
   return `http://127.0.0.1:${server.address().port}`;
 };
 
 const uatOrigin = await startServer(uatRoot, true);
 const productionOrigin = await startServer(productionRoot, false);
+const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'));
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = spawn(browserPath, [
-  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
+  '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const browserExit = new Promise(resolve => {
@@ -136,13 +169,15 @@ const browserExit = new Promise(resolve => {
 
 let socket;
 const runtimeErrors = [];
+const qaApiRequests = [];
 const instrumentation = `(() => {
   const key = '__prolingo_a1a_idb_audit_v1';
   let audit;
   try { audit = JSON.parse(sessionStorage.getItem(key) || '{}'); } catch { audit = {}; }
-  audit.opens ||= []; audit.deletes ||= []; audit.writes ||= []; audit.upgrades ||= []; audit.violations ||= [];
+  audit.storage ||= []; audit.opens ||= []; audit.deletes ||= []; audit.writes ||= []; audit.upgrades ||= []; audit.violations ||= [];
   const qaMode = location.origin === ${JSON.stringify(uatOrigin)};
   const qaPrefix = ${JSON.stringify(qaPrefix)};
+  const selected = new URLSearchParams(location.search).get('db');
   const save = () => {
     window.__bookQaAudit = audit;
     try { window.__a1aIdbAudit(JSON.stringify({ origin: location.origin, audit })); } catch {}
@@ -150,10 +185,42 @@ const instrumentation = `(() => {
   };
   window.__bookQaAudit = audit;
   const originalOpen = IDBFactory.prototype.open;
+  window.__bookQaNativeOpen = name => originalOpen.call(indexedDB, name);
+  for (const method of ['getItem', 'setItem', 'removeItem', 'clear']) {
+    const native = Storage.prototype[method];
+    Storage.prototype[method] = function(...args) {
+      if (qaMode && args[0] !== key && !window.__bookQaSentinelSetup) {
+        audit.storage.push({ method, key: args[0], store: this === localStorage ? 'local' : 'session' });
+        save();
+      }
+      return native.apply(this, args);
+    };
+  }
+  window.__bookQaSpeech = [];
+  window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+  Object.defineProperty(window, 'speechSynthesis', { value: {
+    speaking: false, paused: false, pending: false,
+    getVoices: () => [{ name: 'Fixture EN', lang: 'en-US', voiceURI: 'fixture-en', localService: true }],
+    speak(utterance) { this.speaking = true; window.__bookQaSpeech.push(['speak', utterance.text]); utterance.onstart?.(); },
+    pause() { this.paused = true; window.__bookQaSpeech.push(['pause']); },
+    resume() { this.paused = false; window.__bookQaSpeech.push(['resume']); },
+    cancel() { this.speaking = false; this.paused = false; window.__bookQaSpeech.push(['cancel']); }
+  } });
+  if (qaMode) {
+    window.__bookQaProps = (selector, prop) => {
+      const node = document.querySelector(selector);
+      let fiber = node?.[Object.keys(node).find(name => name.startsWith('__reactFiber$'))];
+      while (fiber) {
+        if (fiber.memoizedProps && Object.hasOwn(fiber.memoizedProps, prop)) return fiber.memoizedProps;
+        fiber = fiber.return;
+      }
+      throw Error('Missing callback ' + prop + ' on ' + selector);
+    };
+  }
   IDBFactory.prototype.open = function(name, ...args) {
     const dbName = String(name);
-    audit.opens.push({ name: dbName, requestedVersion: args[0] ?? null, origin: location.origin }); save();
-    if (qaMode && !dbName.startsWith(qaPrefix)) { audit.violations.push({ kind: 'open', name: dbName }); save(); throw Error('Book QA harness blocked non-QA database: ' + dbName); }
+    audit.opens.push({ name: dbName, requestedVersion: args[0] ?? null, selected, origin: location.origin }); save();
+    if (qaMode && (!dbName.startsWith(qaPrefix) || dbName !== selected)) { audit.violations.push({ kind: 'open', name: dbName }); save(); throw Error('Book QA harness blocked non-QA database: ' + dbName); }
     const entry = audit.opens[audit.opens.length - 1];
     const request = originalOpen.call(this, name, ...args);
     request.addEventListener('upgradeneeded', event => { audit.upgrades.push({ name: dbName, oldVersion: event.oldVersion, newVersion: event.newVersion }); save(); }, { once: true });
@@ -171,8 +238,8 @@ const instrumentation = `(() => {
   IDBDatabase.prototype.transaction = function(storeNames, mode = 'readonly', ...args) {
     if (mode === 'readwrite') {
       const names = Array.isArray(storeNames) ? [...storeNames] : [String(storeNames)];
-      audit.writes.push({ name: this.name, stores: names, origin: location.origin }); save();
-      if (qaMode && !this.name.startsWith(qaPrefix)) { audit.violations.push({ kind: 'write', name: this.name, stores: names }); save(); throw Error('Book QA harness blocked non-QA write: ' + this.name); }
+      audit.writes.push({ name: this.name, stores: names, selected, origin: location.origin }); save();
+      if (qaMode && (!this.name.startsWith(qaPrefix) || this.name !== selected)) { audit.violations.push({ kind: 'write', name: this.name, stores: names }); save(); throw Error('Book QA harness blocked non-QA write: ' + this.name); }
     }
     return originalTransaction.call(this, storeNames, mode, ...args);
   };
@@ -225,6 +292,7 @@ try {
   });
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
+    if (message.method === 'Network.requestWillBeSent' && message.params.request.url.startsWith(uatOrigin + '/api/')) qaApiRequests.push(message.params.request.url);
     if (message.method === 'Runtime.exceptionThrown') runtimeErrors.push(message.params.exceptionDetails?.text || 'browser runtime exception');
     if (message.method === 'Runtime.bindingCalled' && message.params.name === '__a1aIdbAudit') {
       try {
@@ -239,10 +307,11 @@ try {
   };
   const evaluate = async expression => {
     const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || JSON.stringify(result.exceptionDetails));
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result?.value;
   };
   await call('Runtime.enable');
+  await call('Network.enable');
   await call('Runtime.addBinding', { name: '__a1aIdbAudit' });
   await call('Page.enable');
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
@@ -286,6 +355,25 @@ try {
   report.host.zeroDatabaseOpensBeforeOptIn = (await readAudit()).opens?.length === 0;
   assert(report.host.optInRequired && report.host.zeroDatabaseOpensBeforeOptIn, 'Host must require opt-in before it opens IndexedDB');
 
+  const sentinelNames = [canonicalName, 'prolingo_audio_staging_v1', 'prolingo_text_structured_audio_folder_v1', 'prolingo_audio_folder_handles_v1'];
+  const sentinels = await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, true)`);
+  const storageKeys = ['theme', 'gemini_api_key', 'prolingo_gemini_byok_key_v1', 'pronunciation_decks',
+    'prolingo_text_identity_v1', 'prolingo_text_main_reader_v1', 'prolingo_text_structured_preferences_v1',
+    'prolingo_text_structured_audio_generation_preferences_v1', 'prolingo_control_section_v5116',
+    'prolingo_playback_sequence_v511', 'prolingo_playback_delays_v511', 'prolingo_vocabulary_play_order_v511',
+    'prolingo_table_local_audio_playback_v1', 'prolingo_study_activity_v1', 'prolingo_mastery_state_v1', 'prolingo_audio_download_history_v1'];
+  const storageState = seed => evaluate(`(() => {
+    window.__bookQaSentinelSetup = true;
+    try {
+      const keys = ${JSON.stringify(storageKeys)};
+      if (${seed}) {
+        keys.forEach(key => localStorage.setItem(key, 'fixture:' + key));
+        sessionStorage.setItem('prolingo:view:v1', 'fixture:app-view');
+      }
+      return [keys.map(key => localStorage.getItem(key)), sessionStorage.getItem('prolingo:view:v1')];
+    } finally { window.__bookQaSentinelSetup = false; }
+  })()`);
+  const expectedStorage = await storageState(true);
   await chooseOptIn();
   await evaluate(`(() => {
     const input = document.querySelector('input[aria-label="Book QA database name"]');
@@ -349,6 +437,7 @@ try {
 
   const afterDemo = await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`);
   report.library.afterNativeSamples = afterDemo;
+  const completeBeforeRefusal = await probe(`module.readCompleteLibrary(${JSON.stringify(qaDbName)})`);
   assert(afterDemo.counts.documents > initial.counts.documents && afterDemo.counts.contentUnits > initial.counts.contentUnits && afterDemo.counts.segments > initial.counts.segments, 'UI sample creation must commit v2 Workspace/Card/Unit/Speaker/Segment records');
   assert(afterDemo.counts.audioVariants === 0, 'Clean demo and native content commands must not fabricate audio metadata');
 
@@ -364,6 +453,7 @@ try {
   const afterBlockedInitialize = await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`);
   report.host.existingDataUnchanged = JSON.stringify(afterBlockedInitialize.counts) === JSON.stringify(afterDemo.counts);
   assert(report.host.reloadRequiresConnect && report.host.existingDatabaseProtected && report.host.existingDataUnchanged, 'Reload must require reconnect; Initialize must refuse to overwrite an existing library');
+  assert.deepEqual(await probe(`module.readCompleteLibrary(${JSON.stringify(qaDbName)})`), completeBeforeRefusal);
   await clickButton('Load / Connect existing v2 library');
   await waitFor(`Boolean(document.querySelector('[data-app-header]') && document.querySelector('[data-text-structured-player]'))`);
   report.host.reconnectRetainsMixedContent = (await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`)).segmentTexts.includes('I practise English every day.');
@@ -389,7 +479,15 @@ try {
   report.transactions.unsupportedAudioCommand = await probe(`module.runUnsupportedAudioCommand(${JSON.stringify(qaDbName)})`);
   assert(!report.transactions.unsupportedAudioCommand.ok && report.transactions.unsupportedAudioCommand.before === report.transactions.unsupportedAudioCommand.after, 'Unsupported audio metadata command must reject at the session permission boundary');
 
+  report.hf1 = await checkBookQaHostBoundaries({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, readAudit, probe, qaDbName, uatOrigin });
+  assert.deepEqual(await storageState(false), expectedStorage, 'Shared storage sentinels changed');
+  assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+  assert.deepEqual(qaApiRequests, [], 'QA must not reach backend endpoints');
   report.isolation = await readAudit();
+  assert.deepEqual(report.isolation.storage, [], 'QA must not even read shared browser storage');
+  assert(report.isolation.opens.every(item => item.name === item.selected));
+  assert(report.isolation.writes.every(item => item.name === item.selected));
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
   report.isolation.nonQaOpenCount = report.isolation.violations.filter(item => item.kind === 'open').length;
   report.isolation.nonQaWriteCount = report.isolation.violations.filter(item => item.kind === 'write').length;
   assert(report.isolation.deletes.length === 0, 'Book QA must not delete any IndexedDB database');
@@ -408,6 +506,7 @@ try {
 
   await navigate(productionOrigin, '/?qa=book-qa');
   await waitFor(`document.body.innerText.includes('Mulai Latihan')`);
+  await evaluate(`localStorage.setItem('gemini_api_key', 'fixture:legacy'); localStorage.setItem('prolingo_gemini_byok_key_v1', 'fixture:legacy')`);
   report.production.qaRouteFallsBackToNormalApp = !(await evaluate(`Boolean(document.querySelector('[data-book-qa-host]'))`));
   await clickButton('Mulai Latihan');
   await waitFor(`Boolean(document.querySelector('[data-app-header]'))`);
@@ -415,10 +514,29 @@ try {
   report.production.normalMainAppOpensCanonicalV1 = (await readAudit()).opens.some(item => item.name === canonicalName && item.openedVersion === 1);
   report.production.normalMainAppMounted = await evaluate(`Boolean(document.querySelector('[data-app-header]'))`);
   assert(report.production.qaRouteFallsBackToNormalApp && report.production.normalMainAppMounted && report.production.normalMainAppOpensCanonicalV1, 'Production ?qa=book-qa must preserve normal Main App behavior and canonical v1 schema');
+  const play = '[data-global-player] button[aria-label="Start playback"]';
+  const stop = '[data-global-player] button[aria-label="Stop playback"]';
+  await evaluate(`document.querySelector(${JSON.stringify(play)}).click(); true`);
+  await waitFor('window.__bookQaSpeech.some(([type, text]) => type === "speak" && text === "abandon")');
+  await evaluate(`document.querySelector(${JSON.stringify(stop)}).click(); true`);
+  await clickButton('Text');
+  await clickButton('DATA');
+  await clickButton('OPEN DATA WORKSPACE');
+  await waitFor(`Boolean(document.querySelector('[data-text-library-content-editor="legacy"]'))`);
+  await evaluate(`document.querySelector('[aria-label="Close Text Data workspace"]').click(); true`);
+  await evaluate(`document.querySelector(${JSON.stringify(play)}).click(); true`);
+  await waitFor('window.__bookQaSpeech.some(([type, text]) => type === "speak" && text === "Hello world.")');
+  await evaluate(`document.querySelector(${JSON.stringify(stop)}).click(); true`);
+  assert.equal(await evaluate(`['gemini_api_key', 'prolingo_gemini_byok_key_v1'].every(key => localStorage.getItem(key) === null)`), true);
+  report.production.tableAndLegacyPlayback = true;
+  report.production.normalCredentialCleanup = true;
 
   report.browserRuntimeErrors = runtimeErrors;
   assert(runtimeErrors.length === 0, 'Browser emitted runtime exceptions');
   console.log(JSON.stringify(report, null, 2));
+} catch (error) {
+  console.error('Book QA audit failed:', error.message);
+  throw error;
 } finally {
   await cleanup();
 }

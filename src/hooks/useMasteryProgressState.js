@@ -20,14 +20,15 @@ const loadInitialMasteryState = () => {
   return loadMasteryStateFromStorage({ storage }).masteryByVocabId;
 };
 
-export const useMasteryProgressState = () => {
-  const [masteryByVocabId, setMasteryByVocabId] = useState(loadInitialMasteryState);
+export const useMasteryProgressState = ({ sessionOnly = false } = {}) => {
+  const [masteryByVocabId, setMasteryByVocabId] = useState(() => sessionOnly ? {} : loadInitialMasteryState());
 
   useEffect(() => {
+    if (sessionOnly) return;
     const storage = resolveBrowserLocalStorage();
     if (!storage) return;
     saveMasteryStateToStorage({ storage, masteryByVocabId });
-  }, [masteryByVocabId]);
+  }, [masteryByVocabId, sessionOnly]);
 
   return { masteryByVocabId, setMasteryByVocabId };
 };

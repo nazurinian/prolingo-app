@@ -106,6 +106,7 @@ export const renderControlSectionTabsView = ({ compact = false, sidebarSection, 
 };
 
 export const renderMobileToolsView = ({
+  bookQaMode, handleCreateBookQaSample,
   sidebarSection, renderControlSectionTabs, currentMapCount, legacyTextAudioCount = null, mode, renderStatusBadge,
   tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
   preferLocalAudio, setPreferLocalAudio, isSystemBusy, voices, selectedVoice,
@@ -134,6 +135,8 @@ export const renderMobileToolsView = ({
   structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap
 }) => (
       <MobileTools
+          bookQaMode={bookQaMode}
+          handleCreateBookQaSample={handleCreateBookQaSample}
           sidebarSection={sidebarSection}
           renderControlSectionTabs={renderControlSectionTabs}
           currentMapCount={currentMapCount}

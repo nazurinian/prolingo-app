@@ -8,7 +8,7 @@ import MobileSystemControls from '../controls/MobileSystemControls';
 import TableLocalAudioVoiceControls from '../controls/TableLocalAudioVoiceControls';
 
 const MobileTools = ({
-  sidebarSection,
+  sidebarSection, bookQaMode = false, handleCreateBookQaSample,
   renderControlSectionTabs,
   currentMapCount,
   mode,
@@ -264,7 +264,8 @@ const MobileTools = ({
               </div>
           </>}
 
-          {sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
+          {bookQaMode && ['audio', 'system'].includes(sidebarSection) && <p role="note" data-book-qa-tools-limit="true" className="p-3 text-xs">Book QA supports catalogue operations and browser playback. Audio authoring and system services are unavailable.</p>}
+          {!bookQaMode && sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
               {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Legacy Audio</p>
                 <p className="text-[8px] text-slate-400 mb-2">EN-only voice and speed.</p>
@@ -272,7 +273,7 @@ const MobileTools = ({
               </div>}
           </div>}
 
-          {sidebarSection === 'learn' && <MobileLearnControls
+          {!bookQaMode && sidebarSection === 'learn' && <MobileLearnControls
               mode={mode}
               renderPlaybackSequenceBuilder={renderPlaybackSequenceBuilder}
               isMemoryMode={isMemoryMode}
@@ -283,6 +284,8 @@ const MobileTools = ({
           />}
 
           {sidebarSection === 'data' && <MobileDataControls
+              bookQaMode={bookQaMode}
+              onCreateBookQaSample={handleCreateBookQaSample}
               mode={mode}
               isMultiSourceMode={isMultiSourceMode}
               dirtySourceKeys={dirtySourceKeys}
@@ -337,7 +340,7 @@ const MobileTools = ({
               isBatchDownloading={isBatchDownloading}
           />}
 
-          {sidebarSection === 'system' && <MobileSystemControls
+          {!bookQaMode && sidebarSection === 'system' && <MobileSystemControls
               generatorEngine={generatorEngine}
               setGeneratorEngine={setGeneratorEngine}
               isSystemBusy={isSystemBusy}

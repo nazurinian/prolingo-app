@@ -48,7 +48,7 @@ import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDo
 export const renderMainAppShellView = (props) => {
   const {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome, isSystemBusy,
-    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null,
+    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null, bookQaRefreshError = null, handleCreateBookQaSample,
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
@@ -144,6 +144,10 @@ export const renderMainAppShellView = (props) => {
         setTheme={setTheme}
         setSidebarSection={setSidebarSection}
       />
+
+      {bookQaRefreshError && <p role="alert" data-book-qa-refresh-error={bookQaRefreshError.code} className="fixed bottom-24 left-3 right-3 z-[60] rounded border border-amber-400 bg-amber-50 p-2 text-xs text-amber-900 md:absolute md:bottom-20">
+        {bookQaRefreshError.code}: {bookQaRefreshError.message}
+      </p>}
 
       <div className="flex-1 flex overflow-hidden relative z-0">
         
@@ -308,6 +312,7 @@ export const renderMainAppShellView = (props) => {
             </div>
             
             {sidebarSection === 'data' && <DesktopDataWorkspace
+              onCreateBookQaSample={handleCreateBookQaSample}
               mode={mode}
               bookQaMode={bookQaMode}
               textareaRef={textareaRef}

@@ -35,12 +35,12 @@ export const executeTextStructuredPreferencePersistenceEffect = preferences => {
  */
 export const resetTextStructuredPreferences = (
   currentPreferences = {},
-  { scope = TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_BROWSER_TTS_AND_PLAYBACK, includeBrowserTts = true } = {}
+  { scope = TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_BROWSER_TTS_AND_PLAYBACK, includeBrowserTts = true, persist = true } = {}
 ) => {
   const next = scope === TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_BROWSER_TTS
     ? buildResetTextStructuredGlobalBrowserTtsPreferences(currentPreferences)
     : buildResetTextStructuredGlobalPlaybackPreferences(currentPreferences, {
         includeBrowserTts: scope === TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_PLAYBACK ? false : includeBrowserTts
       });
-  return executeTextStructuredPreferencePersistenceEffect(next);
+  return persist ? executeTextStructuredPreferencePersistenceEffect(next) : normalizeTextStructuredPreferences(next);
 };

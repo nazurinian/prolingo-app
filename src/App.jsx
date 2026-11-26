@@ -45,11 +45,14 @@ import { MemoizedTextRow } from './components/table/MemoizedTextRow';
 import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
 import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
 import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
+import { isBookQaNativeCommand, isBookQaWorkspace } from './domain/text/bookQaCapabilities.js';
+import { createBookQaSample } from './domain/text/bookQaSampleDomain.js';
 import { selectTextMainReaderPresentation } from './domain/text/textMainReaderDomain.js';
 import { resolveNowPlayingReaderCursor } from './domain/text/textCardPresentationCursorDomain.js';
 import {
   TEXT_WORKSPACE_STYLE_SCOPES,
   loadTextMainReaderPreference,
+  normalizeTextMainReaderPreference,
   normalizeTextWorkspacePreferenceKey,
   resetTextMainReaderWorkspaceStyle,
   resolveTextMainReaderWorkspaceStyle,
@@ -268,14 +271,9 @@ const getEmptyBookQaSessionSnapshot = () => null;
 const rejectBookQaLocalSnapshotWrite = () => {
   throw new Error('Book QA projections are session-owned; local Text snapshots cannot be written.');
 };
-const BOOK_QA_NATIVE_COMMAND_TYPES = new Set([
-  'collection.create', 'collection.update', 'document.create', 'document.update',
-  'block.create', 'contentUnit.create', 'speaker.register', 'segment.create'
-]);
-
 // --- MAIN COMPONENT ---
-const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false }) => {
-  const bookQaMode = Boolean(bookQaConnection?.session && bookQaConnection?.adapter);
+const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+  const bookQaMode = Boolean(bookQaConnection?.session);
   const bookQaSession = bookQaConnection?.session || null;
   const bookQaSnapshot = useSyncExternalStore(
     bookQaSession?.subscribe || subscribeNoBookQaSession,
@@ -324,7 +322,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     setScrollTop, containerHeight, setContainerHeight, rowHeights, setRowHeights, isMobile,
     setIsMobile, showAppBar, setShowAppBar, lastScrollY, isAutoScrolling, isSystemBusy,
     silentAudioRef, silentWavUrlRef,
-  } = useMainAppPrimaryState({ initialMode: bookQaMode ? 'text' : 'table', skipLegacyTextBootstrap: bookQaMode });
+  } = useMainAppPrimaryState({ initialMode: bookQaMode ? 'text' : 'table', sessionOnly: bookQaMode });
 
   const activeTextDocumentId = bookQaMode ? (bookQaSessionState?.view?.selection?.workspaceId || null) : localActiveTextDocumentId;
   const textLibrarySnapshot = bookQaMode ? bookQaSnapshot : localTextLibrarySnapshot;
@@ -333,9 +331,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   const setTextLibrarySnapshot = bookQaMode ? rejectBookQaLocalSnapshotWrite : setLocalTextLibrarySnapshot;
   const setActiveTextDocumentId = bookQaMode ? rejectBookQaLocalSnapshotWrite : setLocalActiveTextDocumentId;
 
-  const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
+  const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState({ sessionOnly: bookQaMode });
   const { masteryFilter, setMasteryFilter } = useMasteryFilterState();
-  const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState();
+  const { activityByVocabId, setActivityByVocabId } = useStudyTrackingState({ sessionOnly: bookQaMode });
   // UI-only session metadata so loaded audio can show its provider without changing URL-only playback maps.
   const [generatedAudioMeta, setGeneratedAudioMeta] = useState({});
   // Final Text C2: canonical JSON source attachments live in Text IndexedDB META.
@@ -347,18 +345,19 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   const [tableAudioFolderVariantInventory, setTableAudioFolderVariantInventory] = useState({});
   const [tableAudioZipVariantInventory, setTableAudioZipVariantInventory] = useState({});
   const [tableAudioZipSources, setTableAudioZipSources] = useState([]);
-  const [tableLocalAudioPlaybackPreference, setTableLocalAudioPlaybackPreference] = useState(loadTableLocalAudioPlaybackPreference);
+  const [tableLocalAudioPlaybackPreference, setTableLocalAudioPlaybackPreference] = useState(() => bookQaMode ? { voiceMode: 'auto', voicePriority: [] } : loadTableLocalAudioPlaybackPreference());
   // C3.4: delivery history persists the fact that a browser download/package was
   // triggered even when mobile Chrome cannot re-open Downloads for verification.
-  const [audioDownloadHistory, setAudioDownloadHistory] = useState(loadAudioDownloadHistory);
+  const [audioDownloadHistory, setAudioDownloadHistory] = useState(() => bookQaMode ? {} : loadAudioDownloadHistory());
   const audioDownloadHistoryRef = useRef(audioDownloadHistory);
   const recordAudioDownloadHistoryDurably = useCallback((records) => {
+    if (bookQaMode) return {};
     const next = recordAudioDownloadHistory(audioDownloadHistoryRef.current || {}, records);
     audioDownloadHistoryRef.current = next;
     persistAudioDownloadHistory(next);
     setAudioDownloadHistory(next);
     return next;
-  }, []);
+  }, [bookQaMode]);
   // v5.13.0 / R2: generated Table audio lives in a separate IndexedDB staging
   // database. React keeps metadata only; binary Blobs are resolved lazily.
   const [tableAudioStagingRecords, setTableAudioStagingRecords] = useState([]);
@@ -397,7 +396,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   const structuredTextAudioStagingHydratedRef = useRef(false);
   const structuredTextAudioStagingHydrationTokenRef = useRef(0);
   // P4-A12: Text-owned generator/folder state. These preferences never read Table generator settings.
-  const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(loadTextStructuredAudioGenerationPreferences);
+  const [structuredTextAudioGenerationPreferences, setStructuredTextAudioGenerationPreferences] = useState(() => bookQaMode ? normalizeTextStructuredAudioGenerationPreferences(null) : loadTextStructuredAudioGenerationPreferences());
   const [structuredTextAudioGenerationState, setStructuredTextAudioGenerationState] = useState({ running: false, completed: 0, total: 0, current: null, failedJobs: [], lastStatus: null, processed: 0, generated: 0, skippedReady: 0, failed: 0, remaining: 0, readyEstimate: 0, missingEstimate: 0 });
   const [structuredTextBatchScope, setStructuredTextBatchScope] = useState({ scopeMode: 'collection', documentId: null, collectionId: null, selectedDocumentIds: [], cardId: null, startCard: 1, endCard: 1 });
   const [structuredTextEdgeHealth, setStructuredTextEdgeHealth] = useState({ status: 'idle', message: 'Not tested' });
@@ -444,8 +443,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
   useEffect(() => {
     audioDownloadHistoryRef.current = audioDownloadHistory;
-    persistAudioDownloadHistory(audioDownloadHistory);
-  }, [audioDownloadHistory]);
+    if (!bookQaMode) persistAudioDownloadHistory(audioDownloadHistory);
+  }, [audioDownloadHistory, bookQaMode]);
 
   useEffect(() => {
     const validIds = new Set((textLibrarySnapshot?.audioVariants || []).map(item => item.id));
@@ -593,7 +592,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   useEffect(() => executeUnsavedCsvBeforeUnloadEffect({ isCsvDirty }), [isCsvDirty]);
 
   // v5.8.3: debounce-save the WORKING COPY to ProLingo cache. This never marks the CSV clean.
-  useEffect(() => executeDraftAutosaveEffect({
+  useEffect(() => bookQaMode ? undefined : executeDraftAutosaveEffect({
       isCsvDirty,
       mode,
       currentDeckName,
@@ -607,7 +606,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       setSelectedDeckId,
       setLastDraftAutoSaveAt,
       addLog
-  }), [isCsvDirty, mode, currentDeckName, tableContent, csvBaselineContent, sourcePack, sequenceHighWater, manualIdHighWater, importedRowCount]);
+  }), [bookQaMode, isCsvDirty, mode, currentDeckName, tableContent, csvBaselineContent, sourcePack, sequenceHighWater, manualIdHighWater, importedRowCount]);
 
   const aiVoices = [
     { id: "Kore", label: "Kore (F)", gender: "Female" },
@@ -652,22 +651,24 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   
   useEffect(() => executePlaybackSequencePersistenceEffect({
     playbackSequence,
-    playbackSequenceRef
-  }), [playbackSequence]);
+    playbackSequenceRef, persist: !bookQaMode
+  }), [playbackSequence, bookQaMode]);
 
   useEffect(() => executePlaybackDelaysPersistenceEffect({
     playbackDelays,
-    playbackDelaysRef
-  }), [playbackDelays]);
+    playbackDelaysRef, persist: !bookQaMode
+  }), [playbackDelays, bookQaMode]);
 
   useEffect(() => executeVocabularyPlayOrderPersistenceEffect({
     vocabularyPlayOrder,
     vocabularyPlayOrderRef,
     activeVocabularyOrderRef,
-    setActiveVocabularyOrder
-  }), [vocabularyPlayOrder]);
+    setActiveVocabularyOrder, persist: !bookQaMode
+  }), [vocabularyPlayOrder, bookQaMode]);
 
-  useEffect(() => executeControlSectionPersistenceEffect(sidebarSection), [sidebarSection]);
+  useEffect(() => {
+    if (!bookQaMode) executeControlSectionPersistenceEffect(sidebarSection);
+  }, [sidebarSection, bookQaMode]);
 
   useEffect(() => {
     if (!bookQaMode) executeTextStructuredPreferencePersistenceEffect(textStructuredPreferences);
@@ -685,7 +686,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       selectedIndonesianVoiceRef.current = selectedIndonesianVoice;
   }, [selectedIndonesianVoice]);
 
-  useEffect(() => executeStartupRestoreEffect({
+  useEffect(() => bookQaMode ? undefined : executeStartupRestoreEffect({
     setSavedDecks,
     setTableContent,
     setCsvBaselineContent,
@@ -699,7 +700,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     addLog,
     forceStopAll
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), []);
+  }), [bookQaMode]);
 
   // --- VOICE PERSISTENCE (Browser TTS) ---
   useEffect(() => executeBrowserTtsVoiceLifecycleEffect({
@@ -779,6 +780,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
 
   const refreshTableAudioStaging = useCallback(async () => {
+    if (bookQaMode) return null;
     try {
       const rows = await listAudioStagingMetadata({ mode: 'table', includeReleased: true });
       setTableAudioStagingRecords(rows);
@@ -787,7 +789,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       addLog('Warn', `Audio Staging metadata refresh failed: ${error?.message || error}`);
       return [];
     }
-  }, [addLog]);
+  }, [addLog, bookQaMode]);
 
   const refreshTableAudioBatchSessions = useCallback(async () => {
     try {
@@ -829,6 +831,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleGeminiByokRegister = async () => {
+    if (bookQaMode) return null;
     const cleanKey = String(userApiKey || '').trim();
     if (!cleanKey) return;
     try {
@@ -841,6 +844,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleGeminiOwnerLock = async () => {
+    if (bookQaMode) return null;
     try {
       await executeGeminiOwnerLockService({ setGeminiOwnerState, addLog });
     } catch (error) {
@@ -850,6 +854,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleGeminiByokClear = async () => {
+    if (bookQaMode) return null;
     try {
       await executeGeminiByokClearService({ setGeminiOwnerState, addLog });
       setUserApiKey('');
@@ -860,6 +865,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleGeminiOwnerUnlock = async () => {
+    if (bookQaMode) return null;
     const accessCode = window.prompt('Owner Access Code');
     if (!accessCode) return;
     try {
@@ -896,25 +902,24 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, [textContent, setTextIdentityState]);
 
   const activeTextEditorModel = textLibrarySnapshot?.documents?.find(document => document.id === activeTextDocumentId)?.editorModel || null;
-  const [textMainReaderPreference, setTextMainReaderPreference] = useState(loadTextMainReaderPreference);
+  const [textMainReaderPreference, setTextMainReaderPreference] = useState(() => bookQaMode ? normalizeTextMainReaderPreference(null) : loadTextMainReaderPreference());
   const [textWorkspaceStyleScope, setTextWorkspaceStyleScope] = useState(TEXT_WORKSPACE_STYLE_SCOPES.SHARED);
   const textMainReader = useMemo(
     () => selectTextMainReaderPresentation(textLibrarySnapshot, activeTextDocumentId),
     [textLibrarySnapshot, activeTextDocumentId]
   );
   const sharedTextReaderActive = Boolean(textDatabaseStatus === 'ready' && textMainReader.presentation && textMainReaderPreference.reader === 'shared');
+  const applyReaderPreference = bookQaMode ? normalizeTextMainReaderPreference : saveTextMainReaderPreference;
   const updateTextMainReaderPreference = patch => setTextMainReaderPreference(previous => (
-    saveTextMainReaderPreference({ ...previous, ...patch })
+    applyReaderPreference({ ...previous, ...patch })
   ));
   const textLibraryCatalog = useMemo(() => {
     if (!textLibrarySnapshot) return { rootDocuments: [], collections: [] };
     const catalog = resolveTextLibraryCatalog(textLibrarySnapshot);
     if (!bookQaMode) return catalog;
-    const supported = document => document?.editorModel === 'structured-v1'
-      && ['paragraph', 'conversation', 'mixed'].includes(document.documentType);
     return {
-      rootDocuments: catalog.rootDocuments.filter(supported),
-      collections: catalog.collections.map(collection => ({ ...collection, documents: collection.documents.filter(supported) }))
+      rootDocuments: catalog.rootDocuments.filter(isBookQaWorkspace),
+      collections: catalog.collections.map(collection => ({ ...collection, documents: collection.documents.filter(isBookQaWorkspace) }))
     };
   }, [textLibrarySnapshot, bookQaMode]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
@@ -943,7 +948,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     const target = effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
       ? { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: activeTextWorkspacePreferenceKey }
       : { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED };
-    setTextMainReaderPreference(previous => saveTextMainReaderPreference(
+    setTextMainReaderPreference(previous => applyReaderPreference(
       updateTextMainReaderWorkspaceStyle(previous, patch, target)
     ));
   };
@@ -951,7 +956,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     const target = effectiveTextWorkspaceStyleScope === TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE
       ? { scope: TEXT_WORKSPACE_STYLE_SCOPES.WORKSPACE, workspaceKey: activeTextWorkspacePreferenceKey }
       : { scope: TEXT_WORKSPACE_STYLE_SCOPES.SHARED };
-    setTextMainReaderPreference(previous => saveTextMainReaderPreference(
+    setTextMainReaderPreference(previous => applyReaderPreference(
       resetTextMainReaderWorkspaceStyle(previous, target)
     ));
   };
@@ -1004,6 +1009,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     }
   }, [batchScopeKey, setIsBatchOpen]);
   const setBatchOpenGuarded = useCallback((nextValue) => {
+    if (bookQaMode) return;
     const currentScope = latestAudioFolderScopeRef.current;
     const resolved = resolveGuardedBatchOpenValue({
       nextValue,
@@ -1014,7 +1020,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     currentScope.effectiveIsBatchOpen = resolved;
     setOpenBatchScopeKey(resolved ? currentScope.batchScopeKey : null);
     setIsBatchOpen(resolved);
-  }, [setIsBatchOpen]);
+  }, [setIsBatchOpen, bookQaMode]);
   useEffect(() => {
     setStructuredTextPlaybackSourceStatus(null);
   }, [activeTextDocumentTree?.id, mode, activeTextEditorModel]);
@@ -1649,8 +1655,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     }
   }, [tableAudioVoiceOptions, tableAudioVoicePriority, tableLocalAudioVoiceMode]);
   useEffect(() => {
+    if (bookQaMode) return;
     try { localStorage.setItem(TABLE_LOCAL_AUDIO_PLAYBACK_PREF_KEY, JSON.stringify(tableLocalAudioPlaybackPreference)); } catch { /* best effort */ }
-  }, [tableLocalAudioPlaybackPreference]);
+  }, [tableLocalAudioPlaybackPreference, bookQaMode]);
   const tableAudioInventorySummary = useMemo(() => summarizeTableAudioVariantInventory(tableAudioVariantInventory), [tableAudioVariantInventory]);
   const tableAudioUiMap = useMemo(() => buildTableAudioPresenceMap({
     inventory: tableAudioVariantInventory,
@@ -1766,8 +1773,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleStructuredTextAudioGenerationPreferenceChange = useCallback((patch) => {
+    if (bookQaMode) return;
     setStructuredTextAudioGenerationPreferences(prev => normalizeTextStructuredAudioGenerationPreferences({ ...prev, ...(patch || {}) }));
-  }, []);
+  }, [bookQaMode]);
 
   useEffect(() => {
     if (bookQaMode) return undefined;
@@ -1860,6 +1868,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   });
 
   const exportTableCSV = (scope = 'master') => {
+    if (bookQaMode) return null;
     return executeExportTableCsvService({
       scope,
       playlist,
@@ -1874,6 +1883,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
 
   const saveUpdatedCSV = async () => {
+    if (bookQaMode) return null;
     return executeSaveUpdatedCsvService({
       isMultiSourceMode,
       exportMergedDataset,
@@ -4586,7 +4596,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
   const dispatchBookQaNativeCommand = useCallback(async (command, { selection = null, selectResultWorkspace = false } = {}) => {
     if (!bookQaMode || !bookQaSession) throw new Error('Book QA persistence session is not connected.');
-    if (!BOOK_QA_NATIVE_COMMAND_TYPES.has(command?.type)) throw new Error(`Book QA command is not enabled: ${command?.type || 'unknown'}`);
+    if (!isBookQaNativeCommand(command)) throw new Error(`Book QA command is not enabled: ${command?.type || 'unknown'}`);
     const previousSelection = bookQaSession.getState()?.view?.selection || {};
     if (selection && !bookQaSession.navigate(selection)) throw new Error('Book QA command scope is stale; refresh the isolated library.');
     const outcome = await bookQaSession.dispatch(command);
@@ -4622,7 +4632,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     setSavedIndices(prev => ({ ...prev, text: null }));
     if (bookQaMode) {
       const document = bookQaSession.getSnapshot()?.documents?.find(item => item.id === documentId);
-      if (document?.editorModel !== 'structured-v1' || !['paragraph', 'conversation', 'mixed'].includes(document.documentType)) {
+      if (!isBookQaWorkspace(document)) {
         throw new Error('Legacy or unsupported Workspaces are unavailable in A1a Book QA.');
       }
       if (!bookQaSession.navigate({ workspaceId: documentId })) throw new Error('Workspace is not in the connected QA snapshot.');
@@ -4727,6 +4737,18 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     });
   }, bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
+  const handleCreateBookQaSample = useCallback(type => runTextLibraryUiCommand(async () => {
+    if (!bookQaMode) return null;
+    let workspaceId = null;
+    return createBookQaSample(type, async payload => {
+      const workspace = await dispatchBookQaNativeCommand({ type: 'document.create', payload }, {
+        selection: {}, selectResultWorkspace: true
+      });
+      workspaceId = workspace?.id;
+      return workspace;
+    }, command => dispatchBookQaNativeCommand(command, { selection: { workspaceId } }));
+  }, { bookQaCapability: 'native-command' }), [bookQaMode, dispatchBookQaNativeCommand, runTextLibraryUiCommand]);
+
   const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => bookQaMode
     ? dispatchBookQaNativeCommand({ type: 'collection.create', payload: { title } }, { selection: {} })
     : executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
@@ -4750,7 +4772,6 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     : executeTextLibraryRenameCollection({ id, title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteCollection = useCallback((id) => runTextLibraryUiCommand(() => executeTextLibraryDeleteCollection({ id, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(async () => {
-    if (bookQaMode) return dispatchBookQaNativeCommand(command);
     const result = await executeTextLibraryStructuredCommand({ command, setTextLibrarySnapshot, addLog });
     const gcTypes = new Set([
       TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
@@ -4763,7 +4784,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     ]);
     if (result?.librarySnapshot && gcTypes.has(command?.type)) await runStructuredTextAudioStagingGc(result.librarySnapshot, `command-${command.type}`);
     return result;
-  }, bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, runStructuredTextAudioStagingGc, addLog]);
+  }), [runTextLibraryUiCommand, setTextLibrarySnapshot, runStructuredTextAudioStagingGc, addLog]);
 
   const textPackSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
@@ -5215,13 +5236,14 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       : target === 'all'
         ? TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_BROWSER_TTS_AND_PLAYBACK
         : TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_PLAYBACK;
-    const nextPrefs = resetTextStructuredPreferences(textStructuredPreferences, { scope: mappedScope });
+    const nextPrefs = resetTextStructuredPreferences(textStructuredPreferences, { scope: mappedScope, persist: !bookQaMode });
     setTextStructuredPreferences(nextPrefs);
     addLog('Text Audio Reset', `Reset ${target === 'browser-tts' ? 'Global Browser TTS voices & speeds' : target === 'all' ? 'Global Browser TTS & Playback defaults' : 'Text Player Playback defaults'} without deleting Staging audio.`);
     return nextPrefs;
-  }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, textStructuredPreferences, addLog]);
+  }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, textStructuredPreferences, addLog, bookQaMode]);
 
   const handleStructuredTextResetGlobalGenerationPreferences = useCallback((target = 'edge') => {
+    if (bookQaMode) return null;
     const guard = canExecuteTextStructuredReset({
       zipImportActive: structuredTextZipImportBusy || Boolean(structuredTextZipImportCoordinatorRef.current?.isActive?.()),
       textLibraryCommandBusy,
@@ -5242,7 +5264,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     setStructuredTextAudioGenerationPreferences(nextPrefs);
     addLog('Text Audio Reset', `Reset ${target === 'bulk' ? 'Bulk Audio defaults (Libby EN / Tuti ID, Split)' : target === 'all' ? 'Global Edge & Bulk defaults' : 'Global Edge Generation defaults (Sonia EN / Gadis ID, 0% rate, 0Hz pitch)'}.`);
     return nextPrefs;
-  }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, structuredTextAudioGenerationPreferences, addLog]);
+  }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, structuredTextAudioGenerationPreferences, addLog, bookQaMode]);
 
   const handleStructuredTextResetWorkspaceAudioPreferences = useCallback(async ({ includeSpeakers = false, includeCardsAndSegments = false, scope = TEXT_STRUCTURED_RESET_SCOPES.WORKSPACE } = {}) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -6072,6 +6094,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, [structuredTextPendingAutoExport, structuredTextAudioGenerationState.running, structuredTextBulkExportPlan, handleStructuredTextBulkExport, structuredTextAudioGenerationPreferences.bulkExportFormat]);
 
   const handleStructuredTextEdgeHealthCheck = useCallback(async () => {
+    if (bookQaMode) return null;
     if (structuredTextAudioGenerationState.running || structuredTextEdgeHealth.status === 'testing') return null;
     const generationVoiceState = resolveTextStructuredGenerationVoiceState({
       channel: 'text',
@@ -6102,7 +6125,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       addLog('Error', `Text Edge health: ${message}`);
       return { status: 'error', error: message, httpStatus: error?.status ?? null, code: error?.code || null };
     }
-  }, [structuredTextAudioGenerationState.running, structuredTextEdgeHealth.status, defaultStructuredTextVoiceId, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, addLog]);
+  }, [structuredTextAudioGenerationState.running, structuredTextEdgeHealth.status, defaultStructuredTextVoiceId, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, addLog, bookQaMode]);
 
   const handleStructuredTextRemoveAudioVariant = useCallback(async (variantId) => {
     if (bookQaMode) throw new Error('Audio metadata and staging deletion are unavailable in A1a Book QA.');
@@ -6221,6 +6244,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const openFullPackPicker = () => {
+    if (bookQaMode) return null;
       if (isSystemBusy) return;
       if (isCsvDirty) {
           alert('Simpan atau Revert perubahan working copy dulu sebelum Load Full Pack.');
@@ -6230,6 +6254,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleFullPackUpload = async (e) => {
+    if (bookQaMode) return null;
     return executeFullPackImportService({
       e,
       isCsvDirty,
@@ -6253,6 +6278,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const openSourcePicker = (key) => {
+    if (bookQaMode) return null;
       if (isSystemBusy) return;
       if (isCsvDirty) {
           alert('Simpan atau Revert perubahan working copy dulu sebelum mengganti source file. Ini mencegah perubahan tercampur dengan baseline baru.');
@@ -6268,6 +6294,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleSourceUpload = (e) => {
+    if (bookQaMode) return null;
     return executeSourceLayerImportService({
       e,
       sourceUploadKeyRef,
@@ -6294,6 +6321,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const removeSourceLayer = (key) => {
+    if (bookQaMode) return null;
     return executeRemoveSourceLayerService({
       key,
       isCsvDirty,
@@ -6312,6 +6340,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const saveUpdatedSource = async (key) => {
+    if (bookQaMode) return null;
     return executeSaveUpdatedSourceService({
       key,
       sourcePack,
@@ -6329,6 +6358,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const exportMergedDataset = () => {
+    if (bookQaMode) return null;
     return executeExportMergedDatasetService({
       tableContent,
       currentDeckName,
@@ -6342,6 +6372,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleSaveDeck = () => {
+    if (bookQaMode) return null;
     return executeSaveDeckCacheService({
       currentDeckName,
       tableContent,
@@ -6359,6 +6390,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleLoadDeck = (e) => {
+    if (bookQaMode) return null;
     return executeLoadDeckCacheService({
       e,
       savedDecks,
@@ -6392,6 +6424,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const confirmDeleteDeck = () => {
+    if (bookQaMode) return null;
     return executeDeleteDeckCacheService({
       selectedDeckId,
       savedDecks,
@@ -6411,6 +6444,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const testEdgeBackend = async () => {
+    if (bookQaMode) return null;
     const result = await executeEdgeBackendHealthService({
       edgeHealth,
       edgeTestAbortControllerRef,
@@ -6602,6 +6636,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, []);
 
   const runBatchDownload = async (options = {}) => {
+    if (bookQaMode) return null;
     if (mode !== 'table') {
       addLog?.('Info', 'Blocked Table Batch download outside Table mode.');
       return { status: 'table-only-r2' };
@@ -6696,6 +6731,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, []);
 
   const exportTableAudioMp3 = useCallback(async (item, part) => {
+    if (bookQaMode) return null;
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const variant = resolveSelectedTableAudioVariant(item, part);
     if (!variant) {
@@ -6725,7 +6761,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       alert(`MP3 export gagal: ${error?.message || error}`);
       return { status: 'error', error };
     }
-  }, [resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, recordAudioDownloadHistoryDurably]);
+  }, [resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, recordAudioDownloadHistoryDurably, bookQaMode]);
 
   const getTableCardExportParts = useCallback((item) => {
     if (!item) return [];
@@ -6737,6 +6773,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, []);
 
   const exportTableCardMp3 = useCallback(async (item) => {
+    if (bookQaMode) return null;
     const parts = getTableCardExportParts(item);
     const ready = parts.filter(part => Boolean(resolveSelectedTableAudioVariant(item, part)));
     if (!ready.length) return { status: 'empty', ready: 0, missing: parts.length };
@@ -6752,9 +6789,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     }
     addLog('Audio', `Card direct MP3 export: ${ready.length} Ready audio • ${totalWaves} wave(s) of max ${DIRECT_MP3_BATCH_LIMIT}.`);
     return { status: 'completed', results, ready: ready.length, missing: Math.max(0, parts.length - ready.length), waves: totalWaves };
-  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, exportTableAudioMp3, addLog]);
+  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, exportTableAudioMp3, addLog, bookQaMode]);
 
   const exportTableCardZip = useCallback(async (item) => {
+    if (bookQaMode) return null;
     const parts = getTableCardExportParts(item);
     const resolved = parts.map(part => ({ part, variant: resolveSelectedTableAudioVariant(item, part) })).filter(entry => entry.variant);
     if (!resolved.length) return { status: 'empty', ready: 0, missing: parts.length };
@@ -6791,9 +6829,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     if (historyRecords.length) recordAudioDownloadHistoryDurably(historyRecords.map(record => ({ ...record, filename: zipFilename })));
     addLog('Audio', `Card ZIP export: ${entries.length} Ready audio → ${zipFilename}.`);
     return { status: 'completed', result, filename: zipFilename, ready: entries.length, missing: Math.max(0, parts.length - entries.length) };
-  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, recordAudioDownloadHistoryDurably, addLog]);
+  }, [getTableCardExportParts, resolveSelectedTableAudioVariant, readTableAudioVariantBlob, refreshTableAudioStaging, recordAudioDownloadHistoryDurably, addLog, bookQaMode]);
 
   const removeTableStagedAudio = useCallback(async (item, part) => {
+    if (bookQaMode) return null;
     const mapKey = `${getStableAudioIdentity(item)}_${part}`;
     const wanted = { vocabId: getVocabIdentity(item), bookId: resolveTableAudioBookId(item) };
     const requiredVoiceId = generatorEngine === 'edge'
@@ -6810,7 +6849,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     await refreshTableAudioStaging();
     addLog('Audio', `Staged audio released: ${mapKey}.`);
     return { status: 'released', id: selected.stagingId };
-  }, [tableAudioVariantInventory, generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, tableAudioVoicePriority, refreshTableAudioStaging, addLog]);
+  }, [tableAudioVariantInventory, generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, tableAudioVoicePriority, refreshTableAudioStaging, addLog, bookQaMode]);
 
   const resolveTableAudioVariantForSpec = useCallback((spec) => {
     if (!spec?.mapKey) return null;
@@ -6846,6 +6885,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   }, []);
 
   const exportCurrentSelectionMp3 = useCallback(async () => {
+    if (bookQaMode) return null;
     const slots = tableAudioBatchCoverage?.slots || [];
     const logicalSeen = new Set();
     const selected = [];
@@ -6909,9 +6949,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     await refreshTableAudioStaging();
     addLog('Batch', `Direct MP3 export: ${results.length}/${selected.length} Ready file • dispatched in ${totalWaves} wave(s) of max ${DIRECT_MP3_BATCH_LIMIT}.`);
     return { status: 'completed', results, availableCount: selected.length, waves: totalWaves };
-  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably, bookQaMode]);
 
   const exportCurrentSelectionZip = useCallback(async () => {
+    if (bookQaMode) return null;
     const slots = tableAudioBatchCoverage?.slots || [];
     if (!slots.length) return { status: 'empty-selection' };
     const exportRecords = [];
@@ -6960,9 +7001,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     await refreshTableAudioStaging();
     addLog('Batch', `Consolidated ZIP: ${exportRecords.length}/${slots.length} Ready audio from Staging/Folder/ZIP → ${results.length} ZIP group(s).`);
     return { status: 'completed', results, exportedCount: exportRecords.length, total: slots.length };
-  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+  }, [tableAudioBatchCoverage, resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably, bookQaMode]);
 
   const exportBatchSessions = useCallback(async (sessionIds) => {
+    if (bookQaMode) return null;
     const ids = [...new Set((Array.isArray(sessionIds) ? sessionIds : [sessionIds]).filter(Boolean))];
     if (!ids.length) return { status: 'empty-selection' };
     const sessions = (await listAudioBatchSessions({ mode: 'table' })).filter(session => ids.includes(session.id));
@@ -7026,9 +7068,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     await refreshTableAudioBatchSessions();
     addLog('Batch', `Batch Library export: ${exportRecords.length} Ready audio → ${results.length} ZIP${unavailable.length ? ` • ${unavailable.length} unavailable skipped` : ''}.`);
     return { status: 'completed', results, exportedCount: exportRecords.length, unavailableCount: unavailable.length };
-  }, [resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably]);
+  }, [resolveTableAudioVariantForSpec, buildExportRecordFromSpec, readTableAudioVariantBlob, refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog, setBatchStatusText, recordAudioDownloadHistoryDurably, bookQaMode]);
 
   const clearBatchSessionStaging = useCallback(async sessionId => {
+    if (bookQaMode) return null;
     const session = (await listAudioBatchSessions({ mode: 'table' })).find(row => row.id === sessionId);
     if (!session) return { status: 'missing-session' };
     const released = await releaseAudioStagingBlobs(session.audioIds || [], { reason: `batch-session-release:${sessionId}` });
@@ -7037,15 +7080,17 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     await refreshTableAudioBatchSessions();
     addLog('Batch', `Batch ${sessionId}: released ${released} staged binary.`);
     return { status: 'released', released };
-  }, [refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog]);
+  }, [refreshTableAudioStaging, refreshTableAudioBatchSessions, addLog, bookQaMode]);
 
   const deleteBatchSessionHistory = useCallback(async sessionId => {
+    if (bookQaMode) return null;
     await deleteAudioBatchSession(sessionId);
     await refreshTableAudioBatchSessions();
     addLog('Batch', `Batch history deleted: ${sessionId}. Staged binary is unchanged.`);
-  }, [refreshTableAudioBatchSessions, addLog]);
+  }, [refreshTableAudioBatchSessions, addLog, bookQaMode]);
 
   const handleCSVUpload = (e) => {
+    if (bookQaMode) return null;
     return executeCsvImportFileService({
       e,
       savedDecks,
@@ -7147,6 +7192,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleAudioZipSelect = async (event) => {
+    if (bookQaMode) return null;
     const selectedFiles = [...(event?.target?.files || [])];
     if (event?.target) event.target.value = '';
     if (!selectedFiles.length) return;
@@ -7183,6 +7229,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const clearTableAudioCoverageHistory = () => {
+    if (bookQaMode) return null;
     // Persist synchronously as well as updating React state. This prevents stale
     // Downloaded* records from resurrecting after an immediate browser refresh.
     const persisted = clearPersistedAudioDownloadHistoryForMode('table');
@@ -7213,6 +7260,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const clearTableAudioStaging = async () => {
+    if (bookQaMode) return null;
     const result = await clearAudioStagingForMode('table', { clearHistory: false });
     await refreshTableAudioStaging();
     await refreshTableAudioBatchSessions();
@@ -7221,6 +7269,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const resetTableAudioTransientCoverageStatePreservingFolder = () => {
+    if (bookQaMode) return null;
     // Folder availability lives in tableAudioFolderVariantInventory and no
     // longer requires one ObjectURL per slot in localAudioMapTable.
     Object.values(localAudioMapTable || {}).forEach(url => {
@@ -7232,6 +7281,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const clearTableAudioZipSources = () => {
+    if (bookQaMode) return null;
     clearTableAudioZipRuntimeCache();
     setTableAudioZipVariantInventory({});
     setTableAudioZipSources([]);
@@ -7245,6 +7295,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const detachTableAudioFolderSource = async () => {
+    if (bookQaMode) return null;
     revokeTableFolderVariantUrls();
     setTableAudioFolderVariantInventory({});
     // Legacy Table folder scan still owns the one-URL-per-slot map. Clear it so
@@ -7332,6 +7383,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleRememberedAudioFolderOpen = ({ forcePicker = false } = {}) => {
+    if (bookQaMode) return null;
     const liveScope = latestAudioFolderScopeRef.current;
     if (
       !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
@@ -7369,6 +7421,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const handleRememberedAudioFolderRefresh = () => {
+    if (bookQaMode) return null;
     const liveScope = latestAudioFolderScopeRef.current;
     if (
       !isLegacyAudioFolderSupported({ mode, activeTextEditorModel })
@@ -7609,7 +7662,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     resetPreferences: handleStructuredTextResetBulkOnly
   } : null;
 
-  const renderBatchPopup = (options = {}) => renderBatchPopupView({
+  const renderBatchPopup = (options = {}) => bookQaMode ? null : renderBatchPopupView({
     batchPanelRef, mode, activeTextEditorModel, setIsBatchOpen: setBatchOpenGuarded, isBatchDownloading, batchConfig, setBatchConfig,
     generatorEngine, edgeVoice, edgeIndonesianVoice, aiVoiceName, advancedDatasetStats, handleBatchRangeBlur, runBatchDownload,
     isBatchStopping, batchStatusText,
@@ -7748,6 +7801,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const renderMobileTools = () => renderMobileToolsView({
+    bookQaMode, handleCreateBookQaSample,
     sidebarSection, renderControlSectionTabs, currentMapCount, legacyTextAudioCount, mode, renderStatusBadge,
     tableAudioVoiceOptions, tableLocalAudioVoiceMode, setTableLocalAudioVoiceMode, tableAudioVoicePriority, moveTableLocalAudioVoicePriority,
     preferLocalAudio: activePreferLocalAudio, setPreferLocalAudio: handleActivePreferLocalAudioChange, isSystemBusy, voices, selectedVoice: activeBrowserTtsVoice,
@@ -8005,6 +8059,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
   };
 
   const renderPlaylist = () => {
+    if (bookQaMode && !activeTextDocumentId) return <p className="p-4 text-sm">Select or create a Workspace in Data.</p>;
     if (mode !== 'text') return renderPlaylistContent();
     const inlineSharedSwitch = activeTextEditorModel === 'structured-v1' && sharedTextReaderActive && textDatabaseStatus === 'ready';
     return (
@@ -8025,8 +8080,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
   return <NowPlayingContext.Provider value={readNowPlaying}>{renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
-    bookQaMode,
-    bookQaDatabaseName: bookQaConnection?.adapter?.dbName || '',
+    bookQaMode, handleCreateBookQaSample, bookQaRefreshError,
+    bookQaDatabaseName: bookQaConnection?.dbName || '',
     bookQaRefreshing,
     bookQaPending: Boolean(bookQaSessionState?.pending),
     onBookQaRefresh,
@@ -8089,8 +8144,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 // --- APP WRAPPER (Theme & View Logic) ---
 const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
 
-const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false }) => {
-    const bookQaMode = Boolean(bookQaConnection?.session && bookQaConnection?.adapter);
+const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+    const bookQaMode = Boolean(bookQaConnection?.session);
     // Keep the current root view across same-tab reloads/HMR fallbacks.
     // A new browser session still starts on Landing by default.
     const [view, setView] = useState(() => {
@@ -8104,18 +8159,20 @@ const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing
     });
 
     const openAppView = () => {
+        if (bookQaMode) return;
         setView('app');
         try { window.sessionStorage.setItem(APP_VIEW_SESSION_KEY, 'app'); } catch {}
     };
 
     const openLandingView = () => {
+        if (bookQaMode) return;
         setView('landing');
         try { window.sessionStorage.removeItem(APP_VIEW_SESSION_KEY); } catch {}
     };
     
     // Theme State: 'light' | 'dark' | 'system'
     const [theme, setTheme] = useState(() => {
-        if (typeof window !== 'undefined') {
+        if (!bookQaMode && typeof window !== 'undefined') {
             return localStorage.getItem('theme') || 'system';
         }
         return 'system';
@@ -8140,7 +8197,7 @@ const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing
         applyTheme(theme);
         
         // 2. Save preference
-        localStorage.setItem('theme', theme);
+        if (!bookQaMode) localStorage.setItem('theme', theme);
 
         // 3. Listen for system changes IF theme is 'system'
         if (theme === 'system') {
@@ -8168,7 +8225,7 @@ const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing
                 }
             };
         }
-    }, [theme]);
+    }, [theme, bookQaMode]);
 
     return (
         <div className="antialiased transition-colors duration-300">
@@ -8180,6 +8237,7 @@ const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing
                     bookQaConnection={bookQaConnection}
                     onBookQaRefresh={onBookQaRefresh}
                     bookQaRefreshing={bookQaRefreshing}
+                    bookQaRefreshError={bookQaRefreshError}
                 />
             ) : view === 'landing' ? (
                 <LandingPage 

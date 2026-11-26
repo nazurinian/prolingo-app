@@ -16,14 +16,15 @@ const loadInitialStudyActivity = () => {
   return loadStudyTrackingFromStorage({ storage }).activityByVocabId;
 };
 
-export const useStudyTrackingState = () => {
-  const [activityByVocabId, setActivityByVocabId] = useState(loadInitialStudyActivity);
+export const useStudyTrackingState = ({ sessionOnly = false } = {}) => {
+  const [activityByVocabId, setActivityByVocabId] = useState(() => sessionOnly ? {} : loadInitialStudyActivity());
 
   useEffect(() => {
+    if (sessionOnly) return;
     const storage = resolveBrowserLocalStorage();
     if (!storage) return;
     saveStudyTrackingToStorage({ storage, activityByVocabId });
-  }, [activityByVocabId]);
+  }, [activityByVocabId, sessionOnly]);
 
   return { activityByVocabId, setActivityByVocabId };
 };

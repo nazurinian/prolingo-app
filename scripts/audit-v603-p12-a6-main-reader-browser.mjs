@@ -72,7 +72,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a6-profile-'));
 const browser = spawn(process.env.A6_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
+  ['--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
   { windowsHide: true, stdio: 'ignore' });
 let socket;
 let diagnose;
@@ -337,6 +337,14 @@ try {
     await until(exactStatus('Starting playback…'));
     await until(exactStatus('P1 · EN'));
     const playing = await evaluate('JSON.stringify({ speech: window.a6Speech, media: window.a6Media })');
+    // Owned playback auto-follow hides the fixed bar. Let that state settle,
+    // then reveal it with the same scroll-to-top affordance used by the App.
+    const revealAppBar = async () => {
+      await evaluate('window.scrollTo(0, 100); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      await evaluate('window.scrollTo(0, 0)');
+    };
+    await until('document.querySelector("[data-app-header]")?.classList.contains("-translate-y-full")');
+    await revealAppBar();
     await pointerClick(playerDetails);
     await pointerClick('[data-mobile-appbar-overflow]');
     await until(`${visible(appbarMenu)} && document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`);
@@ -346,12 +354,7 @@ try {
     await key('Escape', 27);
     await until(`!(${visible(appbarMenu)}) && document.activeElement.matches('[data-mobile-appbar-overflow]')`);
     await pointerClick(playerDetails);
-    const controlsVisible = await evaluate(`(() => { const button = document.querySelector('[data-mobile-controls-toggle]'); const r = button.getBoundingClientRect(); return button.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`);
-    if (!controlsVisible) {
-      // Active-row following may hide the fixed bar. Reveal it via the existing scroll affordance.
-      await evaluate('window.scrollTo(0, 100); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
-      await evaluate('window.scrollTo(0, 0)');
-    }
+    await revealAppBar();
     await pointerClick('[data-mobile-controls-toggle]');
     await until(`${visible(tools)} && document.querySelector(${JSON.stringify(playerDetails)}).getAttribute('aria-expanded') === 'false'`);
     await pointerClick(playerDetails);
@@ -518,6 +521,9 @@ try {
     await pointerClick(`${readingOverlay} [data-text-main-reader-option="legacy"]`);
     await until('document.querySelector("[data-text-main-reader=legacy]")');
     await screenshot('a6-main-text-old-mobile');
+    // The Classic surface starts with a different document geometry. Return
+    // to its top controls before testing the native pointer hit.
+    await evaluate('window.scrollTo({ top: 0, behavior: "instant" })');
     await pointerClick('[data-text-main-reader-option="shared"]');
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
   });
@@ -560,5 +566,6 @@ try {
   await diagnose?.(error).catch(console.error);
 } finally {
   socket?.close(); browser.kill(); server.closeAllConnections(); server.close();
+  await fs.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   console.log('Evidence:', evidence, 'Disposable profile:', profile);
 }

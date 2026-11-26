@@ -1,12 +1,12 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** implementation ledger for the A1a candidate; browser/build evidence is recorded in the handoff.
+**Status:** A1a-R-HF1 implementation and verification ledger.
 
 ## Host and authority
 
-The UAT-only `?qa=book-qa` route mounts the real `App.jsx`, `MainAppShellView`, `Reader`, and Global Player after explicit opt-in and a successful connection to one validated disposable database. It is compiled only when the dedicated `text-uat` build flag is enabled. The host refuses the known Stable origins and permits localhost for local UAT execution. Normal App and Text Beta routing remain in place.
+The UAT-only `?qa=book-qa` route mounts the real Main App, Reader, and Global Player after explicit opt-in and connection to one named disposable database. The exact origin allowlist is `https://text-uat.prolingo.web.id` and HTTP on `localhost`, `127.0.0.1`, or `[::1]` on ports `4173` and `5173`. The gate rejects every other origin before opening storage. Physical-device access is deferred. The Book QA host module is included only in the explicit `text-uat` build.
 
-`createTextDataManagementPersistenceAdapter` is bound to the validated database name with `boundary: 'disposable'` and `catalog` plus `content` permissions. `createTextDataManagementSession` owns the single authoritative snapshot. App projections read the session snapshot; Book QA's legacy snapshot setters throw. Every supported write goes through the P15 session coordinator, adapter transaction, expected snapshot fingerprint/revision, authoritative receipt validation, and committed readback. A stale or uncertain receipt requires an explicit Refresh; no command is replayed automatically. Refresh also rejects a result if the session revision changes during its persisted read.
+`createTextDataManagementPersistenceAdapter` binds one validated database name with disposable catalogue and content permissions. The P15 session owns the authoritative snapshot, and writes use its fingerprint, revision, transaction and committed-readback checks. The Book QA connection validates the incoming v2 snapshot and sidecars, resolves the deepest surviving selection against current parent relationships, and replaces the projection only after validation. A surviving Collection, the first supported Workspace, or the empty library provides the fallback selection. A stale result, invalid read or uncertain receipt locks writes until a successful explicit Refresh. Connected errors carry a code and message. P15's shared APIs and other callers retain their existing semantics.
 
 Initialization is create-only. Existing names are never overwritten; existing v1 or otherwise unsupported QA libraries cannot be connected as Book QA v2. The demo initializer strips fixture audio variants and Full artifact readiness. Connection does not rewrite an existing library's audio metadata.
 
@@ -34,7 +34,7 @@ The QA host and all adapters retain explicit DB names; no global mutable databas
 | Load/connect and Refresh/reconnect | **Safely adapted** | Connect requires a complete v2 library; Refresh rereads authoritative state and rejects a stale read/session race. |
 | Workspace selection/navigation | **Safely adapted** | Session navigation only; selected workspace must exist in the authoritative snapshot and be supported v2. |
 | Create/rename/move Workspace; create/rename Collection | **Safely adapted** | Allowlisted `document.create`, `document.update`, `collection.create`, and `collection.update` commands through the session. |
-| Create Card, Content Unit/Section, Speaker, and Segment | **Safely adapted** | Allowlisted `block.create`, `contentUnit.create`, `speaker.register`, and `segment.create` commands. QA sample actions use these commands and persist each receipt. |
+| Create Card, Content Unit/Section, Speaker, and Segment | **Safely adapted for QA samples** | The desktop and mobile catalogue invoke a dedicated sample action that dispatches fixed `block.create`, `contentUnit.create`, `speaker.register`, and `segment.create` commands against the new Workspace. Ordinary editor callbacks reject before dispatch. |
 | Direct editor changes, field edits, ordering/reordering, segment update/delete, arbitrary bulk edits | **Temporarily unavailable** | Structured editor is read-only in QA; native command allowlist rejects types outside A1a. Full editor/P15 parity is deferred to A3. |
 | Delete Workspace/Collection and other destructive catalogue operations | **Temporarily unavailable** | Delete controls are hidden in QA; generic Text command wrapper rejects execution without an explicit QA capability; native allowlist excludes deletes. |
 | Search and search-to-play navigation | **Temporarily unavailable** | Search projection/actions are omitted in QA; P15 integration parity is deferred to A3. |
@@ -47,7 +47,23 @@ The QA host and all adapters retain explicit DB names; no global mutable databas
 | Database backup/restore/replace, rollback, transfer/merge | **Temporarily unavailable** | UI actions are absent; command wrapper rejects before backup, restore, canonical snapshot read, or import service calls. |
 | Reset/delete QA library | **Deferred to later QA maintenance work** | No A1a UI or host action is exposed. There is no automatic cleanup or overwrite. A later maintenance control must require explicit confirmation and remain separate from ordinary library management. |
 | Table vocabulary, Table audio controls, Legacy routes | **Temporarily unavailable in Book QA** | QA mode starts in Text, blocks switching to Table, and substitutes explanatory controls. Normal App/Text Beta routes are unchanged. |
-| Text playback presentation preferences | **Safely adapted as session-only** | Reader controls remain usable; Book QA does not persist Structured Text playback preferences to the shared origin localStorage key. |
+| Text playback presentation preferences | **Session-only** | Reader and permitted playback controls initialize from defaults and update App memory. |
+
+## Preference and startup isolation
+
+| Surface | Book QA behavior |
+| --- | --- |
+| Reader and Workspace presentation | `prolingo_text_main_reader_v1` stays outside the QA path. Reader mode, presentation options, shared style, per-Workspace style and reset use the same normalization with in-memory state. |
+| Structured Text playback and Browser TTS | `prolingo_text_structured_preferences_v1` stays outside the QA path, including global playback resets. The browser supplies the available TTS voices. The App keeps voice and transport selections in memory. Workspace-authored preferences already present in the connected snapshot can be projected for playback. |
+| Global sequence, delays and vocabulary order | The `prolingo_playback_sequence_v511`, `prolingo_playback_delays_v511` and `prolingo_vocabulary_play_order_v511` keys stay outside the QA path. Defaults, live refs and order recalculation stay active in memory. |
+| Generation, diagnostics and audio lifecycle | Shared Text generation and Table local audio preference keys are skipped. Generation changes and resets, Edge backend diagnostics, ZIP, staging, folder and bulk callbacks fail closed. Audio and System panels show the same capability limits on desktop and mobile. |
+| Sidebar and theme | The control section defaults to Data and the theme follows the system. Changes remain in memory. The shared sidebar and `theme` keys are skipped. |
+| Table cache, draft and legacy bootstrap | `pronunciation_decks` and `prolingo_text_identity_v1` are skipped. Table restoration, draft autosave, Legacy migration and source attachment hydration are bypassed. Empty QA libraries have a Workspace prompt with no Legacy editor. |
+| Mastery, activity and download history | `prolingo_mastery_state_v1`, `prolingo_study_activity_v1` and `prolingo_audio_download_history_v1` stay outside the QA path. State starts empty. |
+| Credentials and app view | QA starts directly in the connected App. It skips the normal `prolingo:view:v1` session key, Gemini credential migration and cleanup, and credential endpoints. Normal App credential cleanup remains in its startup effect. |
+| Durable exceptions | The opted-in QA IndexedDB stores the Workspace data and native command receipts. The selected database name is kept in the URL for explicit reconnect. Theme media queries, browser voices and transient media objects use browser runtime APIs. No QA preference namespace is needed. |
+
+The browser harness instruments storage only in its disposable test profile. It checks shared-key accesses and sentinels, exact database names, full refused-initialization readback, independent libraries, mobile execution, refresh and controlled playback. The session audit covers origin allowlist and refresh races.
 
 ## Canonical service dependency audit
 

@@ -9,7 +9,7 @@ import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/
 
 export default function DesktopDataWorkspace({
   mode, textareaRef, isSystemBusy, isLocked, textContent, handleInputContentChange, handleInsertTab,
-  bookQaMode = false,
+  bookQaMode = false, onCreateBookQaSample,
   setLockedStates, isMultiSourceMode, dirtySourceKeys, isCsvDirty, openFullPackPicker,
   sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
   saveUpdatedSource, exportMergedDataset, csvChangeSummary, setIsChangeReviewOpen, undoStack,
@@ -73,6 +73,7 @@ export default function DesktopDataWorkspace({
                         onStructuredCommand={handleTextLibraryStructuredCommand}
                         onSectionChange={setTextDataSection}
                         bookQaMode={bookQaMode}
+                        onCreateBookQaSample={onCreateBookQaSample}
                       />
                       {bookQaMode && textDataSection === 'transfer' && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200" role="note">A1a keeps transfer, backup/restore, audio staging and filesystem attachment unavailable until the A1b isolation boundary is implemented.</p>}
                       {textDataSection === 'library' && (activeTextEditorModel === 'legacy-line-v1' ? <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/10 p-3 space-y-2" data-text-library-content-editor="legacy">

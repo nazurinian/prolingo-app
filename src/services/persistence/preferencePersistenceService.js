@@ -38,19 +38,19 @@ export const loadControlSectionPreference = () => {
   }
 };
 
-export const executePlaybackSequencePersistenceEffect = ({ playbackSequence, playbackSequenceRef }) => {
+export const executePlaybackSequencePersistenceEffect = ({ playbackSequence, playbackSequenceRef, persist = true }) => {
   playbackSequenceRef.current = playbackSequence;
   try {
-    window.localStorage.setItem('prolingo_playback_sequence_v511', JSON.stringify(playbackSequence));
+    if (persist) window.localStorage.setItem('prolingo_playback_sequence_v511', JSON.stringify(playbackSequence));
   } catch (error) {
     console.warn('Unable to persist playback sequence:', error);
   }
 };
 
-export const executePlaybackDelaysPersistenceEffect = ({ playbackDelays, playbackDelaysRef }) => {
+export const executePlaybackDelaysPersistenceEffect = ({ playbackDelays, playbackDelaysRef, persist = true }) => {
   playbackDelaysRef.current = normalizePlaybackDelays(playbackDelays);
   try {
-    window.localStorage.setItem('prolingo_playback_delays_v511', JSON.stringify(playbackDelaysRef.current));
+    if (persist) window.localStorage.setItem('prolingo_playback_delays_v511', JSON.stringify(playbackDelaysRef.current));
   } catch (error) {
     console.warn('Unable to persist playback delays:', error);
   }
@@ -60,11 +60,12 @@ export const executeVocabularyPlayOrderPersistenceEffect = ({
   vocabularyPlayOrder,
   vocabularyPlayOrderRef,
   activeVocabularyOrderRef,
-  setActiveVocabularyOrder
+  setActiveVocabularyOrder,
+  persist = true
 }) => {
   vocabularyPlayOrderRef.current = vocabularyPlayOrder;
   try {
-    window.localStorage.setItem('prolingo_vocabulary_play_order_v511', vocabularyPlayOrder);
+    if (persist) window.localStorage.setItem('prolingo_vocabulary_play_order_v511', vocabularyPlayOrder);
   } catch (error) {
     console.warn('Unable to persist vocabulary play order:', error);
   }

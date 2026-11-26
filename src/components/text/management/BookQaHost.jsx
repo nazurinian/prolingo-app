@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createTextDataManagementPersistenceAdapter, seedDisposableTextManagementDatabase } from '../../../services/persistence/textDataManagementPersistenceService.js';
 import { assertDisposableQaDatabaseName } from '../../../services/persistence/textContentUnitPersistenceService.js';
-import { createTextDataManagementSession } from '../../../services/textDataManagementSession.js';
+import { createBookQaConnection, isBookQaOrigin } from '../../../services/bookQaSessionService.js';
 import { validateTextManagementSnapshot } from '../../../domain/text/textDataManagementDomain.js';
 import { backfillTextContentUnits } from '../../../domain/text/textContentUnitDomain.js';
 import { createStructuredTestingFixture } from '../../../../scripts/fixtures/p15-integrated/structured-fixture.js';
@@ -54,14 +54,6 @@ const cleanFixtureSnapshot = () => {
   return validateTextManagementSnapshot(cleaned);
 };
 
-const isDedicatedTestingOrigin = () => {
-  if (typeof window === 'undefined') return false;
-  const { hostname, protocol } = window.location;
-  const local = ['localhost', '127.0.0.1', '::1'].includes(hostname);
-  const stable = ['prolingo.site', 'www.prolingo.site', 'beta.prolingo.site'].includes(hostname.toLowerCase());
-  return !stable && (local || protocol === 'https:');
-};
-
 const errorRecord = error => ({ code: error?.code || 'BOOK_QA_ERROR', message: error?.message || String(error), databaseMissing: error?.databaseMissing === true });
 const assertBookQaDatabaseName = value => {
   try {
@@ -81,7 +73,7 @@ export default function BookQaHost() {
   const [notice, setNotice] = useState('');
   const ownedSession = useRef(null);
   const flight = useRef(false);
-  const originAllowed = isDedicatedTestingOrigin();
+  const originAllowed = isBookQaOrigin(window.location.origin);
 
   useEffect(() => {
     return () => {
@@ -92,7 +84,7 @@ export default function BookQaHost() {
 
   const assertOptIn = useCallback(() => {
     if (!optIn) throw new Error('Select the isolated Book QA storage opt-in before connecting.');
-    if (!originAllowed) throw new Error('Book QA is blocked on this origin. Use the dedicated HTTPS testing origin or localhost.');
+    if (!originAllowed) throw new Error('Book QA is blocked on this origin. Use the dedicated UAT origin or an approved loopback origin.');
     return assertBookQaDatabaseName(databaseName);
   }, [databaseName, optIn, originAllowed]);
 
@@ -104,23 +96,10 @@ export default function BookQaHost() {
       permissions: ['catalog', 'content']
     });
     const loaded = await adapter.loadState();
-    if (loaded.snapshot.schemaVersion !== 2) {
-      throw new Error('Book QA accepts complete disposable v2 libraries only. Existing data is left untouched; use a separate QA name.');
-    }
-    const firstWorkspace = loaded.snapshot.documents.find(document => (
-      document.editorModel === 'structured-v1'
-      && ['paragraph', 'conversation', 'mixed'].includes(document.documentType)
-    ));
-    const session = createTextDataManagementSession({
-      ...loaded,
-      selection: firstWorkspace ? { workspaceId: firstWorkspace.id } : {},
-      boundary: 'disposable',
-      permissions: ['catalog', 'content'],
-      execute: adapter.execute
-    });
+    const nextConnection = createBookQaConnection(adapter, loaded);
     ownedSession.current?.dispose();
-    ownedSession.current = session;
-    setConnection({ adapter, session });
+    ownedSession.current = nextConnection.session;
+    setConnection(nextConnection);
     setDatabaseName(safeName);
     const url = new URL(window.location.href);
     url.searchParams.set('db', safeName);
@@ -166,23 +145,10 @@ export default function BookQaHost() {
   });
 
   const refresh = useCallback(async () => {
-    const before = connection?.session.getState();
-    if (!connection || !before || before.pending) throw new Error('Wait for the active Book QA command before refreshing.');
+    if (!connection) return;
     setRefreshing(true);
     try {
-      const loaded = await connection.adapter.loadState();
-      if (loaded.snapshot.schemaVersion !== 2) throw new Error('Refresh rejected an unsupported schema; the current session was retained.');
-      const afterRead = connection.session.getState();
-      if (afterRead.pending || afterRead.revision !== before.revision) {
-        throw new Error('Refresh result became stale while a command was active; the connected session was retained. Retry Refresh after the command settles.');
-      }
-      const priorSelection = connection.session.getState().view?.selection || {};
-      connection.session.replaceSource(loaded.snapshot, {
-        selection: priorSelection,
-        metaRecords: loaded.metaRecords,
-        sourceAttachments: loaded.sourceAttachments,
-        externalImports: loaded.externalImports
-      });
+      await connection.refresh();
       setNotice('Reloaded authoritative persisted state. No pending command was replayed.');
       setError(null);
     } catch (refreshError) {
@@ -198,6 +164,7 @@ export default function BookQaHost() {
       bookQaConnection={connection}
       onBookQaRefresh={refresh}
       bookQaRefreshing={refreshing}
+      bookQaRefreshError={error}
     />;
   }
 
@@ -210,7 +177,7 @@ export default function BookQaHost() {
       </header>
       <div className="rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-700">
         <p><b>Testing origin:</b> {window.location.origin}</p>
-        <p className={originAllowed ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600'}>{originAllowed ? 'Origin accepted for isolated QA.' : 'Blocked: use HTTPS testing origin or localhost; Stable origins are not allowed.'}</p>
+        <p className={originAllowed ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600'}>{originAllowed ? 'Origin accepted for isolated QA.' : 'Blocked: use the dedicated UAT origin or an approved loopback origin.'}</p>
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" aria-label="Opt in to isolated Book QA storage" checked={optIn} disabled={busy} onChange={event => setOptIn(event.target.checked)} />
