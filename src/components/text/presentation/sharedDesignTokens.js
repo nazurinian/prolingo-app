@@ -94,6 +94,16 @@ export const resolvePlaybackSemanticTone = ({ state, channel } = {}) => {
   return SHARED_SEMANTIC_COLORS.en;
 };
 
+export const resolveGlobalPlayerSemanticTone = ({ phase, channel } = {}) => {
+  if (phase === 'paused') return SHARED_SEMANTIC_COLORS.paused;
+  if (phase === 'playing' || phase === 'waiting') {
+    if (channel === 'meaning') return SHARED_SEMANTIC_COLORS.id;
+    if (channel === 'text') return SHARED_SEMANTIC_COLORS.en;
+    return SHARED_SEMANTIC_COLORS.conversation;
+  }
+  return SHARED_SEMANTIC_COLORS.manual;
+};
+
 export const SHARED_SURFACE_TOKENS = Object.freeze({
   shellCard: 'rounded-2xl border border-slate-200/85 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-xs',
   panelInset: 'rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40',
@@ -116,7 +126,7 @@ export const SHARED_SPACING_TOKENS = Object.freeze({
   // Ensures programmatic scrollIntoView never hides Card or Book headings behind the fixed 64px mobile header.
   mobileScrollMargin: 'scroll-mt-[72px] md:scroll-mt-4',
   // Reserves clearance for the fixed mobile Global Player bar below docked mobile drawers.
-  mobileSheetBottomOffset: 'calc(76px + env(safe-area-inset-bottom, 0px))'
+  mobileSheetBottomOffset: 'calc(108px + env(safe-area-inset-bottom, 0px))'
 });
 
 /**

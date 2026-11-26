@@ -43,8 +43,10 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
   const { workspace, card, precision, item, queue } = nowPlaying;
   const { cardCode, cardPosition, unitCode, segmentCode, speaker, segment } = describeAuthoredPlayback(nowPlaying);
   const authored = join(cardPosition, cardCode, unitCode, speaker, segmentCode, precision === 'card' && 'Full');
+  const structured = nowPlaying.domain === 'structured-text';
   const table = nowPlaying.domain === 'table';
   const itemContext = item?.displayNumber != null ? `${table ? 'Word' : 'Item'} ${item.displayNumber}` : null;
+  const partLabel = table ? learningPart(item?.part) : null;
   const channel = { text: 'EN', meaning: 'ID' }[nowPlaying.channel];
   const actual = representation[nowPlaying.actualRepresentation];
   const source = sources[nowPlaying.source] ?? nowPlaying.source;
@@ -52,20 +54,58 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
   const saved = representation[nowPlaying.savedRepresentation];
   const requested = representation[nowPlaying.requestedRepresentation];
   const command = representation[nowPlaying.commandRepresentation];
-  const variation = nowPlaying.representationFallback ? 'Runtime Full → Split fallback'
-    : (requested === 'Full' || saved === 'Full') && command === 'Split' ? 'Temporary Split' : null;
+  const variationKind = nowPlaying.representationFallback
+    ? 'fallback'
+    : (requested === 'Full' || saved === 'Full') && command === 'Split'
+      ? 'temp-split'
+      : null;
+  const variation = variationKind === 'fallback'
+    ? 'Runtime Full → Split fallback'
+    : variationKind === 'temp-split'
+      ? 'Temporary Split'
+      : null;
+  const variationBadge = variationKind === 'fallback'
+    ? 'Full → Split'
+    : variationKind === 'temp-split'
+      ? 'Temp Split'
+      : null;
   const queueSummary = numbered(`${queueLabels[queue?.kind] ?? 'item'} `, queue);
+  const segmentText = nowPlaying.channel === 'meaning'
+    ? segment?.meaning ?? null
+    : nowPlaying.channel === 'text'
+      ? segment?.text ?? null
+      : null;
+  const representationSummary = join(
+    saved && `Saved ${saved}`,
+    requested && `Requested ${requested}`,
+    command && `Command ${command}`,
+    actual && `Actual ${actual}`,
+    variation
+  );
   const details = [
     ['Workspace', workspace?.title], ['Card', card?.title], ['Authored position', authored], ['Speaker', speaker],
-    ['Segment', nowPlaying.channel === 'meaning' ? segment?.meaning : nowPlaying.channel === 'text' ? segment?.text : null],
+    ['Segment', segmentText],
     ['Channel', channel], ['Scope', scope], ['Source', source], ['Provider', nowPlaying.provider], ['Voice', nowPlaying.voice],
     ['Rate', nowPlaying.rate > 0 && `${nowPlaying.rate}×`], ['Queue', queueSummary],
-    ['Representation', join(saved && `Saved ${saved}`, requested && `Requested ${requested}`, command && `Command ${command}`, actual && `Actual ${actual}`, variation)]
+    ['Representation', representationSummary]
+  ].filter(([, value]) => value);
+  const playbackInfo = [
+    ['Source', source],
+    ['Rate', nowPlaying.rate > 0 && `${nowPlaying.rate}×`],
+    ['Scope', scope],
+    ['Queue', queueSummary],
+    ['Voice', nowPlaying.voice]
+  ].filter(([, value]) => value);
+  const technicalDetails = [
+    ['Provider', nowPlaying.provider],
+    ['Representation', representationSummary]
   ].filter(([, value]) => value);
   const state = stateLabels[transport.phase];
+  const title = workspace?.title ?? (item?.title ? (table ? capitalizeDisplayText(item.title) : item.title) : null);
+  const context = authored || join(itemContext, partLabel);
   return {
-    title: workspace?.title ?? (item?.title ? (table ? capitalizeDisplayText(item.title) : item.title) : null),
-    context: authored || join(itemContext, table && learningPart(item?.part)),
+    title,
+    context,
     status: join(state, channel, actual, source, variation),
     compactStatus: join(state, channel, actual, source),
     details,
@@ -73,6 +113,38 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
     navLabel: queueLabels[transport.navKind],
     canNavigate: transport.canNavigate,
     phase: transport.phase,
-    playLabel: { pending: 'Starting playback', paused: 'Resume playback', playing: 'Pause playback', waiting: 'Pause playback' }[transport.phase] ?? 'Start playback'
+    playLabel: { pending: 'Starting playback', paused: 'Resume playback', playing: 'Pause playback', waiting: 'Pause playback' }[transport.phase] ?? 'Start playback',
+    domain: nowPlaying.domain ?? null,
+    cardKind: card?.kind ?? null,
+    cardCode: cardCode ?? null,
+    cardTitle: card?.title ?? null,
+    workspaceTitle: workspace?.title ?? null,
+    precision: precision ?? 'none',
+    channel: nowPlaying.channel ?? null,
+    channelLabel: channel ?? null,
+    stateLabel: state,
+    actualRepresentation: actual ?? null,
+    sourceLabel: source ?? null,
+    speaker: speaker ?? null,
+    segmentText,
+    playedText: !structured && item?.playedText && item.playedText.trim().toLowerCase() !== String(title ?? '').trim().toLowerCase()
+      ? item.playedText
+      : null,
+    itemPartLabel: partLabel ?? null,
+    variation,
+    variationKind,
+    variationBadge,
+    queueSummary: queueSummary ?? null,
+    playbackInfo,
+    technicalDetails,
+    representationBreakdown: {
+      saved: saved ?? null,
+      requested: requested ?? null,
+      command: command ?? null,
+      actual: actual ?? null,
+      variation,
+      variationKind,
+      variationBadge
+    }
   };
 };
