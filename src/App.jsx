@@ -1,7 +1,7 @@
 /* ProLingo - Modular Application Shell */
 /* eslint-disable no-control-regex */
 // eslint-disable-next-line no-unused-vars
-import React, { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, memo, useMemo, useCallback, useLayoutEffect, useSyncExternalStore } from 'react';
 import { useMainAppPrimaryState } from './hooks/useMainAppPrimaryState';
 import { useMainAppRuntimeRefs } from './hooks/useMainAppRuntimeRefs';
 import { useMasteryProgressState } from './hooks/useMasteryProgressState';
@@ -263,13 +263,36 @@ const loadTableLocalAudioPlaybackPreference = () => {
   }
 };
 
+const subscribeNoBookQaSession = () => () => {};
+const getEmptyBookQaSessionSnapshot = () => null;
+const rejectBookQaLocalSnapshotWrite = () => {
+  throw new Error('Book QA projections are session-owned; local Text snapshots cannot be written.');
+};
+const BOOK_QA_NATIVE_COMMAND_TYPES = new Set([
+  'collection.create', 'collection.update', 'document.create', 'document.update',
+  'block.create', 'contentUnit.create', 'speaker.register', 'segment.create'
+]);
+
 // --- MAIN COMPONENT ---
-const MainApp = ({ goHome, theme, setTheme }) => {
+const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false }) => {
+  const bookQaMode = Boolean(bookQaConnection?.session && bookQaConnection?.adapter);
+  const bookQaSession = bookQaConnection?.session || null;
+  const bookQaSnapshot = useSyncExternalStore(
+    bookQaSession?.subscribe || subscribeNoBookQaSession,
+    bookQaSession?.getSnapshot || getEmptyBookQaSessionSnapshot,
+    getEmptyBookQaSessionSnapshot
+  );
+  const bookQaSessionState = useSyncExternalStore(
+    bookQaSession?.subscribe || subscribeNoBookQaSession,
+    bookQaSession?.getState || getEmptyBookQaSessionSnapshot,
+    getEmptyBookQaSessionSnapshot
+  );
   const {
     mode, setMode, tableViewMode, setTableViewMode, studyQueue, setStudyQueue,
     rangeInput, setRangeInput, tableContent, setTableContent, textContent, setTextContent, textIdentityState, setTextIdentityState,
-    legacyTextBootstrapState, activeTextDocumentId, setActiveTextDocumentId, textLibrarySnapshot, setTextLibrarySnapshot,
-    textDatabaseStatus, setTextDatabaseStatus, textDatabaseError, setTextDatabaseError,
+    legacyTextBootstrapState, activeTextDocumentId: localActiveTextDocumentId, setActiveTextDocumentId: setLocalActiveTextDocumentId,
+    textLibrarySnapshot: localTextLibrarySnapshot, setTextLibrarySnapshot: setLocalTextLibrarySnapshot,
+    textDatabaseStatus: localTextDatabaseStatus, setTextDatabaseStatus, textDatabaseError: localTextDatabaseError, setTextDatabaseError,
     textStructuredPreferences, setTextStructuredPreferences, playlist, setPlaylist, newTextItem, setNewTextItem, csvBaselineContent, setCsvBaselineContent,
     pendingDeleteItem, setPendingDeleteItem, masterSearch, setMasterSearch, masterFilter, setMasterFilter,
     isChangeReviewOpen, setIsChangeReviewOpen, isRevertAllConfirmOpen, setIsRevertAllConfirmOpen, undoStack, setUndoStack,
@@ -301,7 +324,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setScrollTop, containerHeight, setContainerHeight, rowHeights, setRowHeights, isMobile,
     setIsMobile, showAppBar, setShowAppBar, lastScrollY, isAutoScrolling, isSystemBusy,
     silentAudioRef, silentWavUrlRef,
-  } = useMainAppPrimaryState();
+  } = useMainAppPrimaryState({ initialMode: bookQaMode ? 'text' : 'table', skipLegacyTextBootstrap: bookQaMode });
+
+  const activeTextDocumentId = bookQaMode ? (bookQaSessionState?.view?.selection?.workspaceId || null) : localActiveTextDocumentId;
+  const textLibrarySnapshot = bookQaMode ? bookQaSnapshot : localTextLibrarySnapshot;
+  const textDatabaseStatus = bookQaMode ? (bookQaSessionState?.disposed ? 'error' : 'ready') : localTextDatabaseStatus;
+  const textDatabaseError = bookQaMode ? bookQaSessionState?.error || null : localTextDatabaseError;
+  const setTextLibrarySnapshot = bookQaMode ? rejectBookQaLocalSnapshotWrite : setLocalTextLibrarySnapshot;
+  const setActiveTextDocumentId = bookQaMode ? rejectBookQaLocalSnapshotWrite : setLocalActiveTextDocumentId;
 
   const { masteryByVocabId, setMasteryByVocabId } = useMasteryProgressState();
   const { masteryFilter, setMasteryFilter } = useMasteryFilterState();
@@ -408,8 +438,9 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [structuredTextFullAudioRuntimeUrls]);
 
   useEffect(() => {
+    if (bookQaMode) return undefined;
     executeTextStructuredAudioGenerationPreferencePersistenceEffect(structuredTextAudioGenerationPreferences);
-  }, [structuredTextAudioGenerationPreferences]);
+  }, [structuredTextAudioGenerationPreferences, bookQaMode]);
 
   useEffect(() => {
     audioDownloadHistoryRef.current = audioDownloadHistory;
@@ -639,8 +670,8 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   useEffect(() => executeControlSectionPersistenceEffect(sidebarSection), [sidebarSection]);
 
   useEffect(() => {
-    executeTextStructuredPreferencePersistenceEffect(textStructuredPreferences);
-  }, [textStructuredPreferences]);
+    if (!bookQaMode) executeTextStructuredPreferencePersistenceEffect(textStructuredPreferences);
+  }, [textStructuredPreferences, bookQaMode]);
 
   useEffect(() => {
     activeVocabularyOrderRef.current = activeVocabularyOrder;
@@ -704,6 +735,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     snapshot,
     { resetExisting = false, markHydrated = true } = {}
   ) => {
+    if (bookQaMode) return null;
     if (!Array.isArray(snapshot?.audioVariants) || !Array.isArray(snapshot?.blocks)) return null;
     const hydrationToken = ++structuredTextAudioStagingHydrationTokenRef.current;
     if (markHydrated) structuredTextAudioStagingHydratedRef.current = true;
@@ -736,13 +768,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Warn', `Text Staging restore failed: ${error?.message || error}`);
       return null;
     }
-  }, [addLog]);
+  }, [addLog, bookQaMode]);
 
   useEffect(() => {
+    if (bookQaMode) return undefined;
     if (textDatabaseStatus !== 'ready' || structuredTextAudioStagingHydratedRef.current) return;
     if (!Array.isArray(textLibrarySnapshot?.audioVariants) || !Array.isArray(textLibrarySnapshot?.blocks)) return;
     rehydrateStructuredTextAudioStagingRuntime(textLibrarySnapshot, { resetExisting: false, markHydrated: true });
-  }, [textDatabaseStatus, textLibrarySnapshot, rehydrateStructuredTextAudioStagingRuntime]);
+  }, [bookQaMode, textDatabaseStatus, textLibrarySnapshot, rehydrateStructuredTextAudioStagingRuntime]);
 
 
   const refreshTableAudioStaging = useCallback(async () => {
@@ -768,6 +801,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [addLog]);
 
   useEffect(() => {
+    if (bookQaMode) return undefined;
     let cancelled = false;
     Promise.all([
       listAudioStagingMetadata({ mode: 'table', includeReleased: true }),
@@ -781,13 +815,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       if (!cancelled) addLog('Warn', `R2 Audio Staging restore: ${error?.message || error}`);
     });
     return () => { cancelled = true; };
-  }, [addLog]);
+  }, [addLog, bookQaMode]);
 
   // E: Gemini access is resolved by server-side OWNER/BYOK sessions.
   useEffect(() => {
-    executeGeminiOwnerStatusService({ setGeminiOwnerState, addLog });
+    if (!bookQaMode) executeGeminiOwnerStatusService({ setGeminiOwnerState, addLog });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bookQaMode]);
 
   const handleUserApiKeyChange = (eventOrValue) => {
     const nextValue = typeof eventOrValue === 'string' ? eventOrValue : eventOrValue?.target?.value || '';
@@ -838,20 +872,24 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   // P4-A2: bootstrap from isolated migration input. Visible Text state starts empty
   // until IndexedDB hydration completes, preventing stale/default line flash.
-  useEffect(() => executeTextLibraryBootstrapEffect({
+  useEffect(() => {
+    if (bookQaMode) return undefined;
+    return executeTextLibraryBootstrapEffect({
     legacyState: legacyTextBootstrapState,
     setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot,
     setTextDatabaseStatus, setTextDatabaseError, addLog
-  }), [legacyTextBootstrapState, addLog, setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot, setTextDatabaseStatus, setTextDatabaseError]);
+    });
+  }, [bookQaMode, legacyTextBootstrapState, addLog, setTextIdentityState, setTextContent, setActiveTextDocumentId, setTextLibrarySnapshot, setTextDatabaseStatus, setTextDatabaseError]);
 
   useEffect(() => {
+    if (bookQaMode) return undefined;
     if (textDatabaseStatus !== 'hydrated' && textDatabaseStatus !== 'ready') return undefined;
     let cancelled = false;
     readTextSourceAttachments()
       .then(attachments => { if (!cancelled) setTextSourceAttachments(attachments); })
       .catch(error => { if (!cancelled) addLog('Error', `Text source registry load failed: ${error?.message || error}`); });
     return () => { cancelled = true; };
-  }, [textDatabaseStatus, addLog]);
+  }, [bookQaMode, textDatabaseStatus, addLog]);
 
   useEffect(() => {
     setTextIdentityState(prev => reconcileTextIdentityState(prev, textContent));
@@ -868,7 +906,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const updateTextMainReaderPreference = patch => setTextMainReaderPreference(previous => (
     saveTextMainReaderPreference({ ...previous, ...patch })
   ));
-  const textLibraryCatalog = useMemo(() => textLibrarySnapshot ? resolveTextLibraryCatalog(textLibrarySnapshot) : { rootDocuments: [], collections: [] }, [textLibrarySnapshot]);
+  const textLibraryCatalog = useMemo(() => {
+    if (!textLibrarySnapshot) return { rootDocuments: [], collections: [] };
+    const catalog = resolveTextLibraryCatalog(textLibrarySnapshot);
+    if (!bookQaMode) return catalog;
+    const supported = document => document?.editorModel === 'structured-v1'
+      && ['paragraph', 'conversation', 'mixed'].includes(document.documentType);
+    return {
+      rootDocuments: catalog.rootDocuments.filter(supported),
+      collections: catalog.collections.map(collection => ({ ...collection, documents: collection.documents.filter(supported) }))
+    };
+  }, [textLibrarySnapshot, bookQaMode]);
   const activeTextDocumentTree = useMemo(() => textLibrarySnapshot && activeTextDocumentId ? resolveTextLibraryDocumentTree(textLibrarySnapshot, activeTextDocumentId) : null, [textLibrarySnapshot, activeTextDocumentId]);
   const activeTextDocument = activeTextDocumentTree ? { ...activeTextDocumentTree, blocks: undefined } : null;
   const activeTextWorkspacePreferenceKey = useMemo(
@@ -1721,10 +1769,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     setStructuredTextAudioGenerationPreferences(prev => normalizeTextStructuredAudioGenerationPreferences({ ...prev, ...(patch || {}) }));
   }, []);
 
-  useEffect(() => executeTextLibraryCompatibilityPersistenceEffect({
+  useEffect(() => {
+    if (bookQaMode) return undefined;
+    return executeTextLibraryCompatibilityPersistenceEffect({
     textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState,
     setTextLibrarySnapshot, setTextDatabaseError, addLog
-  }), [textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setTextDatabaseError, addLog]);
+    });
+  }, [bookQaMode, textDatabaseStatus, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setTextDatabaseError, addLog]);
 
   useEffect(() => executePlaylistContentSyncEffect({
     mode, textIdentityState, textDatabaseStatus, setTextDatabaseStatus, setPlaylist, setBatchConfig, tableContent, sequenceHighWater,
@@ -2200,6 +2251,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
 
   const runStructuredTextAudioStagingGc = useCallback(async (snapshot, reason = 'text-rf-gc') => {
+    if (bookQaMode) throw new Error('Audio Staging garbage collection is unavailable in A1a Book QA.');
     if (!snapshot) return null;
     const result = await executeTextAudioStagingGarbageCollection(snapshot, { reason });
     if (result?.released) {
@@ -2208,7 +2260,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Text Audio', `Text Staging GC: released ${result.released} unreferenced Split/Full physical file${result.released === 1 ? '' : 's'} (${result.orphanBytes || 0} bytes). Legacy staging kept.`);
     }
     return result;
-  }, [forgetStructuredTextStagingRecord, addLog]);
+  }, [bookQaMode, forgetStructuredTextStagingRecord, addLog]);
 
   const flushStructuredTextStagingSummary = useCallback(() => {
     setStructuredTextAudioStagingSummary({ ...(structuredTextAudioStagingSummaryRef.current || { count: 0, bytes: 0, voices: {} }) });
@@ -2431,6 +2483,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [textLibrarySnapshot, materializeStructuredTextExternalRfRequirementsBulk, addLog]);
 
   const handleStructuredTextAddAudioZipFiles = useCallback(async (files, snapshotOverride = null) => {
+    if (bookQaMode) throw new Error('Portable audio ZIP import is unavailable in A1a Book QA.');
     const coordinator = structuredTextZipImportCoordinatorRef.current;
     const expectedMode = latestAudioFolderScopeRef.current?.mode || mode;
     const expectedEditorModel = latestAudioFolderScopeRef.current?.activeTextEditorModel || activeTextEditorModel;
@@ -2622,7 +2675,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
         setStructuredTextZipImportBusy(false);
       }
     }
-  }, [mode, activeTextEditorModel, activeTextDocumentId, textLibrarySnapshot, rememberStructuredTextStagingRecord, flushStructuredTextStagingSummary, setTextLibrarySnapshot, addLog]);
+  }, [bookQaMode, mode, activeTextEditorModel, activeTextDocumentId, textLibrarySnapshot, rememberStructuredTextStagingRecord, flushStructuredTextStagingSummary, setTextLibrarySnapshot, addLog]);
 
   const reconcileStructuredTextExternalAudioSources = useCallback(async (snapshot) => {
     if (!snapshot) return { folder: null, zip: null };
@@ -2640,6 +2693,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [handleStructuredTextAddAudioZipFiles, structuredTextAudioZipState.archives, addLog]);
 
   const handleStructuredTextClearAudioZipFiles = useCallback(() => {
+    if (bookQaMode) throw new Error('Portable audio source changes are unavailable in A1a Book QA.');
     clearTextStructuredAudioZipRuntimeCache();
     setStructuredTextAudioRuntimeUrls(prev => {
       const next = {};
@@ -2661,9 +2715,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     setStructuredTextAudioZipState({ archives: [], matchedCount: 0, splitMatchedCount: 0, fullMatchedCount: 0, orphanCount: 0, legacyCount: 0, aliasMatchedCount: 0, unsupportedCount: 0, physicalImportedCount: 0 });
     addLog('Text Audio', 'Portable ZIP source list cleared. Audio already imported into Text Staging remains available.');
-  }, [addLog]);
+  }, [bookQaMode, addLog]);
 
   const handleStructuredTextClearStaging = useCallback(async () => {
+    if (bookQaMode) throw new Error('Audio Staging deletion is unavailable in A1a Book QA.');
     forceStopAll();
     const result = await releaseTextAudioStaging({ clearHistory: false });
     clearTextAudioStagingRuntimeCache();
@@ -2691,9 +2746,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     addLog('Text Audio', `Text Staging released (${result?.released || 0} physical binary file${Number(result?.released || 0) === 1 ? '' : 's'}). Split/Full metadata history remains.`);
     return result;
-  }, [forceStopAll, addLog]);
+  }, [bookQaMode, forceStopAll, addLog]);
 
   const handleStructuredTextClearRuntimeCache = useCallback(() => {
+    if (bookQaMode) throw new Error('Audio runtime cache operations are unavailable in A1a Book QA.');
     forceStopAll();
     clearTextStructuredAudioZipRuntimeCache();
     clearTextStructuredAudioFolderRuntimeCache();
@@ -2719,7 +2775,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       return next;
     });
     addLog('Text Audio', 'Text runtime URL cache cleared. IndexedDB Staging and portable ZIP import metadata remain attached; Folder is deprecated/locked.');
-  }, [forceStopAll, addLog]);
+  }, [bookQaMode, forceStopAll, addLog]);
 
   const handleStructuredTextChooseAudioFolder = useCallback(async () => {
     setStructuredTextAudioFolderState(prev => ({ ...prev, status: 'deprecated-locked', deprecated: true, locked: true, matchedCount: 0 }));
@@ -3552,6 +3608,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [textLibrarySnapshot, activeTextDocumentTree, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, setTextLibrarySnapshot, rememberStructuredTextStagingRecord, addLog]);
 
   const handleStructuredTextGenerateAudio = useCallback(async (segmentId, channel) => {
+    if (bookQaMode) return null;
     if (structuredTextAudioGenerationState.running) return null;
     forceStopAll();
     setStructuredTextAudioGenerationState({ running: true, completed: 0, total: 1, current: { segmentId, channel }, failedJobs: [], lastStatus: null });
@@ -3565,9 +3622,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       lastStatus: result?.status || 'unknown'
     });
     return result;
-  }, [structuredTextAudioGenerationState.running, forceStopAll, generateStructuredTextAudioJob]);
+  }, [bookQaMode, structuredTextAudioGenerationState.running, forceStopAll, generateStructuredTextAudioJob]);
 
   const runStructuredTextAudioGenerationBatch = useCallback(async (requirementsCandidate = null, options = {}) => {
+    if (bookQaMode) throw new Error('Audio generation is unavailable in A1a Book QA.');
     const batchContext = resolveLiveStructuredTextBatchContext();
     if (structuredTextAudioGenerationState.running || !(batchContext.selection?.documentCount > 0)) return null;
     forceStopAll();
@@ -3850,7 +3908,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       structuredTextAudioBatchStopRef.current = false;
       structuredTextAudioGenerationAbortRef.current = null;
     }
-  }, [structuredTextAudioGenerationState.running, resolveLiveStructuredTextBatchContext, structuredTextAudioGenerationPreferences, edgeVoices, forceStopAll, generateStructuredTextAudioJob, generateStructuredTextFullAudioJob, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
+  }, [bookQaMode, structuredTextAudioGenerationState.running, resolveLiveStructuredTextBatchContext, structuredTextAudioGenerationPreferences, edgeVoices, forceStopAll, generateStructuredTextAudioJob, generateStructuredTextFullAudioJob, flushStructuredTextPendingRuntimeEntries, flushStructuredTextPendingAudioVariants, flushStructuredTextStagingSummary, addLog]);
 
   const handleStructuredTextCancelGeneration = useCallback(() => {
     structuredTextAudioBatchStopRef.current = true;
@@ -4504,7 +4562,13 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
   };
 
-  const runTextLibraryUiCommand = useCallback(async (operation) => {
+  const runTextLibraryUiCommand = useCallback(async (operation, { bookQaCapability = null } = {}) => {
+    if (bookQaMode && !['native-command', 'session-navigation'].includes(bookQaCapability)) {
+      const message = 'This Text operation is unavailable in A1a Book QA. No canonical persistence fallback is permitted.';
+      setTextLibraryCommandError(message);
+      addLog('Warn', message);
+      return null;
+    }
     if (textLibraryCommandBusy || isSystemBusy || structuredTextAudioGenerationState.running) return null;
     setTextLibraryCommandBusy(true);
     setTextLibraryCommandError(null);
@@ -4518,7 +4582,33 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     } finally {
       setTextLibraryCommandBusy(false);
     }
-  }, [textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, addLog]);
+  }, [bookQaMode, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, addLog]);
+
+  const dispatchBookQaNativeCommand = useCallback(async (command, { selection = null, selectResultWorkspace = false } = {}) => {
+    if (!bookQaMode || !bookQaSession) throw new Error('Book QA persistence session is not connected.');
+    if (!BOOK_QA_NATIVE_COMMAND_TYPES.has(command?.type)) throw new Error(`Book QA command is not enabled: ${command?.type || 'unknown'}`);
+    const previousSelection = bookQaSession.getState()?.view?.selection || {};
+    if (selection && !bookQaSession.navigate(selection)) throw new Error('Book QA command scope is stale; refresh the isolated library.');
+    const outcome = await bookQaSession.dispatch(command);
+    if (!outcome?.ok) {
+      const code = outcome?.error?.code || 'COMMAND_REJECTED';
+      const recovery = outcome?.error?.reloadRequired ? ' Refresh the connected library before retrying; this command was not replayed.' : '';
+      const error = new Error(`${code}: ${outcome?.error?.message || 'Book QA command failed.'}${recovery}`);
+      error.code = code;
+      error.reloadRequired = Boolean(outcome?.error?.reloadRequired);
+      setTextLibraryCommandError(error.message);
+      throw error;
+    }
+    const result = outcome.result;
+    if (selectResultWorkspace && typeof result?.id === 'string') {
+      if (!bookQaSession.navigate({ workspaceId: result.id })) throw new Error('Committed Workspace could not be selected. Refresh the connected library.');
+    } else if (previousSelection.workspaceId && bookQaSession.getSnapshot()?.documents?.some(document => document.id === previousSelection.workspaceId)) {
+      bookQaSession.navigate({ workspaceId: previousSelection.workspaceId });
+    } else if (previousSelection.collectionId && bookQaSession.getSnapshot()?.collections?.some(collection => collection.id === previousSelection.collectionId)) {
+      bookQaSession.navigate({ collectionId: previousSelection.collectionId });
+    }
+    return result;
+  }, [bookQaMode, bookQaSession]);
 
   const handleTextLibrarySelectDocument = useCallback((documentId) => runTextLibraryUiCommand(async () => {
     const owner = playbackContextRef.current;
@@ -4530,11 +4620,19 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setPlayingContext(null);
     }
     setSavedIndices(prev => ({ ...prev, text: null }));
+    if (bookQaMode) {
+      const document = bookQaSession.getSnapshot()?.documents?.find(item => item.id === documentId);
+      if (document?.editorModel !== 'structured-v1' || !['paragraph', 'conversation', 'mixed'].includes(document.documentType)) {
+        throw new Error('Legacy or unsupported Workspaces are unavailable in A1a Book QA.');
+      }
+      if (!bookQaSession.navigate({ workspaceId: documentId })) throw new Error('Workspace is not in the connected QA snapshot.');
+      return { id: documentId };
+    }
     return executeTextLibrarySelectDocument({
       documentId, activeTextDocumentId, activeTextEditorModel, textIdentityState,
       setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
     });
-  }), [runTextLibraryUiCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+  }, bookQaMode ? { bookQaCapability: 'session-navigation' } : undefined), [runTextLibraryUiCommand, bookQaMode, bookQaSession, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
 
   const handleTextLibrarySearchAction = useCallback(async (result, requestedAction = TEXT_LIBRARY_SEARCH_ACTIONS.OPEN) => {
@@ -4600,6 +4698,23 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
 
   const handleTextLibraryCreateDocument = useCallback((payload) => runTextLibraryUiCommand(async () => {
+    if (bookQaMode) {
+      if (payload?.editorModel === 'legacy-line-v1' || !['paragraph', 'conversation', 'mixed'].includes(payload?.documentType || 'paragraph')) {
+        throw new Error('A1a supports only structured v2 Paragraph, Conversation, and Mixed Workspaces.');
+      }
+      const result = await dispatchBookQaNativeCommand({
+        type: 'document.create',
+        payload: {
+          title: payload.title,
+          documentType: payload.documentType || 'paragraph',
+          collectionId: payload.collectionId || null,
+          textLanguage: payload.textLanguage,
+          meaningLanguage: payload.meaningLanguage,
+          metadata: payload.metadata
+        }
+      }, { selection: payload.collectionId ? { collectionId: payload.collectionId } : {}, selectResultWorkspace: true });
+      return result;
+    }
     setCurrentIndex(null);
     if (!playbackContextRef.current) {
       setPlayingIndex(null);
@@ -4610,11 +4725,17 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       payload, activeTextDocumentId, activeTextEditorModel, textIdentityState,
       setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, addLog
     });
-  }), [runTextLibraryUiCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
+  }, bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, playbackContextRef, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, setPlayingIndex, setPlayingContext, setSavedIndices, addLog]);
 
-  const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
-  const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
-  const handleTextLibraryMoveDocument = useCallback((id, collectionId) => runTextLibraryUiCommand(() => executeTextLibraryMoveDocument({ id, collectionId, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryCreateCollection = useCallback((title) => runTextLibraryUiCommand(() => bookQaMode
+    ? dispatchBookQaNativeCommand({ type: 'collection.create', payload: { title } }, { selection: {} })
+    : executeTextLibraryCreateCollection({ title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryRenameDocument = useCallback((id, title) => runTextLibraryUiCommand(() => bookQaMode
+    ? dispatchBookQaNativeCommand({ type: 'document.update', payload: { id, title } }, { selection: { workspaceId: id } })
+    : executeTextLibraryRenameDocument({ id, title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryMoveDocument = useCallback((id, collectionId) => runTextLibraryUiCommand(() => bookQaMode
+    ? dispatchBookQaNativeCommand({ type: 'document.update', payload: { id, collectionId: collectionId || null } }, { selection: { workspaceId: id } })
+    : executeTextLibraryMoveDocument({ id, collectionId, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteDocument = useCallback((id) => runTextLibraryUiCommand(async () => {
     const result = await executeTextLibraryDeleteDocument({
       id, activeTextDocumentId, activeTextEditorModel, textIdentityState,
@@ -4624,9 +4745,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (result?.librarySnapshot) await runStructuredTextAudioStagingGc(result.librarySnapshot, 'document-delete');
     return result;
   }), [runTextLibraryUiCommand, activeTextDocumentId, activeTextEditorModel, textIdentityState, setTextLibrarySnapshot, setActiveTextDocumentId, setTextIdentityState, setTextContent, setCurrentIndex, runStructuredTextAudioStagingGc, addLog]);
-  const handleTextLibraryRenameCollection = useCallback((id, title) => runTextLibraryUiCommand(() => executeTextLibraryRenameCollection({ id, title, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
+  const handleTextLibraryRenameCollection = useCallback((id, title) => runTextLibraryUiCommand(() => bookQaMode
+    ? dispatchBookQaNativeCommand({ type: 'collection.update', payload: { id, title } }, { selection: { collectionId: id } })
+    : executeTextLibraryRenameCollection({ id, title, setTextLibrarySnapshot, addLog }), bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryDeleteCollection = useCallback((id) => runTextLibraryUiCommand(() => executeTextLibraryDeleteCollection({ id, setTextLibrarySnapshot, addLog })), [runTextLibraryUiCommand, setTextLibrarySnapshot, addLog]);
   const handleTextLibraryStructuredCommand = useCallback((command) => runTextLibraryUiCommand(async () => {
+    if (bookQaMode) return dispatchBookQaNativeCommand(command);
     const result = await executeTextLibraryStructuredCommand({ command, setTextLibrarySnapshot, addLog });
     const gcTypes = new Set([
       TEXT_LIBRARY_COMMAND_TYPES.UPDATE_SEGMENT,
@@ -4639,7 +4763,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     ]);
     if (result?.librarySnapshot && gcTypes.has(command?.type)) await runStructuredTextAudioStagingGc(result.librarySnapshot, `command-${command.type}`);
     return result;
-  }), [runTextLibraryUiCommand, setTextLibrarySnapshot, runStructuredTextAudioStagingGc, addLog]);
+  }, bookQaMode ? { bookQaCapability: 'native-command' } : undefined), [runTextLibraryUiCommand, bookQaMode, dispatchBookQaNativeCommand, setTextLibrarySnapshot, runStructuredTextAudioStagingGc, addLog]);
 
   const textPackSourceMetadata = useMemo(() => ({
     appVersion: APP_VERSION,
@@ -4851,7 +4975,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   const textLibraryShellDocumentTree = useMemo(() => ({
     ...(activeTextDocumentTree || {}),
     blocks: activeTextDocumentTree?.blocks || [],
-    __packActions: {
+    __packActions: bookQaMode ? null : {
       exportDocument: handleTextPackExportDocument,
       exportCollection: activeTextDocument?.collectionId ? handleTextPackExportCollection : null,
       attachOrSync: handleTextPackAttachOrSync,
@@ -4861,18 +4985,18 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       detachSource: handleTextSourceDetach,
       sourceAttachments: textSourceAttachments
     },
-    __databaseBackupActions: {
+    __databaseBackupActions: bookQaMode ? null : {
       exportDatabase: handleTextDatabaseBackupExport,
       inspectBackup: handleTextDatabaseBackupInspect,
       restoreDatabase: handleTextDatabaseBackupRestore
     },
-    __search: {
+    __search: bookQaMode ? null : {
       query: textLibrarySearchQuery,
       results: textLibrarySearchResults,
       onQueryChange: setTextLibrarySearchQuery,
       onAction: handleTextLibrarySearchAction
     },
-    __runtimeHardening: {
+    __runtimeHardening: bookQaMode ? null : {
       database: {
         collections: textLibrarySnapshot?.collections?.length || 0,
         workspaces: textLibrarySnapshot?.documents?.length || 0,
@@ -4886,9 +5010,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       zip: structuredTextAudioZipState,
       onAuditAndGc: handleStructuredTextRuntimeHardeningAudit
     }
-  }), [activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackAttachOrSync, handleTextPackImportCopy, handleTextExternalInitialImport, handleTextExternalImportDecision, handleTextSourceDetach, textSourceAttachments, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction, textLibrarySnapshot, structuredTextDocumentCoverage, structuredTextAudioStagingSummary, structuredTextAudioFolderState, structuredTextAudioZipState, handleStructuredTextRuntimeHardeningAudit]);
+  }), [bookQaMode, activeTextDocumentTree, activeTextDocument?.collectionId, handleTextPackExportDocument, handleTextPackExportCollection, handleTextPackAttachOrSync, handleTextPackImportCopy, handleTextExternalInitialImport, handleTextExternalImportDecision, handleTextSourceDetach, textSourceAttachments, handleTextDatabaseBackupExport, handleTextDatabaseBackupInspect, handleTextDatabaseBackupRestore, textLibrarySearchQuery, textLibrarySearchResults, handleTextLibrarySearchAction, textLibrarySnapshot, structuredTextDocumentCoverage, structuredTextAudioStagingSummary, structuredTextAudioFolderState, structuredTextAudioZipState, handleStructuredTextRuntimeHardeningAudit]);
 
   const handleStructuredTextAttachAudioFile = useCallback(async (segmentId, channel, file) => {
+    if (bookQaMode) throw new Error('Recorded audio attachment is unavailable in A1a Book QA.');
     if (!file || !segmentId || !['text', 'meaning'].includes(channel)) return null;
     const item = structuredTextPlaybackList.find(candidate => (candidate?.segmentId || candidate?.id) === segmentId) || { id: segmentId, segmentId };
     const voiceState = resolveStructuredTextChannelVoiceState(item, channel);
@@ -4929,7 +5054,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     addLog('Text Audio', `${result.id} attached to ${segmentId}/${channel} • ${voiceId}.`);
     return result;
-  }, [handleTextLibraryStructuredCommand, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, addLog]);
+  }, [bookQaMode, handleTextLibraryStructuredCommand, structuredTextPlaybackList, resolveStructuredTextChannelVoiceState, addLog]);
 
   const ensureStructuredTextSpeakerIdentity = useCallback(async (speakerLike) => {
     if (!activeTextDocumentTree?.id || activeTextDocumentTree.editorModel !== 'structured-v1') return null;
@@ -5724,6 +5849,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, []);
 
   const handleStructuredTextExportAudioMp3 = useCallback(async (segmentId, channel = 'text') => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
     const resolved = resolveStructuredTextManualReadySlot(segmentId, channel);
     if (!resolved) {
       addLog('Warn', `Text MP3 export: ${segmentId}/${channel} is not Ready on the resolved download voice.`);
@@ -5745,9 +5871,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Error', `Text MP3 export failed: ${error?.message || error}`);
       return { status: 'error', error };
     }
-  }, [resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  }, [bookQaMode, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
-  const handleStructuredTextExportCardZip = useCallback((blockId, options = {}) => executeStructuredTextCardZipExport({
+  const handleStructuredTextExportCardZip = useCallback((blockId, options = {}) => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
+    return executeStructuredTextCardZipExport({
     documentTree: activeTextDocumentTree,
     blockId,
     options,
@@ -5756,9 +5884,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     resolveManualReadySlot: resolveStructuredTextManualReadySlot,
     readBlob: readStructuredTextManualReadyBlob,
     addLog
-  }), [activeTextDocumentTree, structuredTextDownloadResolutionPreferences, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  });
+  }, [bookQaMode, activeTextDocumentTree, structuredTextDownloadResolutionPreferences, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
-  const handleStructuredTextExportFullCardAudio = useCallback((blockId, channel = 'text') => executeStructuredTextFullCardAudioExport({
+  const handleStructuredTextExportFullCardAudio = useCallback((blockId, channel = 'text') => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
+    return executeStructuredTextFullCardAudioExport({
     documentTree: activeTextDocumentTree,
     blockId,
     channel,
@@ -5767,9 +5898,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     resolveManualReadySlot: resolveStructuredTextManualReadySlot,
     readBlob: readStructuredTextManualReadyBlob,
     addLog
-  }), [activeTextDocumentTree, structuredTextDownloadResolutionPreferences, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  });
+  }, [bookQaMode, activeTextDocumentTree, structuredTextDownloadResolutionPreferences, resolveStructuredTextManualReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
   const handleStructuredTextBatchExportReadyMp3 = useCallback(() => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
     const batchContext = resolveLiveStructuredTextBatchContext();
     return executeStructuredTextBatchReadyMp3Export({
       batchSelection: batchContext.selection,
@@ -5780,9 +5913,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       readBlob: readStructuredTextManualReadyBlob,
       addLog
     });
-  }, [resolveLiveStructuredTextBatchContext, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  }, [bookQaMode, resolveLiveStructuredTextBatchContext, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
   const handleStructuredTextBatchExportConsolidatedZip = useCallback(({ partial = false } = {}) => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
     const batchContext = resolveLiveStructuredTextBatchContext();
     return executeStructuredTextBatchConsolidatedZipExport({
       partial,
@@ -5794,9 +5928,10 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       readBlob: readStructuredTextManualReadyBlob,
       addLog
     });
-  }, [resolveLiveStructuredTextBatchContext, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
+  }, [bookQaMode, resolveLiveStructuredTextBatchContext, resolveStructuredTextBatchReadySlot, readStructuredTextManualReadyBlob, addLog]);
 
   const handleStructuredTextBulkExport = useCallback(async ({ format = null, auto = false } = {}) => {
+    if (bookQaMode) throw new Error('Recorded audio export is unavailable in A1a Book QA.');
     const batchContext = resolveLiveStructuredTextBatchContext();
     const exportPlan = batchContext.getBulkExportPlan() || { physical: [], coverage: {} };
     const physical = Array.isArray(exportPlan.physical) ? exportPlan.physical : [];
@@ -5922,7 +6057,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       addLog('Error', `Bulk Export failed: ${error?.message || error}`);
       return { status: 'error', format: targetFormat, error };
     }
-  }, [resolveLiveStructuredTextBatchContext, structuredTextAudioGenerationPreferences, structuredTextBatchScope?.scopeMode, activeTextDocumentTree?.title, addLog]);
+  }, [bookQaMode, resolveLiveStructuredTextBatchContext, structuredTextAudioGenerationPreferences, structuredTextBatchScope?.scopeMode, activeTextDocumentTree?.title, addLog]);
 
   useEffect(() => {
     if (!structuredTextPendingAutoExport || structuredTextAudioGenerationState.running) return;
@@ -5970,6 +6105,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
   }, [structuredTextAudioGenerationState.running, structuredTextEdgeHealth.status, defaultStructuredTextVoiceId, structuredTextAudioGenerationPreferences, edgeVoices, setEdgeVoices, addLog]);
 
   const handleStructuredTextRemoveAudioVariant = useCallback(async (variantId) => {
+    if (bookQaMode) throw new Error('Audio metadata and staging deletion are unavailable in A1a Book QA.');
     const id = String(variantId || '').toUpperCase();
     if (!id) return null;
     const runtime = structuredTextAudioRuntimeUrlsRef.current?.[id] || null;
@@ -6043,7 +6179,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     });
     addLog('Text Audio', `Removed local manual audio variant ${id}.`);
     return result;
-  }, [textLibrarySnapshot?.audioVariants, handleTextLibraryStructuredCommand, forgetStructuredTextStagingRecord, addLog]);
+  }, [bookQaMode, textLibrarySnapshot?.audioVariants, handleTextLibraryStructuredCommand, forgetStructuredTextStagingRecord, addLog]);
 
 
   const handleSmartNav = (direction) => executeSmartPlaybackNavigation({
@@ -6075,11 +6211,14 @@ const MainApp = ({ goHome, theme, setTheme }) => {
       setPlaybackMode(resolveNextPlaybackMode(playbackMode));
   };
 
-  const handleModeSwitch = (targetMode) => executeModeSwitch({
+  const handleModeSwitch = (targetMode) => {
+    if (bookQaMode && targetMode !== 'text') return;
+    return executeModeSwitch({
     targetMode, mode, isSystemBusy, viewScrollPosRef, tableViewMode, getScrollPos, currentIndex,
     setSavedIndices, setScrollTop, pendingScrollRestoration, isAutoScrolling, setMode,
     savedIndices, setCurrentIndex, addLog
-  });
+    });
+  };
 
   const openFullPackPicker = () => {
       if (isSystemBusy) return;
@@ -7547,6 +7686,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (mode === 'table' && sidebarSection === 'audio') setSidebarSection('player');
   }, [mode, sidebarSection, setSidebarSection]);
 
+  useEffect(() => {
+    if (!bookQaMode) return;
+    setSidebarSection('data');
+    if (isMobile) setMobileTab('tools');
+  }, [bookQaMode, isMobile, setSidebarSection, setMobileTab]);
+
   const renderControlSectionTabs = (compact = false) => renderControlSectionTabsView({
     compact, sidebarSection, setSidebarSection, mode
   });
@@ -7667,6 +7812,7 @@ const MainApp = ({ goHome, theme, setTheme }) => {
     if (mode === 'text' && activeTextEditorModel === 'structured-v1') {
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
+        bookQaAudioDisabled={bookQaMode}
         readPlayer={readGlobalPlayer}
         useSharedCardReader={sharedTextReaderActive}
         mobileWorkspaceMeta={{
@@ -7879,6 +8025,11 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 
   return <NowPlayingContext.Provider value={readNowPlaying}>{renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
+    bookQaMode,
+    bookQaDatabaseName: bookQaConnection?.adapter?.dbName || '',
+    bookQaRefreshing,
+    bookQaPending: Boolean(bookQaSessionState?.pending),
+    onBookQaRefresh,
     isSystemBusy, savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit,
     currentDeckName, setCurrentDeckName, handleSaveDeck, mode, isCsvDirty,
     csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef, sourceInputRef, fullPackInputRef,
@@ -7938,10 +8089,12 @@ const MainApp = ({ goHome, theme, setTheme }) => {
 // --- APP WRAPPER (Theme & View Logic) ---
 const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
 
-const App = () => {
+const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false }) => {
+    const bookQaMode = Boolean(bookQaConnection?.session && bookQaConnection?.adapter);
     // Keep the current root view across same-tab reloads/HMR fallbacks.
     // A new browser session still starts on Landing by default.
     const [view, setView] = useState(() => {
+        if (bookQaMode) return 'app';
         if (typeof window === 'undefined') return 'landing';
         try {
             return window.sessionStorage.getItem(APP_VIEW_SESSION_KEY) === 'app' ? 'app' : 'landing';
@@ -8019,7 +8172,16 @@ const App = () => {
 
     return (
         <div className="antialiased transition-colors duration-300">
-            {view === 'landing' ? (
+            {bookQaMode ? (
+                <MainApp
+                    goHome={() => {}}
+                    theme={theme}
+                    setTheme={setTheme}
+                    bookQaConnection={bookQaConnection}
+                    onBookQaRefresh={onBookQaRefresh}
+                    bookQaRefreshing={bookQaRefreshing}
+                />
+            ) : view === 'landing' ? (
                 <LandingPage 
                     onStart={openAppView} 
                     theme={theme}

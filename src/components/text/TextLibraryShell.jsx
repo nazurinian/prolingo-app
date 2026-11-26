@@ -28,6 +28,7 @@ export const TextLibraryShell = ({
   onDeleteCollection,
   onStructuredCommand,
   onSectionChange,
+  bookQaMode = false,
   compact = false
 }) => {
   const [createMode, setCreateMode] = useState(null);
@@ -88,6 +89,58 @@ export const TextLibraryShell = ({
     if (isBusy || demoBusy) return;
     setDemoBusy(mode);
     try {
+      if (bookQaMode) {
+        const type = mode === 'mixed' ? 'mixed' : mode;
+        const document = await onCreateDocument?.({
+          title: `Book QA · ${type[0].toUpperCase()}${type.slice(1)} sample`,
+          documentType: type,
+          editorModel: 'structured-v1',
+          collectionId: null
+        });
+        if (!document?.id || !onStructuredCommand) return;
+        const createCard = async (blockType, title) => onStructuredCommand({
+          type: TEXT_LIBRARY_COMMAND_TYPES.CREATE_BLOCK,
+          payload: { documentId: document.id, blockType, title }
+        });
+        const createParagraph = async (title, rows) => {
+          const block = await createCard('paragraph', title);
+          if (!block?.id) return;
+          const section = await onStructuredCommand({ type: 'contentUnit.create', payload: { blockId: block.id, kind: 'paragraph' } });
+          if (!section?.id) return;
+          for (const row of rows) {
+            const result = await onStructuredCommand({ type: 'segment.create', payload: { blockId: block.id, unitId: section.id, ...row, joinAfter: 'space' } });
+            if (!result?.id) return;
+          }
+        };
+        const createConversation = async (title, turns) => {
+          const block = await createCard('conversation', title);
+          if (!block?.id) return;
+          for (const turn of turns) {
+            const speaker = await onStructuredCommand({ type: 'speaker.register', payload: { documentId: document.id, label: turn.speaker } });
+            if (!speaker?.id) return;
+            const unit = await onStructuredCommand({ type: 'contentUnit.create', payload: { blockId: block.id, kind: 'turn', speakerId: speaker.id } });
+            if (!unit?.id) return;
+            const segment = await onStructuredCommand({ type: 'segment.create', payload: { blockId: block.id, unitId: unit.id, text: turn.text, meaning: turn.meaning, joinAfter: 'line' } });
+            if (!segment?.id) return;
+          }
+        };
+        const paragraphRows = [
+          { text: 'I practise English every day.', meaning: 'Saya berlatih bahasa Inggris setiap hari.' },
+          { text: 'Today I am testing the ProLingo player.', meaning: 'Hari ini saya sedang menguji pemutar ProLingo.' }
+        ];
+        const conversationTurns = [
+          { speaker: 'David', text: 'Hi, shall we start our practice?', meaning: 'Hai, apakah kita mulai latihan kita?' },
+          { speaker: 'Maya', text: 'Yes, I am ready.', meaning: 'Ya, saya siap.' },
+          { speaker: 'Nina', text: 'Great. I will listen carefully.', meaning: 'Bagus. Saya akan mendengarkan dengan saksama.' }
+        ];
+        if (type === 'paragraph') await createParagraph('Daily Practice', paragraphRows);
+        else if (type === 'conversation') await createConversation('Three-speaker practice', conversationTurns);
+        else {
+          await createParagraph('Paragraph Card', paragraphRows);
+          await createConversation('Conversation Card', conversationTurns);
+        }
+        return;
+      }
       const result = await onCreateDocument?.({
         title: mode === 'legacy' ? 'Demo • Legacy Pronunciation' : mode === 'paragraph' ? 'Demo • Paragraph' : 'Demo • Conversation • 3 Speakers',
         documentType: mode === 'legacy' ? 'mixed' : mode,
@@ -341,7 +394,7 @@ export const TextLibraryShell = ({
       </div>
 
       <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/60 dark:bg-slate-900/30 px-2.5 py-2" data-text-data-section-description="true">
-        <p className="text-[9px] text-slate-500 dark:text-slate-400">{dataSection === 'library' ? 'Read and find Workspaces, then jump directly to their content.' : dataSection === 'create' ? 'Create Workspaces or Book Collections, or load isolated starter demos.' : dataSection === 'manage' ? 'Rename, move, organise, or safely delete existing local data.' : 'Import, export, attach/sync JSON sources, and manage full database backup/restore.'}</p>
+        <p className="text-[9px] text-slate-500 dark:text-slate-400">{dataSection === 'library' ? 'Read and find Workspaces, then jump directly to their content.' : dataSection === 'create' ? 'Create Workspaces or Book Collections, or load isolated starter demos.' : dataSection === 'manage' ? (bookQaMode ? 'Rename and move through scoped v2 commands. Delete is reserved for the confirmed QA maintenance workflow.' : 'Rename, move, organise, or safely delete existing local data.') : bookQaMode ? 'File transfers, backups and restore are unavailable in A1a until the separate audio and transfer boundary is integrated.' : 'Import, export, attach/sync JSON sources, and manage full database backup/restore.'}</p>
       </div>
 
       {dataSection === 'library' && <div className="space-y-2" data-text-library-mode-tabs="true">
@@ -358,7 +411,7 @@ export const TextLibraryShell = ({
 
       {dataSection === 'create' && <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-text-create-actions="true">
         <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'document' ? null : 'document')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'document' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
-          <span className="block text-[10px] font-black"><Plus className="w-3 h-3 inline mr-1"/>Create Workspace</span><span className={`mt-0.5 block text-[8px] ${createMode === 'document' ? 'text-indigo-100' : 'text-slate-400'}`}>Legacy, Paragraph, Conversation, or Mixed</span>
+          <span className="block text-[10px] font-black"><Plus className="w-3 h-3 inline mr-1"/>Create Workspace</span><span className={`mt-0.5 block text-[8px] ${createMode === 'document' ? 'text-indigo-100' : 'text-slate-400'}`}>{bookQaMode ? 'Paragraph, Conversation, or Mixed v2' : 'Legacy, Paragraph, Conversation, or Mixed'}</span>
         </button>
         <button type="button" disabled={isBusy} onClick={() => setCreateMode(current => current === 'collection' ? null : 'collection')} className={`min-h-11 rounded-xl border px-3 py-2 text-left transition ${createMode === 'collection' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300'}`}>
           <span className="block text-[10px] font-black"><Layers className="w-3 h-3 inline mr-1"/>Create Book Collection</span><span className={`mt-0.5 block text-[8px] ${createMode === 'collection' ? 'text-indigo-100' : 'text-slate-400'}`}>Optional organiser; Workspaces may stay Unfiled</span>
@@ -366,9 +419,9 @@ export const TextLibraryShell = ({
       </div>}
 
       {dataSection === 'create' && <div className="rounded-xl border border-violet-200 dark:border-violet-900 bg-violet-50/50 dark:bg-violet-950/15 p-2.5" data-text-library-demos="true">
-        <div className="flex items-center justify-between gap-2"><div><p className="text-[9px] font-black text-violet-700 dark:text-violet-300">Starter Demos</p><p className="text-[8px] text-slate-400">Create isolated local samples for Player/Audio testing.</p></div><PlayCircle className="w-4 h-4 text-violet-500"/></div>
-        <div className="mt-2 grid grid-cols-3 gap-1.5">{[['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation • 3']].map(([key,label]) => <button key={key} type="button" disabled={isBusy || Boolean(demoBusy)} onClick={() => createDemo(key)} className="min-h-10 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-1 py-2 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-40">{demoBusy === key ? 'Creating…' : label}</button>)}</div>
-        <p className="mt-1.5 text-[7px] leading-relaxed text-slate-400">Paragraph and Conversation demos include EN + ID/Meaning segments. Conversation uses David, Maya, and Nina. Legacy creates a clean pronunciation sandbox so you can paste/type any word or phrase without structured Cards.</p>
+        <div className="flex items-center justify-between gap-2"><div><p className="text-[9px] font-black text-violet-700 dark:text-violet-300">{bookQaMode ? 'Transactional v2 Samples' : 'Starter Demos'}</p><p className="text-[8px] text-slate-400">{bookQaMode ? 'Creates fresh structured records through the authoritative Book QA session; no audio is marked Ready.' : 'Create isolated local samples for Player/Audio testing.'}</p></div><PlayCircle className="w-4 h-4 text-violet-500"/></div>
+        <div className="mt-2 grid grid-cols-3 gap-1.5">{(bookQaMode ? [['paragraph','Paragraph'],['conversation','Conversation • 3'],['mixed','Mixed']] : [['legacy','Legacy'],['paragraph','Paragraph'],['conversation','Conversation • 3']]).map(([key,label]) => <button key={key} type="button" disabled={isBusy || Boolean(demoBusy)} onClick={() => createDemo(key)} className="min-h-10 rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 px-1 py-2 text-[8px] font-black text-violet-700 dark:text-violet-300 disabled:opacity-40">{demoBusy === key ? 'Creating…' : label}</button>)}</div>
+        <p className="mt-1.5 text-[7px] leading-relaxed text-slate-400">{bookQaMode ? 'Each sample uses native document, Card, Section/Turn, Speaker and Segment commands. The connected library remains the only writable snapshot.' : 'Paragraph and Conversation demos include EN + ID/Meaning segments. Conversation uses David, Maya, and Nina. Legacy creates a clean pronunciation sandbox so you can paste/type any word or phrase without structured Cards.'}</p>
       </div>}
 
       {dataSection === 'library' && !documentCount && <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900 bg-white/70 dark:bg-slate-900/30 p-4 text-center" data-text-library-empty="true">
@@ -593,7 +646,7 @@ export const TextLibraryShell = ({
           </div>
           <button type="button" disabled={isBusy} onClick={() => { setRenameTitle(activeDocument.title || ''); setRenameOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[8px] font-black text-indigo-600 dark:text-indigo-300"><Edit3 className="w-3 h-3 inline mr-1"/>Rename</button>
           {onMoveDocument && <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={() => { setMoveCollectionId(activeDocument.collectionId || ''); setMoveOpen(value => !value); setDeleteDocumentArmed(false); }} className="min-h-10 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[8px] font-black text-slate-600 dark:text-slate-300 disabled:opacity-40" title={activeDocumentAttachment ? 'Attached source Workspaces keep source ownership location. Detach first before moving.' : 'Move Workspace to Unfiled / Library Root or another Book Collection'}><Layers className="w-3 h-3 inline mr-1"/>Move</button>}
-          <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={requestDeleteDocument} className={`min-h-10 px-2.5 rounded-lg border text-[8px] font-black disabled:opacity-40 ${deleteDocumentArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`} title={activeDocumentAttachment ? 'This Workspace belongs to an attached source. Detach or Remove Source Data first.' : 'Delete local Workspace'}><Trash2 className="w-3 h-3 inline mr-1"/>{deleteDocumentArmed ? 'Confirm delete Workspace' : 'Delete Workspace'}</button>
+          {!bookQaMode && <button type="button" disabled={isBusy || Boolean(activeDocumentAttachment)} onClick={requestDeleteDocument} className={`min-h-10 px-2.5 rounded-lg border text-[8px] font-black disabled:opacity-40 ${deleteDocumentArmed ? 'border-red-500 bg-red-600 text-white' : 'border-red-200 dark:border-red-900 text-red-500'}`} title={activeDocumentAttachment ? 'This Workspace belongs to an attached source. Detach or Remove Source Data first.' : 'Delete local Workspace'}><Trash2 className="w-3 h-3 inline mr-1"/>{deleteDocumentArmed ? 'Confirm delete Workspace' : 'Delete Workspace'}</button>}
         </div>
         {activeDocumentAttachment && <p className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 px-2.5 py-2 text-[8px] leading-relaxed text-amber-700 dark:text-amber-300">This Workspace is owned by attached source <b>{activeDocumentAttachment.packageId}</b>. Direct Move/Delete is intentionally locked. Use TRANSFER → Attached sources → <b>Detach (keep local)</b> or <b>Remove Source Data</b>.</p>}
         {activeCollection && <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
@@ -609,7 +662,7 @@ export const TextLibraryShell = ({
         <div className="space-y-1.5 max-h-36 overflow-y-auto custom-scrollbar">
           {(catalog.collections || []).map(collection => <div key={collection.id} className="flex items-center gap-2 rounded-md bg-slate-50 dark:bg-slate-800/60 px-2 py-1.5">
             <div className="min-w-0 flex-1"><p className="text-[8px] font-black text-slate-600 dark:text-slate-300 truncate">{collection.title}</p><p className="text-[7px] text-slate-400">{collection.documents?.length || 0} workspace(s) • {collection.id}</p></div>
-            {(collection.documents?.length || 0) === 0 ? <button type="button" disabled={isBusy} onClick={async () => { if (typeof window !== 'undefined' && !window.confirm(`Delete empty Book Collection “${collection.title}”?`)) return; await onDeleteCollection?.(collection.id); }} className="min-h-9 px-2 flex items-center justify-center rounded-lg border border-red-200 dark:border-red-900 text-[7px] font-black text-red-500 disabled:opacity-40" title="Delete empty Book Collection"><Trash2 className="mr-1 h-3 w-3"/>DELETE EMPTY</button> : <span className="shrink-0 text-[7px] font-semibold text-slate-400">Remove {collection.documents?.length || 0} Workspace(s) first</span>}
+            {!bookQaMode && ((collection.documents?.length || 0) === 0 ? <button type="button" disabled={isBusy} onClick={async () => { if (typeof window !== 'undefined' && !window.confirm(`Delete empty Book Collection “${collection.title}”?`)) return; await onDeleteCollection?.(collection.id); }} className="min-h-9 px-2 flex items-center justify-center rounded-lg border border-red-200 dark:border-red-900 text-[7px] font-black text-red-500 disabled:opacity-40" title="Delete empty Book Collection"><Trash2 className="mr-1 h-3 w-3"/>DELETE EMPTY</button> : <span className="shrink-0 text-[7px] font-semibold text-slate-400">Remove {collection.documents?.length || 0} Workspace(s) first</span>)}
           </div>)}
         </div>
       </div>}
@@ -643,7 +696,7 @@ export const TextLibraryShell = ({
         <input value={newDocumentTitle} onChange={event => setNewDocumentTitle(event.target.value)} onKeyDown={event => event.key === 'Enter' && submitDocument()} placeholder="Workspace title" disabled={isBusy} className="w-full min-h-11 text-sm md:text-xs px-2 py-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white" autoFocus={!compact} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 p-1" data-text-create-mode-tabs="true">
-            {TEXT_WORKSPACE_CREATE_OPTIONS.map(({ key, label }) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
+            {TEXT_WORKSPACE_CREATE_OPTIONS.filter(({ key }) => !bookQaMode || key !== 'legacy').map(({ key, label }) => <button key={key} type="button" disabled={isBusy} onClick={() => setNewDocumentType(key)} className={`min-h-10 rounded-md px-1 text-[8px] font-black ${newDocumentType === key ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
           </div>
           <select value={newDocumentCollectionId} onChange={event => setNewDocumentCollectionId(event.target.value)} disabled={isBusy} className="min-h-11 text-sm md:text-[10px] p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-white">
             <option value="">Unfiled / Library Root</option>

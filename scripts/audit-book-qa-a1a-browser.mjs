@@ -1,0 +1,424 @@
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const uatRoot = path.join(root, 'dist-uat');
+const productionRoot = path.join(root, 'dist');
+const qaDbName = 'prolingo_text_library_d3b_qa_a1a_browser';
+const qaPrefix = 'prolingo_text_library_d3b_qa_';
+const canonicalName = 'prolingo_text_library';
+const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'));
+const evidenceDir = path.join(root, 'artifacts');
+const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
+
+const assertDir = async directory => {
+  try { await fs.access(directory); } catch { throw new Error(`Required build output is missing: ${directory}`); }
+};
+await assertDir(uatRoot);
+await assertDir(productionRoot);
+
+const probeSource = `
+import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
+import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
+
+const connect = async (dbName, execute = null) => {
+  const adapter = createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable', permissions: ['catalog', 'content'] });
+  const loaded = await adapter.loadState();
+  const first = loaded.snapshot.documents.find(d => d.editorModel === 'structured-v1' && ['paragraph', 'conversation', 'mixed'].includes(d.documentType));
+  const session = createTextDataManagementSession({ ...loaded, selection: first ? { workspaceId: first.id } : {}, boundary: 'disposable', permissions: ['catalog', 'content'], execute: execute || adapter.execute });
+  return { adapter, session, loaded };
+};
+export const readLibrary = async dbName => {
+  const adapter = createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable', permissions: ['catalog', 'content'] });
+  const loaded = await adapter.loadState();
+  const s = loaded.snapshot;
+  return { schemaVersion: s.schemaVersion, counts: { collections: s.collections.length, documents: s.documents.length, blocks: s.blocks.length, contentUnits: (s.contentUnits || []).length, segments: s.segments.length, audioVariants: s.audioVariants.length }, documents: s.documents.map(d => ({ id: d.id, title: d.title, documentType: d.documentType })), segmentTexts: s.segments.map(segment => segment.text), collections: s.collections.map(c => c.title) };
+};
+export const runConflict = async dbName => {
+  const left = await connect(dbName), right = await connect(dbName);
+  left.session.navigate({}); right.session.navigate({});
+  const first = await left.session.dispatch({ type: 'collection.create', payload: { title: 'A1a Conflict Winner' } });
+  const stale = await right.session.dispatch({ type: 'collection.create', payload: { title: 'A1a Conflict Loser' } });
+  const persisted = await readLibrary(dbName);
+  left.session.dispose(); right.session.dispose();
+  return { first: { ok: first.ok, error: first.error || null }, stale: { ok: stale.ok, error: stale.error || null }, persisted };
+};
+export const runCommittedStaleReceipt = async dbName => {
+  const adapter = createTextDataManagementPersistenceAdapter({ dbName, boundary: 'disposable', permissions: ['catalog', 'content'] });
+  const loaded = await adapter.loadState();
+  let notifyCommitted, releaseResult;
+  const committed = new Promise(resolve => { notifyCommitted = resolve; });
+  const gate = new Promise(resolve => { releaseResult = resolve; });
+  const delayedExecute = async (command, context) => {
+    const receipt = await adapter.execute(command, context);
+    notifyCommitted(receipt);
+    await gate;
+    return receipt;
+  };
+  Object.defineProperty(delayedExecute, 'authoritativeTransaction', { value: true });
+  const session = createTextDataManagementSession({ ...loaded, selection: {}, boundary: 'disposable', permissions: ['catalog', 'content'], execute: delayedExecute });
+  const pending = session.dispatch({ type: 'collection.create', payload: { title: 'A1a Stale Receipt Commit' } });
+  const receipt = await committed;
+  session.dispose();
+  releaseResult();
+  const result = await pending;
+  const persisted = await readLibrary(dbName);
+  return { receipt: { ok: receipt.ok, authoritative: receipt.authoritative }, result: { ok: result.ok, error: result.error || null }, persisted };
+};
+export const runUnsupportedAudioCommand = async dbName => {
+  const { session } = await connect(dbName);
+  const before = session.getSnapshot().audioVariants.length;
+  const result = await session.dispatch({ type: 'audioVariant.upsert', payload: {} });
+  const after = session.getSnapshot().audioVariants.length;
+  session.dispose();
+  return { ok: result.ok, error: result.error || null, before, after };
+};
+`;
+const probeBundle = (await build({
+  absWorkingDir: root,
+  stdin: { contents: probeSource, resolveDir: root, sourcefile: 'book-qa-a1a-probe.js', loader: 'js' },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2022'
+})).outputFiles[0].text;
+
+const mimeFor = file => ({
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json'
+}[path.extname(file)] || 'application/octet-stream');
+const servers = [];
+const auditByOrigin = new Map();
+const startServer = async (serveRoot, uatMode) => {
+  const server = http.createServer(async (request, response) => {
+    try {
+      const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+      if (uatMode && pathname === '/__a1a_probe.js') {
+        response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+        response.end(probeBundle);
+        return;
+      }
+      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+      const target = path.resolve(serveRoot, relative);
+      if (target !== serveRoot && !target.startsWith(serveRoot + path.sep)) throw new Error('Invalid static path');
+      const bytes = await fs.readFile(target);
+      response.setHeader('Content-Type', mimeFor(target));
+      response.setHeader('Cache-Control', 'no-store');
+      response.end(bytes);
+    } catch {
+      response.statusCode = 404;
+      response.end('Not found');
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  servers.push(server);
+  return `http://127.0.0.1:${server.address().port}`;
+};
+
+const uatOrigin = await startServer(uatRoot, true);
+const productionOrigin = await startServer(productionRoot, false);
+const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+const browser = spawn(browserPath, [
+  '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
+  `--user-data-dir=${profile}`, 'about:blank'
+], { windowsHide: true, stdio: 'ignore' });
+const browserExit = new Promise(resolve => {
+  if (browser.exitCode !== null || browser.signalCode !== null) resolve(true);
+  else browser.once('exit', () => resolve(true));
+});
+
+let socket;
+const runtimeErrors = [];
+const instrumentation = `(() => {
+  const key = '__prolingo_a1a_idb_audit_v1';
+  let audit;
+  try { audit = JSON.parse(sessionStorage.getItem(key) || '{}'); } catch { audit = {}; }
+  audit.opens ||= []; audit.deletes ||= []; audit.writes ||= []; audit.upgrades ||= []; audit.violations ||= [];
+  const qaMode = location.origin === ${JSON.stringify(uatOrigin)};
+  const qaPrefix = ${JSON.stringify(qaPrefix)};
+  const save = () => {
+    window.__bookQaAudit = audit;
+    try { window.__a1aIdbAudit(JSON.stringify({ origin: location.origin, audit })); } catch {}
+    try { sessionStorage.setItem(key, JSON.stringify(audit)); } catch {}
+  };
+  window.__bookQaAudit = audit;
+  const originalOpen = IDBFactory.prototype.open;
+  IDBFactory.prototype.open = function(name, ...args) {
+    const dbName = String(name);
+    audit.opens.push({ name: dbName, requestedVersion: args[0] ?? null, origin: location.origin }); save();
+    if (qaMode && !dbName.startsWith(qaPrefix)) { audit.violations.push({ kind: 'open', name: dbName }); save(); throw Error('Book QA harness blocked non-QA database: ' + dbName); }
+    const entry = audit.opens[audit.opens.length - 1];
+    const request = originalOpen.call(this, name, ...args);
+    request.addEventListener('upgradeneeded', event => { audit.upgrades.push({ name: dbName, oldVersion: event.oldVersion, newVersion: event.newVersion }); save(); }, { once: true });
+    request.addEventListener('success', () => { entry.openedVersion = request.result.version; save(); }, { once: true });
+    return request;
+  };
+  const originalDelete = IDBFactory.prototype.deleteDatabase;
+  IDBFactory.prototype.deleteDatabase = function(name) {
+    const dbName = String(name);
+    audit.deletes.push({ name: dbName, origin: location.origin }); save();
+    if (qaMode) { audit.violations.push({ kind: 'delete', name: dbName }); save(); throw Error('Delete is blocked by Book QA audit harness'); }
+    return originalDelete.call(this, name);
+  };
+  const originalTransaction = IDBDatabase.prototype.transaction;
+  IDBDatabase.prototype.transaction = function(storeNames, mode = 'readonly', ...args) {
+    if (mode === 'readwrite') {
+      const names = Array.isArray(storeNames) ? [...storeNames] : [String(storeNames)];
+      audit.writes.push({ name: this.name, stores: names, origin: location.origin }); save();
+      if (qaMode && !this.name.startsWith(qaPrefix)) { audit.violations.push({ kind: 'write', name: this.name, stores: names }); save(); throw Error('Book QA harness blocked non-QA write: ' + this.name); }
+    }
+    return originalTransaction.call(this, storeNames, mode, ...args);
+  };
+})();`;
+
+const cleanup = async () => {
+  try { await socket?.send?.(JSON.stringify({ id: 999999, method: 'Browser.close' })); } catch {}
+  try { socket?.close(); } catch {}
+  let exited = browser.exitCode !== null || browser.signalCode !== null;
+  if (!exited) {
+    try { browser.kill(); } catch {}
+    exited = await Promise.race([browserExit, new Promise(resolve => setTimeout(() => resolve(false), 5000))]);
+  }
+  if (!exited) {
+    try { browser.kill('SIGKILL'); } catch {}
+    exited = await Promise.race([browserExit, new Promise(resolve => setTimeout(() => resolve(false), 2000))]);
+  }
+  for (const server of servers) {
+    try { server.closeAllConnections(); server.close(); } catch {}
+  }
+  let profileRemoved = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try { await fs.rm(profile, { recursive: true, force: true }); } catch {}
+    try { await fs.access(profile); } catch { profileRemoved = true; break; }
+    await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+  }
+  if (!exited) throw new Error('Headless Edge did not exit after bounded close/kill retries.');
+  if (!profileRemoved) throw new Error('Disposable Edge profile remained after four bounded cleanup attempts.');
+};
+
+try {
+  let debuggingPort = null;
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    try {
+      debuggingPort = Number((await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]);
+      if ((await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).ok) break;
+    } catch { debuggingPort = null; }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (!debuggingPort) throw new Error('Edge did not start with a DevTools endpoint');
+  const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json();
+  socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+  let nextId = 0;
+  const pending = new Map();
+  const call = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++nextId;
+    pending.set(id, { resolve, reject });
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+  socket.onmessage = event => {
+    const message = JSON.parse(event.data);
+    if (message.method === 'Runtime.exceptionThrown') runtimeErrors.push(message.params.exceptionDetails?.text || 'browser runtime exception');
+    if (message.method === 'Runtime.bindingCalled' && message.params.name === '__a1aIdbAudit') {
+      try {
+        const payload = JSON.parse(message.params.payload);
+        auditByOrigin.set(payload.origin, payload.audit);
+      } catch {}
+    }
+    if (message.id && pending.has(message.id)) {
+      const entry = pending.get(message.id); pending.delete(message.id);
+      message.error ? entry.reject(new Error(JSON.stringify(message.error))) : entry.resolve(message.result);
+    }
+  };
+  const evaluate = async expression => {
+    const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || JSON.stringify(result.exceptionDetails));
+    return result.result?.value;
+  };
+  await call('Runtime.enable');
+  await call('Runtime.addBinding', { name: '__a1aIdbAudit' });
+  await call('Page.enable');
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
+  await call('Page.addScriptToEvaluateOnNewDocument', { source: instrumentation });
+
+  const navigate = async (origin, route) => call('Page.navigate', { url: origin + route });
+  const waitFor = async (expression, timeoutMs = 15000) => evaluate(`(async () => {
+    const end = performance.now() + ${timeoutMs};
+    while (performance.now() < end) { if (${expression}) return true; await new Promise(requestAnimationFrame); }
+    throw Error('Browser wait timed out: ' + ${JSON.stringify(expression)});
+  })()`);
+  const clickButton = async textValue => evaluate(`(() => {
+    const wanted = ${JSON.stringify(textValue.toLowerCase())};
+    const button = [...document.querySelectorAll('button')].find(item => (item.innerText || item.textContent || '').trim().toLowerCase() === wanted);
+    if (!button) throw Error('Button not found: ' + wanted);
+    if (button.disabled) throw Error('Button is disabled: ' + wanted);
+    button.click(); return true;
+  })()`);
+  const clickDemoButton = async textValue => evaluate(`(() => {
+    const wanted = ${JSON.stringify(textValue.toLowerCase())};
+    const button = [...document.querySelectorAll('[data-text-library-demos] button')].find(item => (item.innerText || '').trim().toLowerCase() === wanted);
+    if (!button || button.disabled) throw Error('Sample button unavailable: ' + wanted);
+    button.click(); return true;
+  })()`);
+  const chooseOptIn = () => evaluate(`(() => {
+    const checkbox = document.querySelector('input[aria-label="Opt in to isolated Book QA storage"]');
+    if (!checkbox) throw Error('Book QA opt-in checkbox missing');
+    if (!checkbox.checked) checkbox.click();
+    return checkbox.checked;
+  })()`);
+  const readAudit = async () => {
+    const pageAudit = await evaluate(`({ origin: location.origin, audit: window.__bookQaAudit || JSON.parse(sessionStorage.getItem('__prolingo_a1a_idb_audit_v1') || '{}') })`);
+    return auditByOrigin.get(pageAudit.origin) || pageAudit.audit || {};
+  };
+  const probe = async expression => evaluate(`(async () => { const module = window.__bookQaProbe || await import('/__a1a_probe.js'); window.__bookQaProbe = module; return ${expression}; })()`);
+
+  const report = { uatOrigin, database: qaDbName, host: {}, shell: {}, library: {}, isolation: {}, transactions: {} };
+  await navigate(uatOrigin, `/?qa=book-qa&db=${qaDbName}`);
+  await waitFor(`Boolean(document.querySelector('[data-book-qa-host="disconnected"]'))`);
+  report.host.optInRequired = await evaluate(`!document.querySelector('input[aria-label="Opt in to isolated Book QA storage"]').checked`);
+  report.host.zeroDatabaseOpensBeforeOptIn = (await readAudit()).opens?.length === 0;
+  assert(report.host.optInRequired && report.host.zeroDatabaseOpensBeforeOptIn, 'Host must require opt-in before it opens IndexedDB');
+
+  await chooseOptIn();
+  await evaluate(`(() => {
+    const input = document.querySelector('input[aria-label="Book QA database name"]');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(canonicalName)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await clickButton('Load / Connect existing v2 library');
+  await waitFor(`Boolean(document.querySelector('[role="alert"][data-book-qa-error]'))`);
+  report.host.rejectsCanonicalName = (await evaluate(`document.querySelector('[data-book-qa-error]')?.textContent || ''`)).includes('INVALID_DATABASE_NAME');
+  report.host.zeroOpensAfterInvalidName = (await readAudit()).opens?.length === 0;
+  assert(report.host.rejectsCanonicalName && report.host.zeroOpensAfterInvalidName, 'Invalid canonical name must be rejected before any IndexedDB open');
+
+  await navigate(uatOrigin, `/?qa=book-qa&db=${qaDbName}`);
+  await waitFor(`Boolean(document.querySelector('[data-book-qa-host="disconnected"]'))`);
+  await chooseOptIn();
+  await clickButton('Initialize clean demo library');
+  await waitFor(`Boolean(document.querySelector('[data-app-header]'))`);
+  await waitFor(`Boolean(document.querySelector('[data-text-structured-player]'))`);
+  report.shell = await evaluate(`({
+    header: Boolean(document.querySelector('[data-app-header]')),
+    sidebar: Boolean(document.querySelector('.w-72')),
+    reader: Boolean(document.querySelector('[data-text-structured-player]')),
+    globalPlayer: Boolean(document.querySelector('[data-global-player]')),
+    qaIndicator: Boolean(document.querySelector('[data-book-qa-indicator]')),
+    tableSwitchDisabled: [...document.querySelectorAll('[data-mobile-mode-switch],button[title*="Table mode is unavailable"]')].every(button => button.disabled),
+    audioAuthoringControlsAbsent: ![...document.querySelectorAll('button')].some(button => /generate|attach file|release staged/i.test(button.innerText || ''))
+  })`);
+  assert(report.shell.header && report.shell.sidebar && report.shell.reader && report.shell.globalPlayer && report.shell.qaIndicator, 'Book QA must mount the real AppBar, Sidebar, Reader, and Global Player');
+
+  const initial = await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`);
+  report.library.initial = initial;
+  assert(initial.schemaVersion === 2 && initial.counts.audioVariants === 0, 'Demo initialization must create v2 structured data without audio readiness');
+
+  await fs.mkdir(evidenceDir, { recursive: true });
+  const screenshot = await call('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
+  await fs.writeFile(evidenceFile, Buffer.from(screenshot.data, 'base64'));
+  report.shell.screenshot = path.relative(root, evidenceFile);
+
+  await clickButton('OPEN DATA WORKSPACE');
+  await waitFor(`Boolean(document.querySelector('[data-text-data-workspace]'))`);
+  await clickButton('CREATE');
+  await waitFor(`Boolean(document.querySelector('[data-text-library-demos]'))`);
+  await clickDemoButton('Mixed');
+  await waitFor(`document.body.innerText.includes('I practise English every day.')`, 30000);
+  await waitFor(`[...document.querySelectorAll('[data-text-library-demos] button')].some(button => (button.innerText || '').trim() === 'Mixed' && !button.disabled)`, 30000);
+  report.library.mixedWorkspaceProjected = await evaluate(`document.querySelector('[data-app-header] select')?.selectedOptions[0]?.textContent.trim() === 'Book QA · Mixed sample' && document.querySelector('[data-text-structured-player]')?.innerText.includes('I practise English every day.')`);
+  assert(report.library.mixedWorkspaceProjected, 'Mixed sample must project through the Reader from the connected session');
+
+  await clickDemoButton('Paragraph');
+  await waitFor(`[...document.querySelectorAll('[data-text-library-demos] button')].some(button => (button.innerText || '').trim() === 'Paragraph' && !button.disabled)`, 30000);
+  await waitFor(`document.querySelector('[data-app-header] select')?.selectedOptions[0]?.textContent.trim() === 'Book QA · Paragraph sample'`);
+  report.library.paragraphWorkspaceProjected = await evaluate(`document.querySelector('[data-text-structured-player]')?.innerText.includes('I practise English every day.')`);
+  assert(report.library.paragraphWorkspaceProjected, 'Paragraph sample must project through the Reader from the connected session');
+
+  await clickDemoButton('Conversation • 3');
+  await waitFor(`[...document.querySelectorAll('[data-text-library-demos] button')].some(button => (button.innerText || '').trim() === 'Conversation • 3' && !button.disabled)`, 30000);
+  await waitFor(`document.querySelector('[data-app-header] select')?.selectedOptions[0]?.textContent.trim() === 'Book QA · Conversation sample'`);
+  report.library.conversationWorkspaceProjected = await evaluate(`document.querySelector('[data-text-structured-player]')?.innerText.includes('Hi, shall we start our practice?')`);
+  assert(report.library.conversationWorkspaceProjected, 'Conversation sample must project through the Reader from the connected session');
+
+  const afterDemo = await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`);
+  report.library.afterNativeSamples = afterDemo;
+  assert(afterDemo.counts.documents > initial.counts.documents && afterDemo.counts.contentUnits > initial.counts.contentUnits && afterDemo.counts.segments > initial.counts.segments, 'UI sample creation must commit v2 Workspace/Card/Unit/Speaker/Segment records');
+  assert(afterDemo.counts.audioVariants === 0, 'Clean demo and native content commands must not fabricate audio metadata');
+
+  const opensBeforeReload = (await readAudit()).opens?.length || 0;
+  await call('Page.reload');
+  await waitFor(`Boolean(document.querySelector('[data-book-qa-host="disconnected"]'))`);
+  const opensAfterReload = (await readAudit()).opens?.length || 0;
+  report.host.reloadRequiresConnect = opensAfterReload === opensBeforeReload;
+  await chooseOptIn();
+  await clickButton('Initialize clean demo library');
+  await waitFor(`Boolean(document.querySelector('[role="alert"][data-book-qa-error]'))`);
+  report.host.existingDatabaseProtected = (await evaluate(`document.querySelector('[data-book-qa-error]')?.textContent || ''`)).includes('EXISTING_DB_PROTECTED');
+  const afterBlockedInitialize = await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`);
+  report.host.existingDataUnchanged = JSON.stringify(afterBlockedInitialize.counts) === JSON.stringify(afterDemo.counts);
+  assert(report.host.reloadRequiresConnect && report.host.existingDatabaseProtected && report.host.existingDataUnchanged, 'Reload must require reconnect; Initialize must refuse to overwrite an existing library');
+  await clickButton('Load / Connect existing v2 library');
+  await waitFor(`Boolean(document.querySelector('[data-app-header]') && document.querySelector('[data-text-structured-player]'))`);
+  report.host.reconnectRetainsMixedContent = (await probe(`module.readLibrary(${JSON.stringify(qaDbName)})`)).segmentTexts.includes('I practise English every day.');
+  assert(report.host.reconnectRetainsMixedContent, 'Reconnect must retain the committed mixed Workspace content');
+
+  report.transactions.conflictingSnapshots = await probe(`module.runConflict(${JSON.stringify(qaDbName)})`);
+  assert(report.transactions.conflictingSnapshots.first.ok, 'First transaction against a snapshot should commit');
+  assert(!report.transactions.conflictingSnapshots.stale.ok && report.transactions.conflictingSnapshots.stale.error?.reloadRequired, 'Stale concurrent transaction must reject and require reload');
+  assert(report.transactions.conflictingSnapshots.persisted.collections.includes('A1a Conflict Winner') && !report.transactions.conflictingSnapshots.persisted.collections.includes('A1a Conflict Loser'), 'Conflicting transaction must not replay or persist the loser');
+
+  report.transactions.staleCommittedReceipt = await probe(`module.runCommittedStaleReceipt(${JSON.stringify(qaDbName)})`);
+  assert(report.transactions.staleCommittedReceipt.receipt.ok && report.transactions.staleCommittedReceipt.receipt.authoritative, 'Stale-receipt scenario must reach a committed authoritative transaction');
+  assert(!report.transactions.staleCommittedReceipt.result.ok && report.transactions.staleCommittedReceipt.result.error?.committed && report.transactions.staleCommittedReceipt.result.error?.reloadRequired, 'Disposed session must reject the committed result and require explicit reconciliation');
+  assert(report.transactions.staleCommittedReceipt.persisted.collections.filter(title => title === 'A1a Stale Receipt Commit').length === 1, 'Uncertain committed result must not be replayed');
+
+  await evaluate(`document.querySelector('[aria-label="Refresh isolated Book QA library"]')?.click()`);
+  await waitFor(`document.querySelector('[aria-label="Refresh isolated Book QA library"]')?.disabled === false`);
+  await clickButton('OPEN DATA WORKSPACE');
+  await waitFor(`Boolean(document.querySelector('[data-text-data-workspace]'))`);
+  await clickButton('MANAGE');
+  await waitFor(`document.body.innerText.includes('A1a Stale Receipt Commit')`);
+  report.transactions.explicitRefreshReconciles = true;
+  report.transactions.unsupportedAudioCommand = await probe(`module.runUnsupportedAudioCommand(${JSON.stringify(qaDbName)})`);
+  assert(!report.transactions.unsupportedAudioCommand.ok && report.transactions.unsupportedAudioCommand.before === report.transactions.unsupportedAudioCommand.after, 'Unsupported audio metadata command must reject at the session permission boundary');
+
+  report.isolation = await readAudit();
+  report.isolation.nonQaOpenCount = report.isolation.violations.filter(item => item.kind === 'open').length;
+  report.isolation.nonQaWriteCount = report.isolation.violations.filter(item => item.kind === 'write').length;
+  assert(report.isolation.deletes.length === 0, 'Book QA must not delete any IndexedDB database');
+  assert(report.isolation.nonQaOpenCount === 0 && report.isolation.nonQaWriteCount === 0, 'Book QA must not open or write a non-QA IndexedDB database');
+  assert(report.isolation.opens.every(item => item.name.startsWith(qaPrefix)), 'All IndexedDB opens in Book QA must target explicit QA names');
+  assert(report.isolation.writes.every(item => item.name.startsWith(qaPrefix)), 'All IndexedDB writes in Book QA must target explicit QA names');
+  assert(report.transactions.explicitRefreshReconciles, 'Refresh must reconcile the accepted committed receipt');
+
+  const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
+  const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
+  report.production = {
+    qaHostChunkAbsent: !productionScripts.some(name => name.includes('BookQaHost')),
+    qaHostModuleAbsent: productionSources.every(source => !source.includes('data-book-qa-host="disconnected"'))
+  };
+  assert(report.production.qaHostChunkAbsent && report.production.qaHostModuleAbsent, 'Production output must exclude the Book QA host module');
+
+  await navigate(productionOrigin, '/?qa=book-qa');
+  await waitFor(`document.body.innerText.includes('Mulai Latihan')`);
+  report.production.qaRouteFallsBackToNormalApp = !(await evaluate(`Boolean(document.querySelector('[data-book-qa-host]'))`));
+  await clickButton('Mulai Latihan');
+  await waitFor(`Boolean(document.querySelector('[data-app-header]'))`);
+  await waitFor(`(JSON.parse(sessionStorage.getItem('__prolingo_a1a_idb_audit_v1') || '{}').opens || []).some(item => item.name === ${JSON.stringify(canonicalName)} && item.openedVersion === 1)`, 15000);
+  report.production.normalMainAppOpensCanonicalV1 = (await readAudit()).opens.some(item => item.name === canonicalName && item.openedVersion === 1);
+  report.production.normalMainAppMounted = await evaluate(`Boolean(document.querySelector('[data-app-header]'))`);
+  assert(report.production.qaRouteFallsBackToNormalApp && report.production.normalMainAppMounted && report.production.normalMainAppOpensCanonicalV1, 'Production ?qa=book-qa must preserve normal Main App behavior and canonical v1 schema');
+
+  report.browserRuntimeErrors = runtimeErrors;
+  assert(runtimeErrors.length === 0, 'Browser emitted runtime exceptions');
+  console.log(JSON.stringify(report, null, 2));
+} finally {
+  await cleanup();
+}

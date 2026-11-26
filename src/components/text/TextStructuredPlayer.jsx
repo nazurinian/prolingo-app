@@ -163,6 +163,7 @@ const StructuredPlayerCard = ({
   resetDisabled = false,
   onResetCardAudioPreferences = null,
   onResetSegmentAudioPreferences = null,
+  bookQaAudioDisabled = false,
   focusTarget = null,
   onFocusConsumed,
   userNavigationRef = null,
@@ -413,13 +414,13 @@ const StructuredPlayerCard = ({
           )}
           <button
             type="button"
-            disabled={playbackBusy}
+            disabled={playbackBusy || bookQaAudioDisabled}
             onClick={() => {
               announcePresentationOverlayOpen(OVERLAY_SOURCES.CARD_AUDIO);
               setAudioPanelOpen(true);
             }}
             className={`min-h-8 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 text-[11px] font-semibold disabled:opacity-35 transition-colors inline-flex items-center justify-center gap-1 ${SHARED_CONTROL_TOKENS.focusRing}`}
-            title="Card audio & voice overrides"
+            title={bookQaAudioDisabled ? 'Audio authoring is unavailable in A1a' : 'Card audio & voice overrides'}
             aria-label="Open card audio controls"
           >
             <SlidersHorizontal className="w-3.5 h-3.5"/>
@@ -570,7 +571,7 @@ const StructuredPlayerCard = ({
                     <button type="button" disabled={generationBusy} onClick={() => onStartFromSegment?.(segment.id)} className="min-h-8 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 text-slate-600 dark:text-slate-300 hover:text-indigo-700 dark:hover:text-indigo-300 text-[10px] font-bold inline-flex items-center gap-1 transition-colors" title="Start playback from this sentence and continue through workspace">
                       <SkipForward className="w-3 h-3"/><span>From here</span>
                     </button>
-                    <button type="button" onClick={() => setSegmentToolsId(current => current === segment.id ? null : segment.id)} className={`min-h-8 px-2.5 py-1 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 transition-colors ${segmentToolsId === segment.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:border-slate-300'}`} aria-expanded={segmentToolsId === segment.id} title="Sentence audio tools & single MP3 export">
+                    <button type="button" disabled={bookQaAudioDisabled} onClick={() => setSegmentToolsId(current => current === segment.id ? null : segment.id)} className={`min-h-8 px-2.5 py-1 rounded-lg border text-[10px] font-bold inline-flex items-center gap-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${segmentToolsId === segment.id ? 'border-violet-400 bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300' : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:border-slate-300'}`} aria-expanded={segmentToolsId === segment.id} title={bookQaAudioDisabled ? 'Audio authoring is unavailable in A1a' : 'Sentence audio tools & single MP3 export'}>
                       <Volume2 className="w-3 h-3"/><span>Audio</span>
                     </button>
                   </div>
@@ -617,7 +618,7 @@ const StructuredPlayerCard = ({
         })}
       </div>}
     </article>
-    {audioPanelOpen && typeof document !== 'undefined' && createPortal(<TextStructuredCardAudioPanel
+    {!bookQaAudioDisabled && audioPanelOpen && typeof document !== 'undefined' && createPortal(<TextStructuredCardAudioPanel
       documentTree={documentTree}
       block={block}
       englishVoices={englishVoices}
@@ -739,6 +740,7 @@ export const TextStructuredPlayer = ({
   onResetPlaybackPreferences = null,
   onResetCardAudioPreferences = null,
   onResetSegmentAudioPreferences = null,
+  bookQaAudioDisabled = false,
   useSharedCardReader = false,
   readerSwitchSlot = null,
   sharedPresentation = null,
@@ -1307,7 +1309,7 @@ export const TextStructuredPlayer = ({
             onSelectContextualSegment={handleSelectSharedContextualSegment}
             onFollowContextualAudible={handleFollowSharedContextualAudible}
             onDismissContextualTarget={handleDismissSharedContextualTarget}
-            renderCardActions={card => (
+            renderCardActions={!bookQaAudioDisabled ? card => (
               <button
                 type="button"
                 disabled={structuredSessionActive}
@@ -1322,7 +1324,7 @@ export const TextStructuredPlayer = ({
                 <SlidersHorizontal className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Audio</span>
               </button>
-            )}
+            ) : undefined}
           />
         )}
         {blocks.length > 0 && !showSharedBookPage && blocks.map((block, index) => <StructuredPlayerCard
@@ -1384,6 +1386,7 @@ export const TextStructuredPlayer = ({
           onExportCardZip={onExportCardZip}
           onExportFullCardAudio={onExportFullCardAudio}
           resetDisabled={resetDisabled}
+          bookQaAudioDisabled={bookQaAudioDisabled}
           onResetCardAudioPreferences={onResetCardAudioPreferences}
           onResetSegmentAudioPreferences={onResetSegmentAudioPreferences}
           focusTarget={focusTarget}
@@ -1407,7 +1410,7 @@ export const TextStructuredPlayer = ({
           onDismissSharedContextualTarget={useSharedCardReader ? handleDismissSharedContextualTarget : null}
           onSharedManualNavigate={useSharedCardReader ? markSharedUserNavigation : null}
         />)}
-        {bookAudioPanelBlock && typeof document !== 'undefined' && createPortal(<TextStructuredCardAudioPanel
+        {!bookQaAudioDisabled && bookAudioPanelBlock && typeof document !== 'undefined' && createPortal(<TextStructuredCardAudioPanel
           documentTree={documentTree}
           block={bookAudioPanelBlock}
           englishVoices={englishVoices}

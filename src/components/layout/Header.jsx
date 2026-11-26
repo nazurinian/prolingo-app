@@ -5,7 +5,7 @@ import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDo
 import {
   PanelLeftClose, PanelLeftOpen, Mic, Database, Trash2, Save, FileDown,
   Settings, FileText, Table2, ChevronDown, ChevronUp, ListPlus,
-  MoreVertical, Sun, Moon, Monitor, Home, SlidersHorizontal, X
+  MoreVertical, Sun, Moon, Monitor, Home, SlidersHorizontal, X, RefreshCcw
 } from 'lucide-react';
 import {
   OVERLAY_SOURCES,
@@ -34,6 +34,11 @@ const Header = ({
   setCurrentDeckName,
   handleSaveDeck,
   mode,
+  bookQaMode = false,
+  bookQaDatabaseName = '',
+  bookQaRefreshing = false,
+  bookQaPending = false,
+  onBookQaRefresh = null,
   isCsvDirty,
   csvChangeSummary,
   saveUpdatedCSV,
@@ -136,6 +141,12 @@ const Header = ({
           </div>
         </div>
 
+        {bookQaMode && <div data-book-qa-indicator="true" className="flex min-w-0 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-1 text-[8px] font-black uppercase text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <span className="shrink-0">BOOK QA · ISOLATED v2</span>
+          <span className="hidden lg:inline max-w-36 truncate font-mono font-normal normal-case" title={bookQaDatabaseName}>{bookQaDatabaseName}</span>
+          <button type="button" aria-label="Refresh isolated Book QA library" title="Reload persisted Book QA snapshot" disabled={bookQaRefreshing || bookQaPending} onClick={() => { void onBookQaRefresh?.().catch(() => {}); }} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-amber-300 bg-white text-amber-800 disabled:opacity-40 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-200"><RefreshCcw className={`h-3 w-3 ${bookQaRefreshing ? 'animate-spin' : ''}`}/></button>
+        </div>}
+
         {/* Desktop Header Tools (preserved intact) */}
         <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
           {mode === 'text' ? (
@@ -171,20 +182,20 @@ const Header = ({
         </div>
 
         {/* v5.11.6: technical controls moved to SYSTEM. Keep file pickers mounted for all layouts. */}
-        <div className="hidden">
+        {!bookQaMode && <div className="hidden">
           <input type="file" ref={folderInputRef} webkitdirectory="" directory="" multiple onChange={handleFolderSelect} />
           <input type="file" ref={audioZipInputRef} accept=".zip,application/zip,application/x-zip-compressed" multiple onChange={handleAudioZipSelect} />
           <input type="file" ref={sourceInputRef} accept=".csv,.tsv,.txt" onChange={handleSourceUpload} />
           <input type="file" ref={fullPackInputRef} accept=".csv,.tsv,.txt" multiple onChange={handleFullPackUpload} />
-        </div>
+        </div>}
         {/* Keep this single CSV picker mounted, including on mobile where SidebarShell returns null. */}
-        <input type="file" data-csv-import-input="true" className="sr-only" tabIndex={-1} ref={csvInputRef} accept=".csv,.tsv,.txt" onChange={handleCSVUpload} />
+        {!bookQaMode && <input type="file" data-csv-import-input="true" className="sr-only" tabIndex={-1} ref={csvInputRef} accept=".csv,.tsv,.txt" onChange={handleCSVUpload} />}
 
         {/* Mobile Compact Application Navigation (E1) */}
         <div className="md:hidden ml-auto flex items-center gap-1 flex-shrink-0" data-mobile-appbar-actions="true">
           <button
             type="button"
-            disabled={isSystemBusy}
+            disabled={isSystemBusy || bookQaMode}
             onClick={() => {
               setMobileOverflowOpen(false);
               const targetMode = mode === 'table' ? 'text' : 'table';
@@ -192,7 +203,7 @@ const Header = ({
               if (mobileTab !== 'player') handleMobileTabSwitch?.('player');
             }}
             className={`h-9 px-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-200 inline-flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.focusRing}`}
-            title={`Switch to ${mode === 'table' ? 'Text' : 'Table'}`}
+            title={bookQaMode ? 'Table mode is unavailable in isolated Book QA' : `Switch to ${mode === 'table' ? 'Text' : 'Table'}`}
             aria-label={`Switch to ${mode === 'table' ? 'Text' : 'Table'} mode`}
             data-mobile-mode-switch="true"
           >

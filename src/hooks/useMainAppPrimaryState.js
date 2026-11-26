@@ -10,9 +10,9 @@ import { createEmptyTextIdentityState } from '../domain/text/textIdentityDomain.
 import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
-export const useMainAppPrimaryState = () => {
+export const useMainAppPrimaryState = ({ initialMode = 'table', skipLegacyTextBootstrap = false } = {}) => {
   // P4-A0: Part 4 development starts in the isolated Text workspace.
-  const [mode, setMode] = useState('table');
+  const [mode, setMode] = useState(initialMode);
   const [tableViewMode, setTableViewMode] = useState('master'); 
   const [studyQueue, setStudyQueue] = useState([]); 
   const [rangeInput, setRangeInput] = useState("");
@@ -20,7 +20,7 @@ export const useMainAppPrimaryState = () => {
   const [tableContent, setTableContent] = useState("");
   // P4-A2: legacy localStorage is migration input only. Keep it separate from the
   // visible runtime state so stale/default lines never flash before IndexedDB hydrates.
-  const [legacyTextBootstrapState] = useState(() => loadTextIdentityState());
+  const [legacyTextBootstrapState] = useState(() => skipLegacyTextBootstrap ? null : loadTextIdentityState());
   const [textIdentityState, setTextIdentityState] = useState(createEmptyTextIdentityState);
   const [textContent, setTextContent] = useState('');
   // P4-A1/A2: IndexedDB is the canonical Text persistence layer. Structured runtime

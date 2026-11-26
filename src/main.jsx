@@ -26,12 +26,13 @@ const LazyDataManagementQaPreview = import.meta.env.DEV ? lazy(() => (
 const LazyStructuredTextDemo = import.meta.env.DEV ? lazy(() => import('./components/text/presentation/StructuredTextDemo.jsx')) : null
 const textUatEnabled = typeof __TEXT_UAT_ENABLED__ !== 'undefined' && __TEXT_UAT_ENABLED__
 const LazyStructuredTextBeta = (import.meta.env.DEV || textUatEnabled) ? lazy(() => import('./components/text/management/StructuredTextBeta.jsx')) : null
+const LazyBookQaHost = textUatEnabled ? lazy(() => import('./components/text/management/BookQaHost.jsx')) : null
 
 const getActiveQaRoute = () => {
   if (typeof window === 'undefined') return null
   const search = new URLSearchParams(window.location.search || '')
   const qa = search.get('qa')
-  if (textUatEnabled) return qa === 'text-beta' ? 'text-beta' : 'uat-landing'
+  if (textUatEnabled) return qa === 'text-beta' ? 'text-beta' : qa === 'book-qa' ? 'book-qa' : 'uat-landing'
   if (!import.meta.env.DEV) return null
   if (qa === 'structured-text') return 'structured-text'
   if (qa === 'text-beta') return 'text-beta'
@@ -66,6 +67,8 @@ createRoot(document.getElementById('root')).render(
       <main className="p-6"><h1>ProLingo Text v2 UAT</h1><p>Isolated Beta Testing — not Stable. Canonical library remains unchanged.</p><a href="/?qa=text-beta">Open isolated Text v2 UAT</a></main>
     ) : activeQaRoute === 'text-beta' ? (
       <Suspense fallback={<div>Loading isolated Beta...</div>}><LazyStructuredTextBeta /></Suspense>
+    ) : activeQaRoute === 'book-qa' ? (
+      <Suspense fallback={<div className="p-5 text-sm font-bold text-amber-700">Loading isolated Book QA host…</div>}><LazyBookQaHost /></Suspense>
     ) : activeQaRoute === 'structured-text' ? (
       <Suspense fallback={<div>Loading isolated Structured Text...</div>}><LazyStructuredTextDemo /></Suspense>
     ) : activeQaRoute === 'conversation-editor' ? (

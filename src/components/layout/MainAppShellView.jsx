@@ -48,6 +48,7 @@ import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDo
 export const renderMainAppShellView = (props) => {
   const {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome, isSystemBusy,
+    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null,
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
@@ -108,6 +109,11 @@ export const renderMainAppShellView = (props) => {
         setCurrentDeckName={setCurrentDeckName}
         handleSaveDeck={handleSaveDeck}
         mode={mode}
+        bookQaMode={bookQaMode}
+        bookQaDatabaseName={bookQaDatabaseName}
+        bookQaRefreshing={bookQaRefreshing}
+        bookQaPending={bookQaPending}
+        onBookQaRefresh={onBookQaRefresh}
         isCsvDirty={isCsvDirty}
         csvChangeSummary={csvChangeSummary}
         saveUpdatedCSV={saveUpdatedCSV}
@@ -156,6 +162,7 @@ export const renderMainAppShellView = (props) => {
                 setTheme={setTheme}
                 isSystemBusy={isSystemBusy}
                 mode={mode}
+                bookQaMode={bookQaMode}
                 handleModeSwitch={handleModeSwitch}
                 sidebarSection={sidebarSection}
                 renderControlSectionTabs={renderControlSectionTabs}
@@ -178,7 +185,8 @@ export const renderMainAppShellView = (props) => {
 
               </>}
 
-              {sidebarSection === 'system' && <DesktopSystemControls
+              {sidebarSection === 'system' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">System services are unavailable in A1a; generation, credentials, storage recovery and destructive maintenance are not connected to isolated Book QA.</p>}
+              {sidebarSection === 'system' && !bookQaMode && <DesktopSystemControls
                 generatorEngine={generatorEngine}
                 setGeneratorEngine={setGeneratorEngine}
                 isSystemBusy={isSystemBusy}
@@ -252,7 +260,8 @@ export const renderMainAppShellView = (props) => {
 
               </>}
 
-              {sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
+              {sidebarSection === 'audio' && mode === 'text' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Audio metadata, generation, staging and external audio sources are unavailable in A1a. Runtime playback remains enabled through the accepted player.</p>}
+              {sidebarSection === 'audio' && mode === 'text' && !bookQaMode && <div className="space-y-3">
                 {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <>
                   <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-3">
                     <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Legacy Audio</p>
@@ -262,7 +271,8 @@ export const renderMainAppShellView = (props) => {
                 </>}
               </div>}
 
-              {sidebarSection === 'learn' && <DesktopLearnControls
+              {sidebarSection === 'learn' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Table learning controls are not part of the Book QA host.</p>}
+              {sidebarSection === 'learn' && !bookQaMode && <DesktopLearnControls
                   mode={mode}
                   renderPlaybackSequenceBuilder={renderPlaybackSequenceBuilder}
                   isMemoryMode={isMemoryMode}
@@ -272,7 +282,8 @@ export const renderMainAppShellView = (props) => {
                   advancedDatasetStats={advancedDatasetStats}
               />}
 
-              {sidebarSection === 'data' && <DesktopDataActions
+              {sidebarSection === 'data' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">A1a supports isolated Text Workspace catalog commands and v2 sample creation. CSV, Legacy, import/export and destructive reset paths are unavailable.</p>}
+              {sidebarSection === 'data' && !bookQaMode && <DesktopDataActions
                 mode={mode}
                 isSystemBusy={isSystemBusy}
                 csvInputRef={csvInputRef}
@@ -298,6 +309,7 @@ export const renderMainAppShellView = (props) => {
             
             {sidebarSection === 'data' && <DesktopDataWorkspace
               mode={mode}
+              bookQaMode={bookQaMode}
               textareaRef={textareaRef}
               isSystemBusy={isSystemBusy}
               isLocked={isLocked}

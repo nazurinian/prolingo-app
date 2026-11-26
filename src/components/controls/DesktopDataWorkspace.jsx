@@ -9,6 +9,7 @@ import { getTextWorkspaceBadge, getTextWorkspaceLabel } from '../../domain/text/
 
 export default function DesktopDataWorkspace({
   mode, textareaRef, isSystemBusy, isLocked, textContent, handleInputContentChange, handleInsertTab,
+  bookQaMode = false,
   setLockedStates, isMultiSourceMode, dirtySourceKeys, isCsvDirty, openFullPackPicker,
   sourceDiagnostics, sourceChangeSummaries, sourcePack, openSourcePicker, removeSourceLayer,
   saveUpdatedSource, exportMergedDataset, csvChangeSummary, setIsChangeReviewOpen, undoStack,
@@ -71,12 +72,14 @@ export default function DesktopDataWorkspace({
                         onDeleteCollection={handleTextLibraryDeleteCollection}
                         onStructuredCommand={handleTextLibraryStructuredCommand}
                         onSectionChange={setTextDataSection}
+                        bookQaMode={bookQaMode}
                       />
+                      {bookQaMode && textDataSection === 'transfer' && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200" role="note">A1a keeps transfer, backup/restore, audio staging and filesystem attachment unavailable until the A1b isolation boundary is implemented.</p>}
                       {textDataSection === 'library' && (activeTextEditorModel === 'legacy-line-v1' ? <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/10 p-3 space-y-2" data-text-library-content-editor="legacy">
                         <div><p className="text-[10px] font-black text-amber-700 dark:text-amber-300">Legacy pronunciation sandbox</p><p className="text-[8px] text-slate-400">One word, phrase, or sentence per line. Global Player uses browser TTS for fast pronunciation practice; no Paragraph/Conversation Card setup is required.</p></div>
                         <textarea ref={textareaRef} disabled={isSystemBusy || textLibraryCommandBusy} readOnly={isLocked || isSystemBusy || textLibraryCommandBusy} className={`w-full min-h-[220px] text-xs font-mono p-3 border rounded-lg resize-y focus:outline-indigo-500 transition-colors shadow-inner ${isLocked || isSystemBusy || textLibraryCommandBusy ? 'bg-slate-100 dark:bg-slate-950 text-slate-500' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white'} dark:border-slate-700`} placeholder="Type a word, phrase, or sentence to practise pronunciation" value={textContent} onChange={(e) => handleInputContentChange(e.target.value)} />
                         <div className="flex justify-end items-center gap-2"><button disabled={isLocked || isSystemBusy || textLibraryCommandBusy} onClick={handleInsertTab} className="text-[9px] px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500"><ArrowRightToLine className="w-3 h-3 inline mr-1"/>Add Tab</button><button disabled={isSystemBusy || textLibraryCommandBusy} onClick={() => setLockedStates(prev => ({ ...prev, [mode]: !prev[mode] }))} className="text-[9px] px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 text-slate-500">{isLocked ? <><Lock className="w-3 h-3 inline mr-1"/>Locked</> : <><Unlock className="w-3 h-3 inline mr-1"/>Unlocked</>}</button></div>
-                      </div> : <div className="space-y-2" data-text-library-content-editor="structured"><div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Workspace Content • Card/Segment editor</div><TextStructuredEditor documentTree={activeTextDocumentTree} isBusy={textLibraryCommandBusy || isSystemBusy} error={textLibraryCommandError} onCommand={handleTextLibraryStructuredCommand} audioCoverageMap={structuredTextAudioCoverageMap}/></div>)}
+                      </div> : <div className="space-y-2" data-text-library-content-editor="structured"><div className="px-1 text-[8px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Workspace Content • Card/Segment editor</div>{bookQaMode && <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[8px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Direct content editing is read-only in A1a. Use the transactional v2 sample actions in CREATE to verify native content commands; full editor parity is A3.</p>}<TextStructuredEditor documentTree={activeTextDocumentTree} isBusy={textLibraryCommandBusy || isSystemBusy || bookQaMode} error={textLibraryCommandError} onCommand={handleTextLibraryStructuredCommand} audioCoverageMap={structuredTextAudioCoverageMap}/></div>)}
                     </div>
                   </section>
                 </div>, document.body)}
