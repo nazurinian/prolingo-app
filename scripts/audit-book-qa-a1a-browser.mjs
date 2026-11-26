@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { checkBookQaHostBoundaries } from './fixtures/p15-integrated/book-qa-hf1-browser.mjs';
+import { checkBookQaAudioStorage, bookAudioAuditLibraries } from './fixtures/a1b-1a/check-book-qa-audio.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -14,6 +15,8 @@ const productionRoot = path.join(root, 'dist');
 const qaDbName = 'prolingo_text_library_d3b_qa_a1a_browser';
 const qaPrefix = 'prolingo_text_library_d3b_qa_';
 const canonicalName = 'prolingo_text_library';
+const audioAudit = process.env.BOOK_QA_AUDIO_AUDIT === '1';
+const companionByLibrary = audioAudit ? bookAudioAuditLibraries : {};
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
 
@@ -24,6 +27,7 @@ await assertDir(uatRoot);
 await assertDir(productionRoot);
 
 const probeSource = `
+export * from './scripts/fixtures/a1b-1a/audio-browser-probe.js';
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
 import { createBookQaConnection } from './src/services/bookQaSessionService.js';
@@ -177,6 +181,12 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
+      if (uatMode && audioAudit && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+        const frequency = pathname.includes('440') ? '440' : '660';
+        response.setHeader('Content-Type', 'audio/mpeg');
+        response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
+        return;
+      }
       const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
       const target = path.resolve(serveRoot, relative);
       if (target !== serveRoot && !target.startsWith(serveRoot + path.sep)) throw new Error('Invalid static path');
@@ -221,6 +231,8 @@ const instrumentation = `(() => {
   const qaMode = location.origin === ${JSON.stringify(uatOrigin)};
   const qaPrefix = ${JSON.stringify(qaPrefix)};
   const selected = new URLSearchParams(location.search).get('db');
+  const companion = ${JSON.stringify(companionByLibrary)}[selected];
+  const permitted = name => (name.startsWith(qaPrefix) && name === selected) || (companion && name === companion);
   const save = () => {
     window.__bookQaAudit = audit;
     try { window.__a1aIdbAudit(JSON.stringify({ origin: location.origin, audit })); } catch {}
@@ -263,7 +275,7 @@ const instrumentation = `(() => {
   IDBFactory.prototype.open = function(name, ...args) {
     const dbName = String(name);
     audit.opens.push({ name: dbName, requestedVersion: args[0] ?? null, selected, origin: location.origin }); save();
-    if (qaMode && (!dbName.startsWith(qaPrefix) || dbName !== selected)) { audit.violations.push({ kind: 'open', name: dbName }); save(); throw Error('Book QA harness blocked non-QA database: ' + dbName); }
+    if (qaMode && !permitted(dbName)) { audit.violations.push({ kind: 'open', name: dbName }); save(); throw Error('Book QA harness blocked non-QA database: ' + dbName); }
     const entry = audit.opens[audit.opens.length - 1];
     const request = originalOpen.call(this, name, ...args);
     request.addEventListener('upgradeneeded', event => { audit.upgrades.push({ name: dbName, oldVersion: event.oldVersion, newVersion: event.newVersion }); save(); }, { once: true });
@@ -282,7 +294,7 @@ const instrumentation = `(() => {
     if (mode === 'readwrite') {
       const names = Array.isArray(storeNames) ? [...storeNames] : [String(storeNames)];
       audit.writes.push({ name: this.name, stores: names, selected, origin: location.origin }); save();
-      if (qaMode && (!this.name.startsWith(qaPrefix) || this.name !== selected)) { audit.violations.push({ kind: 'write', name: this.name, stores: names }); save(); throw Error('Book QA harness blocked non-QA write: ' + this.name); }
+      if (qaMode && !permitted(this.name)) { audit.violations.push({ kind: 'write', name: this.name, stores: names }); save(); throw Error('Book QA harness blocked non-QA write: ' + this.name); }
     }
     return originalTransaction.call(this, storeNames, mode, ...args);
   };
@@ -328,10 +340,10 @@ try {
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   let nextId = 0;
   const pending = new Map();
-  const call = (method, params = {}) => new Promise((resolve, reject) => {
+  const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = ++nextId;
     pending.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, method, params }));
+    socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
   socket.onmessage = event => {
     const message = JSON.parse(event.data);
@@ -348,8 +360,8 @@ try {
       message.error ? entry.reject(new Error(JSON.stringify(message.error))) : entry.resolve(message.result);
     }
   };
-  const evaluate = async expression => {
-    const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+  const evaluate = async (expression, sessionId) => {
+    const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result?.value;
   };
@@ -390,6 +402,27 @@ try {
     return auditByOrigin.get(pageAudit.origin) || pageAudit.audit || {};
   };
   const probe = async expression => evaluate(`(async () => { const module = window.__bookQaProbe || await import('/__a1a_probe.js'); window.__bookQaProbe = module; return ${expression}; })()`);
+  const withPeerTab = async (url, run) => {
+    const { targetId } = await call('Target.createTarget', { url: 'about:blank', background: true });
+    try {
+      const { sessionId } = await call('Target.attachToTarget', { targetId, flatten: true });
+      await call('Page.enable', {}, sessionId);
+      await call('Runtime.enable', {}, sessionId);
+      await call('Network.enable', {}, sessionId);
+      await call('Page.addScriptToEvaluateOnNewDocument', { source: instrumentation }, sessionId);
+      await call('Page.navigate', { url }, sessionId);
+      const evaluatePeer = expression => evaluate(expression, sessionId);
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try {
+          if (await evaluatePeer(`Boolean(document.querySelector('[data-book-qa-host="disconnected"]'))`)) return await run(evaluatePeer);
+        } catch (error) {
+          if (!/context.*(destroyed|not found)|Cannot find context/i.test(error.message)) throw error;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      throw new Error('Competing tab did not reach its isolated host');
+    } finally { await call('Target.closeTarget', { targetId }); }
+  };
 
   const report = { uatOrigin, database: qaDbName, host: {}, shell: {}, library: {}, isolation: {}, transactions: {} };
   await navigate(uatOrigin, `/?qa=book-qa&db=${qaDbName}`);
@@ -538,6 +571,18 @@ try {
   assert(report.isolation.opens.every(item => item.name.startsWith(qaPrefix)), 'All IndexedDB opens in Book QA must target explicit QA names');
   assert(report.isolation.writes.every(item => item.name.startsWith(qaPrefix)), 'All IndexedDB writes in Book QA must target explicit QA names');
   assert(report.transactions.explicitRefreshReconciles, 'Refresh must reconcile the accepted committed receipt');
+
+  if (audioAudit) {
+    report.audio = await checkBookQaAudioStorage({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, readAudit, uatOrigin, withPeerTab });
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert.deepEqual(qaApiRequests, []);
+    const audit = await readAudit();
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+  }
 
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));

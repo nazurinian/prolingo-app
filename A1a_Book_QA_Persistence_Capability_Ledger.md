@@ -2,6 +2,20 @@
 
 **Status:** A1a-R-HF1 implementation and verification ledger.
 
+## A1b-1A audio foundation
+
+The accepted A1a gates below continue to apply to the Main App. This packet adds an internal host-bound audio capability for persistence verification. It does not add an audio control, a public editor command, or startup hydration.
+
+| Boundary | A1b-1A treatment |
+| --- | --- |
+| Companion storage | The exact validated Text library name maps to `prolingo_book_qa_audio_staging_v1__<lowercase SHA-256 of the exact name>`. The Text library validator rejects those names. The companion reuses the Staging v1 `audioMeta`, `audioBlob`, and `batchSessions` stores. The shared normal App database and its behavior stay as before. A connected host opens its companion only on audio use or requested audio recovery. |
+| Typed audio publication | The internal capability accepts bounded arrays of Split Segment and Full Card targets with native IDs and UIDs, full render identities and Blobs. The P15 transaction validates v2, the bound library and connection, targets, descriptors, and the expected snapshot. The public editor allowlist remains unchanged. Saved reference maps keep stable variant IDs and replace the legacy pointer only when promoted. Legacy references without a byte proof remain unverified. |
+| Physical bytes and runtime | Fully framed MP3 Layer III or integer PCM WAV is browser-decoded on admission. The expected codec is derived from the render profile. A separate SHA-256 byte digest and durable readback govern readiness. A matching RF with different accepted bytes rejects. The per-connection object URL cache is revoked on disposal. No user-facing recorded readiness is wired here. Limits are 32 entries, 64 MiB per operation, ten minutes per decoded asset, and 64 RF references per stable variant. Reaching the reference limit rejects the operation and preserves every entry. |
+| Publisher and recovery | A library-specific Web Lock fences stage, commit and reconciliation across tabs. Audio writes fail closed when this lock is unavailable. An IndexedDB transaction commits provisional assets and their job together. A separate Text transaction writes references and a uniquely keyed commit marker together. A verified commit requires matching receipt, authoritative readback and durable bytes. A known precommit failure, unaccepted commit and uncertain commit have separate job states. Explicit Refresh after a failure and first audio use after reconnect reconcile from the Text marker. Unresolved work blocks dependent writes and a failed read retains the last valid projection. |
+| Disabled features | Recorded playback/generation/attachment UI, Heading audio, ZIP import/export, folder selection/reconnect/writes, manual release, destructive GC, bulk clear and general P15 editor operations remain disabled. No companion or canonical database deletion is performed. |
+
+No cross-database atomicity is assumed. Recovery never replays a command, rolls back a Text row/counter, overwrites an accepted binary, or deletes a provisional/orphan binary. A future GC must validate fresh references across the whole library, including all retained RF profiles, Heading ownership, Full composition inputs, provisional/uncertain jobs and active playback leases. It must use the same publisher fence and honor active consumers before any physical reclamation. Global preferences remain session-only in Book QA and the packet adds no download-history writes.
+
 ## Host and authority
 
 The UAT-only `?qa=book-qa` route mounts the real Main App, Reader, and Global Player after explicit opt-in and connection to one named disposable database. The exact origin allowlist is `https://text-uat.prolingo.web.id` and HTTP on `localhost`, `127.0.0.1`, or `[::1]` on ports `4173` and `5173`. The gate rejects every other origin before opening storage. Physical-device access is deferred. The Book QA host module is included only in the explicit `text-uat` build.

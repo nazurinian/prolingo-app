@@ -30,28 +30,29 @@ export const buildAudioStagingId = ({ mode = 'table', mapKey, engine, voiceId, v
   lower(voiceId) || 'unknown-voice'
 ].join('|');
 
+export const initializeAudioStagingV1Stores = db => {
+  if (!db.objectStoreNames.contains(META_STORE)) {
+    const meta = db.createObjectStore(META_STORE, { keyPath: 'id' });
+    meta.createIndex('mode', 'mode', { unique: false });
+    meta.createIndex('mapKey', 'mapKey', { unique: false });
+    meta.createIndex('batchSessionId', 'batchSessionId', { unique: false });
+    meta.createIndex('hasBlob', 'hasBlob', { unique: false });
+  }
+  if (!db.objectStoreNames.contains(BLOB_STORE)) db.createObjectStore(BLOB_STORE, { keyPath: 'id' });
+  if (!db.objectStoreNames.contains(BATCH_STORE)) {
+    const batch = db.createObjectStore(BATCH_STORE, { keyPath: 'id' });
+    batch.createIndex('mode', 'mode', { unique: false });
+    batch.createIndex('createdAt', 'createdAt', { unique: false });
+  }
+};
+
 const openDb = () => new Promise((resolve, reject) => {
   if (typeof indexedDB === 'undefined') {
     reject(new Error('IndexedDB is not available.'));
     return;
   }
   const request = indexedDB.open(DB_NAME, DB_VERSION);
-  request.onupgradeneeded = () => {
-    const db = request.result;
-    if (!db.objectStoreNames.contains(META_STORE)) {
-      const meta = db.createObjectStore(META_STORE, { keyPath: 'id' });
-      meta.createIndex('mode', 'mode', { unique: false });
-      meta.createIndex('mapKey', 'mapKey', { unique: false });
-      meta.createIndex('batchSessionId', 'batchSessionId', { unique: false });
-      meta.createIndex('hasBlob', 'hasBlob', { unique: false });
-    }
-    if (!db.objectStoreNames.contains(BLOB_STORE)) db.createObjectStore(BLOB_STORE, { keyPath: 'id' });
-    if (!db.objectStoreNames.contains(BATCH_STORE)) {
-      const batch = db.createObjectStore(BATCH_STORE, { keyPath: 'id' });
-      batch.createIndex('mode', 'mode', { unique: false });
-      batch.createIndex('createdAt', 'createdAt', { unique: false });
-    }
-  };
+  request.onupgradeneeded = () => initializeAudioStagingV1Stores(request.result);
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => reject(request.error || new Error('Failed to open Audio Staging database.'));
 });

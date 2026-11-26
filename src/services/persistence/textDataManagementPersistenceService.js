@@ -31,6 +31,7 @@ import { canonicalJsonStringify } from '../../domain/text/textCanonicalFingerpri
 import { normalizeTextSourceAttachments } from '../../domain/text/textSourceAttachmentDomain.js';
 import { normalizeTextExternalImportRegistry } from '../../domain/text/textExternalJsonDomain.js';
 import { getTextLibraryIdSequence } from '../../domain/text/textLibraryDomain.js';
+import { applyBookQaAudioOperation, bookAudioCommitKey, bookAudioError, isBookAudioOperationId } from '../../domain/text/bookQaAudioDomain.js';
 import {
   assertDisposableQaDatabaseHandle,
   assertDisposableQaDatabaseName,
@@ -56,6 +57,7 @@ const KNOWN_SIDECAR_META_KEYS = new Set([
 ]);
 
 const activeWriteLocks = new Set();
+const BOOK_AUDIO_TRANSACTION = Symbol('Bound Book audio transaction');
 
 const typedFail = (code, message) => {
   throw new TextDataManagementError(code, message);
@@ -711,6 +713,7 @@ export const executeDisposableTextManagementTransaction = async ({
           dbVersion: db.version,
           requireCompleteMetadata: true
         });
+        const audio = restOptions[BOOK_AUDIO_TRANSACTION];
         if (beforeState.snapshotFingerprint !== expectedSnapshotFingerprint) {
           typedFail(
             'STALE_RESULT',
@@ -718,8 +721,25 @@ export const executeDisposableTextManagementTransaction = async ({
           );
         }
 
-        const resolvedSelection = resolveTextManagementSelection(beforeState.snapshot, selection);
-        const outcome = applyTextDataManagementCommand(beforeState.snapshot, command, {
+        const resolvedSelection = audio ? null : resolveTextManagementSelection(beforeState.snapshot, selection);
+        let marker;
+        let outcome;
+        if (audio) {
+          try {
+            audio.assertCurrent();
+            if (beforeState.snapshot.schemaVersion !== 2 || db.version !== TEXT_LIBRARY_V2_DB_VERSION || audio.library !== safeName) {
+              typedFail('INVALID_AUDIO_SCOPE', 'Audio requires the bound disposable v2 library');
+            }
+            const key = bookAudioCommitKey(audio.id);
+            if (beforeState.metaRecords.some(record => record.key === key)) typedFail('AUDIO_OPERATION_EXISTS', 'Audio operation previously committed');
+            outcome = applyBookQaAudioOperation(beforeState.snapshot, audio.entries, now);
+            validateTextManagementSnapshot(outcome.snapshot);
+            marker = { key, value: { id: audio.id, connectionId: audio.connectionId, library: safeName }, updatedAt: now };
+          } catch (error) {
+            error.audioPrecommitFailure = true;
+            throw error;
+          }
+        } else outcome = applyTextDataManagementCommand(beforeState.snapshot, command, {
           selection: resolvedSelection,
           boundary,
           permissions,
@@ -767,6 +787,10 @@ export const executeDisposableTextManagementTransaction = async ({
           afterSnapshot: outcome.snapshot,
           now
         });
+        if (marker) {
+          tx.objectStore(TEXT_LIBRARY_STORES.META).add(marker);
+          nextMetaRecords.push(marker);
+        }
 
         const nextFingerprint = canonicalJsonStringify(outcome.snapshot);
         onBeforeCommit?.({
@@ -782,6 +806,7 @@ export const executeDisposableTextManagementTransaction = async ({
           authoritative: true,
           dbName: safeName,
           dbVersion: db.version,
+          ...(marker ? { operation: marker.value } : {}),
           commandType: command?.type || null,
           expectedRevision,
           previousFingerprint: beforeState.snapshotFingerprint,
@@ -796,6 +821,28 @@ export const executeDisposableTextManagementTransaction = async ({
     db?.close?.();
     release();
   }
+};
+
+// Private Book host capability. The ordinary adapter and P15 command payload cannot select it.
+export const createDisposableBookAudioCommitter = ({ dbName, connectionId, assertCurrent }) => {
+  const library = assertDisposablePersistenceOptions({ dbName });
+  if (!isBookAudioOperationId(connectionId) || typeof assertCurrent !== 'function') {
+    throw bookAudioError('INVALID_AUDIO_SCOPE', 'Book audio transaction requires a bound connection');
+  }
+  return async (job, { signal, fingerprint, revision }) => {
+    const check = () => {
+      assertCurrent();
+      if (signal?.aborted) throw bookAudioError('AUDIO_CANCELLED', 'Audio operation was cancelled before metadata commit');
+    };
+    check();
+    if (job.library !== library || job.connectionId !== connectionId || !isBookAudioOperationId(job.id)
+      || !Number.isSafeInteger(revision) || revision < 0) throw bookAudioError('INVALID_AUDIO_SCOPE', 'Audio operation scope is invalid');
+    return executeDisposableTextManagementTransaction({
+      dbName: library, version: TEXT_LIBRARY_V2_DB_VERSION, boundary: 'disposable',
+      expectedSnapshotFingerprint: fingerprint, expectedRevision: revision,
+      [BOOK_AUDIO_TRANSACTION]: { ...job, assertCurrent: check }
+    });
+  };
 };
 
 /**

@@ -72,11 +72,14 @@ export default function BookQaHost() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState('');
   const ownedSession = useRef(null);
+  const mounted = useRef(false);
   const flight = useRef(false);
   const originAllowed = isBookQaOrigin(window.location.origin);
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       ownedSession.current?.dispose();
       ownedSession.current = null;
     };
@@ -88,7 +91,7 @@ export default function BookQaHost() {
     return assertBookQaDatabaseName(databaseName);
   }, [databaseName, optIn, originAllowed]);
 
-  const connect = useCallback(async (requestedName = databaseName) => {
+  const connect = useCallback(async requestedName => {
     const safeName = assertBookQaDatabaseName(requestedName);
     const adapter = createTextDataManagementPersistenceAdapter({
       dbName: safeName,
@@ -97,7 +100,10 @@ export default function BookQaHost() {
       bookAuthoring: true
     });
     const loaded = await adapter.loadState();
-    const nextConnection = createBookQaConnection(adapter, loaded);
+    if (!mounted.current) return;
+    const nextConnection = createBookQaConnection(adapter, loaded, {
+      library: safeName, origin: window.location.origin, optIn
+    });
     ownedSession.current?.dispose();
     ownedSession.current = nextConnection.session;
     setConnection(nextConnection);
@@ -107,7 +113,7 @@ export default function BookQaHost() {
     window.history.replaceState(null, '', url);
     setError(null);
     setNotice(`Connected ${safeName}; v2 snapshot is the application source of truth.`);
-  }, [databaseName]);
+  }, [optIn]);
 
   const runHostAction = useCallback(async operation => {
     if (flight.current) return;
