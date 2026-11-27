@@ -92,7 +92,6 @@ import { resolveAdvancedDatasetStats, resolveCurrentPlayerList, resolveMasterFil
 import { resolveMasteryProgressStatistics } from './domain/progress/masteryStatisticsDomain';
 import { resolveStudyActivityStatistics } from './domain/progress/studyTrackingDomain.js';
 import { resolveAudioFallbackVoice, resolveLocalAudioUrl } from './domain/audio/audioSourceRoutingDomain';
-import { resolveBrowserTtsVoiceState } from './domain/audio/browserTtsVoiceDecisionDomain';
 import { resolveGeneratedAudioMapKey, shouldIgnoreLocalAudioFailure, shouldResolveLocalAudioFailure } from './domain/audio/audioTtsCompletionFailureDomain';
 import { executeAudioGenerationService, executeEdgeBackendHealthService, executeGeminiByokClearService, executeGeminiByokRegisterService, executeGeminiOwnerLockService, executeGeminiOwnerStatusService, executeGeminiOwnerUnlockService } from './services/audio/audioTtsSideEffectService';
 import { executeAudioBatchDownloadService } from './services/audio/audioBatchDownloadService';
@@ -5363,7 +5362,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
         : TEXT_STRUCTURED_RESET_SCOPES.GLOBAL_EDGE;
     const nextPrefs = resetTextStructuredAudioGenerationPreferences(structuredTextAudioGenerationPreferences, { scope: mappedScope });
     setStructuredTextAudioGenerationPreferences(nextPrefs);
-    addLog('Text Audio Reset', `Reset ${target === 'bulk' ? 'Bulk Audio defaults (Libby EN / Tuti ID, Split)' : target === 'all' ? 'Global Edge & Bulk defaults' : 'Global Edge Generation defaults (Sonia EN / Gadis ID, 0% rate, 0Hz pitch)'}.`);
+    addLog('Text Audio Reset', `Reset ${target === 'bulk' ? 'Bulk Audio defaults (Sonia EN / Gadis ID, Split)' : target === 'all' ? 'Global Edge & Bulk defaults' : 'Global Edge Generation defaults (Sonia EN / Gadis ID, 0% rate, 0Hz pitch)'}.`);
     return nextPrefs;
   }, [structuredTextZipImportBusy, textLibraryCommandBusy, isSystemBusy, structuredTextAudioGenerationState.running, clearStructuredTextResetRuntimePlaybackState, handleStructuredTextCancelGeneration, structuredTextAudioGenerationPreferences, addLog, bookQaMode]);
 

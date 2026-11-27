@@ -167,8 +167,8 @@ test('D1-01 — Global Browser TTS & Playback resets cleanly, persists round-tri
   }
 });
 
-// 2. Global Edge & Bulk Generation defaults independence (Sonia/Gadis vs Libby/Tuti)
-test('D1-02 — Global Edge & Bulk reset preserves Sonia/Gadis vs Libby/Tuti split & supports partial + combined resets', () => {
+// 2. Independent Global Edge and Bulk Generation resets (Sonia/Gadis)
+test('D1-02 — Global Edge & Bulk apply Sonia/Gadis and support independent and combined resets', () => {
   const mockStorage = createMockLocalStorage();
   globalThis.window = { localStorage: mockStorage };
 
@@ -204,8 +204,8 @@ test('D1-02 — Global Edge & Bulk reset preserves Sonia/Gadis vs Libby/Tuti spl
 
     const bulkOnly = buildResetTextStructuredBulkGenerationPreferences(dirtyGen);
     assert.equal(bulkOnly.edgeTextVoiceId, 'en-US-GuyNeural');
-    assert.deepEqual(bulkOnly.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-    assert.deepEqual(bulkOnly.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
+    assert.deepEqual(bulkOnly.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+    assert.deepEqual(bulkOnly.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
     assert.equal(bulkOnly.bulkGenerateSplit, true);
     assert.equal(bulkOnly.bulkGenerateFull, false);
     assert.equal(bulkOnly.bulkAutoExport, false);
@@ -218,10 +218,10 @@ test('D1-02 — Global Edge & Bulk reset preserves Sonia/Gadis vs Libby/Tuti spl
     assert.deepEqual(reloadedAll, persistedAll);
     assert.equal(reloadedAll.edgeTextVoiceId, 'en-GB-SoniaNeural');
     assert.equal(reloadedAll.edgeMeaningVoiceId, 'id-ID-GadisNeural');
-    assert.deepEqual(reloadedAll.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-    assert.deepEqual(reloadedAll.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
-    assert.equal(reloadedAll.bulkExportTextVoiceId, 'en-GB-LibbyNeural');
-    assert.equal(reloadedAll.bulkExportMeaningVoiceId, 'su-ID-TutiNeural');
+    assert.deepEqual(reloadedAll.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+    assert.deepEqual(reloadedAll.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
+    assert.equal(reloadedAll.bulkExportTextVoiceId, 'en-GB-SoniaNeural');
+    assert.equal(reloadedAll.bulkExportMeaningVoiceId, 'id-ID-GadisNeural');
     assert.equal(reloadedAll.defaultsVersion, TEXT_STRUCTURED_GENERATION_DEFAULTS.defaultsVersion ?? reloadedAll.defaultsVersion);
 
     const raw1 = mockStorage.getItem(TEXT_STRUCTURED_AUDIO_GENERATION_PREFERENCE_KEY);

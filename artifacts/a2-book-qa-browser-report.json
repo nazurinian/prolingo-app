@@ -1,0 +1,119 @@
+{
+  "command": "node scripts/audit-book-qa-a1a-browser.mjs",
+  "flags": [
+    "BOOK_QA_A2_AUDIT",
+    "BOOK_QA_BODY_AUDIO_AUDIT",
+    "BOOK_QA_HEADING_AUDIO_AUDIT"
+  ],
+  "exitCode": 0,
+  "groups": [
+    "Empty second library, exact DB targets and unchanged first library",
+    "UI creates and renames Collection and Workspace, moves and selects stable identity",
+    "T1 Main Title input, repair-safe mode changes and reconnect in the real App",
+    "T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection",
+    "T1 stale title writer and committed-but-unaccepted receipt never replay",
+    "Real Reader and Global Player transport retain audible ownership across navigation",
+    "External move, invalid Refresh, mutation lock and deleted selection recovery",
+    "Direct edit callback rejects and mobile exposes only Book QA capabilities",
+    "Mobile creates a native v2 sample through the same catalogue contract",
+    "Valid provisional reuse, exact-digest repair for corrupt and missing bytes, and failed cold recovery fence",
+    "Actual scoped Split playback, Media Session, pause/resume and ownership across navigation and reset",
+    "Actual untimed Full Paragraph playback and same-voice alternate RF retention",
+    "Recorded Single, Continue and Start From Here use the existing bounded transport",
+    "Incomplete Conversation falls back to TTS, then plays trusted composed 48 kHz Full",
+    "Controlled provider failure, cancellation and stale authoritative generation reject without replay",
+    "Reconnect and mobile profile reset preserve the stable variant and all rate/pitch references",
+    "Actual Indonesian recorded Main Title, Media Session and owned Pause/Resume across Workspace navigation",
+    "Heading and Body use one durable RF asset and one connection URL without provider synthesis",
+    "ID-EN recorded and EN-ID controlled Browser TTS retain exact text, voice and atomic owner",
+    "Two stable Speaker voices render in authored Split order and leave the Scene Heading profile unchanged",
+    "Cancelled and stale Heading generation uploads no binding and explicit Refresh projects the external edit",
+    "Title-only normal transport, uncertain Heading receipt recovery, retained alternate profiles and session disposal",
+    "Same RF in a second library remains scoped, with the same Heading controls on mobile",
+    "A2 fixture keeps the exact London Body order, two pure Workspaces, blank channels and empty Units",
+    "A2 create-only shell initializes four Workspaces and explicit EN/ID fixture generation exports two verified recordings",
+    "A2 Refresh, refused initialization and a new browser process preserve user edits and exact scoped audio bytes"
+  ],
+  "isolatedDemo": {
+    "schemaVersion": 2,
+    "counts": {
+      "collections": 0,
+      "documents": 4,
+      "blocks": 12,
+      "contentUnits": 30,
+      "segments": 92,
+      "audioVariants": 0
+    },
+    "documents": [
+      {
+        "id": "DOC_000001",
+        "title": "A Journey to London",
+        "documentType": "mixed"
+      },
+      {
+        "id": "DOC_000002",
+        "title": "Paragraph · A morning by the river",
+        "documentType": "paragraph"
+      },
+      {
+        "id": "DOC_000003",
+        "title": "Conversation · At the information desk",
+        "documentType": "conversation"
+      },
+      {
+        "id": "DOC_000004",
+        "title": "Stress · Book audio and Reader",
+        "documentType": "mixed"
+      }
+    ],
+    "routes": [
+      [
+        "en-GB-SoniaNeural",
+        "The path follows the river."
+      ],
+      [
+        "id-ID-GadisNeural",
+        "Jalur ini mengikuti aliran sungai."
+      ]
+    ],
+    "partial": {
+      "paths": [
+        "Audio/RF/EN/RF_BFBA1126469A01D8FE26E13217E4514DE593FB0A9E6F93BC1B2BE3DA3E4FFF9A__EDGE__SONIA.mp3",
+        "Audio/RF/ID/RF_D53261050C53043AC7B2F2E68EC472A8BCE7A507DC8B293735167CD53D40BD4D__EDGE__GADIS.mp3"
+      ],
+      "digests": [
+        "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+        "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe"
+      ],
+      "references": 2,
+      "normal": 2,
+      "signatures": [
+        [
+          80,
+          75,
+          3,
+          4
+        ],
+        [
+          80,
+          75,
+          3,
+          4
+        ]
+      ]
+    },
+    "restarted": true
+  },
+  "production": {
+    "qaHostChunkAbsent": true,
+    "qaHostModuleAbsent": true,
+    "bookBodyAudioPanelAbsent": true,
+    "bookHeadingPanelAbsent": true,
+    "qaRouteFallsBackToNormalApp": true,
+    "normalMainAppOpensCanonicalV1": true,
+    "normalMainAppMounted": true,
+    "tableAndLegacyPlayback": true,
+    "normalCredentialCleanup": true
+  },
+  "runtimeErrors": []
+}

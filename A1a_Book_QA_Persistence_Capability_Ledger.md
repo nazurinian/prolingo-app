@@ -1,6 +1,12 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** A1b-2B is executor-verified in isolated Book QA. The A1b-G integrated browser run passed and the historical P7/HF2 audit still fails its starting-HEAD default-voice assertion. Both gates await independent source review and human approval. Production activation remains NO-GO. Earlier sections record their checkpoint capabilities.
+**Status:** A1b-2B is coordinator-approved. The approved A1b-G voice policy and A2 isolated manual library are documented in the [A2 acceptance report](A2_Book_QA_Persistent_Demo_Report.md). Production activation remains NO-GO.
+
+## A2 persistent manual demo
+
+The Book QA host can create the four native v2 A2 Workspaces in `prolingo_text_library_d3b_qa_book_a2_manual`. This path uses the existing explicit opt-in, origin and name checks, create-only initialization, and authoritative reconnect. It keeps London’s original Body and provides Paragraph, Conversation and Stress Workspaces. Initialization publishes no audio references. The scoped Body and Heading generation and Portable import controls support separate explicit actions to build partial coverage. [Indonesian manual UAT checklist](docs/uat4/ProLingo_A2_UAT_Manual_ID.md)
+
+Fresh Edge manual, bulk and export defaults use Sonia/Gadis. Browser TTS chooses from its available catalog, with Edge preferring Sonia/Gadis and Chrome preferring UK Female/Indonesian. Previously stored choices and native audio bindings retain their existing precedence. The proposed Table / Legacy / Book UAT navigation and wider authoring belong to A3/A3-G.
 
 ## A1b-G integrated audio hardening
 

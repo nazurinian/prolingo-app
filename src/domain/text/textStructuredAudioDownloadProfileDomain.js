@@ -1,4 +1,4 @@
-import { initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { DEFAULT_EDGE_EN_VOICE_ID, DEFAULT_EDGE_ID_VOICE_ID, initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
 import { getTextStructuredSegmentSpeakerId } from './textStructuredSpeakerIdentityDomain.js';
 import { resolveTextStructuredConversationSyncedVoiceProfile } from './textStructuredVoiceAssignmentDomain.js';
@@ -163,7 +163,7 @@ export const resolveTextStructuredEffectiveDownloadVoice = ({
 }) => {
   const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
   const defaultVoiceId = clean(normalizedChannel === 'meaning' ? preferences?.edgeMeaningVoiceId : preferences?.edgeTextVoiceId)
-    || (normalizedChannel === 'meaning' ? 'id-ID-GadisNeural' : 'en-GB-SoniaNeural');
+    || (normalizedChannel === 'meaning' ? DEFAULT_EDGE_ID_VOICE_ID : DEFAULT_EDGE_EN_VOICE_ID);
   const defaultPlaybackVoiceName = clean(normalizedChannel === 'meaning' ? preferences?.playbackMeaningVoiceName : preferences?.playbackTextVoiceName) || null;
   const edgeVoices = Array.isArray(preferences?.edgeVoices) && preferences.edgeVoices.length ? preferences.edgeVoices : initialEdgeVoices;
 

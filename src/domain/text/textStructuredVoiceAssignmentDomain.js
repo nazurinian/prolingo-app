@@ -8,7 +8,7 @@ import {
   resolveTextStructuredConversationMasterSpeaker
 } from './textStructuredSpeakerIdentityDomain.js';
 import { formatBrowserTtsVoiceLabel } from '../audio/browserTtsVoicePresentationDomain.js';
-import { resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
+import { resolveDefaultEnglishBrowserVoice, resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
 
 export const TEXT_STRUCTURED_VOICE_OVERRIDE_METADATA_KEY = 'audioVoiceOverrideV1';
 
@@ -426,6 +426,10 @@ export const resolveTextStructuredBrowserVoiceResolution = ({
       : [];
     if (normalizedChannel === 'meaning' && candidateObjects.length) {
       const preferred = resolveDefaultIndonesianBrowserVoice(candidateObjects);
+      if (preferred?.name) return clean(preferred.name);
+    }
+    if (normalizedChannel === 'text' && availableBrowserVoices?.some(voice => voice?.lang)) {
+      const preferred = resolveDefaultEnglishBrowserVoice(candidateObjects);
       if (preferred?.name) return clean(preferred.name);
     }
     return browserVoiceNames.find(name => name !== excludedName) || null;

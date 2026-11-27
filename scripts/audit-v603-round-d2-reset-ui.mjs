@@ -683,7 +683,7 @@ run('7. canExecuteTextStructuredReset + App.jsx synchronisation, safety & Table/
   assert.equal(canExecuteTextStructuredReset({ generationRunning: true, requireGenerationIdle: true }).blockedBy, 'generation-running');
   assert.equal(canExecuteTextStructuredReset({ generationRunning: true, requireGenerationIdle: false }).allowed, true);
 
-  // Verify Bulk Sonia/Gadis vs Libby/Tuti split stays untouched in domain helper
+  // Verify the approved Bulk defaults in the domain helper
   const bulkReset = buildResetTextStructuredBulkGenerationPreferences({
     edgeTextVoiceId: 'en-US-GuyNeural',
     edgeMeaningVoiceId: 'id-ID-ArdiNeural',
@@ -691,8 +691,8 @@ run('7. canExecuteTextStructuredReset + App.jsx synchronisation, safety & Table/
     bulkGenerateFull: true
   });
   assert.equal(bulkReset.edgeTextVoiceId, 'en-US-GuyNeural');
-  assert.deepEqual(bulkReset.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-  assert.deepEqual(bulkReset.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
+  assert.deepEqual(bulkReset.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+  assert.deepEqual(bulkReset.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
 
   const appSource = read('src/App.jsx');
   assert.ok(appSource.includes('clearStructuredTextResetRuntimePlaybackState'));

@@ -392,8 +392,8 @@ export const createJourneyToLondonFixture = () => {
  * Covers: Title Card role, empty Unit, same-Speaker consecutive Turns, very long
  * Speaker name, unassigned Speaker, joinAfter semantics, and unequal EN/ID lengths.
  */
-export const createJourneyToLondonStressFixtures = () => {
-  const runner = createCommandRunner(createEmptyV2Snapshot(FIXTURE_NOW + 100), FIXTURE_NOW + 100);
+export const createJourneyToLondonStressFixtures = ({ initialSnapshot = createEmptyV2Snapshot(FIXTURE_NOW + 100) } = {}) => {
+  const runner = createCommandRunner(initialSnapshot, FIXTURE_NOW + 100);
   const documentId = runner.apply('document.create', {
     title: 'UAT-4B0 Stress Cases (Separate)',
     documentType: 'mixed',

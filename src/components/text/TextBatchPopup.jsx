@@ -962,7 +962,7 @@ export const TextBatchPopup = memoComponent(({
       <SafetyConfirmDialog
         open={bulkResetConfirmOpen}
         title="Reset Bulk Audio Preferences to Defaults?"
-        message="Restores Bulk Audio defaults: Split ON, Full OFF, EN + ID channels enabled, Libby EN / Tuti ID voices, and default export preferences (Auto Export OFF). Global Edge defaults (Sonia/Gadis, rate/pitch), Staging MP3 binaries, and Workspace/Card overrides stay intact."
+        message="Restores Bulk Audio defaults with Split enabled, Full disabled, both channels enabled, Sonia EN, Gadis ID, and Auto Export disabled. Keeps Global Edge settings, Staging MP3 binaries, and Workspace/Card overrides."
         confirmLabel="Reset Bulk"
         tone="amber"
         onCancel={() => setBulkResetConfirmOpen(false)}

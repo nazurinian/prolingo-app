@@ -5,6 +5,7 @@ import { createBookQaConnection, isBookQaOrigin } from '../../../services/bookQa
 import { validateTextManagementSnapshot } from '../../../domain/text/textDataManagementDomain.js';
 import { backfillTextContentUnits } from '../../../domain/text/textContentUnitDomain.js';
 import { createStructuredTestingFixture } from '../../../../scripts/fixtures/p15-integrated/structured-fixture.js';
+import { createPersistentBookQaDemo } from '../../../../scripts/fixtures/book-qa/persistent-demo.js';
 import App from '../../../App.jsx';
 import { BookQaBodyAudioPanel } from '../BookQaBodyAudioPanel.jsx';
 import { BookQaHeadingAudioPanel } from '../BookQaHeadingAudioPanel.jsx';
@@ -138,20 +139,17 @@ export default function BookQaHost() {
     await connect(safeName);
   });
 
-  const handleInitialize = (withDemo = false) => runHostAction(async () => {
+  const handleInitialize = (createSnapshot, description) => runHostAction(async () => {
     const safeName = assertOptIn();
-    const snapshot = withDemo ? cleanFixtureSnapshot() : emptyV2Snapshot();
     await seedDisposableTextManagementDatabase({
       dbName: safeName,
-      snapshot,
+      snapshot: createSnapshot(),
       sourceAttachments: [],
       externalImports: [],
       createOnly: true
     });
     await connect(safeName);
-    setNotice(withDemo
-      ? `Initialized ${safeName} with clean v2 Paragraph, Conversation, and Mixed samples; audio readiness was removed.`
-      : `Initialized a new empty v2 library in ${safeName}.`);
+    setNotice(`Initialized ${safeName} with ${description}.`);
   });
 
   const refresh = useCallback(async () => {
@@ -203,9 +201,11 @@ export default function BookQaHost() {
         <p className="text-[11px] text-slate-500">Required form: <code>prolingo_text_library_d3b_qa_*</code>. Initialize uses create-only semantics and refuses to replace an existing database.</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={!optIn || busy || !originAllowed} onClick={handleConnect} className="min-h-11 rounded bg-indigo-600 px-3 text-xs font-bold text-white disabled:opacity-40">Load / Connect existing v2 library</button>
-          <button type="button" disabled={!optIn || busy || !originAllowed} onClick={() => handleInitialize(false)} className="min-h-11 rounded border border-indigo-300 px-3 text-xs font-bold text-indigo-700 disabled:opacity-40 dark:text-indigo-300">Initialize empty v2 library</button>
-          <button type="button" disabled={!optIn || busy || !originAllowed} onClick={() => handleInitialize(true)} className="min-h-11 rounded border border-indigo-300 px-3 text-xs font-bold text-indigo-700 disabled:opacity-40 dark:text-indigo-300">Initialize clean demo library</button>
+          <button type="button" disabled={!optIn || busy || !originAllowed} onClick={() => handleInitialize(emptyV2Snapshot, 'an empty v2 library')} className="min-h-11 rounded border border-indigo-300 px-3 text-xs font-bold text-indigo-700 disabled:opacity-40 dark:text-indigo-300">Initialize empty v2 library</button>
+          <button type="button" disabled={!optIn || busy || !originAllowed} onClick={() => handleInitialize(cleanFixtureSnapshot, 'clean v2 samples')} className="min-h-11 rounded border border-indigo-300 px-3 text-xs font-bold text-indigo-700 disabled:opacity-40 dark:text-indigo-300">Initialize clean demo library</button>
+          <button type="button" disabled={!optIn || busy || !originAllowed} onClick={() => handleInitialize(createPersistentBookQaDemo, 'the four A2 demo Workspaces')} className="min-h-11 rounded border border-indigo-300 px-3 text-xs font-bold text-indigo-700 disabled:opacity-40 dark:text-indigo-300">Initialize A2 demo library</button>
         </div>
+        <p className="text-xs text-slate-500">A2 includes Paragraph, Conversation, London Mixed and Stress. Recordings can be generated or imported after connecting.</p>
       </fieldset>
       {busy && <p role="status" className="text-xs text-indigo-600">Connecting to the explicit disposable database…</p>}
       {notice && <p role="status" className="text-xs text-emerald-700 dark:text-emerald-300">{notice}</p>}

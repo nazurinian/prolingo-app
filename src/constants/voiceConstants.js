@@ -1,5 +1,8 @@
 // --- EDGE TTS VOICES (COMPREHENSIVE VERIFIED CATALOG) ---
 
+export const DEFAULT_EDGE_EN_VOICE_ID = 'en-GB-SoniaNeural';
+export const DEFAULT_EDGE_ID_VOICE_ID = 'id-ID-GadisNeural';
+
 export const DEPRECATED_EDGE_VOICE_IDS = Object.freeze([
   'en-GB-AlfiesNeural'
 ]);

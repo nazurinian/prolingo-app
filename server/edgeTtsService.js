@@ -1,5 +1,5 @@
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import { UNSUPPORTED_EDGE_VOICE_IDS } from '../src/constants/voiceConstants.js';
+import { DEFAULT_EDGE_EN_VOICE_ID, UNSUPPORTED_EDGE_VOICE_IDS } from '../src/constants/voiceConstants.js';
 
 const KNOWN_UNSUPPORTED_VOICE_SET = new Set(UNSUPPORTED_EDGE_VOICE_IDS);
 const KNOWN_UNSUPPORTED_VOICE_LOWER_SET = new Set(
@@ -118,14 +118,14 @@ const collectAudioStream = (audioStream) => new Promise((resolve, reject) => {
 
 export const createEdgeTtsStream = async ({
   text,
-  voice = 'en-GB-LibbyNeural',
+  voice = DEFAULT_EDGE_EN_VOICE_ID,
   rate = '+0%',
   pitch = '+0Hz'
 } = {}) => {
   const cleanText = String(text || '').trim();
   if (!cleanText) throw new Error('Text is required');
   if (cleanText.length > 20000) throw new Error('Text is too long');
-  const cleanVoice = String(voice || 'en-GB-LibbyNeural').trim();
+  const cleanVoice = String(voice || DEFAULT_EDGE_EN_VOICE_ID).trim();
   const cleanRate = String(rate || '+0%').trim();
   const cleanPitch = String(pitch || '+0Hz').trim();
   if (!/^[A-Za-z0-9-]{2,100}$/.test(cleanVoice)) throw new Error('Voice is invalid');
@@ -139,7 +139,7 @@ export const createEdgeTtsStream = async ({
 };
 
 export const synthesizeEdgeTtsBuffer = async (options = {}) => {
-  const cleanVoice = String(options?.voice || 'en-GB-LibbyNeural').trim();
+  const cleanVoice = String(options?.voice || DEFAULT_EDGE_EN_VOICE_ID).trim();
   try {
     const audioStream = await createEdgeTtsStream(options);
     const audio = await collectAudioStream(audioStream);

@@ -22,9 +22,16 @@ import {
   normalizeTextStructuredAudioGenerationPreferences
 } from '../src/domain/text/textStructuredAudioGenerationDomain.js';
 import { resolveTextStructuredRuntimePlaybackOrder } from '../src/domain/text/textStructuredRuntimePlaybackPlanDomain.js';
+import { loadTextStructuredAudioGenerationPreferences } from '../src/services/persistence/textStructuredAudioGenerationPreferenceService.js';
+import { resolveTextStructuredBrowserVoiceState } from '../src/domain/text/textStructuredVoiceDomain.js';
 
-let pass = 0;
-const check = (name, fn) => { fn(); pass += 1; console.log(`PASS ${String(pass).padStart(2, '0')} — ${name}`); };
+let pass = 0, fail = 0;
+const voiceOnly = process.argv.includes('--voice-policy');
+const check = (name, fn, voicePolicy = false) => {
+  if (voiceOnly && !voicePolicy) return;
+  try { fn(); pass++; console.log(`PASS ${name}`); }
+  catch (error) { fail++; console.error(`FAIL ${name} (${error.code || error.name})`); }
+};
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -35,7 +42,6 @@ const playerControls = read('src/components/text/TextStructuredPlaybackControls.
 const audioControls = read('src/components/text/TextStructuredAudioControls.jsx');
 const cardAudio = read('src/components/text/TextStructuredCardAudioPanel.jsx');
 const prefService = read('src/services/persistence/textStructuredPreferenceService.js');
-const generationPrefService = read('src/services/persistence/textStructuredAudioGenerationPreferenceService.js');
 const mainState = read('src/hooks/useMainAppPrimaryState.js');
 const bulkExportSource = read('src/domain/text/textStructuredBulkExportDomain.js');
 const runtimeSource = read('src/domain/text/textStructuredRuntimePlaybackPlanDomain.js');
@@ -132,10 +138,10 @@ check('Chrome-style Browser EN selects Google UK English Female deterministicall
     { name: 'Google UK English Male', lang: 'en-GB', voiceURI: 'Google UK English Male' },
     { name: 'Google UK English Female', lang: 'en-GB', voiceURI: 'Google UK English Female' }
   ];
-  const state = resolveBrowserTtsVoiceState(voices);
+  const state = resolveBrowserTtsVoiceState(voices, { userAgent: 'Chrome/140' });
   assert.equal(state.defaultEng.name, 'Google UK English Female');
   assert.equal(isLikelyUkFemaleBrowserVoice(state.defaultEng), true);
-});
+}, true);
 
 check('Browser EN gracefully falls back to another en-GB voice when no female-labelled voice exists', () => {
   const state = resolveBrowserTtsVoiceState([
@@ -143,29 +149,55 @@ check('Browser EN gracefully falls back to another en-GB voice when no female-la
     { name: 'British English', lang: 'en-GB' }
   ]);
   assert.equal(state.defaultEng.lang, 'en-GB');
-});
+}, true);
 
-check('Normal/manual Edge defaults are Sonia EN and Tuti ID', () => {
+check('Normal/manual Edge defaults are Sonia EN and Gadis ID', () => {
   const prefs = normalizeTextStructuredAudioGenerationPreferences({});
   assert.equal(TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION, 2);
   assert.equal(prefs.edgeTextVoiceId, 'en-GB-SoniaNeural');
-  assert.equal(prefs.edgeMeaningVoiceId, 'su-ID-TutiNeural');
-  assert.match(mainState, /useState\("en-GB-SoniaNeural"\)/);
-  assert.match(mainState, /useState\("su-ID-TutiNeural"\)/);
-});
+  assert.equal(prefs.edgeMeaningVoiceId, 'id-ID-GadisNeural');
+  assert.match(mainState, /setEdgeVoice\] = useState\(DEFAULT_EDGE_EN_VOICE_ID\)/);
+  assert.match(mainState, /setEdgeIndonesianVoice\] = useState\(DEFAULT_EDGE_ID_VOICE_ID\)/);
+}, true);
 
-check('Bulk EN remains Libby and independent from the Sonia normal/manual default', () => {
-  const prefs = normalizeTextStructuredAudioGenerationPreferences({ edgeTextVoiceId: 'en-GB-SoniaNeural' });
-  assert.deepEqual(prefs.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-  assert.equal(prefs.bulkExportTextVoiceId, 'en-GB-LibbyNeural');
-  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-});
+check('Bulk generation and preferred export default to Sonia and Gadis independently of manual selections', () => {
+  const prefs = normalizeTextStructuredAudioGenerationPreferences({ edgeTextVoiceId: 'en-GB-RyanNeural', edgeMeaningVoiceId: 'id-ID-ArdiNeural' });
+  assert.deepEqual(prefs.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+  assert.deepEqual(prefs.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
+  assert.equal(prefs.bulkExportTextVoiceId, 'en-GB-SoniaNeural');
+  assert.equal(prefs.bulkExportMeaningVoiceId, 'id-ID-GadisNeural');
+  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+}, true);
 
-check('Old beta.8 Libby normal default has an explicit one-time migration to Sonia while Bulk stays Libby', () => {
-  assert.match(generationPrefService, /parsed\.edgeTextVoiceId === 'en-GB-LibbyNeural'/);
-  assert.match(generationPrefService, /parsed\.edgeTextVoiceId = 'en-GB-SoniaNeural'/);
-  assert.match(generationPrefService, /parsed\.bulkTextVoiceIds = \['en-GB-LibbyNeural'\]/);
-});
+check('Old saved manual, bulk and export voices survive preference load', () => {
+  const saved = { defaultsVersion: 1, edgeTextVoiceId: 'en-GB-LibbyNeural', edgeMeaningVoiceId: 'su-ID-TutiNeural',
+    bulkTextVoiceIds: ['en-GB-RyanNeural'], bulkExportMeaningVoiceId: 'id-ID-ArdiNeural' };
+  globalThis.window = { localStorage: { getItem: () => JSON.stringify(saved) } };
+  try {
+    const { defaultsVersion, ...voices } = saved;
+    const loaded = loadTextStructuredAudioGenerationPreferences();
+    for (const [key, value] of Object.entries(voices)) assert.deepEqual(loaded[key], value);
+    assert.deepEqual(loaded.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
+    assert.equal(loaded.bulkExportTextVoiceId, 'en-GB-RyanNeural');
+  } finally { delete globalThis.window; }
+}, true);
+
+check('Edge and Chrome choose their available EN/ID defaults in shared and structured playback', () => {
+  const englishVoices = [{ name: 'Microsoft Sonia Online', lang: 'en-GB' }, { name: 'Google UK English Female', lang: 'en-GB' }];
+  const indonesianVoices = [{ name: 'Microsoft Gadis Online', lang: 'id-ID' }, { name: 'Google Bahasa Indonesia', lang: 'id-ID' }];
+  for (const [agent, index] of [['Chrome/140 Edg/140', 0], ['Chrome/140', 1]]) {
+    const browser = { userAgent: agent };
+    const shared = resolveBrowserTtsVoiceState([...englishVoices, ...indonesianVoices], browser);
+    const structured = resolveTextStructuredBrowserVoiceState({ englishVoices, indonesianVoices, browser });
+    assert.deepEqual([shared.defaultEng, shared.defaultId], [englishVoices[index], indonesianVoices[index]]);
+    assert.deepEqual([structured.textVoice, structured.meaningVoice], [shared.defaultEng, shared.defaultId]);
+  }
+  const browser = { userAgent: 'Chrome/140' };
+  const selected = resolveTextStructuredBrowserVoiceState({ englishVoices, indonesianVoices, browser,
+    preferences: { browserTextVoiceName: englishVoices[0].name, browserMeaningVoiceName: indonesianVoices[0].name } });
+  assert.deepEqual([selected.textVoice, selected.meaningVoice], [englishVoices[0], indonesianVoices[0]]);
+  assert.equal(resolveBrowserTtsVoiceState(englishVoices, browser).defaultId, null);
+}, true);
 
 check('Bottom Global Player visibly exposes Split/Full and Local/TTS state', () => {
   assert.match(bottom, /data-text-global-player-controls="true"/);
@@ -208,4 +240,5 @@ check('HF2 package + app metadata are aligned and keep HF1 history', () => {
   assert.match(metadata, /p7-hf1 fixes the runtime blank-screen regression/);
 });
 
-console.log(`\nP7 HF2 GLOBAL PLAYER + DEFAULTS AUDIT COMPLETE — ${pass} PASS`);
+console.log(`\nP7 HF2 ${voiceOnly ? 'VOICE POLICY' : 'GLOBAL PLAYER + DEFAULTS'} AUDIT — ${pass} PASS, ${fail} FAIL`);
+if (fail) process.exitCode = 1;

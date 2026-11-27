@@ -696,7 +696,7 @@ const TextStructuredAudioControls = memoComponent(function TextStructuredAudioCo
           onClick={() => setResetConfirmTarget({
             kind: 'global-edge',
             title: 'Reset Global Edge Generation Defaults?',
-            message: 'Restores Global Edge defaults to Sonia EN (en-GB-SoniaNeural) / Gadis ID (id-ID-GadisNeural), 0% rate, and 0Hz pitch. Bulk Audio defaults (Libby EN / Tuti ID), Browser TTS settings, and Staging MP3 binaries stay intact.'
+            message: 'Restores Global Edge defaults to Sonia EN, Gadis ID, 0% rate, and 0 Hz pitch. Keeps Bulk Audio selections, Browser TTS settings, and Staging MP3 binaries.'
           })}
           className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 ${globalEdgeResetState.dirty && !globalEdgeResetState.busyBlocked ? 'hover:border-violet-400' : ''} ${globalEdgeResetState.opacityClass} ${globalEdgeResetState.interactionClass}`}
           title="Reset Global Edge voices, rate and pitch to defaults"

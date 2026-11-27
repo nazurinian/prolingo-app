@@ -3,6 +3,7 @@ import os from 'os';
 import express from 'express';
 import cors from 'cors';
 import { classifyEdgeTtsError, createEdgeTtsStream } from './server/edgeTtsService.js';
+import { DEFAULT_EDGE_EN_VOICE_ID } from './src/constants/voiceConstants.js';
 import {
   createGeminiOwnerClearCookie,
   createGeminiOwnerCookie,
@@ -43,7 +44,7 @@ app.post('/api/tts', async (req, res) => {
   const startTime = Date.now();
   const { text, voice, rate, pitch } = req.body || {};
   const snippet = String(text || '').trim().substring(0, 30);
-  const voiceName = voice || 'en-GB-LibbyNeural';
+  const voiceName = voice || DEFAULT_EDGE_EN_VOICE_ID;
   let audioStream = null;
   let clientClosed = false;
   ttsDebugLog(`[EDGE-TTS REQ #${requestId}] 🎙️  Start: "${snippet}${text && text.length > 30 ? '...' : ''}" (${voiceName})`);

@@ -7,6 +7,7 @@ import { checkBookPortableAudio, portableAuditLibraries } from './fixtures/a1b-2
 import { checkBookNormalAudio, normalAuditLibraries } from './fixtures/a1b-2b/check-normal-audio.mjs';
 import { checkBookAudioHardening, hardeningAuditLibraries } from './fixtures/a1b-g/check-hardening.mjs';
 import { checkBookHardeningPlayback } from './fixtures/a1b-g/check-hardening-playback.mjs';
+import { checkPersistentBookQaDemo, demoAuditLibraries } from './fixtures/book-qa/check-persistent-demo.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -26,9 +27,10 @@ const bodyAudit = process.env.BOOK_QA_BODY_AUDIO_AUDIT === '1';
 const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
 const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
 const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
+const demoAudit = process.env.BOOK_QA_A2_AUDIT === '1';
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
   ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
-  ...(hardeningAudit ? hardeningAuditLibraries : {}) };
+  ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -203,7 +205,7 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit) && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit || demoAudit) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -244,15 +246,17 @@ const uatOrigin = await startServer(uatRoot, true);
 const productionOrigin = await startServer(productionRoot, false);
 const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'));
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const browser = spawn(browserPath, [
+const launchBrowser = () => spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
-  ...(bodyAudit || headingAudit || portableAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
+  ...(bodyAudit || headingAudit || portableAudit || demoAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
-const browserExit = new Promise(resolve => {
+const waitForBrowserExit = browser => new Promise(resolve => {
   if (browser.exitCode !== null || browser.signalCode !== null) resolve(true);
   else browser.once('exit', () => resolve(true));
 });
+let browser = launchBrowser();
+let browserExit = waitForBrowserExit(browser);
 
 let socket;
 const runtimeErrors = [];
@@ -366,19 +370,24 @@ const cleanup = async () => {
   if (!profileRemoved) throw new Error('Disposable Edge profile remained after four bounded cleanup attempts.');
 };
 
-try {
+const connectBrowserSocket = async () => {
   let debuggingPort = null;
   for (let attempt = 0; attempt < 160; attempt += 1) {
     try {
       debuggingPort = Number((await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]);
       if ((await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).ok) break;
+      debuggingPort = null;
     } catch { debuggingPort = null; }
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   if (!debuggingPort) throw new Error('Edge did not start with a DevTools endpoint');
   const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json();
-  socket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
+  const browserSocket = new WebSocket(targets.find(target => target.type === 'page').webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { browserSocket.onopen = resolve; browserSocket.onerror = reject; });
+  return browserSocket;
+};
+
+try {
   let nextId = 0;
   const pending = new Map();
   const call = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
@@ -386,7 +395,7 @@ try {
     pending.set(id, { resolve, reject });
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
-  socket.onmessage = event => {
+  const onMessage = event => {
     const message = JSON.parse(event.data);
     if (message.method === 'Network.requestWillBeSent' && message.params.request.url.startsWith(uatOrigin + '/api/')) qaApiRequests.push(message.params.request.url);
     if (message.method === 'Runtime.exceptionThrown') runtimeErrors.push(message.params.exceptionDetails?.text || 'browser runtime exception');
@@ -406,12 +415,33 @@ try {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result?.value;
   };
-  await call('Runtime.enable');
-  await call('Network.enable');
-  await call('Runtime.addBinding', { name: '__a1aIdbAudit' });
-  await call('Page.enable');
-  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
-  await call('Page.addScriptToEvaluateOnNewDocument', { source: instrumentation });
+  const attachBrowser = async () => {
+    socket = await connectBrowserSocket();
+    socket.onmessage = onMessage;
+    await call('Runtime.enable');
+    await call('Network.enable');
+    await call('Runtime.addBinding', { name: '__a1aIdbAudit' });
+    await call('Page.enable');
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: instrumentation });
+  };
+  await attachBrowser();
+  const restartBrowser = async () => {
+    const previousPid = browser.pid;
+    let timeout;
+    try {
+      const exited = await Promise.race([
+        Promise.all([call('Browser.close'), browserExit]).then(() => true),
+        new Promise(resolve => { timeout = setTimeout(() => resolve(false), 15000); })
+      ]);
+      assert(exited, 'Browser did not exit for A2 restart');
+    } finally { clearTimeout(timeout); }
+    await fs.rm(path.join(profile, 'DevToolsActivePort'), { force: true });
+    browser = launchBrowser();
+    browserExit = waitForBrowserExit(browser);
+    await attachBrowser();
+    assert.notEqual(browser.pid, previousPid);
+  };
 
   const navigate = async (origin, route) => call('Page.navigate', { url: origin + route });
   const waitFor = async (expression, timeoutMs = 15000) => evaluate(`(async () => {
@@ -674,6 +704,22 @@ try {
     assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
   }
 
+  if (demoAudit) {
+    const verifyIsolation = async storage => {
+      const audit = await readAudit();
+      assert.deepEqual(await storageState(false), storage);
+      assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+      assert.deepEqual(audit.violations, []);
+      assert.deepEqual(audit.storage, []);
+      assert.deepEqual(audit.deletes, []);
+      assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+    };
+    report.persistentDemo = await checkPersistentBookQaDemo({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin, bodyRequests,
+      restartBrowser: async () => { await verifyIsolation(expectedStorage); await restartBrowser(); } });
+    await verifyIsolation([expectedStorage[0], null]);
+    assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+  }
+
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
   report.production = {
@@ -681,6 +727,7 @@ try {
     qaHostModuleAbsent: productionSources.every(source => !source.includes('data-book-qa-host="disconnected"'))
   };
   assert(report.production.qaHostChunkAbsent && report.production.qaHostModuleAbsent, 'Production output must exclude the Book QA host module');
+  if (demoAudit) assert(productionSources.every(source => !source.includes('Initialize A2 demo library')), 'Production must exclude the A2 initializer');
   if (bodyAudit) {
     report.production.bookBodyAudioPanelAbsent = productionSources.every(source => !source.includes('data-book-body-audio-status'));
     assert(report.production.bookBodyAudioPanelAbsent, 'Production output must exclude the Book QA Body audio panel');

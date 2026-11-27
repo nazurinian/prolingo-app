@@ -1,4 +1,4 @@
-import { getEdgeVoiceDiagnostic, initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
+import { DEFAULT_EDGE_EN_VOICE_ID, DEFAULT_EDGE_ID_VOICE_ID, getEdgeVoiceDiagnostic, initialEdgeVoices, isEdgeVoiceUnavailable } from '../../constants/voiceConstants.js';
 import { buildTextStructuredAudioFilename } from './textStructuredAudioIdentityDomain.js';
 import { buildCanonicalTextRenderAudioFilename, parseCanonicalTextRenderAudioFilename } from './textFilenameDomain.js';
 import { resolveStructuredTextPlaybackList } from './textStructuredPlaybackDomain.js';
@@ -12,24 +12,24 @@ export const TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION = 2;
 
 export const TEXT_STRUCTURED_GENERATION_DEFAULTS = Object.freeze({
   engine: TEXT_STRUCTURED_GENERATOR_ENGINES.EDGE,
-  edgeTextVoiceId: 'en-GB-SoniaNeural',
-  edgeMeaningVoiceId: 'id-ID-GadisNeural',
+  edgeTextVoiceId: DEFAULT_EDGE_EN_VOICE_ID,
+  edgeMeaningVoiceId: DEFAULT_EDGE_ID_VOICE_ID,
   geminiVoiceName: 'Kore',
   edgeRate: 0,
   edgePitch: 0,
   generateText: true,
   generateMeaning: true,
   // beta.8/P5: Bulk generation selection is independent from playback priority.
-  bulkTextVoiceIds: ['en-GB-LibbyNeural'],
-  bulkMeaningVoiceIds: ['su-ID-TutiNeural'],
+  bulkTextVoiceIds: [DEFAULT_EDGE_EN_VOICE_ID],
+  bulkMeaningVoiceIds: [DEFAULT_EDGE_ID_VOICE_ID],
   bulkGenerateSplit: true,
   bulkGenerateFull: false,
   // beta.8/P6: export policy is independent from generation and playback order.
   bulkAutoExport: false,
   bulkExportFormat: 'portable-zip',
   bulkExportVoicePolicy: 'all-selected',
-  bulkExportTextVoiceId: 'en-GB-LibbyNeural',
-  bulkExportMeaningVoiceId: 'su-ID-TutiNeural',
+  bulkExportTextVoiceId: DEFAULT_EDGE_EN_VOICE_ID,
+  bulkExportMeaningVoiceId: DEFAULT_EDGE_ID_VOICE_ID,
   bulkExportRepresentation: 'split'
 });
 
@@ -57,7 +57,7 @@ export const normalizeTextStructuredAudioGenerationPreferences = candidate => ({
   edgePitch: clampInteger(candidate?.edgePitch, -20, 20, 0),
   generateText: candidate?.generateText !== false,
   generateMeaning: candidate?.generateMeaning !== false,
-  // Bulk defaults are deliberately independent from normal/manual Edge defaults.
+  // Bulk selections remain independent from manual generation selections.
   bulkTextVoiceIds: normalizeVoiceIds(candidate?.bulkTextVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds[0]),
   bulkMeaningVoiceIds: normalizeVoiceIds(candidate?.bulkMeaningVoiceIds, TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds[0]),
   // Keep at least one representation selected. Full-only is valid; both-off falls back to Split.

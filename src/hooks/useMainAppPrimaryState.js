@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { DEFAULT_ROW_HEIGHT_PC } from '../constants/datasetConstants';
-import { initialEdgeVoices } from '../constants/voiceConstants';
+import { DEFAULT_EDGE_EN_VOICE_ID, DEFAULT_EDGE_ID_VOICE_ID, initialEdgeVoices } from '../constants/voiceConstants';
 import { createEmptyManualForm } from '../utils/csvUtils';
 import { createEmptySourcePack } from '../utils/multiSourceUtils';
 import { createDefaultPlaybackSequence, createEmptyVocabularyOrder, normalizePlaybackDelays } from '../utils/playbackSequenceUtils';
@@ -149,8 +149,8 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = fa
   // EDGE VOICE STATES (Expanded)
   // eslint-disable-next-line no-unused-vars
   const [edgeVoices, setEdgeVoices] = useState(initialEdgeVoices); 
-  const [edgeVoice, setEdgeVoice] = useState("en-GB-SoniaNeural"); // Normal/manual Edge EN default; Bulk Text remains Libby
-  const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState("su-ID-TutiNeural"); // Preferred Edge generator Indonesian-region default
+  const [edgeVoice, setEdgeVoice] = useState(DEFAULT_EDGE_EN_VOICE_ID);
+  const [edgeIndonesianVoice, setEdgeIndonesianVoice] = useState(DEFAULT_EDGE_ID_VOICE_ID);
 
   const [edgeRate, setEdgeRate] = useState(0); // -50 to +50 (Percent)
   const [edgePitch, setEdgePitch] = useState(0); // -20 to +20 (Hz)

@@ -1,8 +1,4 @@
-import {
-  TEXT_STRUCTURED_GENERATION_DEFAULTS,
-  TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION,
-  normalizeTextStructuredAudioGenerationPreferences
-} from '../../domain/text/textStructuredAudioGenerationDomain.js';
+import { normalizeTextStructuredAudioGenerationPreferences } from '../../domain/text/textStructuredAudioGenerationDomain.js';
 import {
   TEXT_STRUCTURED_RESET_SCOPES,
   buildResetTextStructuredBulkGenerationPreferences,
@@ -14,20 +10,12 @@ export const TEXT_STRUCTURED_AUDIO_GENERATION_PREFERENCE_KEY = 'prolingo_text_st
 
 export const loadTextStructuredAudioGenerationPreferences = () => {
   try {
-    if (typeof window === 'undefined') return { ...TEXT_STRUCTURED_GENERATION_DEFAULTS };
+    if (typeof window === 'undefined') return normalizeTextStructuredAudioGenerationPreferences();
     const raw = window.localStorage.getItem(TEXT_STRUCTURED_AUDIO_GENERATION_PREFERENCE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    // HF2 one-time defaults migration: older beta.8 checkpoints used Libby as the
-    // normal/manual EN Edge default. The frozen contract requires Sonia while
-    // Bulk/Export keep Libby. Preserve every explicit bulk field independently.
-    if (parsed && Number(parsed.defaultsVersion || 0) < TEXT_STRUCTURED_GENERATION_DEFAULTS_VERSION) {
-      if (!parsed.edgeTextVoiceId || parsed.edgeTextVoiceId === 'en-GB-LibbyNeural') parsed.edgeTextVoiceId = 'en-GB-SoniaNeural';
-      if (!Array.isArray(parsed.bulkTextVoiceIds) || !parsed.bulkTextVoiceIds.length) parsed.bulkTextVoiceIds = ['en-GB-LibbyNeural'];
-      if (!parsed.bulkExportTextVoiceId) parsed.bulkExportTextVoiceId = 'en-GB-LibbyNeural';
-    }
-    return normalizeTextStructuredAudioGenerationPreferences(parsed);
+    // Older records have no saved-choice provenance. Honor every stored voice.
+    return normalizeTextStructuredAudioGenerationPreferences(raw ? JSON.parse(raw) : null);
   } catch {
-    return { ...TEXT_STRUCTURED_GENERATION_DEFAULTS };
+    return normalizeTextStructuredAudioGenerationPreferences();
   }
 };
 
@@ -42,8 +30,7 @@ export const executeTextStructuredAudioGenerationPreferencePersistenceEffect = p
 };
 
 /**
- * Resets Global Edge and/or Bulk Structured Text audio generation preferences while keeping
- * independent Sonia/Gadis vs Libby/Tuti defaults intact.
+ * Resets the requested Global Edge and/or Bulk generation preference scope.
  */
 export const resetTextStructuredAudioGenerationPreferences = (
   currentPreferences = {},

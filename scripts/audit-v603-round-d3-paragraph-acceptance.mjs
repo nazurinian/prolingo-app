@@ -638,14 +638,14 @@ await run('5. Paragraph reset scopes restore inheritance cleanly & protect metad
   assert.equal(docAfter.metadata?.audioDownloadProfileV1, undefined);
   assert.equal(next.audioVariants.length, 1);
 
-  // Global Edge (Sonia/Gadis/0%/0Hz) vs Bulk (Libby/Tuti/Split) defaults + reset busy guard
+  // Global Edge and Bulk default to Sonia/Gadis and retain independent reset scopes
   const edgeReset = buildResetTextStructuredGlobalEdgePreferences({ ...TEXT_STRUCTURED_GENERATION_DEFAULTS, edgeTextVoiceId: 'en-US-AriaNeural', edgeRate: 15 });
   assert.equal(edgeReset.edgeTextVoiceId, 'en-GB-SoniaNeural');
   assert.equal(edgeReset.edgeMeaningVoiceId, 'id-ID-GadisNeural');
   assert.equal(edgeReset.edgeRate, 0);
   const bulkReset = buildResetTextStructuredBulkGenerationPreferences({ ...TEXT_STRUCTURED_GENERATION_DEFAULTS, bulkTextVoiceIds: ['en-US-AriaNeural'], bulkGenerateFull: true });
-  assert.deepEqual(bulkReset.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-  assert.deepEqual(bulkReset.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
+  assert.deepEqual(bulkReset.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+  assert.deepEqual(bulkReset.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
   assert.equal(bulkReset.bulkGenerateFull, false);
   assert.equal(canExecuteTextStructuredReset({ zipImportActive: true }).allowed, false);
   assert.equal(canExecuteTextStructuredReset({ zipImportActive: false, textLibraryCommandBusy: false }).allowed, true);

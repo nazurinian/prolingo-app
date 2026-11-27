@@ -1,5 +1,13 @@
 const clean = value => String(value ?? '').trim();
 const lower = value => clean(value).toLowerCase();
+const voiceLabel = voice => `${clean(voice?.name)} ${clean(voice?.voiceURI)}`;
+const browserFamily = (browser = globalThis.navigator) => {
+  const brands = (browser?.userAgentData?.brands ?? []).map(entry => entry.brand);
+  const agent = browser?.userAgent ?? '';
+  if (brands.includes('Microsoft Edge') || /\b(?:Edg|EdgA|EdgiOS|Edge)\//u.test(agent)) return 'edge';
+  if (brands.includes('Google Chrome') || /\b(?:Chrome|CriOS)\//u.test(agent)) return 'chrome';
+  return null;
+};
 
 const isEnglish = voice => lower(voice?.lang).startsWith('en');
 const isUkEnglish = voice => {
@@ -40,6 +48,16 @@ const englishVoicePriority = voice => {
   return 6;
 };
 
+const orderedEnglishVoices = voices => voices.filter(isEnglish).sort((a, b) =>
+  englishVoicePriority(a) - englishVoicePriority(b) || clean(a.name).localeCompare(clean(b.name)));
+
+export const resolveDefaultEnglishBrowserVoice = (voices, browser) => {
+  const eligible = orderedEnglishVoices(Array.isArray(voices) ? voices : []);
+  const sonia = browserFamily(browser) !== 'chrome'
+    ? eligible.find(voice => isUkEnglish(voice) && /\bsonia\b/iu.test(voiceLabel(voice))) : null;
+  return sonia || eligible[0] || null;
+};
+
 const isStandardIndonesianVoice = voice => {
   const lang = lower(voice?.lang).replace(/_/g, '-');
   const name = lower(voice?.name);
@@ -56,18 +74,16 @@ const isStandardIndonesianVoice = voice => {
   );
 };
 
-// Automatic Indonesian Browser TTS default:
-// 1. Preserve Microsoft Edge "Gadis" when available.
-// 2. Otherwise prefer "Google Bahasa Indonesia" / Google Indonesian voices
-//    over Windows SAPI "Microsoft Andika" (Chrome async voice loading).
-// 3. Fall back cleanly to any remaining Indonesian voice (including Andika).
-export const resolveDefaultIndonesianBrowserVoice = (voices) => {
-  const idVoices = Array.isArray(voices) ? voices.filter(Boolean) : [];
+const isIndonesianRegionVoice = voice => isStandardIndonesianVoice(voice)
+  || /^(?:jv|su)[-_]id(?:$|[-_])/iu.test(clean(voice?.lang));
+
+export const resolveDefaultIndonesianBrowserVoice = (voices, browser) => {
+  const idVoices = Array.isArray(voices) ? voices.filter(isIndonesianRegionVoice) : [];
   if (!idVoices.length) return null;
 
   const isNatural = voice => /\bnatural\b|\bonline\b/i.test(clean(voice?.name));
-  const gadisMatches = idVoices.filter(v => /(^|[^a-z])gadis([^a-z]|$)/i.test(clean(v?.name)));
-  if (gadisMatches.length) {
+  const gadisMatches = idVoices.filter(v => isStandardIndonesianVoice(v) && /\bgadis\b/iu.test(voiceLabel(v)));
+  if (browserFamily(browser) !== 'chrome' && gadisMatches.length) {
     return gadisMatches.find(isNatural) || gadisMatches[0];
   }
 
@@ -89,27 +105,14 @@ export const resolveDefaultIndonesianBrowserVoice = (voices) => {
   return searchPool[0] || idVoices[0] || null;
 };
 
-export const resolveBrowserTtsVoiceState = (allVoices) => {
+export const resolveBrowserTtsVoiceState = (allVoices, browser) => {
   const source = Array.isArray(allVoices) ? allVoices : [];
   if (source.length === 0) return null;
 
-  const engVoices = source.filter(isEnglish).sort((a, b) => {
-    const priorityDelta = englishVoicePriority(a) - englishVoicePriority(b);
-    if (priorityDelta !== 0) return priorityDelta;
-    return clean(a?.name).localeCompare(clean(b?.name));
-  });
-
-  // Default EN Browser TTS: UK female when the browser exposes one; otherwise
-  // any en-GB voice, then the historical regional fallback order above.
-  const defaultEng = engVoices.find(voice =>
-    isUkEnglish(voice) && /(^|[^a-z])sonia([^a-z]|$)/i.test(clean(voice?.name))
-  ) || engVoices[0] || null;
-
-  const idVoices = source.filter(v => {
-    const lang = lower(v?.lang);
-    return lang.includes('id') || lang.includes('indones');
-  });
-  const defaultId = resolveDefaultIndonesianBrowserVoice(idVoices);
+  const engVoices = orderedEnglishVoices(source);
+  const idVoices = source.filter(isIndonesianRegionVoice);
+  const defaultEng = resolveDefaultEnglishBrowserVoice(engVoices, browser);
+  const defaultId = resolveDefaultIndonesianBrowserVoice(idVoices, browser);
 
   return { engVoices, defaultEng, idVoices, defaultId };
 };

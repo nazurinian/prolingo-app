@@ -1,8 +1,8 @@
-import { resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
+import { resolveDefaultEnglishBrowserVoice, resolveDefaultIndonesianBrowserVoice } from '../audio/browserTtsVoiceDecisionDomain.js';
 
 const cleanName = value => String(value ?? '').trim();
 
-export const resolveTextStructuredBrowserVoice = (voices, preferredName = null) => {
+export const resolveTextStructuredBrowserVoice = (voices, preferredName = null, fallback = null) => {
   const list = Array.isArray(voices) ? voices.filter(Boolean) : [];
   if (!list.length) return null;
   const preferred = cleanName(preferredName);
@@ -10,31 +10,20 @@ export const resolveTextStructuredBrowserVoice = (voices, preferredName = null) 
     const exact = list.find(voice => cleanName(voice?.name) === preferred);
     if (exact) return exact;
   }
-  return list[0] || null;
+  return fallback || list[0] || null;
 };
-
-// Existing saved selections always win. Prefer Sonia / Gadis only when unset
-// and present in the browser's reported SpeechSynthesis voice list.
-const findNamedBrowserVoice = (voices, name) => (Array.isArray(voices) ? voices : [])
-  .find(voice => new RegExp('(^|[^a-z])' + name + '([^a-z]|$)', 'i').test(cleanName(voice?.name))) || null;
 
 export const resolveTextStructuredBrowserVoiceState = ({
   englishVoices,
   indonesianVoices,
-  preferences
-}) => {
-  const defaultMeaningVoice = resolveDefaultIndonesianBrowserVoice(indonesianVoices);
-  return {
-    textVoice: resolveTextStructuredBrowserVoice(
-      englishVoices,
-      preferences?.browserTextVoiceName || findNamedBrowserVoice(englishVoices, 'Sonia')?.name
-    ),
-    meaningVoice: resolveTextStructuredBrowserVoice(
-      indonesianVoices,
-      preferences?.browserMeaningVoiceName || defaultMeaningVoice?.name
-    )
-  };
-};
+  preferences,
+  browser
+}) => ({
+  textVoice: resolveTextStructuredBrowserVoice(englishVoices, preferences?.browserTextVoiceName,
+    resolveDefaultEnglishBrowserVoice(englishVoices, browser)),
+  meaningVoice: resolveTextStructuredBrowserVoice(indonesianVoices, preferences?.browserMeaningVoiceName,
+    resolveDefaultIndonesianBrowserVoice(indonesianVoices, browser))
+});
 
 export const resolveTextStructuredVoicePreferencePatch = ({ channel, voice }) => {
   const name = cleanName(voice?.name) || null;

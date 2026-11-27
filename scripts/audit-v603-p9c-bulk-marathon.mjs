@@ -656,14 +656,14 @@ await runCheck('C12', 'CONTRACT', 'buildTextStructuredBulkGenerationPlan allows 
   assert.equal(blockedPlan.selectedVoices.text.length, 0);
 });
 
-await runCheck('H6-C', 'CONTRACT', '[P10-G018] Missing-preference Meaning fallback matches Gadis default while preserving Libby/Tuti bulk & Table defaults', () => {
+await runCheck('H6-C', 'CONTRACT', '[P10-G018] Missing preferences use Sonia/Gadis for Structured and Table Edge defaults', () => {
   assert.equal(resolveTextStructuredEffectiveDownloadVoice({ channel: 'text', preferences: null }).voiceId, TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeTextVoiceId);
   assert.equal(resolveTextStructuredEffectiveDownloadVoice({ channel: 'meaning', preferences: null }).voiceId, TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId);
   assert.equal(TEXT_STRUCTURED_GENERATION_DEFAULTS.edgeMeaningVoiceId, 'id-ID-GadisNeural');
-  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds, ['en-GB-LibbyNeural']);
-  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds, ['su-ID-TutiNeural']);
+  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkTextVoiceIds, ['en-GB-SoniaNeural']);
+  assert.deepEqual(TEXT_STRUCTURED_GENERATION_DEFAULTS.bulkMeaningVoiceIds, ['id-ID-GadisNeural']);
   const primaryStateSource = readRepoText('src/hooks/useMainAppPrimaryState.js');
-  assert.match(primaryStateSource, /"su-ID-TutiNeural"/);
+  assert.match(primaryStateSource, /setEdgeIndonesianVoice\] = useState\(DEFAULT_EDGE_ID_VOICE_ID\)/);
 });
 
 const passCount = results.filter(r => r.ok).length;
