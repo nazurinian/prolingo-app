@@ -1,7 +1,8 @@
 import { parseTextStructuredGeneratedFilename } from '../../domain/text/textStructuredAudioGenerationDomain.js';
 import { buildTextStructuredAudioRenderFingerprint } from '../../domain/text/textStructuredAudioRenderFingerprintDomain.js';
 import { TEXT_AUDIO_MANIFEST_FILENAME, parseProLingoTextAudioManifestJson } from '../../domain/text/textAudioManifestDomain.js';
-import { parseCanonicalTextFullArtifactFilename } from '../../domain/text/textFilenameDomain.js';
+import { isSafePortableZipPath, parseCanonicalTextFullArtifactFilename, portableZipPathKey } from '../../domain/text/textFilenameDomain.js';
+import { crc32Blob } from './browserZipService.js';
 import {
   buildTextStructuredFullArtifactRecord,
   buildTextStructuredFullRepresentation,
@@ -36,25 +37,35 @@ const mimeFromFilename = filename => {
   return 'application/octet-stream';
 };
 
-const findEocd = bytes => {
+export const PORTABLE_ZIP_LIMITS = Object.freeze({ bytes: 128 * 1024 ** 2, entry: 64 * 1024 ** 2, entries: 2048, manifest: 4 * 1024 ** 2 });
+const strictDecoder = new TextDecoder('utf-8', { fatal: true });
+const zipError = message => Object.assign(new Error(message), { code: 'INVALID_PORTABLE_ZIP' });
+
+const findEocd = (bytes, strict) => {
   for (let offset = bytes.length - 22; offset >= 0; offset -= 1) {
     if (offset + 22 > bytes.length) continue;
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset, bytes.byteLength - offset);
-    if (view.getUint32(0, true) === EOCD_SIGNATURE) return { offset, view };
+    if (view.getUint32(0, true) === EOCD_SIGNATURE && (!strict || offset + 22 + view.getUint16(20, true) === bytes.length)) return { offset, view };
   }
   return null;
 };
 
-export const parseTextStructuredAudioZipCentralDirectory = async file => {
+export const parseTextStructuredAudioZipCentralDirectory = async (file, { strict = false } = {}) => {
   if (!file || typeof file.slice !== 'function') throw new Error('ZIP file is invalid.');
+  if (strict && file.size > PORTABLE_ZIP_LIMITS.bytes) throw zipError('ZIP exceeds the portable archive byte limit');
   const tailStart = Math.max(0, file.size - MAX_EOCD_SEARCH);
   const tailBytes = await readBlobBytes(file.slice(tailStart, file.size));
-  const eocd = findEocd(tailBytes);
+  const eocd = findEocd(tailBytes, strict);
   if (!eocd) throw new Error(`${file.name || 'ZIP'}: end-of-central-directory not found.`);
 
   const totalEntries = eocd.view.getUint16(10, true);
   const centralSize = eocd.view.getUint32(12, true);
   const centralOffset = eocd.view.getUint32(16, true);
+  if (strict && (eocd.view.getUint16(4, true) || eocd.view.getUint16(6, true)
+    || eocd.view.getUint16(8, true) !== totalEntries || !totalEntries || totalEntries > PORTABLE_ZIP_LIMITS.entries
+    || centralSize > PORTABLE_ZIP_LIMITS.manifest || centralOffset + centralSize !== tailStart + eocd.offset)) {
+    throw zipError('Invalid, split or oversized ZIP central directory');
+  }
   if (totalEntries === ZIP64_16 || centralSize === ZIP64_32 || centralOffset === ZIP64_32) {
     throw new Error(`${file.name || 'ZIP'}: ZIP64 is not supported in the Text archive reader yet.`);
   }
@@ -62,6 +73,8 @@ export const parseTextStructuredAudioZipCentralDirectory = async file => {
 
   const bytes = await readBlobBytes(file.slice(centralOffset, centralOffset + centralSize));
   const entries = [];
+  const paths = new Map();
+  let unpackedBytes = 0;
   let offset = 0;
   while (offset + 46 <= bytes.length && entries.length < totalEntries) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset, bytes.byteLength - offset);
@@ -76,11 +89,90 @@ export const parseTextStructuredAudioZipCentralDirectory = async file => {
     const localHeaderOffset = view.getUint32(42, true);
     const totalLength = 46 + filenameLength + extraLength + commentLength;
     if (offset + totalLength > bytes.length) throw new Error(`${file.name || 'ZIP'}: truncated central-directory entry.`);
-    const filename = decoder.decode(bytes.slice(offset + 46, offset + 46 + filenameLength));
-    entries.push({ filename, flags, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset });
+    const nameBytes = bytes.slice(offset + 46, offset + 46 + filenameLength);
+    const filename = (strict ? strictDecoder : decoder).decode(nameBytes);
+    const crc = view.getUint32(16, true);
+    if (strict) {
+      const key = portableZipPathKey(filename);
+      unpackedBytes += uncompressedSize;
+      if (!isSafePortableZipPath(filename) || paths.has(key) || view.getUint16(34, true)
+        || (view.getUint32(38, true) >>> 28) === 0xa
+        || (flags & ~0x080e) || ![0, 8].includes(compressionMethod)
+        || uncompressedSize > PORTABLE_ZIP_LIMITS.entry || unpackedBytes > PORTABLE_ZIP_LIMITS.bytes
+        || (compressionMethod === 0 && compressedSize !== uncompressedSize)
+        || (filename.endsWith('/') && uncompressedSize)) throw zipError('Duplicate, unsafe, unsupported or oversized ZIP entry: ' + filename);
+      paths.set(key, filename.endsWith('/'));
+    }
+    entries.push({ filename, flags, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset,
+      ...(strict ? { crc, centralOffset } : {}) });
     offset += totalLength;
   }
+  if (strict && (offset !== bytes.length || entries.length !== totalEntries)) throw zipError('ZIP central entry count or size mismatch');
+  if (strict) for (const path of paths.keys()) {
+    for (let slash = path.indexOf('/'); slash >= 0; slash = path.indexOf('/', slash + 1)) {
+      if (paths.get(path.slice(0, slash)) === false) throw zipError('ZIP path conflicts with an ancestor file');
+    }
+  }
   return entries;
+};
+
+const strictEntryBounds = async (file, entry) => {
+  const { localHeaderOffset: start, centralOffset, flags, crc, compressedSize, uncompressedSize, compressionMethod, filename } = entry;
+  const header = new DataView(await file.slice(start, start + 30).arrayBuffer());
+  if (header.byteLength !== 30 || header.getUint32(0, true) !== LOCAL_SIGNATURE || header.getUint16(6, true) !== flags
+    || header.getUint16(8, true) !== compressionMethod) throw zipError('ZIP local header disagrees with directory');
+  const nameEnd = start + 30 + header.getUint16(26, true);
+  const dataStart = nameEnd + header.getUint16(28, true);
+  const dataEnd = dataStart + compressedSize;
+  if (dataEnd > centralOffset || strictDecoder.decode(await file.slice(start + 30, nameEnd).arrayBuffer()) !== filename) {
+    throw zipError('ZIP local entry name or range disagrees with directory');
+  }
+  const fieldsMatch = (view, offset) => view.byteLength >= offset + 12 && view.getUint32(offset, true) === crc
+    && view.getUint32(offset + 4, true) === compressedSize && view.getUint32(offset + 8, true) === uncompressedSize;
+  if (!(flags & 8)) {
+    if (!fieldsMatch(header, 14)) throw zipError('ZIP local size or CRC disagrees with directory');
+    return { dataStart, dataEnd, end: dataEnd };
+  }
+  const trailer = new DataView(await file.slice(dataEnd, Math.min(centralOffset, dataEnd + 16)).arrayBuffer());
+  const signed = trailer.byteLength >= 16 && trailer.getUint32(0, true) === 0x08074b50 && fieldsMatch(trailer, 4);
+  if (!signed && !fieldsMatch(trailer, 0)) throw zipError('ZIP data descriptor disagrees with directory');
+  return { dataStart, dataEnd, end: dataEnd + (signed ? 16 : 12) };
+};
+
+export const openPortableAudioZip = async (file, { signal } = {}) => {
+  const entries = await parseTextStructuredAudioZipCentralDirectory(file, { strict: true });
+  let end = 0;
+  for (const entry of [...entries].sort((a, b) => a.localHeaderOffset - b.localHeaderOffset)) {
+    signal?.throwIfAborted();
+    if (entry.localHeaderOffset !== end) throw zipError('ZIP local entries overlap or contain undeclared data');
+    Object.assign(entry, await strictEntryBounds(file, entry));
+    end = entry.end;
+  }
+  if (entries.length && end !== entries[0].centralOffset) throw zipError('ZIP has undeclared data before its directory');
+  return { entries, async read(entry, limit = PORTABLE_ZIP_LIMITS.entry) {
+    if (!entries.includes(entry) || entry.uncompressedSize > limit) throw zipError('ZIP entry exceeds its read limit');
+    const compressed = file.slice(entry.dataStart, entry.dataEnd);
+    let blob = compressed;
+    if (entry.compressionMethod === 8) {
+      const reader = compressed.stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+      const chunks = [];
+      let size = 0;
+      try {
+        for (;;) {
+          signal?.throwIfAborted();
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > entry.uncompressedSize) throw zipError('ZIP entry expanded past its declared size');
+          chunks.push(value);
+        }
+        blob = new Blob(chunks);
+      } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    }
+    signal?.throwIfAborted();
+    if (blob.size !== entry.uncompressedSize || await crc32Blob(blob) !== entry.crc) throw zipError('ZIP entry size or CRC check failed');
+    return blob;
+  } };
 };
 
 const readZipEntryBlobFromFile = async ({ file, entry, mimeType = null }) => {

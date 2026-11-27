@@ -304,7 +304,7 @@ const importedMetadata = (record, uidMode) => uidMode === PROLINGO_TEXT_PACK_UID
   ? record?.metadata
   : stripSpeakerRegistryGlobalUids(record?.metadata);
 
-const sourceMetadata = ({ originalMetadata, pack, sourceId, entity, now, extra = {} }) => ({
+const sourceMetadata = ({ originalMetadata, pack, sourceId, sourceUid, entity, now, extra = {} }) => ({
   ...(originalMetadata && typeof originalMetadata === 'object' && !Array.isArray(originalMetadata) ? originalMetadata : {}),
   prolingoTextPackSource: {
     packageId: pack.packageId,
@@ -313,6 +313,7 @@ const sourceMetadata = ({ originalMetadata, pack, sourceId, entity, now, extra =
     sourceRootId: pack.scope.rootId,
     sourceEntity: entity,
     sourceId,
+    ...(sourceUid ? { sourceUid } : {}),
     importedAt: new Date(now).toISOString(),
     ...extra
   }
@@ -326,6 +327,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
   if (![PROLINGO_TEXT_PACK_UID_MODE_PRESERVE, PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY].includes(uidMode)) throw new Error(`Unsupported Text Pack UID mode: ${uidMode}`);
 
   const localIsV2 = isContentUnitSnapshot(local);
+  const portableSourceUid = record => localIsV2 && uidMode === PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY ? record.uid : null;
   const packIsV2 = isContentUnitSnapshot(validatedPortable);
   if (packIsV2 && !localIsV2) {
     throw new Error('Cannot import a v2 Text Pack with persistent Content Units into an unmigrated v1 Text snapshot');
@@ -377,6 +379,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
           originalMetadata: importedMetadata(record, uidMode),
           pack,
           sourceId: record.id,
+          sourceUid: portableSourceUid(record),
           entity: 'document',
           now,
           extra: pack.scope.type === 'document' ? {
@@ -402,7 +405,8 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       uid: importedUid(record, uidMode),
       documentId: documentAssignment.map.get(sourceDocumentId),
       order: index + 1,
-      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'block', now })
+      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id,
+        sourceUid: portableSourceUid(record), entity: 'block', now })
     })));
   }
 
@@ -443,7 +447,8 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       blockId: blockAssignment.map.get(sourceBlockId),
       unitId: localIsV2 && record.unitId ? contentUnitAssignment.map.get(record.unitId) || null : null,
       order: index + 1,
-      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'segment', now })
+      metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id,
+        sourceUid: portableSourceUid(record), entity: 'segment', now })
     })));
   }
 

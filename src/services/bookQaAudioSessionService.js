@@ -6,6 +6,7 @@ import { createBookQaAudioStaging } from './persistence/bookQaAudioStagingServic
 import { createDisposableBookAudioCommitter } from './persistence/textDataManagementPersistenceService.js';
 import { executeTextStructuredAudioGenerationRequest } from './audio/textStructuredAudioGenerationService.js';
 import { buildDerivedTextConversationFullAudioWav } from './audio/textStructuredFullAudioExportService.js';
+import { exportBookPortableAudio, importBookPortableAudio } from './audio/bookPortableAudioService.js';
 
 const fail = (code, message) => { throw bookAudioError(code, message); };
 const same = (left, right) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -114,7 +115,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     });
     return { blob: composed.blob, trustedComposition: true };
   };
-  const perform = async (items, callerSignal, generated) => {
+  const perform = async (items, callerSignal, generated, portable = null) => {
     assertCurrent();
     assertWritable();
     const signal = callerSignal ? AbortSignal.any([callerSignal, lifetime.signal]) : lifetime.signal;
@@ -123,19 +124,25 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
       fail('INVALID_AUDIO_REQUEST', 'An audio operation requires 1 to 32 entries');
     }
     let totalBytes = 0;
+    const counted = new Set();
     const captured = items.map(item => {
-      if (!item || (!generated && (!(item.blob instanceof Blob) || item.kind === 'heading'))
+      if (!item || (!generated && (!(item.blob instanceof Blob) || (!portable && item.kind === 'heading')))
         || Object.keys(item).some(key => !['kind', 'target', 'fingerprint', 'descriptor', ...(generated ? [] : ['blob'])].includes(key))) {
         fail('INVALID_AUDIO_REQUEST', 'Provide a typed target, render identity, and Blob');
       }
       const { blob, ...entry } = item;
-      totalBytes += blob?.size ?? 0;
+      if (!portable || !counted.has(item.fingerprint)) totalBytes += blob?.size ?? 0;
+      counted.add(item.fingerprint);
       return { entry: structuredClone(entry), blob };
     });
     if (totalBytes > BOOK_AUDIO_MAX_BYTES) fail('INVALID_AUDIO_REQUEST', 'The operation exceeds the 64 MiB byte limit');
     const before = getSnapshot();
+    if (portable && portable.snapshot !== before) {
+      blockWrites();
+      fail('STALE_RESULT', 'The connected library changed during portable transfer');
+    }
     const fingerprint = canonicalJsonStringify(before), revision = getRevision();
-    assertBookAudioReferenceCapacity(before, captured.map(({ entry }) => entry), { bodyOnly: generated });
+    assertBookAudioReferenceCapacity(before, captured.map(({ entry }) => entry), { bodyOnly: generated || Boolean(portable) });
     return guarded(async () => {
       let initial;
       try { initial = await recover(); }
@@ -144,7 +151,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         blockWrites();
         fail('STALE_RESULT', 'Audio operation was captured against an older library snapshot');
       }
-      const entries = [], assets = new Map();
+      const entries = [], assets = new Map(), available = [], repaired = [], reused = new Set();
       let renderedBytes = 0;
       for (const { blob: supplied, entry } of captured) {
         const owner = resolveBookAudioTarget(before, entry);
@@ -156,19 +163,49 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         const prior = assets.get(entry.fingerprint);
         const prepared = generated ? (prior || await render(entry, owner, before, signal)) : { blob: supplied };
         const { blob, trustedComposition } = prepared;
-        const binary = prepared.binary || await validateBookAudioBytes(blob, owner.format);
+        const proof = portable?.proofs.get(entry.fingerprint);
+        const binary = prepared.binary || (proof?.blob === blob ? proof?.binary : null) || await validateBookAudioBytes(blob, owner.format);
         checkCancelled(signal);
         assertBookAudioCompatibleBytes(before, entry.fingerprint, binary);
         if (prior && !same(prior.binary, binary)) fail('AUDIO_BYTE_CONFLICT', 'Operation supplies conflicting bytes for the same render identity');
         if (!prior) renderedBytes += blob.size;
         if (renderedBytes > BOOK_AUDIO_MAX_BYTES) fail('INVALID_AUDIO_REQUEST', 'Rendered audio exceeds the 64 MiB operation limit');
+        if (portable) {
+          const binding = readBookAudioBinding(before, entry);
+          if (binding.status === 'bound' && same(binding.binary, binary)) {
+            const durable = await staging.read(entry.fingerprint, binary);
+            if (durable.status === 'ready') {
+              available.push(entry);
+              reused.add(entry.fingerprint);
+              continue;
+            }
+            checkCancelled(signal);
+            if ((await loadState()).snapshotFingerprint !== fingerprint) {
+              blockWrites();
+              fail('STALE_RESULT', 'The library changed before exact-byte restoration');
+            }
+            await staging.restoreExactBytes(entry.fingerprint, binary, blob);
+            await verifyBindings(before, [{ ...entry, binary }]);
+            repaired.push(entry.fingerprint);
+            available.push(entry);
+            continue;
+          }
+        }
         assets.set(entry.fingerprint, { fingerprint: entry.fingerprint, binary, blob, trustedComposition });
         entries.push({ ...entry, binary, ...(trustedComposition ? { trustedComposition } : {}) });
+      }
+      if (!entries.length) {
+        checkCancelled(signal);
+        if (getSnapshot() !== before || (await loadState()).snapshotFingerprint !== fingerprint) {
+          blockWrites();
+          fail('STALE_RESULT', 'The connected library changed during portable readback');
+        }
+        return { results: [], snapshot: before, available, repaired, stored: [], reused: [...reused] };
       }
       const job = { id: crypto.randomUUID(), library, connectionId, status: 'provisional', createdAt: Date.now(), entries, revision };
       let phase = 'staging', receipt;
       try {
-        await staging.stage(job, assets.values());
+        const physical = await staging.stage(job, assets.values());
         phase = 'provisional';
         for (const { fingerprint: key, binary } of assets.values()) {
           if ((await staging.read(key, binary)).status !== 'ready') fail('AUDIO_READBACK_FAILED', 'Staged bytes failed durable readback');
@@ -195,7 +232,8 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         checkCancelled(signal);
         assertCurrent();
         publish(loaded);
-        return { status: 'committed', operationId: job.id, results: receipt.result };
+        return { status: 'committed', operationId: job.id, results: receipt.result,
+          ...(portable ? { snapshot: getSnapshot(), available, repaired, stored: physical.stored, reused: [...new Set([...reused, ...physical.reused])] } : {}) };
       } catch (error) {
         const status = phase === 'committed-unaccepted' ? phase
           : phase === 'committing' && !error.audioPrecommitFailure && !['STALE_RESULT', 'AUDIO_CANCELLED'].includes(error.code)
@@ -216,6 +254,36 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     get touched() { return touched; },
     submit: (items, { signal } = {}) => perform(items, signal, false),
     generate: (items, { signal } = {}) => perform(items, signal, true),
+    exportPortable: options => {
+      assertCurrent();
+      assertReadable();
+      const signal = options?.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;
+      const snapshot = getSnapshot();
+      return guarded(async () => {
+        let loaded;
+        try { loaded = await recover(); }
+        catch (error) { blockWrites(); throw error; }
+        if (loaded.snapshotFingerprint !== canonicalJsonStringify(snapshot)) {
+          blockWrites();
+          fail('STALE_RESULT', 'Refresh before exporting audio from this library');
+        }
+        const result = await exportBookPortableAudio({ ...options, snapshot, read: staging.read, signal });
+        checkCancelled(signal);
+        assertCurrent();
+        if (getSnapshot() !== snapshot || (await loadState()).snapshotFingerprint !== canonicalJsonStringify(snapshot)) {
+          blockWrites();
+          fail('STALE_RESULT', 'The connected library changed during export');
+        }
+        return result;
+      }, signal);
+    },
+    importPortable: (files, options) => {
+      assertCurrent();
+      assertWritable();
+      const signal = options?.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;
+      return importBookPortableAudio({ ...options, files, signal, snapshot: getSnapshot(),
+        publish: (items, expected, proofs) => perform(items, signal, false, { snapshot: expected, proofs }) });
+    },
     recover: () => guarded(recover),
     repair: (entry, blob) => guarded(async () => {
       const requested = structuredClone(entry);

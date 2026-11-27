@@ -277,7 +277,7 @@ const rejectBookQaLocalSnapshotWrite = () => {
   throw new Error('Book QA projections are session-owned; local Text snapshots cannot be written.');
 };
 // --- MAIN COMPONENT ---
-const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
   const bookQaMode = Boolean(bookQaConnection?.session);
   const bookQaSession = bookQaConnection?.session || null;
   const bookQaSnapshot = useSyncExternalStore(
@@ -7961,6 +7961,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
         bookQaAudioDisabled={bookQaMode}
+        bookPortableAudioSlot={BookQaPortableAudioControls && bookQaConnection?.audio ? <BookQaPortableAudioControls
+          connection={bookQaConnection} workspace={activeTextDocumentTree} preferences={structuredTextDownloadResolutionPreferences}
+        /> : null}
         bookBodyAudioSlot={BookQaBodyAudioControls && bookQaConnection?.audio && activeTextDocumentTree ? <BookQaBodyAudioControls
           connection={bookQaConnection}
           workspace={activeTextDocumentTree}
@@ -8181,7 +8184,11 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
   };
 
   const renderPlaylist = () => {
-    if (bookQaMode && !activeTextDocumentId) return <p className="p-4 text-sm">Select or create a Workspace in Data.</p>;
+    if (bookQaMode && !activeTextDocumentId) return <>
+      <p className="p-4 text-sm">Select or create a Workspace in Data.</p>
+      {BookQaPortableAudioControls && bookQaConnection?.audio && <BookQaPortableAudioControls
+        connection={bookQaConnection} workspace={null} preferences={structuredTextDownloadResolutionPreferences} />}
+    </>;
     if (mode !== 'text') return renderPlaylistContent();
     const inlineSharedSwitch = activeTextEditorModel === 'structured-v1' && sharedTextReaderActive && textDatabaseStatus === 'ready';
     return (
@@ -8266,7 +8273,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
 // --- APP WRAPPER (Theme & View Logic) ---
 const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
 
-const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
     const bookQaMode = Boolean(bookQaConnection?.session);
     // Keep the current root view across same-tab reloads/HMR fallbacks.
     // A new browser session still starts on Landing by default.
@@ -8359,6 +8366,7 @@ const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHe
                     bookQaConnection={bookQaConnection}
                     BookQaBodyAudioControls={BookQaBodyAudioControls}
                     BookQaHeadingAudioControls={BookQaHeadingAudioControls}
+                    BookQaPortableAudioControls={BookQaPortableAudioControls}
                     onBookQaRefresh={onBookQaRefresh}
                     bookQaRefreshing={bookQaRefreshing}
                     bookQaRefreshError={bookQaRefreshError}

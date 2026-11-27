@@ -150,7 +150,7 @@ const exerciseDerivedAudio = async (connection, blob) => {
     'Actual composed WAV lost its Full identity or binary proof');
 };
 
-const withAddFault = async (storeName, matches, fault, run) => {
+export const withAddFault = async (storeName, matches, fault, run) => {
   const original = IDBObjectStore.prototype.add;
   IDBObjectStore.prototype.add = function(value, ...args) {
     if (this.name === storeName && matches(value)) fault(this.transaction, value);

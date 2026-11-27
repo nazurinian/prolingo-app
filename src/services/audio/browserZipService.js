@@ -21,7 +21,7 @@ const updateCrc32 = (crc, bytes) => {
 // R2: CRC is calculated as a stream, one Blob at a time. The old implementation
 // converted every audio Blob to a Uint8Array and then concatenated the entire ZIP
 // into a second giant Uint8Array, which multiplied peak JS-heap pressure.
-const crc32Blob = async blob => {
+export const crc32Blob = async blob => {
   let crc = 0xffffffff;
   if (blob?.stream) {
     const reader = blob.stream().getReader();

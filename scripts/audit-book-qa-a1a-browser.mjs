@@ -3,6 +3,7 @@ import { checkBookQaHostBoundaries } from './fixtures/p15-integrated/book-qa-hf1
 import { checkBookQaAudioStorage, bookAudioAuditLibraries } from './fixtures/a1b-1a/check-book-qa-audio.mjs';
 import { checkBookBodyAudio, bodyAuditLibraries } from './fixtures/a1b-1b/check-body-audio.mjs';
 import { checkBookHeadingAudio, headingAuditLibraries } from './fixtures/a1b-1c/check-heading-audio.mjs';
+import { checkBookPortableAudio, portableAuditLibraries } from './fixtures/a1b-2a/check-portable-audio.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -20,7 +21,9 @@ const canonicalName = 'prolingo_text_library';
 const audioAudit = process.env.BOOK_QA_AUDIO_AUDIT === '1';
 const bodyAudit = process.env.BOOK_QA_BODY_AUDIO_AUDIT === '1';
 const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
-const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}), ...(headingAudit ? headingAuditLibraries : {}) };
+const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
+const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
+  ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? portableAuditLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -33,6 +36,7 @@ await assertDir(productionRoot);
 
 const probeSource = `
 export * from './scripts/fixtures/a1b-1a/audio-browser-probe.js';
+export * from './scripts/fixtures/a1b-2a/portable-browser-probe.js';
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
 import { createBookQaConnection } from './src/services/bookQaSessionService.js';
@@ -186,13 +190,13 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
-      if (uatMode && (audioAudit || bodyAudit || headingAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+      if (uatMode && (audioAudit || bodyAudit || headingAudit || portableAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
         const frequency = pathname.includes('440') ? '440' : '660';
         response.setHeader('Content-Type', 'audio/mpeg');
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && (bodyAudit || headingAudit) && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit || portableAudit) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -235,7 +239,7 @@ const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'))
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
-  ...(bodyAudit || headingAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
+  ...(bodyAudit || headingAudit || portableAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const browserExit = new Promise(resolve => {
@@ -635,6 +639,17 @@ try {
     assert.deepEqual(audit.deletes, []);
     assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
   }
+  if (portableAudit) {
+    report.portableAudio = await checkBookPortableAudio({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin, call });
+    const audit = await readAudit();
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+  }
 
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
@@ -650,6 +665,10 @@ try {
   if (headingAudit) {
     report.production.bookHeadingPanelAbsent = productionSources.every(source => !source.includes('data-book-heading-status'));
     assert(report.production.bookHeadingPanelAbsent, 'Production output must exclude the Book QA Heading audio panel');
+  }
+  if (portableAudit) {
+    report.production.bookPortablePanelAbsent = productionSources.every(source => !source.includes('data-book-portable-status'));
+    assert(report.production.bookPortablePanelAbsent, 'Production output must exclude the Book QA Portable Audio panel');
   }
 
   await navigate(productionOrigin, '/?qa=book-qa');

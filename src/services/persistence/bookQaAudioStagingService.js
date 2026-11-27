@@ -55,6 +55,7 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
     name,
     async stage(job, assets) {
       return transact([META, BYTES, JOBS], 'readwrite', async tx => {
+        const stored = [], reused = [];
         const meta = tx.objectStore(META), bytes = tx.objectStore(BYTES), jobs = tx.objectStore(JOBS);
         if (await requestResult(jobs.get(job.id))) throw bookAudioError('AUDIO_OPERATION_EXISTS', 'This audio operation already exists');
         for (const { fingerprint, binary, blob } of assets) {
@@ -66,14 +67,17 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
               throw bookAudioError('AUDIO_BYTE_CONFLICT', 'This render identity already owns different bytes');
             }
             // Validate the durable stored bytes after completion before committing Text.
+            reused.push(fingerprint);
             continue;
           }
           const wrapped = new Blob([blob], { type: binary.format === 'mp3' ? 'audio/mpeg' : 'audio/wav' });
           meta.add({ id, mode: 'book-qa', library, mapKey: fingerprint, binary, size: binary.bytes, hasBlob: true,
             batchSessionId: job.id, mimeType: wrapped.type });
           bytes.add({ id, blob: wrapped });
+          stored.push(fingerprint);
         }
         jobs.add(rowFor(job));
+        return { stored, reused };
       });
     },
     listJobs: () => transact([JOBS], 'readonly', tx => requestResult(tx.objectStore(JOBS).getAll())),

@@ -85,6 +85,12 @@ export const buildCanonicalTextConsolidatedZipFilename = ({ documentTitle = 'Tex
 };
 
 export const TEXT_AUDIO_MANIFEST_FILENAME = 'prolingo-text-audio-manifest.json';
+export const isSafePortableZipPath = name => typeof name === 'string' && name.length <= 240
+  && [name, name.normalize('NFKC')].every(path => path.replace(/\/$/u, '').split('/').every(part => part.length > 0
+    && part === part.trim() && !/[\\:*?"<>|]/u.test(part) && !part.endsWith('.')
+    && [...part].every(character => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127)
+    && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(part)));
+export const portableZipPathKey = name => name.replace(/\/$/u, '').normalize('NFKC').toLowerCase();
 
 export const normalizeTextRenderFingerprint = value => {
   const raw = clean(value).toLowerCase();

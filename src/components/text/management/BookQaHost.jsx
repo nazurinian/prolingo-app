@@ -8,6 +8,7 @@ import { createStructuredTestingFixture } from '../../../../scripts/fixtures/p15
 import App from '../../../App.jsx';
 import { BookQaBodyAudioPanel } from '../BookQaBodyAudioPanel.jsx';
 import { BookQaHeadingAudioPanel } from '../BookQaHeadingAudioPanel.jsx';
+import { BookQaPortableAudioPanel } from '../BookQaPortableAudioPanel.jsx';
 
 const DEFAULT_BOOK_QA_DATABASE = 'prolingo_text_library_d3b_qa_book_main';
 const emptyV2Snapshot = () => backfillTextContentUnits({
@@ -173,6 +174,7 @@ export default function BookQaHost() {
       bookQaConnection={connection}
       BookQaBodyAudioControls={BookQaBodyAudioPanel}
       BookQaHeadingAudioControls={BookQaHeadingAudioPanel}
+      BookQaPortableAudioControls={BookQaPortableAudioPanel}
       onBookQaRefresh={refresh}
       bookQaRefreshing={refreshing}
       bookQaRefreshError={error}

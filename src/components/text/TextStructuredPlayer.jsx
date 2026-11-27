@@ -754,6 +754,7 @@ export const TextStructuredPlayer = ({
   bookHeadingsEnabled = false,
   bookBodyAudioSlot = null,
   bookHeadingAudioSlot = null,
+  bookPortableAudioSlot = null,
   bookCanPlayHeadings = false,
   bookHeadingVisibility,
   useSharedCardReader = false,
@@ -1082,6 +1083,7 @@ export const TextStructuredPlayer = ({
     >
       {bookBodyAudioSlot}
       {bookHeadingAudioSlot}
+      {bookPortableAudioSlot}
       {/* Classic/Legacy Reader Toolbar (preserved intact when Classic UI is active) */}
       {!isSharedShellActive && (
         <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
