@@ -1,14 +1,18 @@
 import { buildCanonicalSha256Fingerprint, canonicalJsonStringify } from './textCanonicalFingerprintDomain.js';
 import { applyTextLibraryCommand } from './textLibraryCommandDomain.js';
 import { resolveTextLibraryDocumentTree } from './textLibraryDomain.js';
+import { resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredFullArtifactIdentity, getTextStructuredFullAudioArtifacts } from './textStructuredSplitFullDomain.js';
 
 export const BOOK_AUDIO_REFS = 'bookAudioRenderReferencesV1';
 export const BOOK_AUDIO_BINARY = 'bookAudioBinaryV1';
+export const BOOK_AUDIO_COMPOSITION = 'bookAudioTrustedCompositionV1';
 export const BOOK_AUDIO_MAX_ITEMS = 32;
 export const BOOK_AUDIO_MAX_BYTES = 64 * 1024 * 1024;
+export const isBookBodyAudioCard = block => ['paragraph', 'conversation'].includes(block?.blockType)
+  && resolveTextParagraphCardRole(block) !== 'title';
 const MAX_REFERENCES = 64;
 const RF = /^rf-sha256-[a-f0-9]{64}$/u;
 const FULL = /^full-sha256-[a-f0-9]{64}$/u;
@@ -73,7 +77,7 @@ export const assertBookAudioCompatibleBytes = (snapshot, fingerprint, binary) =>
 export const resolveBookAudioTarget = (snapshot, entry) => {
   if (!entry || typeof entry !== 'object') fail('INVALID_AUDIO_REQUEST', 'Audio target must be an object');
   const { kind, target, fingerprint, descriptor } = entry;
-  if (!fields(entry, ['kind', 'target', 'fingerprint', 'descriptor', 'binary'])
+  if (!fields(entry, ['kind', 'target', 'fingerprint', 'descriptor', 'binary', 'trustedComposition'])
     || !fields(target, ['documentId', 'documentUid', 'cardId', 'cardUid', ...(kind === 'split' ? ['segmentId', 'segmentUid'] : [])])
     || [target.documentId, target.documentUid, target.cardId, target.cardUid,
       ...(kind === 'split' ? [target.segmentId, target.segmentUid] : [])].some(value => typeof value !== 'string' || !value.trim())
@@ -132,6 +136,20 @@ export const resolveBookAudioTarget = (snapshot, entry) => {
   return { document, block, expected, dependencies, format: derived ? 'wav' : 'mp3' };
 };
 
+export const assertBookAudioReferenceCapacity = (snapshot, entries, { bodyOnly = false } = {}) => {
+  const groups = new Map();
+  for (const entry of entries) {
+    const owner = resolveBookAudioTarget(snapshot, entry);
+    if (bodyOnly && !isBookBodyAudioCard(owner.block)) fail('INVALID_AUDIO_TARGET', 'Book QA generation supports Body Cards');
+    if (entry.kind !== 'split') continue;
+    const key = getTextStructuredAudioVariantKey(owner.identity);
+    const current = groups.get(key) || new Set(Object.keys(readBookAudioReferences(owner.variant)));
+    current.add(entry.fingerprint);
+    if (current.size > MAX_REFERENCES) fail('AUDIO_REFERENCE_LIMIT', 'RF reference limit reached; existing profiles were preserved');
+    groups.set(key, current);
+  }
+};
+
 export const applyBookQaAudioOperation = (snapshot, entries, now) => {
   if (!Array.isArray(entries) || !entries.length || entries.length > BOOK_AUDIO_MAX_ITEMS) fail('INVALID_AUDIO_REQUEST', 'Invalid audio operation size');
   let next = snapshot;
@@ -165,7 +183,8 @@ export const applyBookQaAudioOperation = (snapshot, entries, now) => {
         ...previous, id: fingerprint, fullArtifactFingerprint: fingerprint, descriptor,
         segmentCount: owner.expected.fullRepresentation.segmentCount,
         mimeType: binary.format === 'mp3' ? 'audio/mpeg' : 'audio/wav',
-        metadata: { ...previous?.metadata, [BOOK_AUDIO_BINARY]: binary }
+        metadata: { ...previous?.metadata, [BOOK_AUDIO_BINARY]: binary,
+          ...(entry.trustedComposition === true && descriptor.engine === 'derived' ? { [BOOK_AUDIO_COMPOSITION]: true } : {}) }
       } } };
     }
     const outcome = applyTextLibraryCommand(next, command, now);
@@ -186,13 +205,14 @@ export const readBookAudioBinding = (snapshot, entry) => {
     const artifacts = getTextStructuredFullAudioArtifacts(owner.block).filter(item => item.descriptor.channel === entry.descriptor.channel);
     const exact = artifacts.find(item => item.id === entry.fingerprint);
     const binary = exact?.metadata?.[BOOK_AUDIO_BINARY];
-    if (binary) return isBinary(binary) ? { status: 'bound', binary } : { status: 'corrupt' };
+    if (binary) return isBinary(binary) ? { status: 'bound', binary, trustedComposition: exact.metadata[BOOK_AUDIO_COMPOSITION] === true } : { status: 'corrupt' };
     if (exact) return { status: 'metadata-only' };
     return { status: artifacts.some(item => item.descriptor.contentFingerprint === entry.descriptor.contentFingerprint)
       ? 'other-profile' : artifacts.length ? 'stale' : 'missing' };
   }
   const exact = readBookAudioReferences(owner.variant)[entry.fingerprint];
-  if (exact?.binary) return same(exact.descriptor, entry.descriptor) ? { status: 'bound', binary: exact.binary } : { status: 'corrupt' };
+  if (exact?.binary) return same(exact.descriptor, entry.descriptor)
+    ? { status: 'bound', binary: exact.binary, variantId: owner.variant.id } : { status: 'corrupt' };
   if (exact) return { status: 'legacy-unverified' };
   const variants = variantsFor(snapshot, owner.segment, entry.descriptor.channel);
   const refs = variants.flatMap(variant => Object.values(readBookAudioReferences(variant)));

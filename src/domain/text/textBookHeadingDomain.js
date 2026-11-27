@@ -1,6 +1,7 @@
 import { resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
 import { getTextStructuredSpeakerRegistry } from './textStructuredSpeakerIdentityDomain.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
+import { updateBookBodyProfileMetadata } from './bookQaBodyAudioDomain.js';
 
 export const BOOK_MAIN_TITLE_KEY = 'bookMainTitleV1';
 export const BOOK_CARD_HEADING_KEY = 'bookHeadingV1';
@@ -119,6 +120,9 @@ export const prepareBookAuthoringCommand = (snapshot, scoped, workspaceId, autho
   const unchanged = payload === scoped.payload ? scoped : { type, payload };
   if (type === 'document.create' || type === 'document.update') {
     const creating = type === 'document.create';
+    if (!creating && has(authoringFields, 'bodyAudioProfile')) {
+      return makeCommand({ metadata: updateBookBodyProfileMetadata(workspace, authoringFields.bodyAudioProfile) });
+    }
     const title = clean(creating || has(payload, 'title') ? payload.title : workspace.title);
     if (!title) fail('BOOK_WORKSPACE_NAME_REQUIRED', 'Workspace Name must be nonblank');
     if (creating && !['paragraph', 'conversation', 'mixed'].includes(payload.documentType)) {

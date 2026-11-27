@@ -275,7 +275,6 @@ export const resolveTextStructuredCardReadyFullArtifacts = ({
     const downloadVoice = resolveTextStructuredEffectiveDownloadVoice({
       documentTree,
       block,
-      segment: firstSegment,
       channel,
       preferences
     });

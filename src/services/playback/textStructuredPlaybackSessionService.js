@@ -289,7 +289,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
 
           for (let channelIndex = 0; channelIndex < channelOrder.length; channelIndex += 1) {
             const channel = channelOrder[channelIndex];
-            const plan = resolveBlockChannelPlaybackPlan({
+            const candidate = resolveBlockChannelPlaybackPlan({
               block: group.block,
               fullBlock: group.block,
               channel,
@@ -298,6 +298,8 @@ export const executeStructuredTextPlaybackSessionService = args => {
               items: group.items,
               segmentIds: null
             });
+            const plan = typeof candidate?.then === 'function' ? await candidate : candidate;
+            if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
             const steps = Array.isArray(plan?.steps) ? plan.steps : [];
 
             for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {

@@ -264,7 +264,7 @@ const MobileTools = ({
               </div>
           </>}
 
-          {bookQaMode && ['audio', 'system'].includes(sidebarSection) && <p role="note" data-book-qa-tools-limit="true" className="p-3 text-xs">Book QA supports catalogue operations and browser playback. Audio authoring and system services are unavailable.</p>}
+          {bookQaMode && ['audio', 'system'].includes(sidebarSection) && <p role="note" data-book-qa-tools-limit="true" className="p-3 text-xs">Use Body audio in the Reader to configure and generate audio for this Book QA library.</p>}
           {!bookQaMode && sidebarSection === 'audio' && mode === 'text' && <div className="space-y-3">
               {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 <p className="text-[10px] font-black uppercase text-indigo-700 dark:text-indigo-300">Legacy Audio</p>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { checkBookQaHostBoundaries } from './fixtures/p15-integrated/book-qa-hf1-browser.mjs';
 import { checkBookQaAudioStorage, bookAudioAuditLibraries } from './fixtures/a1b-1a/check-book-qa-audio.mjs';
+import { checkBookBodyAudio, bodyAuditLibraries } from './fixtures/a1b-1b/check-body-audio.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -16,7 +17,9 @@ const qaDbName = 'prolingo_text_library_d3b_qa_a1a_browser';
 const qaPrefix = 'prolingo_text_library_d3b_qa_';
 const canonicalName = 'prolingo_text_library';
 const audioAudit = process.env.BOOK_QA_AUDIO_AUDIT === '1';
-const companionByLibrary = audioAudit ? bookAudioAuditLibraries : {};
+const bodyAudit = process.env.BOOK_QA_BODY_AUDIO_AUDIT === '1';
+const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}) };
+const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
 
@@ -181,10 +184,27 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
-      if (uatMode && audioAudit && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+      if (uatMode && (audioAudit || bodyAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
         const frequency = pathname.includes('440') ? '440' : '660';
         response.setHeader('Content-Type', 'audio/mpeg');
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
+        return;
+      }
+      if (uatMode && bodyAudit && pathname === '/api/tts' && request.method === 'POST') {
+        const buffers = [];
+        for await (const chunk of request) buffers.push(chunk);
+        const body = JSON.parse(Buffer.concat(buffers).toString());
+        bodyRequests.push(body);
+        if (body.rate === '+13%') {
+          response.writeHead(400, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ code: 'FIXTURE_RENDER_REJECTED', error: 'Fixture provider rejected the render' }));
+          return;
+        }
+        if (['+14%', '+15%'].includes(body.rate)) await new Promise(resolve => setTimeout(resolve, 900));
+        const tone = await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a',
+          /Ryan|Libby/u.test(body.voice) ? 'tone-660.mp3' : 'tone-440.mp3'));
+        response.writeHead(200, { 'Content-Type': 'audio/mpeg' });
+        response.end(Buffer.concat(Array(18).fill(tone)));
         return;
       }
       const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
@@ -213,6 +233,7 @@ const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'))
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
+  ...(bodyAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const browserExit = new Promise(resolve => {
@@ -262,9 +283,14 @@ const instrumentation = `(() => {
     cancel() { this.speaking = false; this.paused = false; window.__bookQaSpeech.push(['cancel']); }
   } });
   if (qaMode) {
-    window.__bookQaProps = (selector, prop) => {
+    window.__bookQaProps = (selector, prop, currentOnly = false) => {
       const node = document.querySelector(selector);
       let fiber = node?.[Object.keys(node).find(name => name.startsWith('__reactFiber$'))];
+      if (currentOnly && fiber?.alternate) {
+        let root = fiber;
+        while (root.return) root = root.return;
+        if (root.stateNode?.current !== root) fiber = fiber.alternate;
+      }
       while (fiber) {
         if (fiber.memoizedProps && Object.hasOwn(fiber.memoizedProps, prop)) return fiber.memoizedProps;
         fiber = fiber.return;
@@ -583,6 +609,17 @@ try {
     assert.deepEqual(audit.deletes, []);
     assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
   }
+  if (bodyAudit) {
+    report.bodyAudio = await checkBookBodyAudio({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, readAudit, uatOrigin, call, bodyRequests });
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert(qaApiRequests.length > 0 && qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+    const audit = await readAudit();
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+  }
 
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
@@ -591,6 +628,10 @@ try {
     qaHostModuleAbsent: productionSources.every(source => !source.includes('data-book-qa-host="disconnected"'))
   };
   assert(report.production.qaHostChunkAbsent && report.production.qaHostModuleAbsent, 'Production output must exclude the Book QA host module');
+  if (bodyAudit) {
+    report.production.bookBodyAudioPanelAbsent = productionSources.every(source => !source.includes('data-book-body-audio-status'));
+    assert(report.production.bookBodyAudioPanelAbsent, 'Production output must exclude the Book QA Body audio panel');
+  }
 
   await navigate(productionOrigin, '/?qa=book-qa');
   await waitFor(`document.body.innerText.includes('Mulai Latihan')`);

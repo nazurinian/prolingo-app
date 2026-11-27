@@ -1,6 +1,23 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** A1a-R-HF1 implementation and verification ledger.
+**Status:** A1b-1B Body audio integration. The A1a and A1b-1A sections record the gates and capabilities at those checkpoints.
+
+## A1b-1B Body audio
+
+The Book QA host supplies the same Reader panel to desktop and mobile. It exposes single-Sentence and bounded Card Split generation, Full Paragraph generation, Conversation Full composition, current-profile verification, and exact committed-byte restoration. The connection supplies the audio capability after origin, opt-in and v2 library validation. Startup still skips companion hydration. The Reader checks durable bytes on demand for playback and when the Body audio panel enables coverage. The normal bundle excludes the panel and Book QA host.
+
+| Path | Ownership and precedence |
+| --- | --- |
+| Paragraph Browser TTS | Split uses Sentence → Card → Workspace narrator → Global browser voice. Full uses Card → Workspace narrator → Global. Existing browser voice fallback and browser pitch controls apply. |
+| Conversation Browser TTS | Sentence → supported Card/Speaker override → stable Workspace Speaker → legacy name fallback → Global. Existing link/sync behavior remains available. Full fallback uses each Sentence's Speaker and override. |
+| Edge generation | Paragraph Split uses Sentence → Card → Workspace narrator → Global Edge voice. Paragraph Full starts at Card. Conversation resolves each Sentence with its stable Speaker, supported overrides and compatibility fallback. Render rate and pitch come from session defaults. |
+| Recorded source | Local-first uses native Card, Global and legacy Workspace order, then the effective Edge profile when that order is empty. Each candidate uses its exact channel, content, voice, rate and pitch fingerprint. Custom local uses the effective local pin. Browser-only bypasses recorded reads. A profile may use Browser TTS when compatible recorded bytes are unavailable. |
+| Playback speed | Card and supported Workspace narrator/Speaker rates inherit Global. Existing Conversation synchronization applies. Composed Full WAV uses 1× playback. |
+| Preference writes | The typed `document.update` profile operation checks Workspace UID, channel, kind and registered Speaker identity within the existing command transaction. Reset clears the selected profile's overrides for resolution and preserves all audio and other scopes. Global settings remain session-only in Book QA. A playback session keeps its starting Workspace and profile during browsing and resets. |
+| Readiness | Exact durable bindings distinguish ready, missing, metadata-only, other-profile, stale, legacy-unverified and corrupt. Stable variants retain up to 64 distinct exact RF references. An overflow rejects the entire batch. A recorded URL belongs to its connection and exact staged key. |
+| Conversation composition | The scoped publisher reads the first expected compatible Split RF for every audible Sentence in authored order and verifies the bytes. The existing composer emits 48 kHz PCM WAV for 1× inputs. Publication records composition proof on the Full artifact. Earlier untrusted derived rows stay unverified. If composition is unavailable, playback uses per-Sentence recorded audio or Browser TTS. |
+| Recovery and repair | Generation reuses intact provisional bytes for the same exact RF. Failed cold recovery fences reads and writes until a successful Refresh. Explicit restoration requires locally supplied bytes that decode and match the committed SHA-256 and other binary proof. Restoration has no Text mutation and cannot replace another accepted digest. A damaged provisional row that lacks committed proof remains unavailable for repair. |
+| Deferred | Title and Heading audio, ZIP, folder access, general metadata editing, manual attachment, storage clear, release and destructive GC remain disabled. The panel uses existing Edge and Browser playback services. No new store, schema, fingerprint format or preference storage key is required. |
 
 ## A1b-1A audio foundation
 

@@ -78,7 +78,22 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
     },
     listJobs: () => transact([JOBS], 'readonly', tx => requestResult(tx.objectStore(JOBS).getAll())),
     saveJob: job => transact([JOBS], 'readwrite', tx => requestResult(tx.objectStore(JOBS).put(rowFor(job)))),
-    async read(fingerprint, expected) {
+    async restoreExactBytes(fingerprint, binary, blob) {
+      const id = assetId(fingerprint);
+      const mimeType = binary.format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+      await transact([META, BYTES], 'readwrite', async tx => {
+        const meta = tx.objectStore(META);
+        const previous = await requestResult(meta.get(id));
+        assertConnected();
+        if (previous && (previous.library !== library || previous.mapKey !== fingerprint ||
+          canonicalJsonStringify(previous.binary) !== canonicalJsonStringify(binary))) {
+          throw bookAudioError('AUDIO_BYTE_CONFLICT', 'Stored asset ownership or proof differs from the committed binding');
+        }
+        if (!previous) meta.add({ id, mode: 'book-qa', library, mapKey: fingerprint, binary, size: binary.bytes, hasBlob: true, mimeType });
+        tx.objectStore(BYTES).put({ id, blob: new Blob([blob], { type: mimeType }) });
+      });
+    },
+    async read(fingerprint, expected = null) {
       const id = assetId(fingerprint);
       const { meta, bytes } = await transact([META, BYTES], 'readonly', async tx => {
         const [meta, bytes] = await Promise.all([
@@ -87,12 +102,13 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
         ]);
         return { meta, bytes };
       });
-      if (!meta && !bytes) return { status: 'metadata-only' };
+      if (!bytes && (!meta || (meta.library === library && meta.mapKey === fingerprint))) return { status: 'metadata-only', binary: meta?.binary };
+      const binary = expected || meta?.binary;
       const blob = bytes?.blob;
-      if (meta?.library !== library || meta.mapKey !== fingerprint || !(blob instanceof Blob) || blob.size !== expected.bytes
-        || canonicalJsonStringify(meta.binary) !== canonicalJsonStringify(expected)
-        || await digestBookAudioBytes(await blob.arrayBuffer()) !== expected.digest) return { status: 'corrupt' };
-      return { status: 'ready', id, blob };
+      if (!binary || meta?.library !== library || meta.mapKey !== fingerprint || !(blob instanceof Blob) || blob.size !== binary.bytes
+        || canonicalJsonStringify(meta.binary) !== canonicalJsonStringify(binary)
+        || await digestBookAudioBytes(await blob.arrayBuffer()) !== binary.digest) return { status: 'corrupt', binary: meta?.binary };
+      return { status: 'ready', id, blob, binary };
     }
   };
 };

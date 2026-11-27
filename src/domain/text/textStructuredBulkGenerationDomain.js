@@ -453,7 +453,6 @@ export const buildTextStructuredCardMissingFullRequirements = ({
     .map(ch => (ch === 'meaning' ? 'meaning' : 'text'));
   const targetChannels = [...new Set(requestedChannels)];
   const stagingPhysical = new Set(activeStagingRecords(stagingRecords).map(stagingPhysicalIdentity).filter(Boolean));
-  const firstSegment = (block.segments || [])[0] || null;
   const requirements = [];
 
   for (const channel of targetChannels) {
@@ -463,7 +462,6 @@ export const buildTextStructuredCardMissingFullRequirements = ({
     const resolved = resolveTextStructuredEffectiveDownloadVoice({
       documentTree,
       block,
-      segment: firstSegment,
       channel,
       preferences
     });

@@ -44,6 +44,9 @@ import { MemoizedRow } from './components/table/MemoizedRow';
 import { MemoizedTextRow } from './components/table/MemoizedTextRow';
 import { TextHydrationGate } from './components/text/TextHydrationGate.jsx';
 import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx';
+import { getBookSplitPlaybackRequests, projectBookBodyAudioDocument } from './domain/text/bookQaBodyAudioDomain.js';
+import { findBookBodyRuntime, prepareBookFullPlayback } from './services/audio/bookQaBodyAudioService.js';
+import { useBookQaBodyCoverage } from './hooks/useBookQaBodyCoverage.js';
 import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
 import { isBookQaNativeCommand, isBookQaWorkspace } from './domain/text/bookQaCapabilities.js';
 import { createBookQaSample } from './domain/text/bookQaSampleDomain.js';
@@ -272,7 +275,7 @@ const rejectBookQaLocalSnapshotWrite = () => {
   throw new Error('Book QA projections are session-owned; local Text snapshots cannot be written.');
 };
 // --- MAIN COMPONENT ---
-const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
   const bookQaMode = Boolean(bookQaConnection?.session);
   const bookQaSession = bookQaConnection?.session || null;
   const bookQaSnapshot = useSyncExternalStore(
@@ -1099,6 +1102,15 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     playbackMeaningVoiceName: defaultStructuredMeaningVoiceId,
     edgeVoices
   };
+  const bookBodyOptionsForChannel = channel => ({
+    preferences: {
+      ...structuredTextSingleEdgePreferences, playbackTextVoiceName: defaultStructuredTextVoiceId,
+      playbackMeaningVoiceName: defaultStructuredMeaningVoiceId, edgeVoices
+    },
+    globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder,
+    audioSourceMode: textStructuredPreferences.audioSourceMode,
+    globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, channel)
+  });
   const resolveStructuredTextChannelVoiceState = useCallback((item, channel, options = {}) => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const isMeaning = normalizedChannel === 'meaning';
@@ -1107,10 +1119,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       ? textStructuredPreferences.browserMeaningVoiceName
       : textStructuredPreferences.browserTextVoiceName;
     const globalVoiceName = configuredGlobalVoice || defaultVoice?.name || null;
+    const conversationFallback = bookQaMode && (options?.block?.blockType || item?.blockType) === 'conversation'
+      && options?.ignoreSegmentOverride === false;
     const representationMode = options?.representationMode === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL
-      || options?.representationMode === 'full'
-      ? 'full'
-      : 'split';
+      && !conversationFallback ? 'full' : 'split';
     const ignoreSegmentOverride = Boolean(options?.ignoreSegmentOverride) || representationMode === 'full';
     const syncVoice = item?.blockType === 'conversation'
       && structuredTextAudioSyncProfile.voice?.[normalizedChannel] === true
@@ -1126,7 +1138,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       || null;
 
     const resolved = resolveTextStructuredBrowserVoiceResolution({
-      documentTree: activeTextDocumentTree,
+      documentTree: bookQaMode ? projectBookBodyAudioDocument(activeTextDocumentTree, targetBlock?.blockType) : activeTextDocumentTree,
       block: targetBlock,
       segment: targetSegment,
       channel: normalizedChannel,
@@ -1158,7 +1170,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       ignoreSegmentOverride,
       representationMode
     };
-  }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, textStructuredPreferences.browserTextVoiceName, textStructuredPreferences.browserMeaningVoiceName, voices, indonesianVoices]);
+  }, [bookQaMode, activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, selectedTextBrowserVoice, selectedTextIndonesianVoice, textStructuredPreferences.browserTextVoiceName, textStructuredPreferences.browserMeaningVoiceName, voices, indonesianVoices]);
   const resolveStructuredTextItemPlaybackRate = useCallback((item, channel = 'text') => {
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const syncRate = structuredTextAudioSyncProfile?.rate?.[normalizedChannel] === true
@@ -1168,7 +1180,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     const block = (activeTextDocumentTree?.blocks || []).find(candidate => candidate?.id === blockId) || null;
     const segment = (block?.segments || []).find(candidate => candidate?.id === segmentId) || item || null;
     return resolveTextStructuredEffectivePlaybackRate({
-      documentTree: activeTextDocumentTree,
+      documentTree: bookQaMode ? projectBookBodyAudioDocument(activeTextDocumentTree, block?.blockType) : activeTextDocumentTree,
       block,
       segment,
       channel: normalizedChannel,
@@ -1176,9 +1188,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       respectConversationSync: syncRate,
       conversationSpeakers: structuredTextConversationSpeakers
     });
-  }, [activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, textStructuredPreferences]);
+  }, [bookQaMode, activeTextDocumentTree, structuredTextAudioSyncProfile, structuredTextConversationSpeakers, textStructuredPreferences]);
   const structuredTextAudioRuntimeStatusMap = useMemo(() => (
-    structuredTextModeActive && activeTextDocumentTree
+    !bookQaMode && structuredTextModeActive && activeTextDocumentTree
       ? buildTextStructuredRuntimeAudioStatusMap({
           documentTree: activeTextDocumentTree,
           audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -1191,9 +1203,12 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
           globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder
         })
       : EMPTY_STRUCTURED_MAP
-  ), [structuredTextModeActive, activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextDownloadResolutionPreferences, structuredTextGlobalAudioPlaybackOrder]);
-  const structuredTextAudioCoverageMap = useMemo(() => (
-    structuredTextModeActive && activeTextDocumentTree
+  ), [bookQaMode, structuredTextModeActive, activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, defaultStructuredTextVoiceId, defaultStructuredMeaningVoiceId, structuredTextSpeakerVoiceMap, structuredTextDownloadResolutionPreferences, structuredTextGlobalAudioPlaybackOrder]);
+  const [bookBodyCoverageConnection, setBookBodyCoverageConnection] = useState(null);
+  const bookBodyCoverage = useBookQaBodyCoverage(bookBodyCoverageConnection === bookQaConnection ? bookQaConnection?.audio : null,
+    textLibrarySnapshot, activeTextDocumentTree, structuredTextDownloadResolutionPreferences);
+  const normalStructuredTextAudioCoverageMap = useMemo(() => (
+    !bookQaMode && structuredTextModeActive && activeTextDocumentTree
       ? buildTextStructuredAudioCoverageMap({
           documentTree: activeTextDocumentTree,
           audioVariants: textLibrarySnapshot?.audioVariants || [],
@@ -1201,7 +1216,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
           preferences: structuredTextDownloadResolutionPreferences
         })
       : EMPTY_STRUCTURED_MAP
-  ), [structuredTextModeActive, activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextDownloadResolutionPreferences]);
+  ), [bookQaMode, structuredTextModeActive, activeTextDocumentTree, textLibrarySnapshot?.audioVariants, structuredTextAudioRuntimeUrls, structuredTextDownloadResolutionPreferences]);
+  const structuredTextAudioCoverageMap = bookQaMode ? bookBodyCoverage : normalStructuredTextAudioCoverageMap;
   const structuredTextAvailableLocalVoices = useMemo(() => (
     structuredTextModeActive && activeTextDocumentTree
       ? collectTextStructuredAvailableLocalVoices({
@@ -2196,7 +2212,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 
   const stopOnPlaybackUnmount = useRef(forceStopAll);
   useLayoutEffect(() => { stopOnPlaybackUnmount.current = forceStopAll; });
-  useEffect(() => () => stopOnPlaybackUnmount.current(), []);
+  useEffect(() => () => stopOnPlaybackUnmount.current(), [bookQaConnection]);
   useLayoutEffect(() => {
     const owner = playbackContextRef.current;
     if (!owner) return;
@@ -3938,31 +3954,33 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     const targetBlock = fullBlock || block;
     const normalizedChannel = channel === 'meaning' ? 'meaning' : 'text';
     const firstSegment = (block?.segments || []).find(segment => String(normalizedChannel === 'meaning' ? segment?.meaning : segment?.text || '').trim()) || block?.segments?.[0] || null;
+    const profileSegment = representationMode === 'full' && targetBlock?.blockType === 'paragraph' ? null : firstSegment;
+    const owner = bookQaMode ? projectBookBodyAudioDocument(activeTextDocumentTree, targetBlock?.blockType) : activeTextDocumentTree;
     const generatedVoice = resolveTextStructuredEffectiveDownloadVoice({
-      documentTree: activeTextDocumentTree,
+      documentTree: owner,
       block: targetBlock,
-      segment: firstSegment,
+      segment: profileSegment,
       channel: normalizedChannel,
       preferences: structuredTextDownloadResolutionPreferences
     });
     const customLocalVoiceId = textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL
       ? resolveTextStructuredEffectiveCustomLocalVoice({
-          documentTree: activeTextDocumentTree,
+          documentTree: owner,
           block: targetBlock,
-          segment: firstSegment,
+          segment: profileSegment,
           channel: normalizedChannel,
           conversationSpeakers: structuredTextConversationSpeakers
         })
       : null;
-    return buildTextStructuredBlockRuntimePlaybackPlan({
-      documentTree: activeTextDocumentTree,
+    const plan = buildTextStructuredBlockRuntimePlaybackPlan({
+      documentTree: owner,
       block: targetBlock,
       channel: normalizedChannel,
       segmentIds,
       representationMode,
-      audioVariants: textLibrarySnapshot?.audioVariants || [],
-      runtimeAudioUrls: structuredTextAudioRuntimeUrls,
-      runtimeFullAudio: structuredTextFullAudioRuntimeUrls,
+      audioVariants: bookQaMode ? [] : textLibrarySnapshot?.audioVariants || [],
+      runtimeAudioUrls: bookQaMode ? {} : structuredTextAudioRuntimeUrls,
+      runtimeFullAudio: bookQaMode ? {} : structuredTextFullAudioRuntimeUrls,
       fallbackVoiceId: generatedVoice.voiceId,
       fallbackEngine: 'edge',
       fallbackRate: structuredTextAudioGenerationPreferences.edgeRate,
@@ -3973,6 +3991,13 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       customLocalVoiceId,
       globalTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY,
       allowFullArtifact
+    });
+    if (!bookQaConnection?.audio || representationMode !== 'full' || !allowFullArtifact) return plan;
+    const token = playbackSessionRef.current;
+    return prepareBookFullPlayback({
+      audio: bookQaConnection.audio, snapshot: textLibrarySnapshot, document: owner, block: targetBlock, channel: normalizedChannel,
+      options: bookBodyOptionsForChannel(normalizedChannel), fallback: plan,
+      stillCurrent: () => !stopSignalRef.current && playbackSessionRef.current === token
     });
   };
 
@@ -4085,22 +4110,22 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       const runtimeFull = step?.runtimeFull || null;
       const runtime = runtimeFull?.runtime || null;
       let runtimeUrl = runtime?.url || null;
-      if (!runtimeUrl && runtime?.stagingBacked && runtime?.stagingId) {
+      if (!bookQaMode && !runtimeUrl && runtime?.stagingBacked && runtime?.stagingId) {
         try { runtimeUrl = await getTextAudioStagingObjectUrl(runtime.stagingId); }
         catch (error) { addLog('Warn', `Full Text staged audio could not be read: ${error?.message || error}. Falling back to Browser TTS.`); }
       }
-      if (!runtimeUrl && runtime?.zipBacked) {
+      if (!bookQaMode && !runtimeUrl && runtime?.zipBacked) {
         try { runtimeUrl = await getTextStructuredAudioZipRuntimeObjectUrl(runtime); }
         catch (error) { addLog('Warn', `Full Text ZIP audio could not be read: ${error?.message || error}. Falling back to Browser TTS.`); }
       }
       // Folder remains compatibility-only until P4 locks it in the normal UI.
-      if (!runtimeUrl && runtime?.folderBacked) {
+      if (!bookQaMode && !runtimeUrl && runtime?.folderBacked) {
         try { runtimeUrl = await getTextStructuredAudioFolderRuntimeObjectUrl(runtime); }
         catch (error) { addLog('Warn', `Full Text legacy Folder audio could not be read: ${error?.message || error}. Falling back to Browser TTS.`); }
       }
       if (!playbackStillCurrent()) return;
       if (runtimeUrl) {
-        const origin = runtime?.zipBacked ? 'ZIP' : runtime?.stagingBacked ? 'Staging' : runtime?.folderBacked ? 'Folder (legacy)' : 'Local';
+        const origin = bookQaMode ? 'Book QA' : runtime?.zipBacked ? 'ZIP' : runtime?.stagingBacked ? 'Staging' : runtime?.folderBacked ? 'Folder (legacy)' : 'Local';
         const localVoiceId = runtimeFull?.profile?.voiceId || runtimeFull?.artifact?.descriptor?.voiceId || null;
         const composed = Array.isArray(runtimeFull?.artifact?.descriptor?.composition);
         setStructuredTextPlaybackSourceStatus({
@@ -4115,7 +4140,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
           segmentId: null,
           voiceId: localVoiceId,
           effectiveVoice: localVoiceId,
-          effectiveSourceLabel: `Local MP3 (${origin})`,
+          effectiveSourceLabel: `Local ${bookQaMode && composed ? 'WAV' : 'MP3'} (${origin})`,
           filename: runtime?.filename || runtimeFull?.artifact?.filename || null,
           updatedAt: Date.now()
         });
@@ -4126,7 +4151,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
           stopSignalRef,
           playbackSessionRef,
           waitWhilePaused,
-          playbackRate: resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
+          playbackRate: bookQaMode && composed ? 1 : resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
           onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
             cardId: block?.id, channel: normalizedChannel, representation: 'full'
           }, playbackSessionId),
@@ -4143,6 +4168,17 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
     }
 
     if (!playbackStillCurrent()) return;
+    if (bookQaMode && step.fallbackSteps) {
+      for (const fallback of step.fallbackSteps) {
+        if (!playbackStillCurrent()) return;
+        const segment = block.segments.find(row => row.id === fallback.segmentId);
+        if (!segment) continue;
+        await playStructuredTextChannel(fallback.content, { ...segment, blockType: block.blockType }, normalizedChannel, {
+          block, representationMode: 'full', ignoreSegmentOverride: false
+        });
+      }
+      return;
+    }
     const voiceState = resolveStructuredTextChannelVoiceState(firstSegmentItem, normalizedChannel, {
       representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
       ignoreSegmentOverride: true,
@@ -4206,7 +4242,16 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
           })
         : null;
       const localAllowed = textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL || Boolean(customLocalVoiceId);
-      const runtimeAudio = localAllowed ? resolveTextStructuredRuntimeAudio({
+      let bookRuntime = null;
+      if (bookQaConnection?.audio && block) {
+        const owner = projectBookBodyAudioDocument(activeTextDocumentTree, block.blockType);
+        bookRuntime = options.step?.bookRuntime || await findBookBodyRuntime(bookQaConnection.audio, textLibrarySnapshot,
+          getBookSplitPlaybackRequests(owner, block, segment, normalizedChannel, bookBodyOptionsForChannel(normalizedChannel)));
+      }
+      const runtimeAudio = bookQaMode ? (bookRuntime ? {
+        url: bookRuntime.runtime.url, runtime: bookRuntime.runtime,
+        variant: { id: bookRuntime.runtime.variantId, source: 'generated', ...bookRuntime.request.descriptor }
+      } : null) : localAllowed ? resolveTextStructuredRuntimeAudio({
         audioVariants: textLibrarySnapshot?.audioVariants || [],
         runtimeAudioUrls: structuredTextAudioRuntimeUrls,
         segmentId: item?.segmentId || item?.id,
@@ -4221,33 +4266,33 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       }) : null;
       if (runtimeAudio) {
         let runtimeUrl = runtimeAudio.url;
-        if (!runtimeUrl && runtimeAudio.runtime?.stagingBacked) {
+        if (!bookQaMode && !runtimeUrl && runtimeAudio.runtime?.stagingBacked) {
           try {
             runtimeUrl = await getTextAudioStagingObjectUrl(runtimeAudio.runtime.stagingId);
           } catch (error) {
             addLog('Warn', `Text Staging audio ${runtimeAudio.filename || runtimeAudio.variant.id} could not be read: ${error?.message || error}. Falling back to Browser TTS.`);
           }
         }
-        if (!runtimeUrl && runtimeAudio.runtime?.folderBacked) {
+        if (!bookQaMode && !runtimeUrl && runtimeAudio.runtime?.folderBacked) {
           try {
             runtimeUrl = await getTextStructuredAudioFolderRuntimeObjectUrl(runtimeAudio.runtime);
           } catch (error) {
             addLog('Warn', `Text Folder audio ${runtimeAudio.filename || runtimeAudio.variant.id} could not be read: ${error?.message || error}. Falling back to Browser TTS.`);
           }
         }
-        if (!runtimeUrl && runtimeAudio.runtime?.zipBacked) {
+        if (!bookQaMode && !runtimeUrl && runtimeAudio.runtime?.zipBacked) {
           try {
             runtimeUrl = await getTextStructuredAudioZipRuntimeObjectUrl(runtimeAudio.runtime);
           } catch (error) {
             addLog('Warn', `Text ZIP audio ${runtimeAudio.filename || runtimeAudio.variant.id} could not be read: ${error?.message || error}. Falling back to Browser TTS.`);
           }
         }
-        if (!runtimeUrl && runtimeAudio.runtime?.stagingFallbackId) {
+        if (!bookQaMode && !runtimeUrl && runtimeAudio.runtime?.stagingFallbackId) {
           try {
             runtimeUrl = await getTextAudioStagingObjectUrl(runtimeAudio.runtime.stagingFallbackId);
           } catch { /* try the next durable source */ }
         }
-        if (!runtimeUrl && runtimeAudio.runtime?.zipFallback?.zipBacked) {
+        if (!bookQaMode && !runtimeUrl && runtimeAudio.runtime?.zipFallback?.zipBacked) {
           try {
             runtimeUrl = await getTextStructuredAudioZipRuntimeObjectUrl(runtimeAudio.runtime.zipFallback);
           } catch { /* Browser TTS remains the final fallback */ }
@@ -4257,7 +4302,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
         // Never allow the older session to start audio afterwards.
         if (!playbackStillCurrent()) return;
         if (runtimeUrl) {
-          const localOrigin = runtimeAudio.runtime?.folderBacked
+          const localOrigin = bookQaMode ? 'Book QA' : runtimeAudio.runtime?.folderBacked
             ? 'Folder'
             : runtimeAudio.runtime?.zipBacked
               ? 'ZIP'
@@ -7868,6 +7913,18 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
       return <TextStructuredPlayer
         documentTree={activeTextDocumentTree}
         bookQaAudioDisabled={bookQaMode}
+        bookBodyAudioSlot={BookQaBodyAudioControls && bookQaConnection?.audio && activeTextDocumentTree ? <BookQaBodyAudioControls
+          connection={bookQaConnection}
+          workspace={activeTextDocumentTree}
+          optionsFor={bookBodyOptionsForChannel}
+          onOpen={() => setBookBodyCoverageConnection(bookQaConnection)}
+          setGlobal={({ rate, pitch, source }) => {
+            setStructuredTextAudioGenerationPreferences(before => normalizeTextStructuredAudioGenerationPreferences({
+              ...before, edgeRate: rate, edgePitch: pitch
+            }));
+            setTextStructuredPreferences(before => normalizeTextStructuredPreferences({ ...before, audioSourceMode: source }));
+          }}
+        /> : null}
         bookHeadingsEnabled={bookQaMode}
         bookHeadingVisibility={bookQaMode && activeTextDocumentTree?.uid
           ? textMainReaderPreference.workspaceHeadingVisibility?.[activeTextDocumentTree.uid] : undefined}
@@ -8148,7 +8205,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, onBookQaRef
 // --- APP WRAPPER (Theme & View Logic) ---
 const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
 
-const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
     const bookQaMode = Boolean(bookQaConnection?.session);
     // Keep the current root view across same-tab reloads/HMR fallbacks.
     // A new browser session still starts on Landing by default.
@@ -8239,6 +8296,7 @@ const App = ({ bookQaConnection = null, onBookQaRefresh = null, bookQaRefreshing
                     theme={theme}
                     setTheme={setTheme}
                     bookQaConnection={bookQaConnection}
+                    BookQaBodyAudioControls={BookQaBodyAudioControls}
                     onBookQaRefresh={onBookQaRefresh}
                     bookQaRefreshing={bookQaRefreshing}
                     bookQaRefreshError={bookQaRefreshError}

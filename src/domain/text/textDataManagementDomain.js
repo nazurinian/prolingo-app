@@ -144,12 +144,17 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
   const { type, payload: input = {} } = command || {};
   const fields = Object.hasOwn(TEXT_DATA_MANAGEMENT_COMMAND_FIELDS, type) && TEXT_DATA_MANAGEMENT_COMMAND_FIELDS[type];
   const bookField = bookAuthoring === true ? getBookAuthoringField(type) : null;
-  if (!fields || !plain(input) || Object.keys(input).some(k => k !== bookField && !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
+  const bookProfile = bookAuthoring === true && type === 'document.update' && plain(input) && Object.hasOwn(input, 'bodyAudioProfile');
+  if (!fields || !plain(input) || Object.keys(input).some(k => bookProfile ? !['id', 'bodyAudioProfile'].includes(k) : k !== bookField && !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
   const payload = { ...input };
   const bookFields = {};
   if (bookField && Object.hasOwn(payload, bookField)) {
     bookFields[bookField] = payload[bookField];
     delete payload[bookField];
+  }
+  if (bookProfile) {
+    bookFields.bodyAudioProfile = payload.bodyAudioProfile;
+    delete payload.bodyAudioProfile;
   }
   const capability = getTextManagementCommandCapabilities(snapshot, selected, { boundary, permissions })[type];
   if (!capability.enabled) fail(capability.reason, 'Operation unavailable: ' + capability.reason);

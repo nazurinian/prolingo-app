@@ -75,6 +75,9 @@ export const createBookQaConnection = (adapter, loaded, authorization = null) =>
       getRevision: () => session.getState().revision,
       publish: replace,
       blockWrites: () => { needsRefresh = true; },
+      assertReadable: () => {
+        if (needsRefresh || refreshing) throw failure('REFRESH_REQUIRED', 'Refresh the connected Book QA library before reading new audio.');
+      },
       assertWritable: () => {
         if (needsRefresh || refreshing) throw failure('REFRESH_REQUIRED', 'Refresh the connected Book QA library before writing.');
         if (session.getState().pending) throw failure('AUDIO_BUSY', 'Wait for the pending Text command.');
@@ -82,7 +85,7 @@ export const createBookQaConnection = (adapter, loaded, authorization = null) =>
     }) : null;
   return {
     dbName: adapter.dbName,
-    ...(audio ? { audio: { name: audio.name, submit: audio.submit, readRuntime: audio.readRuntime } } : {}),
+    ...(audio ? { audio: { name: audio.name, submit: audio.submit, readRuntime: audio.readRuntime, generate: audio.generate, repair: audio.repair } } : {}),
     session: {
       getState: session.getState,
       getSnapshot: session.getSnapshot,

@@ -264,7 +264,7 @@ export const renderMainAppShellView = (props) => {
 
               </>}
 
-              {sidebarSection === 'audio' && mode === 'text' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Audio metadata, generation, staging and external audio sources are unavailable in A1a. Runtime playback remains enabled through the accepted player.</p>}
+              {sidebarSection === 'audio' && mode === 'text' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Use Body audio in the Reader to configure and generate audio for this Book QA library.</p>}
               {sidebarSection === 'audio' && mode === 'text' && !bookQaMode && <div className="space-y-3">
                 {structuredTextModeActive ? <TextStructuredAudioControls {...structuredTextAudioSidebarControls}/> : <>
                   <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/40 dark:bg-indigo-950/15 p-3">

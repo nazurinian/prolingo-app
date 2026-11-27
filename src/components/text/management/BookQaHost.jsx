@@ -6,6 +6,7 @@ import { validateTextManagementSnapshot } from '../../../domain/text/textDataMan
 import { backfillTextContentUnits } from '../../../domain/text/textContentUnitDomain.js';
 import { createStructuredTestingFixture } from '../../../../scripts/fixtures/p15-integrated/structured-fixture.js';
 import App from '../../../App.jsx';
+import { BookQaBodyAudioPanel } from '../BookQaBodyAudioPanel.jsx';
 
 const DEFAULT_BOOK_QA_DATABASE = 'prolingo_text_library_d3b_qa_book_main';
 const emptyV2Snapshot = () => backfillTextContentUnits({
@@ -169,6 +170,7 @@ export default function BookQaHost() {
   if (connection) {
     return <App
       bookQaConnection={connection}
+      BookQaBodyAudioControls={BookQaBodyAudioPanel}
       onBookQaRefresh={refresh}
       bookQaRefreshing={refreshing}
       bookQaRefreshError={error}

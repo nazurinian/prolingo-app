@@ -101,6 +101,10 @@ const coverageBadgeLabel = status => ({
   [TEXT_AUDIO_COVERAGE_STATUS.STALE]: 'STALE',
   [TEXT_AUDIO_COVERAGE_STATUS.OTHER_VOICE]: 'OTHER',
   [TEXT_AUDIO_COVERAGE_STATUS.DOWNLOADED]: 'HISTORY',
+  'metadata-only': 'METADATA ONLY',
+  'other-profile': 'OTHER PROFILE',
+  'legacy-unverified': 'LEGACY UNVERIFIED',
+  corrupt: 'CORRUPT',
   [TEXT_AUDIO_COVERAGE_STATUS.MISSING]: 'MISSING'
 }[status] || 'MISSING');
 
@@ -748,6 +752,7 @@ export const TextStructuredPlayer = ({
   onResetSegmentAudioPreferences = null,
   bookQaAudioDisabled = false,
   bookHeadingsEnabled = false,
+  bookBodyAudioSlot = null,
   bookHeadingVisibility,
   useSharedCardReader = false,
   readerSwitchSlot = null,
@@ -1072,6 +1077,7 @@ export const TextStructuredPlayer = ({
       data-text-segment-auto-follow="true"
       data-text-auto-follow-user-grace-ms="1800"
     >
+      {bookBodyAudioSlot}
       {/* Classic/Legacy Reader Toolbar (preserved intact when Classic UI is active) */}
       {!isSharedShellActive && (
         <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">

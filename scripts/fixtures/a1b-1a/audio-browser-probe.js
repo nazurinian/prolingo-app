@@ -283,3 +283,50 @@ export const readPrimaryAudio = async (connection, frequency = null) => {
   return { status: bound.status, id: bound.id, digest: bound.binary?.digest, fp: item.fingerprint, nativeId: item.target.segmentId,
     jobs: (await rows(connection.audio.name, 'batchSessions')).length };
 };
+
+export const exerciseBookBodyEntryChecks = async connection => {
+  const entry = itemFor(connection.session.getSnapshot(), 0, { rate: 37 });
+  const [original, different] = await Promise.all([fixtureBlob(440), fixtureBlob(660)]);
+  const aborter = new AbortController();
+  const cancelled = await withAddFault('batchSessions', isProvisional,
+    tx => tx.addEventListener('complete', () => aborter.abort()),
+    () => result(connection.audio.submit([{ ...entry, blob: original }], { signal: aborter.signal })));
+  check(cancelled.status === 'precommit-failed', 'Failed to create a controlled provisional asset');
+  check((await connection.audio.generate([entry])).status === 'committed', 'Generation failed to reuse valid provisional bytes');
+  const accepted = await connection.audio.readRuntime(entry);
+  const db = await open(connection.audio.name);
+  const alter = async media => {
+    const tx = db.transaction('audioBlob', 'readwrite');
+    const done = new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = reject; });
+    if (media) tx.objectStore('audioBlob').put({ id: accepted.id, blob: media });
+    else tx.objectStore('audioBlob').delete(accepted.id);
+    await done;
+  };
+  try {
+    await alter(different);
+    check((await connection.audio.readRuntime(entry)).status === 'corrupt', 'Corrupt bytes were reported Ready');
+    check((await result(connection.audio.generate([entry]))).code === 'AUDIO_REPAIR_BYTES_REQUIRED', 'Generation failed to request digest-bound repair');
+    check((await result(connection.audio.repair(entry, different))).code === 'AUDIO_REPAIR_BYTES_REQUIRED', 'Repair accepted different valid bytes');
+    check((await connection.audio.repair(entry, original)).status === 'repaired', 'Exact committed copy did not repair corruption');
+    await alter(null);
+    check((await connection.audio.readRuntime(entry)).status === 'metadata-only', 'Missing physical bytes were reported Ready');
+    check((await connection.audio.repair(entry, original)).status === 'repaired', 'Exact committed copy did not restore missing bytes');
+    check((await connection.audio.readRuntime(entry)).binary.digest === accepted.binary.digest, 'Repair changed the committed digest');
+  } finally { db.close(); }
+  const adapter = adapterFor(connection.dbName);
+  const loaded = await adapter.loadState();
+  let failRead = true;
+  const cold = createBookQaConnection({ ...adapter, loadState: async () => {
+    if (failRead) throw Object.assign(new Error('Controlled failed cold read'), { code: 'TEST_COLD_READ' });
+    return adapter.loadState();
+  } }, loaded, { library: connection.dbName, optIn: true, origin: location.origin });
+  try {
+    check((await result(cold.audio.readRuntime(entry))).code === 'TEST_COLD_READ', 'Cold failure did not propagate');
+    failRead = false;
+    check((await result(cold.audio.readRuntime(entry))).code === 'REFRESH_REQUIRED', 'Touched bypassed failed cold recovery');
+    check((await result(cold.audio.generate([entry]))).code === 'REFRESH_REQUIRED', 'Failed cold recovery did not fence publication');
+    await cold.refresh();
+    check((await cold.audio.readRuntime(entry)).status === 'ready', 'Successful Refresh did not unlock recovery');
+  } finally { cold.session.dispose(); }
+  return true;
+};
