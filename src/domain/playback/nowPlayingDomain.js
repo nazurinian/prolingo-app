@@ -45,12 +45,15 @@ const identity = record => ({ id: record.id, uid: record.uid ?? null, title: val
 const readStructuredIdentity = (tree, target) => {
   if (!tree) return {};
   const workspace = Object.freeze({ ...identity(tree), collectionId: tree.collectionId ?? null });
+  const heading = target?.heading;
+  if (heading?.slot === 'mainTitle') return { workspace, heading, precision: 'heading' };
   const blocks = tree.blocks || [];
   const index = blocks.findIndex(card => card.id === target?.cardId);
   if (index < 0) return { workspace };
   const block = blocks[index];
   const card = Object.freeze({ ...identity(block), ...indexed(blocks, index), kind: block.blockType ?? null,
     kindOrdinal: blocks.slice(0, index + 1).filter(candidate => candidate.blockType === block.blockType).length });
+  if (heading) return { workspace, card, heading, precision: 'heading' };
   // Full artifacts/utterances carry no sentence timing in the audited paths.
   if (target.representation === 'full') return { workspace, card, precision: 'card' };
   const segments = block.segments || [];
@@ -140,7 +143,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
   const item = readItem(target?.item, target?.part, domain, target?.playedText);
   const rate = runtime?.media?.playbackRate ?? runtime?.rate;
   const structured = domain === 'structured-text';
-  const commandRepresentation = structured
+  const commandRepresentation = structured && !target?.heading
     ? (target && context.temporarySplitCardIds?.includes(target.cardId) ? 'split' : context.playbackRepresentationMode ?? null)
     : null;
   const actualRepresentation = target?.representation ?? null;
@@ -149,8 +152,8 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     precision: item ? (domain === 'table' ? 'word' : 'item') : 'none',
     ...structure, item,
     channel: domain === 'structured-text' ? target?.channel ?? null : domain === 'table' ? tableChannel(target?.part) : null,
-    savedRepresentation: structured ? context.savedPlaybackRepresentationMode ?? null : null,
-    requestedRepresentation: structured ? context.requestedRepresentation ?? context.playbackRepresentationMode ?? null : null,
+    savedRepresentation: structured && !target?.heading ? context.savedPlaybackRepresentationMode ?? null : null,
+    requestedRepresentation: structured && !target?.heading ? context.requestedRepresentation ?? context.playbackRepresentationMode ?? null : null,
     commandRepresentation,
     actualRepresentation,
     representationFallback: commandRepresentation && actualRepresentation
@@ -160,7 +163,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     rate: Number.isFinite(rate) && rate > 0 ? rate : null,
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
     commandTarget: structured ? context.commandTarget ?? null : null,
-    queue: target ? readQueue(context, target) : null,
+    queue: target && !target.heading ? readQueue(context, target) : null,
     timeline: readNowPlayingMediaTimeline(runtime?.media)
   });
 };

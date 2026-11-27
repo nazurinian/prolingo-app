@@ -5,6 +5,8 @@ import { resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
 import { getTextStructuredAudioVariantKey } from './textStructuredAudioIdentityDomain.js';
 import { buildTextStructuredAudioRenderFingerprint, TEXT_AUDIO_CODEC_PROFILE, TEXT_AUDIO_RENDERER_PROFILE_VERSION } from './textStructuredAudioRenderFingerprintDomain.js';
 import { buildTextStructuredFullArtifactIdentity, getTextStructuredFullAudioArtifacts } from './textStructuredSplitFullDomain.js';
+import { BOOK_HEADING_AUDIO_KEY } from './textBookHeadingDomain.js';
+import { buildBookAtomicAudioRequest, resolveBookAtomicHeading } from './bookQaHeadingAudioDomain.js';
 
 export const BOOK_AUDIO_REFS = 'bookAudioRenderReferencesV1';
 export const BOOK_AUDIO_BINARY = 'bookAudioBinaryV1';
@@ -37,20 +39,30 @@ const renderFromSegment = (document, segment, descriptor) => buildTextStructured
   language: descriptor.channel === 'text' ? document.textLanguage : document.meaningLanguage
 });
 
+const validateReferences = (map, channel = null) => {
+  if (!map || Object.getPrototypeOf(map) !== Object.prototype
+    || Object.keys(map).length > MAX_REFERENCES || Object.keys(map).some(rf => !RF.test(rf)
+      || !fields(map[rf], ['descriptor', 'binary']) || ((map[rf].binary || channel) && (!isBinary(map[rf].binary)
+        || !map[rf].descriptor || buildCanonicalSha256Fingerprint(map[rf].descriptor, 'rf-sha256') !== rf))
+      || (channel && (map[rf].descriptor.channel !== channel || !isEdge(map[rf].descriptor) || map[rf].binary.format !== 'mp3')))) {
+    fail('INVALID_AUDIO_REFERENCES', 'Stored RF reference map is invalid');
+  }
+  return map;
+};
+
 export const readBookAudioReferences = variant => {
   const metadata = variant?.metadata ?? {};
-  if (Object.hasOwn(metadata, BOOK_AUDIO_REFS)) {
-    const map = metadata[BOOK_AUDIO_REFS];
-    if (!map || Object.getPrototypeOf(map) !== Object.prototype
-      || Object.keys(map).length > MAX_REFERENCES || Object.keys(map).some(rf => !RF.test(rf)
-        || !fields(map[rf], ['descriptor', 'binary']) || (map[rf].binary && (!isBinary(map[rf].binary)
-          || !map[rf].descriptor || buildCanonicalSha256Fingerprint(map[rf].descriptor, 'rf-sha256') !== rf)))) {
-      fail('INVALID_AUDIO_REFERENCES', 'Stored RF reference map is invalid');
-    }
-    return map;
-  }
+  if (Object.hasOwn(metadata, BOOK_AUDIO_REFS)) return validateReferences(metadata[BOOK_AUDIO_REFS]);
   const rf = metadata.audioRenderFingerprintV1;
   return RF.test(rf) ? { [rf]: { descriptor: metadata.audioRenderDescriptorV1 ?? null, binary: null } } : {};
+};
+
+export const readBookHeadingReferences = (owner, channel) => {
+  const metadata = owner?.metadata;
+  if (!Object.hasOwn(metadata ?? {}, BOOK_HEADING_AUDIO_KEY)) return {};
+  const channels = metadata[BOOK_HEADING_AUDIO_KEY];
+  if (!fields(channels, ['text', 'meaning'])) fail('INVALID_AUDIO_REFERENCES', 'Stored Heading channels are invalid');
+  return Object.hasOwn(channels, channel) ? validateReferences(channels[channel], channel) : {};
 };
 
 const isEdge = descriptor => descriptor?.engine === 'edge' && descriptor.rendererVersion === TEXT_AUDIO_RENDERER_PROFILE_VERSION
@@ -63,9 +75,14 @@ const splitIdentity = (segment, descriptor) => ({ segmentId: segment.id, channel
 const variantsFor = (snapshot, segment, channel) => snapshot.audioVariants.filter(item =>
   item.segmentId === segment.id && item.channel === channel);
 
+export const collectBookHeadingAudioReferences = snapshot =>
+  [...snapshot.documents, ...snapshot.blocks].flatMap(owner =>
+    ['text', 'meaning'].flatMap(channel => Object.entries(readBookHeadingReferences(owner, channel))));
+
 export const assertBookAudioCompatibleBytes = (snapshot, fingerprint, binary) => {
   const references = RF.test(fingerprint)
-    ? snapshot.audioVariants.map(variant => readBookAudioReferences(variant)[fingerprint]?.binary)
+    ? [...snapshot.audioVariants.map(variant => readBookAudioReferences(variant)[fingerprint]?.binary),
+      ...collectBookHeadingAudioReferences(snapshot).filter(([rf]) => rf === fingerprint).map(([, ref]) => ref.binary)]
     : snapshot.blocks.flatMap(block => getTextStructuredFullAudioArtifacts(block).filter(item => item.id === fingerprint)
       .map(item => item.metadata?.[BOOK_AUDIO_BINARY]));
   if (references.some(previous => previous && !same(previous, binary))) {
@@ -77,22 +94,35 @@ export const assertBookAudioCompatibleBytes = (snapshot, fingerprint, binary) =>
 export const resolveBookAudioTarget = (snapshot, entry) => {
   if (!entry || typeof entry !== 'object') fail('INVALID_AUDIO_REQUEST', 'Audio target must be an object');
   const { kind, target, fingerprint, descriptor } = entry;
+  const atomic = kind === 'heading';
+  const requiresCard = !atomic || target?.slot === 'heading';
+  const ownerFields = ['documentId', 'documentUid', ...(requiresCard ? ['cardId', 'cardUid'] : []),
+    ...(kind === 'split' ? ['segmentId', 'segmentUid'] : [])];
   if (!fields(entry, ['kind', 'target', 'fingerprint', 'descriptor', 'binary', 'trustedComposition'])
-    || !fields(target, ['documentId', 'documentUid', 'cardId', 'cardUid', ...(kind === 'split' ? ['segmentId', 'segmentUid'] : [])])
-    || [target.documentId, target.documentUid, target.cardId, target.cardUid,
-      ...(kind === 'split' ? [target.segmentId, target.segmentUid] : [])].some(value => typeof value !== 'string' || !value.trim())
-    || typeof fingerprint !== 'string' || !['split', 'full'].includes(kind)
-    || (kind === 'split' ? !RF.test(fingerprint) : !FULL.test(fingerprint))
+    || !fields(target, [...ownerFields, ...(atomic ? ['slot'] : [])])
+    || ownerFields.some(key => typeof target[key] !== 'string' || !target[key].trim())
+    || (atomic && !['mainTitle', 'heading'].includes(target.slot))
+    || typeof fingerprint !== 'string' || !['split', 'full', 'heading'].includes(kind)
+    || (kind === 'full' ? !FULL.test(fingerprint) : !RF.test(fingerprint))
     || !['text', 'meaning'].includes(descriptor?.channel)
     || (entry.binary !== undefined && !isBinary(entry.binary))) fail('INVALID_AUDIO_REQUEST', 'Invalid typed audio target or identity');
   const document = resolveTextLibraryDocumentTree(snapshot, target.documentId);
   const block = document?.blocks.find(card => card.id === target.cardId);
   if (snapshot.schemaVersion !== 2 || document?.editorModel !== 'structured-v1'
     || !['paragraph', 'conversation', 'mixed'].includes(document.documentType)
-    || !document.uid || document.uid !== target.documentUid || !block?.uid || block.uid !== target.cardUid) {
+    || !document.uid || document.uid !== target.documentUid || (requiresCard && (!block?.uid || block.uid !== target.cardUid))) {
     fail('AUDIO_TARGET_CHANGED', 'Workspace or Card identity does not match the captured target');
   }
   const language = descriptor.channel === 'text' ? document.textLanguage : document.meaningLanguage;
+  if (atomic) {
+    if (!isEdge(descriptor)) fail('INVALID_AUDIO_PROFILE', 'Heading requires the existing Edge render profile');
+    const heading = resolveBookAtomicHeading(document, block, target.slot, descriptor.channel);
+    const expected = buildBookAtomicAudioRequest(document, block, target.slot, descriptor.channel, descriptor);
+    if (!heading || expected?.fingerprint !== fingerprint || !same(expected.descriptor, descriptor)) {
+      fail('AUDIO_CONTENT_CHANGED', 'RF does not describe the current authored Heading and channel');
+    }
+    return { document, block, heading, record: block ?? document, format: 'mp3', content: heading.content };
+  }
   if (kind === 'split') {
     const segment = block.segments.find(item => item.id === target.segmentId);
     if (!segment?.uid || segment.uid !== target.segmentUid) fail('AUDIO_TARGET_CHANGED', 'Segment no longer belongs to the captured Card');
@@ -140,10 +170,11 @@ export const assertBookAudioReferenceCapacity = (snapshot, entries, { bodyOnly =
   const groups = new Map();
   for (const entry of entries) {
     const owner = resolveBookAudioTarget(snapshot, entry);
-    if (bodyOnly && !isBookBodyAudioCard(owner.block)) fail('INVALID_AUDIO_TARGET', 'Book QA generation supports Body Cards');
-    if (entry.kind !== 'split') continue;
-    const key = getTextStructuredAudioVariantKey(owner.identity);
-    const current = groups.get(key) || new Set(Object.keys(readBookAudioReferences(owner.variant)));
+    if (bodyOnly && entry.kind !== 'heading' && !isBookBodyAudioCard(owner.block)) fail('INVALID_AUDIO_TARGET', 'Book QA generation supports Body Cards and authored Headings');
+    if (entry.kind === 'full') continue;
+    const key = owner.heading?.id ?? getTextStructuredAudioVariantKey(owner.identity);
+    const refs = owner.heading ? readBookHeadingReferences(owner.record, entry.descriptor.channel) : readBookAudioReferences(owner.variant);
+    const current = groups.get(key) || new Set(Object.keys(refs));
     current.add(entry.fingerprint);
     if (current.size > MAX_REFERENCES) fail('AUDIO_REFERENCE_LIMIT', 'RF reference limit reached; existing profiles were preserved');
     groups.set(key, current);
@@ -152,6 +183,7 @@ export const assertBookAudioReferenceCapacity = (snapshot, entries, { bodyOnly =
 
 export const applyBookQaAudioOperation = (snapshot, entries, now) => {
   if (!Array.isArray(entries) || !entries.length || entries.length > BOOK_AUDIO_MAX_ITEMS) fail('INVALID_AUDIO_REQUEST', 'Invalid audio operation size');
+  assertBookAudioReferenceCapacity(snapshot, entries.filter(entry => entry?.kind === 'heading'));
   let next = snapshot;
   const results = [];
   for (const entry of entries) {
@@ -162,7 +194,14 @@ export const applyBookQaAudioOperation = (snapshot, entries, now) => {
     }
     assertBookAudioCompatibleBytes(next, fingerprint, binary);
     let command;
-    if (kind === 'split') {
+    if (kind === 'heading') {
+      const { channel } = descriptor;
+      const metadata = { ...owner.record.metadata };
+      metadata[BOOK_HEADING_AUDIO_KEY] = { ...metadata[BOOK_HEADING_AUDIO_KEY],
+        [channel]: { ...readBookHeadingReferences(owner.record, channel), [fingerprint]: { descriptor, binary } }
+      };
+      command = { type: owner.block ? 'block.update' : 'document.update', payload: { id: owner.record.id, metadata } };
+    } else if (kind === 'split') {
       const metadata = { ...owner.variant?.metadata };
       const refs = readBookAudioReferences(owner.variant);
       if (metadata.audioRenderFingerprintV1 && !RF.test(metadata.audioRenderFingerprintV1)) {
@@ -189,7 +228,7 @@ export const applyBookQaAudioOperation = (snapshot, entries, now) => {
     }
     const outcome = applyTextLibraryCommand(next, command, now);
     next = outcome.snapshot;
-    results.push({ kind, fingerprint, id: outcome.result.id });
+    results.push({ kind, fingerprint, id: owner.heading?.id ?? outcome.result.id });
   }
   return { snapshot: next, result: results };
 };
@@ -200,6 +239,13 @@ export const readBookAudioBinding = (snapshot, entry) => {
   catch (error) {
     if (['AUDIO_TARGET_CHANGED', 'AUDIO_CONTENT_CHANGED', 'INVALID_AUDIO_COMPOSITION'].includes(error.code)) return { status: 'stale' };
     throw error;
+  }
+  if (entry.kind === 'heading') {
+    const refs = readBookHeadingReferences(owner.record, entry.descriptor.channel);
+    const exact = refs[entry.fingerprint];
+    if (exact) return { status: 'bound', binary: exact.binary, headingId: owner.heading.id };
+    return { status: Object.values(refs).some(ref => ref.descriptor.contentFingerprint === entry.descriptor.contentFingerprint)
+      ? 'other-profile' : Object.keys(refs).length ? 'stale' : 'missing' };
   }
   if (entry.kind === 'full') {
     const artifacts = getTextStructuredFullAudioArtifacts(owner.block).filter(item => item.descriptor.channel === entry.descriptor.channel);

@@ -1,10 +1,12 @@
 import { resolveTextParagraphCardRole } from './textParagraphRoleDomain.js';
 import { getTextStructuredSpeakerRegistry } from './textStructuredSpeakerIdentityDomain.js';
 import { normalizeTextStructuredSpeakerKey } from './textStructuredAudioIdentityDomain.js';
-import { updateBookBodyProfileMetadata } from './bookQaBodyAudioDomain.js';
 
 export const BOOK_MAIN_TITLE_KEY = 'bookMainTitleV1';
 export const BOOK_CARD_HEADING_KEY = 'bookHeadingV1';
+export const BOOK_HEADING_AUDIO_KEY = 'bookHeadingAudioV1';
+export const BOOK_HEADING_READ_KEY = 'bookHeadingReadV1';
+export const BOOK_HEADING_DEFAULTS = Object.freeze({ mainTitle: true, paragraph: false, scene: true });
 
 export class TextBookAuthoringError extends Error {
   constructor(code, message) {
@@ -25,6 +27,11 @@ const translation = (input, previous, code) => {
   if (input.id !== null && typeof input.id !== 'string') fail(code, 'Indonesian content must be text or empty');
   return clean(input.id);
 };
+
+export const resolveBookHeadingRead = workspace => Object.fromEntries(Object.entries(BOOK_HEADING_DEFAULTS).map(([key, fallback]) => {
+  const value = workspace?.metadata?.[BOOK_HEADING_READ_KEY]?.[key];
+  return [key, typeof value === 'boolean' ? value : fallback];
+}));
 
 export const validateBookMainTitle = (input, workspaceName, previous) => {
   const code = 'BOOK_MAIN_TITLE_INVALID';
@@ -120,8 +127,15 @@ export const prepareBookAuthoringCommand = (snapshot, scoped, workspaceId, autho
   const unchanged = payload === scoped.payload ? scoped : { type, payload };
   if (type === 'document.create' || type === 'document.update') {
     const creating = type === 'document.create';
-    if (!creating && has(authoringFields, 'bodyAudioProfile')) {
-      return makeCommand({ metadata: updateBookBodyProfileMetadata(workspace, authoringFields.bodyAudioProfile) });
+    if (!creating && has(authoringFields, 'headingRead')) {
+      const { headingRead } = authoringFields;
+      if (!fields(headingRead, ['workspaceUid', 'key', 'read']) || headingRead.workspaceUid !== workspace.uid
+        || !has(BOOK_HEADING_DEFAULTS, headingRead.key) || typeof headingRead.read !== 'boolean') {
+        fail('BOOK_HEADING_READ_INVALID', 'Choose a valid Workspace Heading read setting');
+      }
+      return makeCommand({ metadata: { ...workspace.metadata, [BOOK_HEADING_READ_KEY]: {
+        ...resolveBookHeadingRead(workspace), [headingRead.key]: headingRead.read
+      } } });
     }
     const title = clean(creating || has(payload, 'title') ? payload.title : workspace.title);
     if (!title) fail('BOOK_WORKSPACE_NAME_REQUIRED', 'Workspace Name must be nonblank');

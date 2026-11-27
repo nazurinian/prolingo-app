@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { checkBookQaHostBoundaries } from './fixtures/p15-integrated/book-qa-hf1-browser.mjs';
 import { checkBookQaAudioStorage, bookAudioAuditLibraries } from './fixtures/a1b-1a/check-book-qa-audio.mjs';
 import { checkBookBodyAudio, bodyAuditLibraries } from './fixtures/a1b-1b/check-body-audio.mjs';
+import { checkBookHeadingAudio, headingAuditLibraries } from './fixtures/a1b-1c/check-heading-audio.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -18,7 +19,8 @@ const qaPrefix = 'prolingo_text_library_d3b_qa_';
 const canonicalName = 'prolingo_text_library';
 const audioAudit = process.env.BOOK_QA_AUDIO_AUDIT === '1';
 const bodyAudit = process.env.BOOK_QA_BODY_AUDIO_AUDIT === '1';
-const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}) };
+const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
+const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}), ...(headingAudit ? headingAuditLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -184,13 +186,13 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
-      if (uatMode && (audioAudit || bodyAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+      if (uatMode && (audioAudit || bodyAudit || headingAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
         const frequency = pathname.includes('440') ? '440' : '660';
         response.setHeader('Content-Type', 'audio/mpeg');
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && bodyAudit && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -233,7 +235,7 @@ const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'))
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
-  ...(bodyAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
+  ...(bodyAudit || headingAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const browserExit = new Promise(resolve => {
@@ -276,8 +278,10 @@ const instrumentation = `(() => {
   window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
   Object.defineProperty(window, 'speechSynthesis', { value: {
     speaking: false, paused: false, pending: false,
-    getVoices: () => [{ name: 'Fixture EN', lang: 'en-US', voiceURI: 'fixture-en', localService: true }],
-    speak(utterance) { this.speaking = true; window.__bookQaSpeech.push(['speak', utterance.text]); utterance.onstart?.(); },
+    getVoices: () => [{ name: 'Fixture EN', lang: 'en-US', voiceURI: 'fixture-en', localService: true },
+      { name: 'Fixture ID', lang: 'id-ID', voiceURI: 'fixture-id', localService: true }],
+    speak(utterance) { this.speaking = true; this.utterance = utterance; window.__bookQaSpeech.push(['speak', utterance.text, utterance.voice?.name]); utterance.onstart?.(); },
+    finish() { this.speaking = false; this.utterance?.onend?.(); },
     pause() { this.paused = true; window.__bookQaSpeech.push(['pause']); },
     resume() { this.paused = false; window.__bookQaSpeech.push(['resume']); },
     cancel() { this.speaking = false; this.paused = false; window.__bookQaSpeech.push(['cancel']); }
@@ -620,6 +624,17 @@ try {
     assert.deepEqual(audit.deletes, []);
     assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
   }
+  if (headingAudit) {
+    report.headingAudio = await checkBookHeadingAudio({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin, call, bodyRequests });
+    const audit = await readAudit();
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert(qaApiRequests.length > 0 && qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+  }
 
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
@@ -631,6 +646,10 @@ try {
   if (bodyAudit) {
     report.production.bookBodyAudioPanelAbsent = productionSources.every(source => !source.includes('data-book-body-audio-status'));
     assert(report.production.bookBodyAudioPanelAbsent, 'Production output must exclude the Book QA Body audio panel');
+  }
+  if (headingAudit) {
+    report.production.bookHeadingPanelAbsent = productionSources.every(source => !source.includes('data-book-heading-status'));
+    assert(report.production.bookHeadingPanelAbsent, 'Production output must exclude the Book QA Heading audio panel');
   }
 
   await navigate(productionOrigin, '/?qa=book-qa');

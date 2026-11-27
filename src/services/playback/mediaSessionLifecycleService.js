@@ -2,6 +2,7 @@ import { describeAuthoredPlayback } from '../../domain/playback/globalPlayerPres
 import { readNowPlayingMediaTimeline, readOwnedNowPlaying, readOwnedNowPlayingMedia } from '../../domain/playback/nowPlayingDomain.js';
 import { capitalizeDisplayText } from '../../utils/displayTextUtils.js';
 import { navigateOwnedPlayback, readOwnedPlaybackSession } from './playbackRuntimeControlService.js';
+import { BOOK_HEADING_LABELS } from '../../domain/text/bookQaHeadingAudioDomain.js';
 
 const join = (...parts) => parts.filter(Boolean).join(' · ');
 const channels = { text: 'EN', meaning: 'ID' };
@@ -13,8 +14,13 @@ const seekActions = ['seekto', 'seekbackward', 'seekforward'];
 const positionEvents = ['loadedmetadata', 'durationchange', 'timeupdate', 'ratechange', 'seeking', 'seeked', 'progress', 'emptied'];
 
 export const formatMediaSessionMetadata = (nowPlaying, readCollectionTitle = () => null) => {
-  const { domain, precision, workspace, card, item } = nowPlaying;
+  const { domain, precision, workspace, card, item, heading } = nowPlaying;
   const channel = channels[nowPlaying.channel];
+  if (domain === 'structured-text' && heading) return {
+    title: join(BOOK_HEADING_LABELS[heading.key], heading.content),
+    artist: join(workspace?.title, card?.title, channel),
+    album: (workspace?.collectionId && readCollectionTitle(workspace.collectionId)) || 'ProLingo'
+  };
   if (domain === 'structured-text' && card && ['segment', 'card'].includes(precision)) {
     const { cardCode, cardPosition, shortUnitCode, speaker, segmentCode } = describeAuthoredPlayback(nowPlaying);
     const cardLabel = cardCode || cardPosition || card.title;

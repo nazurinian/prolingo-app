@@ -12,6 +12,7 @@ import {
   resolveStructuredTextPlaybackChannelSteps
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES } from '../../domain/text/textStructuredRuntimePlaybackPlanDomain.js';
+import { bookHeadingBoundarySteps } from '../../domain/text/bookQaHeadingAudioDomain.js';
 
 const FAST_SETTLE_STEP_THRESHOLD_MS = 15;
 const FAST_SETTLE_PASS_THRESHOLD_MS = 60;
@@ -95,20 +96,35 @@ export const executeStructuredTextPlaybackSessionService = args => {
   playStructuredChannel,
   resolveBlockChannelPlaybackPlan = null,
   playStructuredFullStep = null,
+  playHeadingStep = null,
+  atomicOnly = false,
   forceStopAll,
   addLog,
   random = Math.random
   } = args;
+  const { DOCUMENT, CARD, FROM_HERE, UNIT } = TEXT_STRUCTURED_PLAYBACK_SCOPES;
+  const explicitCard = scope === CARD ? documentTree?.blocks?.find(block => block.id === blockId) : null;
+  const freshWorkspace = scope === DOCUMENT && !cursorSegmentId && !startSegmentId && !transportSegmentId;
+  const orderedChannels = resolveStructuredTextPlaybackChannelOrder(requestedChannelMode);
+  const stepsFor = (block, explicit = false) => playHeadingStep
+    ? bookHeadingBoundarySteps(documentTree, block, orderedChannels, { explicit }) : [];
+  const opening = freshWorkspace ? stepsFor(null, atomicOnly) : [];
+  const standaloneCard = explicitCard ? stepsFor(explicitCard, atomicOnly) : [];
+  const standalone = explicitCard ? standaloneCard : [
+    ...opening, ...(freshWorkspace && !atomicOnly && playHeadingStep ? (documentTree?.blocks ?? []).flatMap(block => stepsFor(block)) : [])
+  ];
+  const allowEmpty = Boolean(standalone.length) && (freshWorkspace || Boolean(explicitCard));
   const resolved = resolveStructuredTextPlaybackCommand({
     documentTree, workspaceId, workspaceUid, startSegmentId, cursorSegmentId, blockId, unitId, virtualUnit,
-    scope, boundary, channel, playbackChannelMode: requestedChannelMode, playbackRepresentationMode
+    scope, boundary, channel, playbackChannelMode: requestedChannelMode, playbackRepresentationMode, allowEmpty
   });
-  if (!resolved) {
+  if (!resolved || (atomicOnly && !allowEmpty)) {
     addLog?.('Text Player', 'Playback not started: invalid target or no content for the selected Text Play mode.');
     return false;
   }
 
-  const { scopedList, playbackChannelMode, commandRepresentation: normalizedRepresentation } = resolved;
+  const { playbackChannelMode, commandRepresentation: normalizedRepresentation } = resolved;
+  const scopedList = atomicOnly ? [] : resolved.scopedList;
   const cursorId = transportSegmentId ?? resolved.cursorId;
   if (transportSegmentId != null && !scopedList.some(item => item.id === transportSegmentId)) return false;
   const fullTraversal = normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
@@ -119,7 +135,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
   const repeatCountProvided = repeatCount !== null && repeatCount !== undefined && repeatCount !== '';
   const requestedRepeatCount = repeatCountProvided ? Number(repeatCount) : Number.NaN;
   const finiteRepeatCount = Number.isFinite(requestedRepeatCount) ? Math.min(20, Math.max(1, Math.round(requestedRepeatCount))) : null;
-  const repeatLimit = channel !== undefined ? 1 : repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP
+  const repeatLimit = channel !== undefined || !scopedList.length ? 1 : repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP
     ? Number.POSITIVE_INFINITY
     : finiteRepeatCount || (repeatMode === TEXT_STRUCTURED_REPEAT_MODES.TWICE ? 2 : 1);
   const shuffleOrderActive = playbackOrderMode === TEXT_STRUCTURED_ORDER_MODES.SHUFFLE;
@@ -143,10 +159,10 @@ export const executeStructuredTextPlaybackSessionService = args => {
       documentId: documentTree.id, documentTitle: documentTree.title,
       nowPlayingCardOrder: fullTraversal ? [...new Set(orderedList.map(item => item.blockId))] : null,
       temporarySplitCardIds: fullTraversal ? [...resolved.partialCardIds] : [],
-      scope, boundary: commandTarget.boundary, commandTarget,
+      scope: atomicOnly ? 'heading' : scope, boundary: commandTarget.boundary, commandTarget: atomicOnly ? null : commandTarget,
       requestedRepresentation: resolved.requestedRepresentation, savedPlaybackRepresentationMode,
       exactChannel: channel ?? null, scopeStartSegmentId: startSegmentId || null,
-      cursorSegmentId: first.id, blockId: first.blockId,
+      cursorSegmentId: first?.id ?? null, blockId: first?.blockId ?? null,
       playbackChannelMode, playbackOrderMode, playbackRepresentationMode: normalizedRepresentation,
       repeatMode, repeatCount: repeatLimit === Number.POSITIVE_INFINITY ? null : repeatLimit,
       channelDelayMs, segmentDelayMs, repeatPass: pass + 1,
@@ -157,7 +173,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
     };
   };
 
-  onPlaybackAccepted?.({ segmentId: cursorId ?? firstOrder[0].id, orderedList: shuffleOrderActive ? firstOrder : null });
+  if (firstOrder.length) onPlaybackAccepted?.({ segmentId: cursorId ?? firstOrder[0].id, orderedList: shuffleOrderActive ? firstOrder : null });
   safePlayTransition(async () => {
     const playbackSession = playbackSessionRef.current;
 
@@ -171,6 +187,20 @@ export const executeStructuredTextPlaybackSessionService = args => {
 
     if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
 
+    const stopArgs = { stopSignalRef, playbackSessionRef, playbackSession };
+    const playHeadings = async (steps, intro = false) => {
+      const context = playbackContextRef?.current;
+      if (intro && context?.sessionId === playbackSession) context.headingIntro = true;
+      for (const step of steps) {
+        if (shouldStop(stopArgs)) break;
+        await waitWhilePaused();
+        if (shouldStop(stopArgs)) break;
+        setPlayingIndex(null);
+        setSpeakingPart(step.channel);
+        await playHeadingStep(step, playbackSession);
+      }
+      if (context?.sessionId === playbackSession) context.headingIntro = false;
+    };
     let pass = 0;
     let fastPassStreak = 0;
     while (pass < repeatLimit && !shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) {
@@ -181,13 +211,55 @@ export const executeStructuredTextPlaybackSessionService = args => {
       if (playbackContextRef) {
         playbackContextRef.current = { ...makeSession(orderedList, pass === 0 ? cursorId : null, pass), sessionId: playbackSession };
       }
+      if (!scopedList.length) {
+        await playHeadings(standalone);
+        break;
+      }
+      if (pass === 0 && opening.length) await playHeadings(opening, true);
       const persistedOrderedList = shuffleOrderActive ? orderedList : null;
+      const autoHeadings = playHeadingStep && (scope === DOCUMENT || scope === CARD || (scope === FROM_HERE && boundary !== UNIT));
+      const firstCard = (orderedList.find(item => item.id === (pass === 0 ? cursorId : null)) ?? orderedList[0])?.blockId;
+      const skipFirstHeading = pass === 0 && Boolean(cursorId);
+      const continuedCard = scope === FROM_HERE ? validItems.get(startSegmentId)?.blockId : null;
+      const bodyCards = new Set(orderedList.map(item => item.blockId));
+      const intervening = new Map();
+      if (autoHeadings && freshWorkspace) {
+        // Anchor heading-only Cards to an authored neighbour while Body shuffle keeps its existing order.
+        let previous = null;
+        for (const block of documentTree.blocks) {
+          if (bodyCards.has(block.id)) previous = block.id;
+          else {
+            const steps = stepsFor(block);
+            if (steps.length) intervening.set(previous, [...(intervening.get(previous) ?? []), ...steps]);
+          }
+        }
+        if (intervening.has(null)) await playHeadings(intervening.get(null));
+      }
+      let previousCard = null;
+      const enterCard = async (item, block) => {
+        if (!autoHeadings || previousCard === item.blockId) return;
+        if (intervening.has(previousCard) && previousCard) await playHeadings(intervening.get(previousCard));
+        previousCard = item.blockId;
+        if (item.blockId === continuedCard || (skipFirstHeading && item.blockId === firstCard)) return;
+        const steps = stepsFor(block);
+        if (!steps.length) return;
+        const context = playbackContextRef?.current;
+        if (context?.sessionId === playbackSession) {
+          context.cursorSegmentId = item.id;
+          context.blockId = item.blockId;
+        }
+        await playHeadings(steps);
+      };
       const playSplitItems = async (items, firstItemIndex, { partialBlock = null, hasNextGroup = false, plans = null } = {}) => {
         for (let itemIndex = firstItemIndex; itemIndex < items.length; itemIndex += 1) {
           const item = items[itemIndex];
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
           await waitWhilePaused();
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
+          if (autoHeadings && !partialBlock && previousCard !== item.blockId) {
+            await enterCard(item, documentTree.blocks.find(block => block.id === item.blockId));
+            if (shouldStop(stopArgs)) break;
+          }
 
           resumeSilentAnchor({ silentAudioRef });
           const suppressHighlight = !partialBlock && normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL;
@@ -256,6 +328,8 @@ export const executeStructuredTextPlaybackSessionService = args => {
 
         for (let groupIndex = firstGroupIndex; groupIndex < groups.length; groupIndex += 1) {
           const group = groups[groupIndex];
+          if (autoHeadings) await enterCard(group.items[0], group.block);
+          if (shouldStop(stopArgs)) break;
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
           await waitWhilePaused();
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
@@ -366,6 +440,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
           ? orderedList.findIndex(item => fullTraversal ? item.blockId === cursorItem.blockId : item.id === cursorId) : 0;
         await playSplitItems(orderedList, Math.max(0, scopedCursorIndex));
       }
+      if (previousCard && intervening.has(previousCard)) await playHeadings(intervening.get(previousCard));
 
       if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
       pass += 1;
@@ -389,8 +464,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
     setSpeakingPart(null);
     setPlayingIndex(null);
     if (!stopSignalRef.current) {
-      if (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT
-        || (scope === TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE && boundary === TEXT_STRUCTURED_PLAYBACK_SCOPES.DOCUMENT)) {
+      if (!atomicOnly && (scope === DOCUMENT || (scope === FROM_HERE && boundary === DOCUMENT))) {
         const firstId = resolved.fullList.find(item => resolveStructuredTextPlaybackChannelSteps(item, playbackChannelMode).length)?.id || null;
         if (firstId) setCurrentIndex(firstId);
         onPlaybackCompleted?.({ documentId: documentTree.id, segmentId: firstId });

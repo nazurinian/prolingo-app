@@ -66,7 +66,8 @@ export const resolveStructuredTextPlaybackScopeList = ({
   unitId = null,
   virtualUnit = false,
   scope = TEXT_STRUCTURED_PLAYBACK_SCOPES.FROM_HERE,
-  boundary
+  boundary,
+  allowEmpty = false
 }) => {
   const fullList = resolveStructuredTextPlaybackList(documentTree);
   const invalid = { fullList, playbackList: [], startIndex: -1 };
@@ -115,12 +116,16 @@ export const resolveStructuredTextPlaybackScopeList = ({
   }
   const anchor = cursor || start;
   const startIndex = anchor ? playbackList.indexOf(anchor) : (playbackList.length ? 0 : -1);
+  if (startIndex < 0 && allowEmpty && !anchor && [DOCUMENT, CARD].includes(scope)) {
+    return { fullList, playbackList, startIndex, emptyScope: true };
+  }
   return startIndex < 0 ? invalid : { fullList, playbackList, startIndex: scope === UNIT ? 0 : startIndex };
 };
 
 /** Resolve once before changing the owned session or its saved resume target. */
 export const resolveStructuredTextPlaybackCommand = ({
   channel,
+  allowEmpty = false,
   playbackChannelMode = TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY,
   playbackRepresentationMode = TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
   ...target
@@ -130,11 +135,11 @@ export const resolveStructuredTextPlaybackCommand = ({
   const effectiveChannelMode = channel === 'text' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.TEXT_ONLY
     : channel === 'meaning' ? TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES.MEANING_ONLY : playbackChannelMode;
   if (!Object.values(TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES).includes(effectiveChannelMode)) return null;
-  const resolved = resolveStructuredTextPlaybackScopeList(target);
+  const resolved = resolveStructuredTextPlaybackScopeList({ ...target, allowEmpty });
   const playable = item => hasStructuredTextPlayableChannel(item, effectiveChannelMode);
   const scopedList = resolved.playbackList.filter(playable);
   const requestedCursorId = target.cursorSegmentId ?? target.startSegmentId ?? null;
-  if (!scopedList.length || [requestedCursorId, target.startSegmentId]
+  if ((!scopedList.length && !(allowEmpty && (resolved.startIndex >= 0 || resolved.emptyScope))) || [requestedCursorId, target.startSegmentId]
     .some(id => id != null && !scopedList.some(item => item.id === id))) return null;
 
   const { FROM_HERE, SEGMENT, UNIT, CARD } = TEXT_STRUCTURED_PLAYBACK_SCOPES;
@@ -145,7 +150,7 @@ export const resolveStructuredTextPlaybackCommand = ({
   const partialCardIds = new Set(resolved.fullList.filter(item => !scopeIds.has(item.id)).map(item => item.blockId));
   const unitTarget = target.scope === UNIT || (target.scope === FROM_HERE && target.boundary === UNIT);
   const cursorId = target.scope === UNIT ? null : requestedCursorId;
-  const partialCard = target.scope === FROM_HERE && target.boundary === CARD && partialCardIds.has(scopedList[0].blockId);
+  const partialCard = target.scope === FROM_HERE && target.boundary === CARD && partialCardIds.has(scopedList[0]?.blockId);
   return {
     ...resolved, scopedList, cursorId, partialCardIds,
     playbackChannelMode: effectiveChannelMode, requestedRepresentation,

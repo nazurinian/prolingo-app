@@ -521,10 +521,10 @@ try {
     await pointerClick(`${readingOverlay} [data-text-main-reader-option="legacy"]`);
     await until('document.querySelector("[data-text-main-reader=legacy]")');
     await screenshot('a6-main-text-old-mobile');
-    // The Classic surface starts with a different document geometry. Return
-    // to its top controls before testing the native pointer hit.
-    await evaluate('window.scrollTo({ top: 0, behavior: "instant" })');
+    // The Classic handoff can restore scroll after the viewport switches.
+    // Bring the actual control clear of the sticky AppBar before the native hit test.
     await evaluate('window.a6.stableLayout()');
+    await evaluate('document.querySelector(\'[data-text-main-reader-option="shared"]\').scrollIntoView({ block: "center", behavior: "instant" })');
     await pointerClick('[data-text-main-reader-option="shared"]');
     await until(visible(readingToggle), 'Mobile Shared Reader mounted after Classic return');
     await resize(false);

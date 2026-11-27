@@ -753,6 +753,8 @@ export const TextStructuredPlayer = ({
   bookQaAudioDisabled = false,
   bookHeadingsEnabled = false,
   bookBodyAudioSlot = null,
+  bookHeadingAudioSlot = null,
+  bookCanPlayHeadings = false,
   bookHeadingVisibility,
   useSharedCardReader = false,
   readerSwitchSlot = null,
@@ -831,6 +833,7 @@ export const TextStructuredPlayer = ({
   }, [bookHeadingsEnabled, documentTree, bookHeadingVisibility]);
   const playbackList = useMemo(() => resolveStructuredTextPlaybackList(documentTree), [documentTree]);
   const playableList = useMemo(() => playbackList.filter(item => hasStructuredTextPlayableChannel(item, playbackChannelMode)), [playbackList, playbackChannelMode]);
+  const canPlayWorkspace = bookCanPlayHeadings || playableList.length > 0;
   const structuredSessionActive = playingContext === TEXT_STRUCTURED_PLAYBACK_CONTEXT && (isPlaying || isPaused);
   const expansionMode = normalizeTextCardExpansionMode(playbackPreferences.cardExpansionMode);
   // Manual Segment playback is Split even when the global preference is Full.
@@ -1078,6 +1081,7 @@ export const TextStructuredPlayer = ({
       data-text-auto-follow-user-grace-ms="1800"
     >
       {bookBodyAudioSlot}
+      {bookHeadingAudioSlot}
       {/* Classic/Legacy Reader Toolbar (preserved intact when Classic UI is active) */}
       {!isSharedShellActive && (
         <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
@@ -1114,7 +1118,7 @@ export const TextStructuredPlayer = ({
                 {documentCoverage?.stale ? <span className="rounded-md bg-rose-100 dark:bg-rose-950/40 px-1.5 py-0.5 font-black text-rose-700 dark:text-rose-300">STALE {documentCoverage.stale}</span> : null}
               </div>
             </div>
-            <button type="button" disabled={!playableList.length || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}>{stopsWorkspace ? <Square className="w-3.5 h-3.5 fill-current"/> : <Play className="w-3.5 h-3.5 fill-current"/>}{stopsWorkspace ? 'Stop All' : 'Play All'}</button>
+            <button type="button" disabled={!canPlayWorkspace || generationBusy} onClick={onPlayDocument} className="min-h-10 sm:min-h-9 px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black disabled:opacity-35 transition-all duration-150 shadow-sm hover:shadow-md active:scale-95 inline-flex items-center gap-1.5 shrink-0" title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}>{stopsWorkspace ? <Square className="w-3.5 h-3.5 fill-current"/> : <Play className="w-3.5 h-3.5 fill-current"/>}{stopsWorkspace ? 'Stop All' : 'Play All'}</button>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-indigo-100/80 dark:border-indigo-900/60 bg-slate-50/60 dark:bg-slate-900/40 px-2.5 sm:px-3 py-2 rounded-b-2xl" data-text-card-expansion-toolbar="true">
@@ -1206,7 +1210,7 @@ export const TextStructuredPlayer = ({
             mobileReaderSwitchSlot={readerSwitchSlot}
             mobilePlayAction={{
               onPlay: onPlayDocument,
-              disabled: !playableList.length || generationBusy,
+              disabled: !canPlayWorkspace || generationBusy,
               stopsWorkspace,
               activeStatusLabel: workspaceStatusLabel,
               activeToneClass: workspaceStatusTone
@@ -1247,7 +1251,7 @@ export const TextStructuredPlayer = ({
                   {readerSwitchSlot}
                   <button
                     type="button"
-                    disabled={!playableList.length || generationBusy}
+                    disabled={!canPlayWorkspace || generationBusy}
                     onClick={onPlayDocument}
                     className={`min-h-8 sm:min-h-8 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold disabled:opacity-35 inline-flex items-center gap-1.5 shrink-0 ${SHARED_CONTROL_TOKENS.primaryButton} ${SHARED_CONTROL_TOKENS.focusRing}`}
                     title={stopsWorkspace ? 'Stop Workspace playback' : 'Play Workspace from start'}

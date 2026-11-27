@@ -50,6 +50,13 @@ export async function checkBookBodyAudio({ evaluate, navigate, waitFor, probe, c
     return fixture;
   };
   const transport = async name => evaluate(`document.querySelector('[data-global-player] button[aria-label="${name}"]').click()`);
+  const playCardEn = async card => {
+    // Classic uses Manual Card English by default. Select the actual control to
+    // avoid invoking an alternate React tree's stale representation closure.
+    const action = `document.querySelector(${JSON.stringify('[data-text-player-card="' + card + '"] button[data-text-card-play-compact]')})`;
+    await waitFor(`${action}?.getAttribute('data-reader-playback-action') === 'play'`);
+    await evaluate(`${action}.click()`);
+  };
   const setRepresentation = async mode => {
     const saved = `document.querySelector('[data-text-global-player-controls] button')`;
     const label = mode === 'full' ? 'Saved Full' : 'Saved Split';
@@ -68,6 +75,11 @@ export async function checkBookBodyAudio({ evaluate, navigate, waitFor, probe, c
   };
 
   const fixture = await connect(true);
+  await evaluate(`document.querySelector('[data-book-heading-audio] summary').click()`);
+  await waitFor(`document.querySelector('[aria-label="Read Conversation Scene Heading"]')?.checked`);
+  await evaluate(`document.querySelector('[aria-label="Read Conversation Scene Heading"]').click()`);
+  await waitFor(`document.querySelector('[data-book-heading-status]')?.textContent.includes('saved')`);
+  await evaluate(`document.querySelector('[data-book-heading-audio] summary').click()`);
   const originalNetworkCount = bodyRequests.length;
   assert.equal(await probe(`module.exerciseBookBodyEntryChecks(${host})`), true);
   assert.equal(bodyRequests.length, originalNetworkCount, 'Valid provisional bytes should avoid any synthesis');
@@ -110,7 +122,7 @@ export async function checkBookBodyAudio({ evaluate, navigate, waitFor, probe, c
   await setRenderProfile(12);
   await run('Generate Card Full', '1 committed');
   await setRepresentation('full');
-  await evaluate(`${reader('onPlayCard')}(${JSON.stringify(paragraph)}, { playbackChannelMode: 'text-only' })`);
+  await playCardEn(paragraph);
   await recorded('card');
   const full = await evaluate(`${player}.nowPlaying`);
   assert.equal(full.actualRepresentation, 'full');
@@ -147,7 +159,7 @@ export async function checkBookBodyAudio({ evaluate, navigate, waitFor, probe, c
   await change(field('edgeVoice'), 'en-GB-LibbyNeural');
   await run('Save Workspace profile', 'saved');
   await run('Compose Scene Full', 'INVALID_AUDIO_COMPOSITION');
-  await evaluate(`${reader('onPlayCard')}(${JSON.stringify(scene)}, { playbackChannelMode: 'text-only' })`);
+  await playCardEn(scene);
   await waitFor(`${player}.nowPlaying.card?.id === ${JSON.stringify(scene)} && ${player}.nowPlaying.source === 'tts'`);
   await transport('Stop playback');
   await run('Generate Card Split', 'committed');
@@ -157,7 +169,7 @@ export async function checkBookBodyAudio({ evaluate, navigate, waitFor, probe, c
   const composition = await evaluate(`${host}.session.getSnapshot().blocks.find(row => row.id === ${JSON.stringify(scene)}).metadata.fullAudioArtifactsV1.artifacts.find(item => item.descriptor.engine === 'derived')`);
   assert.equal(composition.metadata.bookAudioTrustedCompositionV1, true);
   assert.equal(composition.metadata.bookAudioBinaryV1.sampleRate, 48_000);
-  await evaluate(`${reader('onPlayCard')}(${JSON.stringify(scene)}, { playbackChannelMode: 'text-only' })`);
+  await playCardEn(scene);
   await recorded('card');
   assert.equal(await evaluate(`${player}.media.playbackRate`), 1);
   assert.equal(await evaluate(`${player}.nowPlaying.segment`), null);

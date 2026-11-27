@@ -21,6 +21,10 @@ export const resolveNowPlayingReaderCursor = ({ presentation, nowPlaying } = {})
     boundary: nowPlaying.boundary ?? null
   });
   const cardId = nowPlaying.card?.id;
+  if (nowPlaying.precision === 'heading') return Object.freeze({
+    ...active, channel: channel(nowPlaying.channel), precision: 'heading', heading: nowPlaying.heading,
+    ...(presentation.cardById[cardId] ? { cardId } : {})
+  });
   if (!presentation.cardById[cardId]) return active;
   const audibleChannel = channel(nowPlaying.channel);
   if (nowPlaying.precision === 'card') return Object.freeze({ ...active, cardId, channel: audibleChannel, precision: 'card' });

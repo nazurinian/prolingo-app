@@ -92,7 +92,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     }
     if (descriptor.engine !== 'derived') {
       if (staged.status === 'ready') return { blob: staged.blob, binary: staged.binary };
-      const content = owner.segment?.[descriptor.channel] ?? owner.expected?.fullRepresentation.content;
+      const content = owner.content ?? owner.segment?.[descriptor.channel] ?? owner.expected?.fullRepresentation.content;
       const { blob } = await executeTextStructuredAudioGenerationRequest({
         engine: 'edge', text: content, engineVoiceId: descriptor.voiceId,
         edgeRate: descriptor.rate, edgePitch: descriptor.pitch, signal
@@ -124,7 +124,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     }
     let totalBytes = 0;
     const captured = items.map(item => {
-      if (!item || (!generated && !(item.blob instanceof Blob))
+      if (!item || (!generated && (!(item.blob instanceof Blob) || item.kind === 'heading'))
         || Object.keys(item).some(key => !['kind', 'target', 'fingerprint', 'descriptor', ...(generated ? [] : ['blob'])].includes(key))) {
         fail('INVALID_AUDIO_REQUEST', 'Provide a typed target, render identity, and Blob');
       }

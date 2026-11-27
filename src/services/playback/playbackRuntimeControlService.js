@@ -137,6 +137,11 @@ export const navigateOwnedPlayback = (session, direction) => {
   const { orderedList, nowPlayingCardOrder, cursorSegmentId, blockId, queueIndex, restart } = session;
   const queue = nowPlayingCardOrder ?? orderedList;
   if (!restart || !queue?.length || !['prev', 'next'].includes(direction)) return false;
+  if (session.headingIntro) {
+    const target = direction === 'next' ? queue[0] : queue.at(-1);
+    restart(nowPlayingCardOrder ? orderedList.find(item => item.blockId === target) : target);
+    return true;
+  }
   const current = nowPlayingCardOrder ? queue.indexOf(blockId)
     : cursorSegmentId != null ? queue.findIndex(item => item.id === cursorSegmentId) : queueIndex;
   if (!Number.isInteger(current) || current < 0 || current >= queue.length) return false;

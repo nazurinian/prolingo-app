@@ -10,6 +10,9 @@ import { createBookQaConnection } from '../../../src/services/bookQaSessionServi
 import { createTextDataManagementPersistenceAdapter, seedDisposableTextManagementDatabase } from '../../../src/services/persistence/textDataManagementPersistenceService.js';
 import { validateBookAudioBytes } from '../../../src/services/audio/bookQaAudioBytes.js';
 import { buildDerivedTextFullAudioWav } from '../../../src/services/audio/textStructuredFullAudioExportService.js';
+import { planBookAtomicGeneration } from '../../../src/domain/text/bookQaHeadingAudioDomain.js';
+import { getBookSplitPlaybackRequests } from '../../../src/domain/text/bookQaBodyAudioDomain.js';
+import { getTextStructuredSegmentSpeakerId } from '../../../src/domain/text/textStructuredSpeakerIdentityDomain.js';
 
 const check = (condition, message) => { if (!condition) throw new Error(message); };
 const adapterFor = dbName => createTextDataManagementPersistenceAdapter({
@@ -30,6 +33,38 @@ const result = async promise => {
   catch (error) { return { code: error.code, status: error.status, reloadRequired: error.reloadRequired, operationId: error.operationId }; }
 };
 const fixtureBlob = frequency => fetch('/__book_audio_' + frequency + '.mp3').then(response => response.blob());
+
+export const seedHeadingLibrary = async name => {
+  const fixture = createJourneyToLondonFixture();
+  const first = resolveTextLibraryDocumentTree(fixture.snapshot, fixture.ids.documentId);
+  const paragraph = first.blocks[0];
+  const scene = first.blocks[1];
+  const contents = { en: paragraph.segments[0].text, id: 'Judul London' };
+  let snapshot = fixture.snapshot;
+  for (const [type, payload] of [
+    ['document.update', { id: first.id, metadata: { ...first.metadata, bookMainTitleV1: { mode: 'custom', ...contents } } }],
+    ['block.update', { id: paragraph.id, title: 'Atomic paragraph heading', metadata: { ...paragraph.metadata, bookHeadingV1: { id: 'Judul paragraf' } } }],
+    ['block.update', { id: scene.id, title: 'Atomic scene heading', metadata: { ...scene.metadata, bookHeadingV1: { id: 'Judul adegan' } } }],
+    ['document.create', { title: 'Title-only Workspace', documentType: 'paragraph', metadata: { bookMainTitleV1: { mode: 'workspace-name' } } }]
+  ]) snapshot = applyTextLibraryCommand(snapshot, { type, payload }, 42).snapshot;
+  await seedDisposableTextManagementDatabase({ dbName: name, snapshot, createOnly: true });
+  return { contents, workspace: first.id, uid: first.uid, paragraph: paragraph.id, scene: scene.id, empty: snapshot.documents.at(-1).id,
+    segment: paragraph.segments[0].id,
+    sceneSegments: scene.segments.map(item => ({ text: item.text, speakerId: getTextStructuredSegmentSpeakerId(item) })) };
+};
+
+export const inspectHeadingSharing = async connection => {
+  const snapshot = connection.session.getSnapshot();
+  const document = resolveTextLibraryDocumentTree(snapshot, snapshot.documents[0].id);
+  const [block] = document.blocks;
+  const preferences = { edgeTextVoiceId: 'en-GB-RyanNeural', edgeRate: 0, edgePitch: 0 };
+  const heading = planBookAtomicGeneration(document, null, 'mainTitle', 'text', preferences);
+  const [split] = getBookSplitPlaybackRequests(document, block, block.segments[0], 'text', { preferences });
+  const [a, b] = await Promise.all([connection.audio.readRuntime(heading), connection.audio.readRuntime(split)]);
+  const physical = (await rows(connection.audio.name, 'audioMeta')).filter(row => row.mapKey === heading.fingerprint);
+  return { fingerprint: heading.fingerprint, same: heading.fingerprint === split.fingerprint && a.id === b.id && a.url === b.url,
+    statuses: [a.status, b.status], physical: physical.length, id: a.id, url: a.url };
+};
 const fixtureWav = () => {
   const frames = 480;
   const buffer = new ArrayBuffer(44 + frames * 2);
@@ -274,6 +309,26 @@ export const verifyRestartAudio = async (connection, closedOperation) => {
   const recovered = (await rows(connection.audio.name, 'batchSessions')).filter(job => job.id === closedOperation);
   check(recovered.length === 1 && recovered[0].status === 'committed' && recovered[0].reconciled, 'Restart replayed or failed to recover the journal');
   return true;
+};
+
+export const exerciseHeadingReceipt = async name => {
+  const connection = await openAudioPeer(name);
+  const document = resolveTextLibraryDocumentTree(connection.session.getSnapshot(), connection.session.getSnapshot().documents[0].id);
+  const entry = planBookAtomicGeneration(document, null, 'mainTitle', 'text', { edgeTextVoiceId: 'en-GB-RyanNeural', edgeRate: 45, edgePitch: 4 });
+  const descriptor = Object.getOwnPropertyDescriptor(IDBTransaction.prototype, 'oncomplete');
+  const lost = await withAddFault('meta', metaMarker, tx => descriptor.set.call(tx, () => tx.onerror(new Event('error'))),
+    () => result(connection.audio.generate([entry])));
+  check(lost.status === 'uncertain' && lost.reloadRequired, 'Heading commit was not fenced after losing its receipt');
+  check((await result(connection.audio.generate([entry]))).code === 'REFRESH_REQUIRED', 'Uncertain Heading write bypassed reconciliation');
+  connection.session.dispose();
+  check((await result(connection.audio.readRuntime(entry))).code === 'AUDIO_CONNECTION_CLOSED', 'Old Heading connection accepted a late read');
+  const next = await openAudioPeer(name);
+  try {
+    check((await next.audio.readRuntime(entry)).status === 'ready', 'Reconnect failed to recover exact Heading bytes');
+    const jobs = (await rows(next.audio.name, 'batchSessions')).filter(job => job.entries.some(item => item.fingerprint === entry.fingerprint));
+    check(jobs.length === 1 && jobs[0].id === lost.operationId && jobs[0].status === 'committed' && jobs[0].reconciled, 'Heading reconciliation replayed the job');
+    return entry.fingerprint;
+  } finally { next.session.dispose(); }
 };
 
 export const readPrimaryAudio = async (connection, frequency = null) => {

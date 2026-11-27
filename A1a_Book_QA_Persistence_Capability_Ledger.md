@@ -1,6 +1,22 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** A1b-1B Body audio integration. The A1a and A1b-1A sections record the gates and capabilities at those checkpoints.
+**Status:** A1b-1C Atomic Main Title and Card Heading audio. Earlier sections record their checkpoint capabilities.
+
+## A1b-1C Atomic Title and Heading audio
+
+| Boundary | Book QA contract |
+| --- | --- |
+| Logical identity | Main Title uses the Workspace UID, `mainTitle` slot and channel. Card Heading uses the Card UID, `heading` slot and channel. Native IDs and the Workspace UID scope every transaction. Linked Titles resolve from the Workspace Name. Custom Titles resolve from authored text. Blank Heading channels, unsaved Title previews and historical Title-role Cards have no atomic requirement. Historical content remains readable with its existing semantics. |
+| Binding | Document or block metadata `bookHeadingAudioV1` stores `{ text?, meaning? }`, with up to 64 exact RF references per channel. Each reference stores the engine descriptor and independent byte proof. Typed publication uses the existing Book QA journal, lock, snapshot/owner checks and verified readback. Split and Heading can refer to the same physical scoped RF and object URL. Stored keys contain no duplicated owner UID. |
+| Editing and transfer | Current requirements derive from the resulting resolved text. EN edits leave ID and Body unchanged. Cleared or changed Headings retain old references for safe reuse and future reference accounting. Reorder preserves ownership. Existing metadata transfer retains the binding payload and the destination UID determines logical ownership. Destination readiness still requires the destination library's durable bytes. |
+| Global preferences | Browser voice and channel playback speed come from Global playback state. Edge voice, render rate and pitch come from Global generation state. Recorded playback uses exact Global ordered RFs or the Global Edge render where local-first has no explicit order. Browser-only reads no recorded files. Custom local requires an eligible explicit Global order for atomic playback. Workspace and Body overrides never feed these resolvers. Global preferences remain session-only. |
+| Show and Read | Show controls use the existing in-memory Workspace UID Reader preference. Read uses a typed Workspace command and `bookHeadingReadV1`. Both default to Main Title on, Paragraph Heading off, Scene Heading on in QA. They are independent. |
+| Transport | A fresh Workspace start reads the enabled Main Title once. Enabled Card Headings precede Body Cards on each pass. Card play includes its Heading and excludes the Main Title. Direct Section, Turn and Sentence stay local. Resume, Continue and From Here skip the starting Heading and the Main Title. Later Card boundaries may read enabled Headings. Explicit playback plays only the selected atomic target in the requested language order. Heading-only playback runs once. |
+| Shuffle and navigation | Body shuffle preserves authored order within each Card and moves the Card Heading with it. On a fresh Workspace run, heading-only Cards follow their closest authored predecessor that has playable Body, or go before the first Body if there is no predecessor. Next/Prev during Main Title enters the first/last Body position. Other manual transport uses the existing Split Sentence or Full Card traversal, without replaying the destination Heading for the jump. Headings have no Body ordinal or queue position. |
+| Readiness and lifecycle | Exact recorded reads verify durable bytes. Browser TTS is the fallback. Actual Heading identity, channel and voice feed the same Global Player and Media Session. Only the actual recorded media timeline is seekable. Navigation preserves the starting owner and session. Disposal revokes connection URLs and invalidates pending playback. |
+| Future reference collection | Include every retained Heading and Body RF reference, Full artifacts and their composition inputs, provisional/uncertain journal entries and active playback leases. Deduplicate physical RFs only within the exact library namespace. Destructive maintenance stays disabled. |
+
+Portable manifests and ZIP transfers require a separate logical Heading representation before portable coverage can count these references. Body follow-ups remain open for the A1b-G gate, including generation spanning multiple bounded batches, damaged provisional repair, Full-to-Split source presentation, and wider bilingual/multi-speaker acceptance.
 
 ## A1b-1B Body audio
 

@@ -171,7 +171,7 @@ export const SharedBookPageView = ({
         <div className="space-y-5 sm:space-y-7" data-shared-book-chapters="true">
           {cards.map((card, cardIndex) => {
             const heading = bookHeadings?.cards[card.id];
-            const headingLabel = heading ? (heading.visible && heading.en) || heading.fallback : card?.title;
+            const headingLabel = heading ? heading.visible && (heading.en || heading.fallback) : card?.title;
             const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
             const isConversationScene = card?.blockType === 'conversation';
             const cardTerms = getSharedUnitTerms(card);
@@ -209,7 +209,7 @@ export const SharedBookPageView = ({
                 data-shared-card-part-layout={viewState.partLayout}
                 data-shared-card-layout={viewState.bilingualLayout}
                 data-shared-card-precision={isSpeakingCard ? cursor.precision : 'none'}
-                data-shared-card-speaking={isSpeakingCard ? (cursor.precision === 'card' ? 'card' : 'segment') : undefined}
+                data-shared-card-speaking={isSpeakingCard ? (cursor.precision === 'heading' ? 'heading' : cursor.precision === 'card' ? 'card' : 'segment') : undefined}
                 data-text-search-focus-card={isFocusCard ? 'true' : undefined}
                 className={`${SHARED_SPACING_TOKENS.mobileScrollMargin} ${cardIndex > 0 ? 'pt-5 sm:pt-6 border-t border-slate-200/75 dark:border-slate-800/80' : ''} ${speakingAccent} space-y-2 sm:space-y-3.5 transition-colors motion-reduce:transition-none`}
               >

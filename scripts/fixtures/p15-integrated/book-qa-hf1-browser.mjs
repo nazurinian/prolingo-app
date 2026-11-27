@@ -97,9 +97,9 @@ export async function checkBookQaHostBoundaries({
 
   await check('T1 Main Title input, repair-safe mode changes and reconnect in the real App', async () => {
     const title = '[data-book-main-title]';
-    const mainEn = 'fieldset input[required]';
-    const mainId = 'fieldset input:not([type="checkbox"]):not([required])';
-    const inherited = 'fieldset input[type="checkbox"]';
+    const mainEn = '[data-text-data-workspace] fieldset input[required]';
+    const mainId = '[data-text-data-workspace] fieldset input:not([type="checkbox"]):not([required])';
+    const inherited = '[data-text-data-workspace] fieldset input[type="checkbox"]';
     await clickButton('CREATE');
     await clickByLabel('Create Workspace');
     await change('[placeholder="Workspace title"]', 'T1 catalogue label');
@@ -118,7 +118,12 @@ export async function checkBookQaHostBoundaries({
     assert.equal(await evaluate(`document.querySelectorAll('${title}').length`), 1);
     assert.equal(await evaluate(`document.querySelector('${title} [lang="en"]')?.textContent`), 'T1 independent title');
     assert.equal(await evaluate(`document.querySelector('${title} [lang="id"]')?.textContent`), 'Judul utama');
+    // T1 asserted the Body-empty workspace action with no audible Title.
+    await click('[data-book-heading-audio] summary');
+    await click('[aria-label="Read Main Title"]');
+    await waitFor(`document.querySelector('[data-book-heading-status]')?.textContent.includes('saved')`);
     assert.equal(await evaluate(`document.querySelector('button[title="Play Workspace from start"]')?.disabled`), true);
+    await click('[data-book-heading-audio] summary');
 
     await clickButton('OPEN DATA WORKSPACE');
     await clickButton('MANAGE');
@@ -166,10 +171,16 @@ export async function checkBookQaHostBoundaries({
     assert.equal(await refresh(), true);
     const english = `[data-book-card-heading="${paragraph.id}"]`;
     const indonesian = `[data-book-card-heading-id="${paragraph.id}"]`;
+    const showParagraph = async () => {
+      await click('[data-book-heading-audio] summary');
+      await click('[aria-label="Show Paragraph Heading"]');
+    };
+    await showParagraph();
     await waitFor(`document.querySelector(${quoted(english)})?.textContent.trim() === 'Updated heading'`);
     assert.equal(await evaluate(`document.querySelector(${quoted(indonesian)})?.textContent`), 'Judul baru');
     await open(alternate, 'Load / Connect existing v2 library');
     await select(document.id);
+    await showParagraph();
     await waitFor(`document.querySelector(${quoted(indonesian)})?.textContent === 'Judul baru'`);
     await click('[data-text-main-reader-option="shared"]');
     await click('[data-shared-reader-mode-option="full"]');
@@ -178,6 +189,8 @@ export async function checkBookQaHostBoundaries({
     assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] ' + ${quoted(english)})?.textContent.trim()`), 'Updated heading');
     assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] ' + ${quoted(indonesian)})?.textContent`), 'Judul baru');
     assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] [data-book-card-heading-id="${scene.id}"]')?.textContent`), 'Latihan percakapan');
+    await click('[aria-label="Show Paragraph Heading"]');
+    assert.equal(await evaluate(`document.querySelector('[data-shared-book-page] [data-shared-book-card="${paragraph.id}"] h3')?.textContent ?? null`), null);
   });
 
   await check('T1 stale title writer and committed-but-unaccepted receipt never replay', async () => {

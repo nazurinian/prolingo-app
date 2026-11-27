@@ -8,6 +8,7 @@ import { applyTextLibraryCommand } from './textLibraryCommandDomain.js';
 import { canonicalJsonStringify } from './textCanonicalFingerprintDomain.js';
 import { buildTextStructuredAudioCoverageMap } from './textStructuredAudioCoverageDomain.js';
 import { getBookAuthoringField, prepareBookAuthoringCommand } from './textBookHeadingDomain.js';
+import { updateBookBodyProfileMetadata } from './bookQaBodyAudioDomain.js';
 
 export class TextDataManagementError extends Error {
   constructor(code, message) { super(message); this.name = 'TextDataManagementError'; this.code = code; }
@@ -144,17 +145,18 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
   const { type, payload: input = {} } = command || {};
   const fields = Object.hasOwn(TEXT_DATA_MANAGEMENT_COMMAND_FIELDS, type) && TEXT_DATA_MANAGEMENT_COMMAND_FIELDS[type];
   const bookField = bookAuthoring === true ? getBookAuthoringField(type) : null;
-  const bookProfile = bookAuthoring === true && type === 'document.update' && plain(input) && Object.hasOwn(input, 'bodyAudioProfile');
-  if (!fields || !plain(input) || Object.keys(input).some(k => bookProfile ? !['id', 'bodyAudioProfile'].includes(k) : k !== bookField && !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
+  const bookSetting = bookAuthoring === true && type === 'document.update' && plain(input)
+    ? ['bodyAudioProfile', 'headingRead'].find(key => Object.hasOwn(input, key)) : null;
+  if (!fields || !plain(input) || Object.keys(input).some(k => bookSetting ? k !== 'id' && k !== bookSetting : k !== bookField && !fields.includes(k))) fail('INVALID_COMMAND', 'Unsupported command or fields');
   const payload = { ...input };
   const bookFields = {};
   if (bookField && Object.hasOwn(payload, bookField)) {
     bookFields[bookField] = payload[bookField];
     delete payload[bookField];
   }
-  if (bookProfile) {
-    bookFields.bodyAudioProfile = payload.bodyAudioProfile;
-    delete payload.bodyAudioProfile;
+  if (bookSetting) {
+    bookFields[bookSetting] = payload[bookSetting];
+    delete payload[bookSetting];
   }
   const capability = getTextManagementCommandCapabilities(snapshot, selected, { boundary, permissions })[type];
   if (!capability.enabled) fail(capability.reason, 'Operation unavailable: ' + capability.reason);
@@ -183,6 +185,10 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
       if (payload.metadata !== undefined && (!plain(payload.metadata) || canonicalJsonStringify(Object.fromEntries(Object.entries(payload.metadata).filter(([k]) => k !== 'note'))) !== '{}')) fail('PROTECTED_METADATA', 'Only metadata.note may be authored');
     } else scoped = scopeTextStructuredEditorCommand(snapshot, { workspace: tree, cards: tree.blocks, speakerRegistry: state.speakers }, scoped);
     if (type === 'block.create' && tree.documentType !== 'mixed' && payload.blockType !== tree.documentType) fail('INVALID_COMMAND', 'Card kind must match this Workspace');
+  }
+  if (bookSetting === 'bodyAudioProfile') {
+    const workspace = snapshot.documents.find(record => record.id === selected.workspaceId);
+    return { snapshot, selected, scoped: { type, payload: { ...scoped.payload, metadata: updateBookBodyProfileMetadata(workspace, bookFields.bodyAudioProfile) } } };
   }
   return { snapshot, selected, scoped: bookAuthoring === true
     ? prepareBookAuthoringCommand(snapshot, scoped, selected.workspaceId, bookFields)

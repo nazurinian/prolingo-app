@@ -1,4 +1,5 @@
 import { capitalizeDisplayText } from '../../utils/displayTextUtils.js';
+import { BOOK_HEADING_LABELS } from '../text/bookQaHeadingAudioDomain.js';
 
 const join = (...parts) => parts.filter(Boolean).join(' · ');
 const numbers = item => Number.isInteger(item?.ordinal) && item.ordinal > 0
@@ -6,7 +7,7 @@ const numbers = item => Number.isInteger(item?.ordinal) && item.ordinal > 0
 const numbered = (label, item) => numbers(item) ? `${label}${numbers(item)}` : null;
 const representation = { split: 'Split', full: 'Full' };
 const sources = { local: 'Local', 'local-rf': 'Local', 'full-artifact': 'Local', generated: 'Generated', tts: 'TTS' };
-const scopes = { segment: 'Segment', unit: 'Section / Turn', card: 'Card', document: 'Workspace', item: 'Item', queue: 'Queue' };
+const scopes = { segment: 'Segment', unit: 'Section / Turn', card: 'Card', document: 'Workspace', item: 'Item', queue: 'Queue', heading: 'Heading' };
 const queueLabels = { card: 'card', segment: 'sentence', item: 'item' };
 const stateLabels = { idle: 'Ready', pending: 'Starting playback…', waiting: 'Waiting for audio…', paused: 'Paused', playing: 'Playing' };
 
@@ -22,7 +23,7 @@ export const resolveGlobalPlayerTransport = ({ session, paused, audible, structu
     workspace: session?.documentTree ?? null,
     navKind: session ? (session.nowPlayingCardOrder ? 'card' : session.context === 'text-structured' ? 'segment' : 'item')
       : structuredView ? (savedRepresentation === 'full' ? 'card' : 'segment') : 'item',
-    canNavigate: !session || Boolean(session.restart && queue?.length > 1)
+    canNavigate: !session || Boolean(session.restart && (queue?.length > 1 || (session.headingIntro && queue?.length)))
   };
 };
 
@@ -41,15 +42,16 @@ export const describeAuthoredPlayback = ({ card, precision, unit: activeUnit, se
 };
 
 export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
-  const { workspace, card, precision, item, queue } = nowPlaying;
+  const { workspace, card, precision, item, queue, heading } = nowPlaying;
   const { cardCode, cardPosition, unitCode, segmentCode, speaker, segment } = describeAuthoredPlayback(nowPlaying);
-  const authored = join(cardPosition, cardCode, unitCode, speaker, segmentCode, precision === 'card' && 'Full');
+  const headingLabel = heading && BOOK_HEADING_LABELS[heading.key];
+  const authored = join(cardPosition, cardCode, headingLabel, unitCode, speaker, segmentCode, precision === 'card' && 'Full');
   const structured = nowPlaying.domain === 'structured-text';
   const table = nowPlaying.domain === 'table';
   const itemContext = item?.displayNumber != null ? `${table ? 'Word' : 'Item'} ${item.displayNumber}` : null;
   const partLabel = table ? learningPart(item?.part) : null;
   const channel = { text: 'EN', meaning: 'ID' }[nowPlaying.channel];
-  const actual = representation[nowPlaying.actualRepresentation];
+  const actual = headingLabel || representation[nowPlaying.actualRepresentation];
   const source = sources[nowPlaying.source] ?? nowPlaying.source;
   const scope = nowPlaying.scope === 'from-here' ? `From here · Through ${scopes[nowPlaying.boundary] ?? 'unknown boundary'}` : scopes[nowPlaying.scope];
   const saved = representation[nowPlaying.savedRepresentation];
@@ -85,7 +87,7 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
   );
   const details = [
     ['Workspace', workspace?.title], ['Card', card?.title], ['Authored position', authored], ['Speaker', speaker],
-    ['Segment', segmentText],
+    ['Segment', segmentText], ['Heading', heading?.content],
     ['Channel', channel], ['Scope', scope], ['Source', source], ['Provider', nowPlaying.provider], ['Voice', nowPlaying.voice],
     ['Rate', nowPlaying.rate > 0 && `${nowPlaying.rate}×`], ['Queue', queueSummary],
     ['Representation', representationSummary]
@@ -128,9 +130,9 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
     sourceLabel: source ?? null,
     speaker: speaker ?? null,
     segmentText,
-    playedText: !structured && item?.playedText && item.playedText.trim().toLowerCase() !== String(title ?? '').trim().toLowerCase()
+    playedText: heading?.content || (!structured && item?.playedText && item.playedText.trim().toLowerCase() !== String(title ?? '').trim().toLowerCase()
       ? item.playedText
-      : null,
+      : null),
     itemPartLabel: partLabel ?? null,
     variation,
     variationKind,
