@@ -62,7 +62,9 @@ export const exportBookPortableAudio = async ({ snapshot, workspaceId = null, pr
         voiceId: entry.descriptor.voiceId, extension: binary.format })
       : buildCanonicalTextFullArtifactFilename({ fullArtifactFingerprint: ref.fingerprint, engine: entry.descriptor.engine,
         voiceId: entry.descriptor.voiceId, extension: binary.format });
-    return { status: 'ready', blob: result.blob, asset: { fingerprint: ref.fingerprint, path: name,
+    const folder = ref.fingerprint.startsWith('rf-') ? 'RF' : 'Full';
+    const language = entry.descriptor.channel === 'text' ? 'EN' : 'ID';
+    return { status: 'ready', blob: result.blob, asset: { fingerprint: ref.fingerprint, path: `Audio/${folder}/${language}/${name}`,
       descriptor: entry.descriptor, digest: binary.digest, codec: binary.format, mimeType: portableMime(binary.format),
       size: binary.bytes, sampleRate: binary.sampleRate } };
   };
@@ -140,7 +142,7 @@ export const exportBookPortableAudio = async ({ snapshot, workspaceId = null, pr
     ...physical.map(({ asset, blob }) => ({ filename: asset.path, blob }))];
   if (manifestBlob.size > PORTABLE_ZIP_LIMITS.manifest || entries.reduce((size, row) => size + row.blob.size + 100 + row.filename.length * 4, 22)
       > PORTABLE_ZIP_LIMITS.bytes) fail('PORTABLE_LIMIT', 'Export exceeds the archive limit. Select a smaller Workspace or current profiles.');
-  const blob = await buildStoredZipBlob(entries, { onProgress: () => abort(signal) });
+  const blob = await buildStoredZipBlob(entries, { relativePaths: true, onProgress: () => abort(signal) });
   return { blob, manifest, report };
 };
 

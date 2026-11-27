@@ -17,7 +17,7 @@ const options = { preferences, globalRate: 1, audioSourceMode: 'local-first' };
 const json = value => new Blob([JSON.stringify(value)]);
 const packZip = (manifest, assets) => buildStoredZipBlob([
   { filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: json(manifest) }, ...assets
-]);
+], { relativePaths: true });
 const check = (condition, message) => { if (!condition) throw Error(message); };
 const encoded = async blob => {
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -123,7 +123,7 @@ export const buildPortableFixture = async (connection, workspaceId) => {
     const assetEntry = { filename: historicalSplit.path, blob: await contents(historicalSplit) };
     historical.push(await encoded(await buildStoredZipBlob([
       ...(version ? [{ filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: json(legacy) }] : []), assetEntry
-    ])));
+    ], { relativePaths: true })));
   }
   const corruptManifest = buildBookPortableAudioManifest([{ ...shared, digest: '0'.repeat(64) }], [oneReference]);
   const corrupt = await packZip(corruptManifest, [{ filename: shared.path, blob: await contents(shared) }]);

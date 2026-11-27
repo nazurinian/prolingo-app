@@ -110,7 +110,7 @@ export const buildCanonicalTextFullArtifactFilename = ({ fullArtifactFingerprint
   if (!normalized) throw new Error('Canonical Text Full audio filename requires a valid Full SHA-256 fingerprint');
   const hash = normalized.slice('full-sha256-'.length).toUpperCase();
   const ext = sanitizeTextFilenameToken(String(extension || 'mp3').replace(/^\.+/, '').toLowerCase(), 'mp3', 8);
-  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId) : null].filter(Boolean);
+  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId).toUpperCase() : null].filter(Boolean);
   return `${join(`FULL_${hash}`, ...debug)}.${ext}`;
 };
 
@@ -134,7 +134,7 @@ export const buildCanonicalTextRenderAudioFilename = ({ renderFingerprint, engin
   if (!normalized) throw new Error('Canonical Text audio filename v2 requires a valid RF SHA-256 fingerprint');
   const hash = normalized.slice('rf-sha256-'.length).toUpperCase();
   const ext = sanitizeTextFilenameToken(String(extension || 'mp3').replace(/^\.+/, '').toLowerCase(), 'mp3', 8);
-  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId) : null].filter(Boolean);
+  const debug = [clean(engine) ? String(engine).toUpperCase() : null, clean(voiceId) ? compactTextVoiceFilenameLabel(voiceId).toUpperCase() : null].filter(Boolean);
   return `${join(`RF_${hash}`, ...debug)}.${ext}`;
 };
 

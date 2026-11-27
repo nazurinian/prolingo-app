@@ -48,7 +48,7 @@ test('strict v3 maps one verified RF to explicit atomic and Split identities wit
     data => { data.assets[0].digest = data.assets[0].digest.slice(1); },
     data => { data.assets[0].path = '../' + data.assets[0].path; },
     data => { data.assets[0].path += '/'; },
-    data => { data.assets[0].path = data.assets[0].path.replace('Libby', 'Sonia'); },
+    data => { data.assets[0].path = data.assets[0].path.replace(/Libby/iu, 'Sonia'); },
     data => { data.assets[0].codec = 'wav'; },
     data => { data.assets[0].trustedComposition = true; }
   ]) {
@@ -56,6 +56,18 @@ test('strict v3 maps one verified RF to explicit atomic and Split identities wit
     change(input);
     assert.throws(() => validateBookPortableAudioManifest(input), { code: 'INVALID_PORTABLE_MANIFEST' });
   }
+});
+
+test('portable relative paths round-trip and reject unsafe or colliding names', async () => {
+  assert.match(path, /^RF_[A-F0-9]{64}__EDGE__LIBBY\.mp3$/u);
+  const filename = `Audio/RF/EN/${path}`;
+  const blob = await buildStoredZipBlob([{ filename, blob: audio }], { relativePaths: true });
+  const archive = await openPortableAudioZip(blob);
+  assert.equal(archive.entries[0].filename, filename);
+  for (const unsafe of ['../audio.mp3', 'CON/audio.mp3', 'Audio/a.mp3.']) {
+    await assert.rejects(buildStoredZipBlob([{ filename: unsafe, blob: audio }], { relativePaths: true }));
+  }
+  await assert.rejects(buildStoredZipBlob([{ filename, blob: audio }, { filename: filename.toLowerCase(), blob: audio }], { relativePaths: true }));
 });
 
 test('native IDs cannot substitute for owner UIDs and exact current authored content', () => {

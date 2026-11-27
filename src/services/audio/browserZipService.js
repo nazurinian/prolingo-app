@@ -1,4 +1,5 @@
 import { sanitizeFilename, triggerBrowserDownload } from '../../utils/audioUtils.js';
+import { isSafePortableZipPath, portableZipPathKey } from '../../domain/text/textFilenameDomain.js';
 
 const encoder = new TextEncoder();
 
@@ -56,12 +57,20 @@ const makeHeader = (size, writer) => {
   return bytes;
 };
 
-export const buildStoredZipBlob = async (entries, { onProgress = null } = {}) => {
+export const buildStoredZipBlob = async (entries, { onProgress = null, relativePaths = false } = {}) => {
   const files = [];
   const sourceEntries = (Array.isArray(entries) ? entries : []).filter(entry => entry?.blob && entry?.filename);
+  const paths = new Set();
   for (let index = 0; index < sourceEntries.length; index += 1) {
     const entry = sourceEntries[index];
-    const nameBytes = encoder.encode(sanitizeFilename(entry.filename));
+    const name = relativePaths ? entry.filename : sanitizeFilename(entry.filename);
+    if (relativePaths) {
+      const key = portableZipPathKey(name);
+      if (!isSafePortableZipPath(name) || name.endsWith('/') || name.split('/').some(part => part === '.' || part === '..')
+        || paths.has(key)) throw new Error('Invalid or duplicate ZIP path');
+      paths.add(key);
+    }
+    const nameBytes = encoder.encode(name);
     const blob = entry.blob;
     const crc = await crc32Blob(blob);
     files.push({ nameBytes, blob, size: Number(blob.size || 0), crc, stamp: dosDateTime(new Date()) });
