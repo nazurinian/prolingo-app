@@ -61,14 +61,18 @@ export const buildStoredZipBlob = async (entries, { onProgress = null, relativeP
   const files = [];
   const sourceEntries = (Array.isArray(entries) ? entries : []).filter(entry => entry?.blob && entry?.filename);
   const paths = new Set();
+  const directories = new Set();
   for (let index = 0; index < sourceEntries.length; index += 1) {
     const entry = sourceEntries[index];
     const name = relativePaths ? entry.filename : sanitizeFilename(entry.filename);
     if (relativePaths) {
       const key = portableZipPathKey(name);
-      if (!isSafePortableZipPath(name) || name.endsWith('/') || name.split('/').some(part => part === '.' || part === '..')
-        || paths.has(key)) throw new Error('Invalid or duplicate ZIP path');
+      const parts = key.split('/');
+      const parents = parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
+      if (!isSafePortableZipPath(name) || name.endsWith('/') || key.split('/').some(part => part === '.' || part === '..')
+        || paths.has(key) || directories.has(key) || parents.some(parent => paths.has(parent))) throw new Error('Invalid or duplicate ZIP path');
       paths.add(key);
+      parents.forEach(parent => directories.add(parent));
     }
     const nameBytes = encoder.encode(name);
     const blob = entry.blob;

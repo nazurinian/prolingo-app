@@ -7,6 +7,7 @@ import { createDisposableBookAudioCommitter } from './persistence/textDataManage
 import { executeTextStructuredAudioGenerationRequest } from './audio/textStructuredAudioGenerationService.js';
 import { buildDerivedTextConversationFullAudioWav } from './audio/textStructuredFullAudioExportService.js';
 import { exportBookPortableAudio, importBookPortableAudio } from './audio/bookPortableAudioService.js';
+import { exportBookNormalAudio } from './audio/bookNormalAudioService.js';
 
 const fail = (code, message) => { throw bookAudioError(code, message); };
 const same = (left, right) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -248,13 +249,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
       }
     }, signal);
   };
-  return {
-    name: staging.name,
-    get pending() { return pending; },
-    get touched() { return touched; },
-    submit: (items, { signal } = {}) => perform(items, signal, false),
-    generate: (items, { signal } = {}) => perform(items, signal, true),
-    exportPortable: options => {
+  const exportAudio = (options, exporter) => {
       assertCurrent();
       assertReadable();
       const signal = options?.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;
@@ -267,7 +262,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
           blockWrites();
           fail('STALE_RESULT', 'Refresh before exporting audio from this library');
         }
-        const result = await exportBookPortableAudio({ ...options, snapshot, read: staging.read, signal });
+        const result = await exporter({ ...options, snapshot, read: staging.read, signal });
         checkCancelled(signal);
         assertCurrent();
         if (getSnapshot() !== snapshot || (await loadState()).snapshotFingerprint !== canonicalJsonStringify(snapshot)) {
@@ -276,7 +271,15 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         }
         return result;
       }, signal);
-    },
+  };
+  return {
+    name: staging.name,
+    get pending() { return pending; },
+    get touched() { return touched; },
+    submit: (items, { signal } = {}) => perform(items, signal, false),
+    generate: (items, { signal } = {}) => perform(items, signal, true),
+    exportNormal: options => exportAudio(options, exportBookNormalAudio),
+    exportPortable: options => exportAudio(options, exportBookPortableAudio),
     importPortable: (files, options) => {
       assertCurrent();
       assertWritable();

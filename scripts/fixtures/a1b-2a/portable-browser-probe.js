@@ -101,6 +101,11 @@ export const buildPortableFixture = async (connection, workspaceId) => {
   check(complete.manifest.assets.some(asset => asset.fingerprint === alt.fingerprint), 'Alternate profile omitted from complete export');
   check(!currentOnly.manifest.assets.some(asset => asset.fingerprint === alt.fingerprint), 'Current-only export included an alternate');
   const archive = await openPortableAudioZip(complete.blob);
+  const index = await (await archive.read(archive.entries.find(entry => entry.filename === 'AUDIO_INDEX.csv'))).text();
+  for (const asset of complete.manifest.assets) {
+    check(archive.entries.some(entry => entry.filename === asset.path), 'Portable manifest path missing from archive');
+    check(index.includes(`"${asset.path}"`), 'Portable index path missing');
+  }
   const contents = async asset => archive.read(archive.entries.find(entry => entry.filename === asset.path));
   const onlyB = complete.manifest.assets.filter(asset => !partA.manifest.assets.some(row => row.fingerprint === asset.fingerprint));
   const targetsB = new Set(onlyB.map(asset => asset.fingerprint));
@@ -152,6 +157,20 @@ export const buildPortableFixture = async (connection, workspaceId) => {
     manifest: complete.manifest, first: all[0], alternate: alt, derived,
     partACount: partA.manifest.references.length, partBCount: complete.manifest.references.length - partA.manifest.references.length
   };
+};
+
+export const inspectNormalFixture = async (connection, workspaceId) => {
+  const before = JSON.stringify(connection.session.getSnapshot());
+  const result = await connection.audio.exportNormal({ workspaceId, preferences, channels: ['text'],
+    representations: ['main-title', 'heading', 'full', 'unit', 'split'], includeAlternate: false });
+  const archive = await openPortableAudioZip(result.blob);
+  const entries = archive.entries.map(entry => entry.filename);
+  const wavs = [];
+  for (const entry of archive.entries.filter(row => row.filename.endsWith('.wav'))) {
+    const proof = await validateBookAudioBytes(await archive.read(entry), 'wav');
+    wavs.push({ path: entry.filename, sampleRate: proof.sampleRate });
+  }
+  return { entries, wavs, report: result.report, unchanged: before === JSON.stringify(connection.session.getSnapshot()) };
 };
 
 export const portableFixtureFiles = data => data.map((part, index) => new File(

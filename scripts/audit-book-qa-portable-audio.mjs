@@ -10,13 +10,14 @@ import { applyBookQaAudioOperation } from '../src/domain/text/bookQaAudioDomain.
 import { getBookBodyGenerationRequests } from '../src/domain/text/bookQaBodyAudioDomain.js';
 import { planBookAtomicGeneration } from '../src/domain/text/bookQaHeadingAudioDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata } from '../src/domain/text/textStructuredPlaybackRateProfileDomain.js';
-import { buildCanonicalTextRenderAudioFilename, TEXT_AUDIO_MANIFEST_FILENAME } from '../src/domain/text/textFilenameDomain.js';
-import { buildBookPortableAudioManifest, validateBookPortableAudioManifest } from '../src/domain/text/bookPortableAudioManifestDomain.js';
+import { buildCanonicalTextRenderAudioFilename, buildCanonicalTextFullArtifactFilename, textVoiceFilenameTokenMatches, TEXT_AUDIO_MANIFEST_FILENAME } from '../src/domain/text/textFilenameDomain.js';
+import { buildBookPortableAudioManifest, portableFilenameMatches, validateBookPortableAudioManifest } from '../src/domain/text/bookPortableAudioManifestDomain.js';
 import { validateProLingoTextAudioManifest } from '../src/domain/text/textAudioManifestDomain.js';
 import { bookPortableLegacyRequirements, listBookPortableTargets, resolveBookPortableReference } from '../src/domain/text/bookPortableAudioDomain.js';
 import { buildStoredZipBlob, crc32Blob } from '../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../src/services/audio/textStructuredAudioZipArchiveService.js';
 import { exportBookPortableAudio, importBookPortableAudio } from '../src/services/audio/bookPortableAudioService.js';
+import { exportBookNormalAudio } from '../src/services/audio/bookNormalAudioService.js';
 
 const { snapshot, ids } = createJourneyToLondonFixture();
 const tree = resolveTextLibraryDocumentTree(snapshot, ids.documentId);
@@ -60,6 +61,10 @@ test('strict v3 maps one verified RF to explicit atomic and Split identities wit
 
 test('portable relative paths round-trip and reject unsafe or colliding names', async () => {
   assert.match(path, /^RF_[A-F0-9]{64}__EDGE__LIBBY\.mp3$/u);
+  const full = buildCanonicalTextFullArtifactFilename({ fullArtifactFingerprint: 'full-sha256-' + 'a'.repeat(64), engine: 'derived', voiceId: 'multi-speaker', extension: 'wav' });
+  assert.equal(full, 'FULL_' + 'A'.repeat(64) + '__DERIVED__MULTI-SPEAKER.wav');
+  assert(textVoiceFilenameTokenMatches('SPEAKER', 'multi-speaker'));
+  assert(textVoiceFilenameTokenMatches('Libby', 'en-GB-LibbyNeural'));
   const filename = `Audio/RF/EN/${path}`;
   const blob = await buildStoredZipBlob([{ filename, blob: audio }], { relativePaths: true });
   const archive = await openPortableAudioZip(blob);
@@ -68,6 +73,10 @@ test('portable relative paths round-trip and reject unsafe or colliding names', 
     await assert.rejects(buildStoredZipBlob([{ filename: unsafe, blob: audio }], { relativePaths: true }));
   }
   await assert.rejects(buildStoredZipBlob([{ filename, blob: audio }, { filename: filename.toLowerCase(), blob: audio }], { relativePaths: true }));
+  for (const names of [['Audio', 'audio/RF/x.mp3'], ['audio/RF/x.mp3', 'Audio'], ['\u212b', '\u00c5/x.mp3']]) {
+    await assert.rejects(buildStoredZipBlob(names.map(name => ({ filename: name, blob: audio })), { relativePaths: true }));
+  }
+  await assert.rejects(buildStoredZipBlob([{ filename: 'x'.repeat(241), blob: audio }], { relativePaths: true }));
 });
 
 test('native IDs cannot substitute for owner UIDs and exact current authored content', () => {
@@ -211,11 +220,59 @@ test('coverage counts shared RF consumers separately and keeps missing compositi
   assert.equal(coverage(report, 'full-conversation').statuses['missing-composition-input'], 1);
 });
 
+test('normal listening ZIP retains shared logical occurrences and reports missing unit inputs', async () => {
+  const source = firstNine(), doc = docTree(source), [split] = body(source);
+  const titled = { ...source, documents: source.documents.map(row => ({ ...row,
+    metadata: { ...row.metadata, bookMainTitleV1: { mode: 'custom', en: doc.blocks[0].segments[0].text } } })) };
+  const atomic = planBookAtomicGeneration(docTree(titled), null, 'mainTitle', 'text', preferences);
+  const before = record(titled, split, atomic);
+  const copy = structuredClone(before);
+  const { blob, report } = await exportBookNormalAudio({ snapshot: before, workspaceId: ids.documentId, preferences,
+    read: readReady, channels: ['text'], representations: ['main-title', 'split', 'unit'] });
+  const archive = await openPortableAudioZip(blob);
+  assert.equal(report.logical, 2);
+  assert.equal(archive.entries.length, 2);
+  assert(archive.entries.some(item => item.filename.includes('/00_Title/EN_LIBBY.mp3')));
+  assert(archive.entries.some(item => item.filename.includes('/Split/SC01/SG01_EN_LIBBY.mp3')));
+  assert(report.omissions.some(item => item.status === 'missing-unit-input'));
+  assert.deepEqual(before, copy);
+});
+
+test('normal listening reports corrupt bytes and rejects non-unit composition rates', async () => {
+  const source = firstNine();
+  const doc = docTree(source), scene = doc.blocks.find(card => card.blockType === 'conversation' && card.segments.length);
+  const changed = { ...source, blocks: source.blocks.map(card => card.id === scene.id ? { ...card,
+    metadata: buildTextStructuredPlaybackRateProfileMetadata({ metadata: card.metadata, channel: 'text', rate: 1.2 }) } : card) };
+  const items = body(changed);
+  const { report } = await exportBookNormalAudio({ snapshot: record(changed, ...items), workspaceId: ids.documentId,
+    preferences, channels: ['text'], representations: ['unit', 'split'], read: async () => ({ status: 'corrupt' }) });
+  assert(report.omissions.some(item => item.status === 'corrupt'));
+  assert(report.omissions.some(item => item.status === 'unsupported-unit-rate'));
+});
+
+test('normal listening respects channel, alternate profile and cancellation choices', async () => {
+  const source = firstNine(), current = body(source)[0], alternate = body(source, { ...preferences, edgeRate: 5 })[0];
+  const saved = record(source, current, alternate);
+  const options = { snapshot: saved, preferences, read: readReady, channels: ['text'], representations: ['split'] };
+  const onlyCurrent = await exportBookNormalAudio(options);
+  const allProfiles = await exportBookNormalAudio({ ...options, includeAlternate: true });
+  assert.equal(onlyCurrent.report.logical, 1);
+  assert.equal(allProfiles.report.logical, 2);
+  assert.equal((await exportBookNormalAudio({ ...options, channels: ['meaning'] })).blob, null);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(exportBookNormalAudio({ ...options, signal: controller.signal }), { code: 'AUDIO_CANCELLED' });
+});
+
 test('recorded Full with missing durable input stays unavailable and unverified composition is only a verified export', async () => {
   const source = firstNine(), doc = docTree(source);
   const scene = doc.blocks.find(row => row.blockType === 'conversation' && row.segments.length);
   const splits = body(source).filter(item => item.target.cardId === scene.id);
   const [full] = getBookBodyGenerationRequests(doc, scene, 'text', { full: true, options: { preferences, globalRate: 1 } });
+  const derivedName = buildCanonicalTextFullArtifactFilename({ fullArtifactFingerprint: full.fingerprint, engine: 'derived', voiceId: 'multi-speaker', extension: 'wav' });
+  assert(derivedName.endsWith('__DERIVED__MULTI-SPEAKER.wav'));
+  assert(portableFilenameMatches(derivedName, full.fingerprint, full.descriptor, 'wav'));
+  assert(portableFilenameMatches(derivedName.replace('MULTI-SPEAKER', 'SPEAKER'), full.fingerprint, full.descriptor, 'wav'));
   const pcm = Buffer.alloc(46);
   for (const [offset, text] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt '], [36, 'data']]) pcm.write(text, offset);
   for (const [offset, number] of [[4, 38], [16, 16], [24, 48000], [28, 96000], [40, 2]]) pcm.writeUInt32LE(number, offset);
@@ -228,6 +285,9 @@ test('recorded Full with missing durable input stays unavailable and unverified 
   assert.equal(coverage(report, 'full-conversation').exported, 1);
   assert.equal(coverage(report, 'full-conversation').statuses['unverified-composition'], 1);
   assert(manifest.references.some(row => row.fingerprint === full.fingerprint));
+  const listening = await exportBookNormalAudio({ snapshot: persisted, workspaceId: ids.documentId, preferences,
+    channels: ['text'], representations: ['full'], read: async rf => rf === full.fingerprint ? wav : readReady() });
+  assert(listening.report.omissions.some(row => row.ref?.fingerprint === full.fingerprint && row.status === 'unverified-composition'));
   const missing = await reportFor(persisted, { read: async rf => rf === full.fingerprint ? wav : { status: 'metadata-only' } });
   assert.equal(missing.blob, null);
   assert.equal(coverage(missing.report, 'full-conversation').statuses['missing-composition-input'], 1);

@@ -15,6 +15,7 @@ export const sanitizeTextFilenameToken = (value, fallback = 'TEXT', maxLength = 
 export const compactTextVoiceFilenameLabel = value => {
   const raw = clean(value);
   if (!raw) return 'Voice';
+  if (raw.toLowerCase() === 'multi-speaker') return 'MULTI-SPEAKER';
   const microsoft = raw.match(/^Microsoft\s+(.+?)\s+(?:Online|Desktop|Natural)/i);
   if (microsoft?.[1]) return sanitizeTextFilenameToken(microsoft[1], 'Voice', 36);
   const tail = raw.split('-').pop() || raw;
@@ -31,6 +32,7 @@ export const textVoiceFilenameTokenMatches = (token, voiceId) => {
   const right = clean(voiceId).toLowerCase();
   if (!left || !right) return !left && !right;
   if (left === right) return true; // legacy full canonical voice token
+  if (left === 'speaker' && right === 'multi-speaker') return true;
   return compactTextVoiceFilenameLabel(token).toLowerCase() === compactTextVoiceFilenameLabel(voiceId).toLowerCase();
 };
 

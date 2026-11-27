@@ -17,6 +17,8 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState(workspace ? 'workspace' : 'library');
   const [includeAlternate, setIncludeAlternate] = useState(true);
+  const [channel, setChannel] = useState('both');
+  const [representations, setRepresentations] = useState(['main-title', 'heading', 'full', 'unit', 'split']);
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -33,15 +35,19 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
     const workspaceId = scope === 'workspace' ? workspace?.id ?? null : null;
     const options = { workspaceId, preferences, signal: controller.signal };
     try {
-      if (direction === 'export') {
-        const { blob, report } = await connection.audio.exportPortable({ ...options, includeAlternate });
+      if (direction !== 'import') {
+        const normal = direction === 'normal';
+        const exportOptions = { ...options, includeAlternate, channels: channel === 'both' ? ['text', 'meaning'] : [channel], representations,
+          onProgress: progress => { if (!controller.signal.aborted) setMessage(`Checked ${progress.completed} audio occurrences.`); } };
+        const { blob, report } = await (normal ? connection.audio.exportNormal(exportOptions) : connection.audio.exportPortable(exportOptions));
         if (controller.signal.aborted) return;
-        setDetails(report);
-        setMessage(blob ? `Exported ${report.physical} verified assets and ${report.logical} references.` : 'No verified portable audio to export.');
+        setDetails(normal ? { ...report, normal: true } : report);
+        setMessage(blob ? normal ? `Exported ${report.logical} listening occurrences.` : `Exported ${report.physical} verified assets and ${report.logical} references.` : 'No verified audio to export.');
         if (blob) {
           const url = URL.createObjectURL(blob);
           try {
-            triggerBrowserDownload(url, buildCanonicalTextBrowserAudioPackageFilename({ title: workspaceId ? workspace.title : 'Book_QA_Library' }));
+            const title = workspaceId ? workspace.title : 'Book_QA_Library';
+            triggerBrowserDownload(url, buildCanonicalTextBrowserAudioPackageFilename({ title: normal ? `${title}_Listening` : title }));
           } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
         }
       } else {
@@ -70,15 +76,25 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
       </select></label>
       <label className="inline-flex items-center gap-2"><input type="checkbox" checked={includeAlternate}
         disabled={busy} onChange={event => setIncludeAlternate(event.target.checked)} />Include alternate profiles in export</label>
+      <label className="block">Listening channels <select value={channel} disabled={busy} onChange={event => setChannel(event.target.value)}>
+        <option value="both">EN and ID</option><option value="text">EN</option><option value="meaning">ID</option>
+      </select></label>
+      <fieldset><legend>Listening representations</legend>
+        {Object.entries({ 'main-title': 'Main Title', heading: 'Headings', full: 'Full Card', unit: 'Full Section/Turn', split: 'Split' }).map(([key, text]) =>
+          <label key={key} className="mr-3 inline-flex gap-1"><input type="checkbox" disabled={busy} checked={representations.includes(key)}
+            onChange={event => setRepresentations(current => event.target.checked ? [...current, key] : current.filter(item => item !== key))} />{text}</label>)}
+      </fieldset>
+      <p>Full Section and Turn use current profiles at 1×.</p>
       <label className="block">ZIP packages or canonical audio files<input type="file" accept=".zip,.mp3,.wav,application/zip" multiple
         className="block max-w-full" disabled={busy} onChange={event => setFiles([...event.target.files])} /></label>
       <div className="flex flex-wrap gap-2">
         <button className={button} type="button" disabled={busy} onClick={() => run('export')}>Export Portable Audio</button>
+        <button className={button} type="button" disabled={busy} onClick={() => run('normal')}>Export Normal Audio</button>
         <button className={button} type="button" disabled={busy || !files.length} onClick={() => run('import')}>Import selected files</button>
         {busy && <button className={button} type="button" onClick={() => operation.current?.abort()}>Cancel transfer</button>}
       </div>
       <p role="status" data-book-portable-status>{message}</p>
-      {details && ('physicalDiscovered' in details ? <>
+      {details && (details.normal ? <p>Listening omissions {countsBy(details.omissions, row => row.status) || 'none'}.</p> : 'physicalDiscovered' in details ? <>
         <p>Asset entries discovered {details.physicalDiscovered}, validated {details.physicalValidated}. Unique verified assets {details.physicalUniqueValidated}, stored {details.physicalStored},
           reused {details.physicalReused}, repaired {details.physicalRepaired}. Logical matches {details.logicalMatched}, other profiles {details.otherProfile}.</p>
         {details.issues.length > 0 && <p>Archive and asset issues {countsBy(details.issues, row => row.status)}.</p>}

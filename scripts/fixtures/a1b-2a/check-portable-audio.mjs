@@ -53,6 +53,15 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
     ['main-title', 'paragraph-heading', 'split']);
   assert.equal(data.manifest.assets.filter(asset => asset.fingerprint === data.first.fingerprint).length, 1);
   assert(data.manifest.references.length > 32);
+  const normal = await probe(`module.inspectNormalFixture(${host}, ${q(source.workspaceId)})`);
+  assert(normal.unchanged);
+  assert(normal.entries.some(path => path.includes('/00_Title/')));
+  assert(normal.entries.some(path => path.includes('/Split/SC01/SG01_')));
+  assert(normal.entries.some(path => path.includes('/Split/T01_James/SG01_')));
+  assert(normal.wavs.some(item => item.path.includes('/Full_Section/') && item.sampleRate === 48000));
+  assert(normal.wavs.some(item => item.path.includes('/Full_Turn/') && item.sampleRate === 48000));
+  assert(normal.entries.every(path => !path.includes('manifest.json')));
+  assert.deepEqual([...new Set(normal.entries.map(path => path.split('/')[1]).filter(path => /^0[1-4]_/u.test(path)))].sort().map(path => path.slice(0, 5)), ['01_P1', '02_C1', '03_P2', '04_C2']);
   await click(portableRoot + ' summary');
   await waitFor(`document.querySelector('${portableRoot} input[type="file"]')`);
   await evaluate(`document.addEventListener('click', event => {
@@ -63,6 +72,10 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   await waitFor(`window.__portableDownload?.endsWith('.zip') && document.querySelector('[data-book-portable-status]')?.textContent.includes('Exported')`);
   assert(await evaluate(`[...document.querySelectorAll('[data-book-portable-coverage] li')].some(item => item.textContent.includes('Split ID') && item.textContent.includes('0/37 current available') && item.textContent.includes('37 missing'))`));
   pass('Scoped v3 export captures six representations, alternate profiles and three RF consumers on one asset');
+  await clickButton('Export Normal Audio');
+  await waitFor(`document.querySelector('[data-book-portable-status]')?.textContent.includes('listening occurrences')`);
+  assert(await evaluate(`document.querySelector('[data-book-portable-status]').textContent.includes('Exported')`));
+  pass('Normal listening archive retains authored mixed order, scoped bytes and verified Section/Turn WAV');
 
   await prep(names[1]);
   const dest = await probe(`module.seedPortableDestination(${q(names[1])}, ${q(source.pack)})`);
@@ -208,5 +221,5 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   await waitFor(`document.querySelector('[data-book-portable-status]')?.textContent.includes('0 references committed and ${data.partACount} already available')`);
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
   pass('The real mobile panel imports selected ZIPs through the same bounded Workspace capability');
-  return { groups, first, next, reread, interrupted, stale, uncertain, complete };
+  return { groups, first, next, reread, interrupted, stale, uncertain, complete, normal, portablePaths: data.manifest.assets.map(asset => asset.path) };
 }

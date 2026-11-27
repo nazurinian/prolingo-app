@@ -1,6 +1,14 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** A1b-2A-HF1 Portable Audio coverage and loose RF compatibility. Earlier sections record their checkpoint capabilities.
+**Status:** A1b-2B Book QA audio export. Earlier sections record their checkpoint capabilities.
+
+## A1b-2B listening and portable exports
+
+Portable export uses the manifest's exact nested `Audio/RF/EN`, `Audio/RF/ID`, `Audio/Full/EN`, and `Audio/Full/ID` paths, with one physical entry per fingerprint and one index row per logical reference. The normal listening archive emits one entry per verified logical occurrence and has no portable manifest. Workspace, channel, representation, and alternate-profile choices apply within the connected QA library. Alternate listening filenames carry complete fingerprints to distinguish profiles. All reads use the connection's existing snapshot and recovery guard.
+
+Full Section and Turn files are export-time WAV compositions from complete current Split inputs, verified scoped bytes and effective 1× rates. Browser decoding and output validation are required. Each Unit is limited to 32 inputs, 64 MiB of input and two minutes of decoded audio. Missing or unavailable inputs, non-unit rates and composition errors are reported as omissions. No Unit audio is persisted. Derived Conversation Full is omitted unless its existing trusted-composition marker is present. QA export does not request provider synthesis.
+
+The existing A1b-G Body follow-ups remain open, including multi-batch Card generation, damaged provisional recovery, Full-to-Split presentation and broader bilingual and multi-speaker coverage.
 
 ## A1b-2A Portable Audio ZIP
 
