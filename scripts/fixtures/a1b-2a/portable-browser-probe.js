@@ -8,6 +8,7 @@ import { seedDisposableTextManagementDatabase } from '../../../src/services/pers
 import { buildStoredZipBlob } from '../../../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../../../src/services/audio/textStructuredAudioZipArchiveService.js';
 import { buildBookPortableAudioManifest } from '../../../src/domain/text/bookPortableAudioManifestDomain.js';
+import { buildBookPortableAudioIndex } from '../../../src/services/audio/bookPortableAudioService.js';
 import { buildCanonicalTextRenderAudioFilename, TEXT_AUDIO_MANIFEST_FILENAME } from '../../../src/domain/text/textFilenameDomain.js';
 import { validateBookAudioBytes } from '../../../src/services/audio/bookQaAudioBytes.js';
 import { withAddFault } from '../a1b-1a/audio-browser-probe.js';
@@ -102,11 +103,26 @@ export const buildPortableFixture = async (connection, workspaceId) => {
   check(!currentOnly.manifest.assets.some(asset => asset.fingerprint === alt.fingerprint), 'Current-only export included an alternate');
   const archive = await openPortableAudioZip(complete.blob);
   const index = await (await archive.read(archive.entries.find(entry => entry.filename === 'AUDIO_INDEX.csv'))).text();
+  const indexRows = index.split('\r\n').slice(1).map(line => {
+    const [, path, fingerprint] = line.match(/^"([^"]+)","([^"]+)"/u);
+    return [path, fingerprint];
+  });
+  const expectedIndex = complete.manifest.references.map(ref => [complete.manifest.assets.find(asset => asset.fingerprint === ref.fingerprint).path, ref.fingerprint]);
+  check(JSON.stringify(indexRows) === JSON.stringify(expectedIndex), 'Portable index path or logical reference order differed');
+  check(JSON.stringify(archive.entries.map(entry => entry.filename).sort()) ===
+    JSON.stringify([TEXT_AUDIO_MANIFEST_FILENAME, 'AUDIO_INDEX.csv', ...complete.manifest.assets.map(asset => asset.path)].sort()),
+  'Actual Portable archive tree differed from manifest paths');
   for (const asset of complete.manifest.assets) {
     check(archive.entries.some(entry => entry.filename === asset.path), 'Portable manifest path missing from archive');
     check(index.includes(`"${asset.path}"`), 'Portable index path missing');
   }
   const contents = async asset => archive.read(archive.entries.find(entry => entry.filename === asset.path));
+  const movedAssets = partA.manifest.assets.map(asset => ({ ...asset, path: 'Reorganized/' + asset.path }));
+  const reorganizedManifest = buildBookPortableAudioManifest(movedAssets, partA.manifest.references);
+  const reorganized = await packZip(reorganizedManifest, [
+    { filename: 'AUDIO_INDEX.csv', blob: buildBookPortableAudioIndex(reorganizedManifest) },
+    ...await Promise.all(partA.manifest.assets.map(async (asset, index) => ({ filename: movedAssets[index].path, blob: await contents(asset) })))
+  ]);
   const onlyB = complete.manifest.assets.filter(asset => !partA.manifest.assets.some(row => row.fingerprint === asset.fingerprint));
   const targetsB = new Set(onlyB.map(asset => asset.fingerprint));
   const partB = await packZip(buildBookPortableAudioManifest(onlyB, complete.manifest.references.filter(ref => targetsB.has(ref.fingerprint))),
@@ -153,10 +169,23 @@ export const buildPortableFixture = async (connection, workspaceId) => {
   }, [{ filename: shared.path, blob: await contents(shared) }]));
   return {
     partA: await encoded(partA.blob), partB: await encoded(partB), complete: await encoded(complete.blob), derivedOnly: await encoded(derivedOnly),
+    reorganized: await encoded(reorganized),
     historical, historicalExplicit, loose, ambiguous, problems: await Promise.all([corrupt, badAudio, duplicateManifest].map(encoded)), conflicting: await encoded(conflicting),
     manifest: complete.manifest, first: all[0], alternate: alt, derived,
     partACount: partA.manifest.references.length, partBCount: complete.manifest.references.length - partA.manifest.references.length
   };
+};
+
+export const inspectTransferExports = async (connection, workspaceId) => {
+  const normal = { preferences, channels: ['text', 'meaning'], representations: ['full', 'split'], includeAlternate: false };
+  const connected = await connection.audio.exportNormal(normal);
+  const scoped = await connection.audio.exportNormal({ ...normal, workspaceId });
+  const actual = await openPortableAudioZip(connected.blob);
+  const selected = await openPortableAudioZip(scoped.blob);
+  const roots = entries => [...new Set(entries.map(entry => entry.filename.split('/')[0]))];
+  const consolidated = await connection.audio.exportPortable({ workspaceId, preferences });
+  return { libraryRoots: roots(actual.entries), workspaceRoots: roots(selected.entries), paths: selected.entries.map(entry => entry.filename),
+    omissions: scoped.report.omissions.map(item => item.status), portableReferences: consolidated.manifest.references.length };
 };
 
 export const inspectNormalFixture = async (connection, workspaceId) => {

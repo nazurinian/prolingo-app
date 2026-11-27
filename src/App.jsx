@@ -4132,7 +4132,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     });
   };
 
-  const playStructuredTextFullStep = async (step, block, item) => {
+  const playStructuredTextFullStep = async (step, block, item, { onFallbackStep } = {}) => {
     const normalizedChannel = step?.channel === 'meaning' ? 'meaning' : 'text';
     const playbackSessionId = playbackSessionRef.current;
     const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
@@ -4208,13 +4208,19 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     }
 
     if (!playbackStillCurrent()) return;
-    if (bookQaMode && step.fallbackSteps) {
-      for (const fallback of step.fallbackSteps) {
+    if (bookQaMode && step.resolveFallback) {
+      const fallbacks = await step.resolveFallback();
+      for (const fallback of fallbacks) {
         if (!playbackStillCurrent()) return;
+        if (!fallback.segmentId) {
+          await playStructuredTextFullStep(fallback, block, item);
+          continue;
+        }
         const segment = block.segments.find(row => row.id === fallback.segmentId);
         if (!segment) continue;
+        onFallbackStep?.(segment.id);
         await playStructuredTextChannel(fallback.content, { ...segment, blockType: block.blockType }, normalizedChannel, {
-          block, representationMode: 'full', ignoreSegmentOverride: false
+          block, representationMode: 'full', ignoreSegmentOverride: fallback.ignoreSegmentVoiceOverride !== false, step: fallback
         });
       }
       return;
@@ -4519,6 +4525,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       resolveBlockChannelPlaybackPlan: resolveStructuredTextBlockChannelPlaybackPlan,
       playStructuredFullStep: playStructuredTextFullStep,
       playHeadingStep: bookQaConnection?.audio ? playBookHeadingStep : null,
+      trackFullFallback: Boolean(bookQaConnection?.audio),
       atomicOnly,
       forceStopAll,
       addLog

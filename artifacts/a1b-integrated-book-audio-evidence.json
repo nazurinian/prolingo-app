@@ -1,0 +1,2051 @@
+{
+  "startingHead": "d09401c1c63ff4332e9ee021e2cd97c23c67d709",
+  "command": "node scripts/audit-book-qa-a1a-browser.mjs",
+  "gateA": {
+    "flags": [
+      "AUDIO",
+      "BODY_AUDIO",
+      "HEADING_AUDIO",
+      "PORTABLE_AUDIO"
+    ],
+    "exitCode": 0,
+    "groups": [
+      "Empty second library, exact DB targets and unchanged first library",
+      "UI creates and renames Collection and Workspace, moves and selects stable identity",
+      "T1 Main Title input, repair-safe mode changes and reconnect in the real App",
+      "T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection",
+      "T1 stale title writer and committed-but-unaccepted receipt never replay",
+      "Real Reader and Global Player transport retain audible ownership across navigation",
+      "External move, invalid Refresh, mutation lock and deleted selection recovery",
+      "Direct edit callback rejects and mobile exposes only Book QA capabilities",
+      "Mobile creates a native v2 sample through the same catalogue contract",
+      "Audio authorization, deterministic disjoint namespace, zero companion opens before use",
+      "Legacy promotion, stable owners, passive navigation and cross-Workspace deduplication",
+      "Same-voice rate/pitch coexistence and native RF/Full fingerprints",
+      "Decoded real audio, truncated/misleading input and immutable same-RF conflict",
+      "Quota, Staging and metadata transaction failure with atomic rollback per database",
+      "Cancel around commit, frozen projection, corrupt recovery and explicit no-replay Refresh",
+      "Uncertain commit and old connection callback recovered after page restart without replay",
+      "Actual two-tab competing writer is fenced by library lock and snapshot fingerprint",
+      "Equal RF and native ID on two libraries retain separate bytes, runtime IDs and journals",
+      "Valid provisional reuse, exact-digest repair for corrupt and missing bytes, and failed cold recovery fence",
+      "Actual scoped Split playback, Media Session, pause/resume and ownership across navigation and reset",
+      "Actual untimed Full Paragraph playback and same-voice alternate RF retention",
+      "Recorded Single, Continue and Start From Here use the existing bounded transport",
+      "Incomplete Conversation falls back to TTS, then plays trusted composed 48 kHz Full",
+      "Controlled provider failure, cancellation and stale authoritative generation reject without replay",
+      "Reconnect and mobile profile reset preserve the stable variant and all rate/pitch references",
+      "Actual Indonesian recorded Main Title, Media Session and owned Pause/Resume across Workspace navigation",
+      "Heading and Body use one durable RF asset and one connection URL without provider synthesis",
+      "ID-EN recorded and EN-ID controlled Browser TTS retain exact text, voice and atomic owner",
+      "Two stable Speaker voices render in authored Split order and leave the Scene Heading profile unchanged",
+      "Cancelled and stale Heading generation uploads no binding and explicit Refresh projects the external edit",
+      "Title-only normal transport, uncertain Heading receipt recovery, retained alternate profiles and session disposal",
+      "Same RF in a second library remains scoped, with the same Heading controls on mobile",
+      "Scoped v3 export captures six representations, alternate profiles and three RF consumers on one asset",
+      "Normal listening archive retains authored mixed order, scoped bytes and verified Section/Turn WAV",
+      "Reorganized ZIP A and ZIP B merge, both grouped and reorganized reimports are no-ops, and UID remapping preserves unrelated audio",
+      "Legacy v1/v2 and loose RF/Full bytes validate, while digest, invalid codec, duplicate manifest and accepted-byte conflicts fail closed",
+      "New-copy transfer preserves London and stops at batch boundaries, reconciles stale writers and uncertain receipts without replay",
+      "After reconnect, Library and Workspace Normal trees differ by scope and untrusted imported Full stays out of the listening archive",
+      "Loose Title and both Heading representations bind uniquely, reject ambiguity and mismatches, and reimport after reconnect without writes",
+      "Imported recorded Main Title plays after reconnect, while imported Conversation Full uses truthful per-Sentence fallback",
+      "The real mobile panel imports selected ZIPs through the same bounded Workspace capability",
+      "Normal control cancels after native Unit decode, closes its AudioContext and lock, and retries without partial output or data changes",
+      "Normal browser download preserves exact EN and ID voices, Split hashes and complete ordered PCM for each Turn, Section and trusted Full Conversation",
+      "An external authoritative write during the real Normal control yields typed stale status and zero downloads, then Refresh enables retry",
+      "Disposal during the final durable read produces a typed failure and no download, with a successful new connection"
+    ]
+  },
+  "finalReplay": {
+    "flags": [
+      "AUDIO",
+      "BODY_AUDIO",
+      "HEADING_AUDIO",
+      "PORTABLE_AUDIO",
+      "HARDENING"
+    ],
+    "exitCode": 0,
+    "groups": [
+      "Empty second library, exact DB targets and unchanged first library",
+      "UI creates and renames Collection and Workspace, moves and selects stable identity",
+      "T1 Main Title input, repair-safe mode changes and reconnect in the real App",
+      "T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection",
+      "T1 stale title writer and committed-but-unaccepted receipt never replay",
+      "Real Reader and Global Player transport retain audible ownership across navigation",
+      "External move, invalid Refresh, mutation lock and deleted selection recovery",
+      "Direct edit callback rejects and mobile exposes only Book QA capabilities",
+      "Mobile creates a native v2 sample through the same catalogue contract",
+      "Audio authorization, deterministic disjoint namespace, zero companion opens before use",
+      "Legacy promotion, stable owners, passive navigation and cross-Workspace deduplication",
+      "Same-voice rate/pitch coexistence and native RF/Full fingerprints",
+      "Decoded real audio, truncated/misleading input and immutable same-RF conflict",
+      "Quota, Staging and metadata transaction failure with atomic rollback per database",
+      "Cancel around commit, frozen projection, corrupt recovery and explicit no-replay Refresh",
+      "Uncertain commit and old connection callback recovered after page restart without replay",
+      "Actual two-tab competing writer is fenced by library lock and snapshot fingerprint",
+      "Equal RF and native ID on two libraries retain separate bytes, runtime IDs and journals",
+      "Valid provisional reuse, exact-digest repair for corrupt and missing bytes, and failed cold recovery fence",
+      "Actual scoped Split playback, Media Session, pause/resume and ownership across navigation and reset",
+      "Actual untimed Full Paragraph playback and same-voice alternate RF retention",
+      "Recorded Single, Continue and Start From Here use the existing bounded transport",
+      "Incomplete Conversation falls back to TTS, then plays trusted composed 48 kHz Full",
+      "Controlled provider failure, cancellation and stale authoritative generation reject without replay",
+      "Reconnect and mobile profile reset preserve the stable variant and all rate/pitch references",
+      "Actual Indonesian recorded Main Title, Media Session and owned Pause/Resume across Workspace navigation",
+      "Heading and Body use one durable RF asset and one connection URL without provider synthesis",
+      "ID-EN recorded and EN-ID controlled Browser TTS retain exact text, voice and atomic owner",
+      "Two stable Speaker voices render in authored Split order and leave the Scene Heading profile unchanged",
+      "Cancelled and stale Heading generation uploads no binding and explicit Refresh projects the external edit",
+      "Title-only normal transport, uncertain Heading receipt recovery, retained alternate profiles and session disposal",
+      "Same RF in a second library remains scoped, with the same Heading controls on mobile",
+      "Scoped v3 export captures six representations, alternate profiles and three RF consumers on one asset",
+      "Normal listening archive retains authored mixed order, scoped bytes and verified Section/Turn WAV",
+      "Reorganized ZIP A and ZIP B merge, both grouped and reorganized reimports are no-ops, and UID remapping preserves unrelated audio",
+      "Legacy v1/v2 and loose RF/Full bytes validate, while digest, invalid codec, duplicate manifest and accepted-byte conflicts fail closed",
+      "New-copy transfer preserves London and stops at batch boundaries, reconciles stale writers and uncertain receipts without replay",
+      "After reconnect, Library and Workspace Normal trees differ by scope and untrusted imported Full stays out of the listening archive",
+      "Loose Title and both Heading representations bind uniquely, reject ambiguity and mismatches, and reimport after reconnect without writes",
+      "Imported recorded Main Title plays after reconnect, while imported Conversation Full uses truthful per-Sentence fallback",
+      "The real mobile panel imports selected ZIPs through the same bounded Workspace capability",
+      "Normal control cancels after native Unit decode, closes its AudioContext and lock, and retries without partial output or data changes",
+      "Normal browser download preserves exact EN and ID voices, Split hashes and complete ordered PCM for each Turn, Section and trusted Full Conversation",
+      "An external authoritative write during the real Normal control yields typed stale status and zero downloads, then Refresh enables retry",
+      "Disposal during the final durable read produces a typed failure and no download, with a successful new connection",
+      "Offline QA playback reports actual Split Sentence, owner, provider bytes and duration; Stop, resume, card navigation and From Here preserve their scopes",
+      "Generation at 32, 33 and 67 logical entries preserves order, reuses shared RFs and resumes after cancellation, quota, stale and uncertain results",
+      "Generation fills an exact 64 MiB batch and carries the next verified render into its own batch without re-rendering",
+      "Generation restores one proven damaged provisional asset and fences protected, conflicting and uncertain ownership",
+      "The actual QA panel supports 67- and 71-Sentence Card and Workspace operations and verifies repeat requests without rendering",
+      "Pure Paragraph and Conversation report Split fallback, while consecutive same-Speaker Turns and independent channel readiness retain exact identities"
+    ]
+  },
+  "scope": {
+    "qaDatabase": "prolingo_text_library_d3b_qa_a1a_browser",
+    "sentinelViolations": [],
+    "production": {
+      "qaHostChunkAbsent": true,
+      "qaHostModuleAbsent": true,
+      "bookBodyAudioPanelAbsent": true,
+      "bookHeadingPanelAbsent": true,
+      "bookPortablePanelAbsent": true,
+      "bookAudioExecutorAbsent": true,
+      "qaRouteFallsBackToNormalApp": true,
+      "normalMainAppOpensCanonicalV1": true,
+      "normalMainAppMounted": true,
+      "tableAndLegacyPlayback": true,
+      "normalCredentialCleanup": true
+    },
+    "runtimeErrors": []
+  },
+  "portable": {
+    "paths": [
+      "Audio/RF/EN/RF_B80E8CD648A5D66FE51B3A11865BDFE61238035FBACFB0CEA42E5751865D11A0__EDGE__SONIA.mp3",
+      "Audio/RF/ID/RF_B78909B175F109811A809086A43F0E42A2A2AE62683EDB7F2A8DDFC065F66571__EDGE__GADIS.mp3",
+      "Audio/Full/EN/FULL_60714483D24F0C1B55D94DF6FD95EDDBEAB83DD55E518778E8F5B1E5F6669DBB__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_9B66EE85B3E2EE24AD7FB3C2A4946C66FF7C0AA7D597360FE873114B8ABC571E__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_4AFC5C1690C034DADAC4F92AF9FC3A86AB91BD4F45710AED0D923DBAB9C57424__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_EF25919B8D91C5DCD965FB46975989BB38F48724ED22064B6783DD0A21BDC76F__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_B7D1AE4EDCF5655EF2C46A73B1980CEECDB41AD0DB1A95246FBFD2AE6500CED0__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_202529F6F2DF55803853C0569C9202672DBBF7950D32C994919DF1E4DC989416__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_CD6EFEC897AC245026CDE815CC273AE510DE2FCB37177ACC4B1D24F35CD16E39__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_59F2C7C30E353E7B1B33AE8E83E4606B5275E85777228551D4B2CB022A62EA7B__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_E4F51E7713556CEDCD63235949F1A433E520F46C585C2DF5703FA0FE2330B6E1__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_048680A849D732FC214715D5A8A9C847293AF30931CF558E9631CC0C13CE5674__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_CD981E644DA7E2771E88C5B917F757D609C4EE3FA9E003100E8575302C0AF7F0__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_4592A793C2DF865CC13B8FFA5164EF8BA81E947AACB811CFF074EE2EEB9CCF72__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_56784A61C8028F729CEDE87EE9CE3E67D3C300C0EE7C22138CD52769F65F19AA__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_D5915868B38BF19170AD66FEB36DE095A552C2E94C2CF893CC55B0E411EAA7B8__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_BC0F555DF5BC93FF9E65D9B980A151D6CB26C23DC7E9373A0BE3B313D9B31906__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_B3DF3D2FC011CB7F6090E12379F9EDFBFCC943E5F5C1F2D00833FE1536B10514__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_4325D4FE13B5248C988FEB2EF4A7FD7A9F84D522EFFA6C45771CFE7C84BB2A1B__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_07381998DF68F540C1D98A26FA62C81CEC9593C2082B2A909AF32C7CDD4A83E2__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_5050E5BA725A0E4B3FEE0766DC4CC6A69E06EB58D11F35E103B03103439C2898__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_58214C8DA8CE411EA7553F13F317B5A71C35803503BD826CA05C195F560B2069__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_EE58633AEDEDB2F9A86F157050E9990FB227BE881AAE847CEA27F386ADCA8F4F__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_FD3E93013605CB987D4212D2ACC93C05CEB7324A9FA7B2CAFDBC1C6A5BB952CA__EDGE__SONIA.mp3",
+      "Audio/Full/EN/FULL_CC38516D4C6ECA6CE8858669F9656141C510AB12B2F1FE1AE4B7A757177D936A__DERIVED__MULTI-SPEAKER.wav",
+      "Audio/RF/EN/RF_6A4AC98FCC0E61698D23FDC96010333C8EE0A3121D52C369432FD94EE050B8F1__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_EC21E348821E58A52474907CDF603FB35BC9CC1EBFF2E3A58EB05B2C3FDC264A__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_C93579BEBA82B6E6C8637BAB8BC33C0F3EC804AFBF4BA8DB7C51C183543606AF__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_54F548E201D214B3BDFBBA3D18D19F1DCE032FF22F25E9D34E08F1C8C65078BA__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_12E3335028957EC1AC915061E603E7B53A9C28A40A29CE3B436A212725ED050F__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_4CD34124E643C97C14160AA7343D7DB3A300E58479B56D183528E22DD01DF41D__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_A5621BF903362CD528259A9A4AA834D6A8263962ECCF9EC3F616DCDF4064EEA0__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_658BF08C8CDDC871AC8D9ACC14B5C9C0D5902B29DC15E8C2528424505DC4C808__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_11589B2BF5484DD70BA3BEAB61F2131851A19A7EDB9F159B0B181A2A0BC391E2__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_84BEC1B3F5B58618464B3A8A3322822C1ECE9776410F659A0F8183F795DAAE1C__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_0376B25DB0356EAC4B62984B528825E484EBFD2C125277BB9FEA3061F6530D1E__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_FBF600F05A4E1E5B522C23C5C5B8682D7BAA63291195D002900969AD043E4A66__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_70A50AFA24B33DE38DC602C11AA8A7DF8AFCC884DA571145AAEF3DFD5D1830A6__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_76D7866E0D0185388E0768E141A68009BD00F0EB0E9C647C943BD74211C49B59__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_130C37B56BE8145413F877BFCC0FFECBB509273D00F427842E8D4698C5914350__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_2D46363E578755CAA7E4BD37B05111FEE6FC3B2678D80390894081FF3C7D6A95__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_19A79D7DC9A45D0ACF007380D5284386D4453F8F47A8958888AB77D7220EB111__EDGE__SONIA.mp3"
+    ],
+    "normal": {
+      "entries": [
+        "01_A_Journey_to_London/00_Title/EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/00_Heading/EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Card/EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Section/SC01_EN_SONIA.wav",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Section/SC02_EN_SONIA.wav",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/00_Heading/EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Card/EN_MULTI-SPEAKER.wav",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T01_James_EN_SONIA.wav",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T02_Ticket_Officer_EN_SONIA.wav",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T03_James_EN_SONIA.wav",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T04_Ticket_Officer_EN_SONIA.wav",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Full_Section/SC01_EN_SONIA.wav",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG05_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T01_Emma_EN_SONIA.wav",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T02_James_EN_SONIA.wav",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T03_Emma_EN_SONIA.wav",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T04_James_EN_SONIA.wav",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG03_EN_SONIA.mp3"
+      ],
+      "wavs": [
+        {
+          "path": "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Section/SC01_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Section/SC02_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Card/EN_MULTI-SPEAKER.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T01_James_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T02_Ticket_Officer_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T03_James_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/02_C1_Portable_conversation/Full_Turn/T04_Ticket_Officer_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/03_P2_On_the_Train/Full_Section/SC01_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T01_Emma_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T02_James_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T03_Emma_EN_SONIA.wav",
+          "sampleRate": 48000
+        },
+        {
+          "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T04_James_EN_SONIA.wav",
+          "sampleRate": 48000
+        }
+      ],
+      "report": {
+        "logical": 53,
+        "omissions": [
+          {
+            "ref": {
+              "fingerprint": "rf-sha256-15a5306fb48af93c550e3a838ef47565761c8cb2aaa1b03ce7958695dc2f75ae",
+              "representation": "paragraph-heading",
+              "workspaceUid": "WSUID_29684a3b-84a8-4515-908d-37d1089d349e",
+              "ownerUid": "CARDUID_e9ceea81-bd31-410e-bd8e-8d49a5a0219e",
+              "channel": "text",
+              "order": [
+                1,
+                3,
+                0,
+                0
+              ]
+            },
+            "status": "missing"
+          },
+          {
+            "ref": {
+              "fingerprint": "full-sha256-7c4d4c146799da49d44b66008d720e76bc974dffb519931ea379f189c9ccf657",
+              "representation": "full-paragraph",
+              "workspaceUid": "WSUID_29684a3b-84a8-4515-908d-37d1089d349e",
+              "ownerUid": "CARDUID_e9ceea81-bd31-410e-bd8e-8d49a5a0219e",
+              "channel": "text",
+              "order": [
+                1,
+                3,
+                0,
+                0
+              ]
+            },
+            "status": "missing"
+          },
+          {
+            "ref": {
+              "fingerprint": "rf-sha256-ccd7ffcc08a93c0afd3171efe399992078c3da459bf7f9bb93dac719031535c1",
+              "representation": "scene-heading",
+              "workspaceUid": "WSUID_29684a3b-84a8-4515-908d-37d1089d349e",
+              "ownerUid": "CARDUID_01a69c5e-e2cd-40a9-81b3-383f735c69ec",
+              "channel": "text",
+              "order": [
+                1,
+                4,
+                0,
+                0
+              ]
+            },
+            "status": "missing"
+          },
+          {
+            "ref": {
+              "fingerprint": "full-sha256-a4b18210bd3d1652db0568a97295a1671428553a82d58247fa8ede1bea337981",
+              "representation": "full-conversation",
+              "workspaceUid": "WSUID_29684a3b-84a8-4515-908d-37d1089d349e",
+              "ownerUid": "CARDUID_01a69c5e-e2cd-40a9-81b3-383f735c69ec",
+              "channel": "text",
+              "order": [
+                1,
+                4,
+                0,
+                0
+              ]
+            },
+            "status": "missing"
+          }
+        ]
+      },
+      "unchanged": true
+    },
+    "afterReconnect": {
+      "libraryRoots": [
+        "01_A_Journey_to_London",
+        "02_A_Journey_to_London",
+        "03_A_Journey_to_London"
+      ],
+      "workspaceRoots": [
+        "01_A_Journey_to_London"
+      ],
+      "paths": [
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Full_Card/EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC01/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_James_woke_up_earlier_than_usu/Split/SC02/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T01_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T02_Ticket_Officer/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T03_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/02_C1_Portable_conversation/Split/T04_Ticket_Officer/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG05_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG03_EN_SONIA.mp3"
+      ],
+      "omissions": [
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "unverified-composition",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing",
+        "missing"
+      ],
+      "portableReferences": 44
+    },
+    "transfer": {
+      "first": {
+        "physicalDiscovered": 16,
+        "physicalValidated": 16,
+        "physicalUniqueValidated": 16,
+        "physicalStored": 16,
+        "physicalReused": 0,
+        "physicalRepaired": 0,
+        "logicalMatched": 18,
+        "logicalCommitted": 18,
+        "alreadyAvailable": 0,
+        "otherProfile": 0,
+        "batches": [
+          {
+            "operationId": "58e25fc7-3707-48fb-991e-1aeb5ea0d3a6",
+            "committed": 18,
+            "available": 0
+          }
+        ],
+        "stopped": null
+      },
+      "next": {
+        "physicalDiscovered": 26,
+        "physicalValidated": 26,
+        "physicalUniqueValidated": 26,
+        "physicalStored": 26,
+        "physicalReused": 0,
+        "physicalRepaired": 0,
+        "logicalMatched": 26,
+        "logicalCommitted": 26,
+        "alreadyAvailable": 0,
+        "otherProfile": 1,
+        "batches": [
+          {
+            "operationId": "fc91c8be-f530-4ac2-a79f-349ddd66d6f0",
+            "committed": 25,
+            "available": 0
+          },
+          {
+            "operationId": "5de91275-38fd-48cb-b0fb-88131eaa9ef9",
+            "committed": 1,
+            "available": 0
+          }
+        ],
+        "stopped": null
+      },
+      "reread": {
+        "physicalDiscovered": 42,
+        "physicalValidated": 42,
+        "physicalUniqueValidated": 42,
+        "physicalStored": 0,
+        "physicalReused": 42,
+        "physicalRepaired": 0,
+        "logicalMatched": 44,
+        "logicalCommitted": 0,
+        "alreadyAvailable": 44,
+        "otherProfile": 1,
+        "batches": [
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 32
+          },
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 11
+          },
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 1
+          }
+        ],
+        "stopped": null
+      },
+      "reorganizedAgain": {
+        "physicalDiscovered": 16,
+        "physicalValidated": 16,
+        "physicalUniqueValidated": 16,
+        "physicalStored": 0,
+        "physicalReused": 16,
+        "physicalRepaired": 0,
+        "logicalMatched": 18,
+        "logicalCommitted": 0,
+        "alreadyAvailable": 18,
+        "otherProfile": 0,
+        "batches": [
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 18
+          }
+        ],
+        "stopped": null
+      },
+      "interrupted": {
+        "physicalDiscovered": 42,
+        "physicalValidated": 42,
+        "physicalUniqueValidated": 42,
+        "physicalStored": 0,
+        "physicalReused": 30,
+        "physicalRepaired": 0,
+        "logicalMatched": 33,
+        "logicalCommitted": 32,
+        "alreadyAvailable": 0,
+        "otherProfile": 1,
+        "batches": [
+          {
+            "operationId": "cf388345-9bf6-4765-9a97-5bce6cde5f89",
+            "committed": 32,
+            "available": 0
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_CANCELLED",
+          "message": "Portable transfer cancelled"
+        }
+      },
+      "stale": {
+        "physicalDiscovered": 42,
+        "physicalValidated": 42,
+        "physicalUniqueValidated": 42,
+        "physicalStored": 0,
+        "physicalReused": 0,
+        "physicalRepaired": 0,
+        "logicalMatched": 33,
+        "logicalCommitted": 0,
+        "alreadyAvailable": 0,
+        "otherProfile": 0,
+        "batches": [],
+        "stopped": {
+          "code": "STALE_RESULT",
+          "message": "Audio operation was captured against an older library snapshot"
+        }
+      },
+      "uncertain": {
+        "physicalDiscovered": 42,
+        "physicalValidated": 42,
+        "physicalUniqueValidated": 42,
+        "physicalStored": 0,
+        "physicalReused": 30,
+        "physicalRepaired": 0,
+        "logicalMatched": 43,
+        "logicalCommitted": 0,
+        "alreadyAvailable": 32,
+        "otherProfile": 1,
+        "batches": [
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 32
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_COMMIT_UNCERTAIN",
+          "message": "IndexedDB transaction failed",
+          "reloadRequired": true,
+          "operationId": "d48d9a0a-3d04-4d17-8236-788fb5ce6153",
+          "status": "uncertain"
+        }
+      },
+      "complete": {
+        "physicalDiscovered": 42,
+        "physicalValidated": 42,
+        "physicalUniqueValidated": 42,
+        "physicalStored": 0,
+        "physicalReused": 42,
+        "physicalRepaired": 0,
+        "logicalMatched": 44,
+        "logicalCommitted": 1,
+        "alreadyAvailable": 43,
+        "otherProfile": 1,
+        "batches": [
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 32
+          },
+          {
+            "operationId": null,
+            "committed": 0,
+            "available": 11
+          },
+          {
+            "operationId": "419040d8-d6eb-465f-aa3d-0203685f68ce",
+            "committed": 1,
+            "available": 0
+          }
+        ],
+        "stopped": null
+      }
+    }
+  },
+  "normal": {
+    "groups": [
+      "Normal control cancels after native Unit decode, closes its AudioContext and lock, and retries without partial output or data changes",
+      "Normal browser download preserves exact EN and ID voices, Split hashes and complete ordered PCM for each Turn, Section and trusted Full Conversation",
+      "An external authoritative write during the real Normal control yields typed stale status and zero downloads, then Refresh enables retry",
+      "Disposal during the final durable read produces a typed failure and no download, with a successful new connection"
+    ],
+    "workspaceId": "DOC_000001",
+    "bilingual": {
+      "paths": [
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Full_Section/SC01_EN_SONIA.wav",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Full_Section/SC01_ID_GADIS.wav",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG01_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG01_ID_GADIS.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG02_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG02_ID_GADIS.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG03_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG03_ID_GADIS.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG04_EN_SONIA.mp3",
+        "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG04_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Card/EN_MULTI-SPEAKER.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Card/ID_MULTI-SPEAKER.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T01_James_EN_RYAN.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T01_James_ID_ARDI.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T02_Ticket_Officer_EN_LIBBY.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T02_Ticket_Officer_ID_GADIS.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T03_James_EN_RYAN.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T03_James_ID_ARDI.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T04_Ticket_Officer_EN_LIBBY.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T04_Ticket_Officer_ID_GADIS.wav",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG01_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG01_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG02_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG02_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG03_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG03_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG01_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG01_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG02_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG02_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG03_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG03_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG01_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG01_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG02_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG02_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG03_EN_RYAN.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG03_ID_ARDI.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG01_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG01_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG02_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG02_ID_GADIS.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG03_EN_LIBBY.mp3",
+        "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG03_ID_GADIS.mp3"
+      ],
+      "splits": [
+        {
+          "pathSuffix": "/Split/SC01/SG01_EN_SONIA.mp3",
+          "voiceId": "en-GB-SoniaNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "James woke up earlier than usual because he was travelling to London that morning.",
+          "digest": "8a266d57f2f418a010fe878ef883a3ceae3b340b8d63abf01d703f397574fab6"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG02_EN_SONIA.mp3",
+          "voiceId": "en-GB-SoniaNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "He had packed his suitcase the night before, but he still needed to check a few things.",
+          "digest": "c95530e57f862efbb67627bbc703170f634eadec564c3090e25e68f644440aed"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG03_EN_SONIA.mp3",
+          "voiceId": "en-GB-SoniaNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "After having breakfast, he checked his train schedule and made sure that his phone was fully charged.",
+          "digest": "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG04_EN_SONIA.mp3",
+          "voiceId": "en-GB-SoniaNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "He left the house at half past seven, feeling excited about the journey ahead.",
+          "digest": "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG01_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "James bangun lebih awal dari biasanya karena pagi itu ia akan bepergian ke London.",
+          "digest": "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG02_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "Ia telah mengemas kopernya malam sebelumnya, tetapi masih perlu memeriksa beberapa hal.",
+          "digest": "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG03_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "Setelah sarapan, ia memeriksa jadwal kereta dan memastikan ponselnya terisi penuh.",
+          "digest": "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8"
+        },
+        {
+          "pathSuffix": "/Split/SC01/SG04_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": null,
+          "unitUid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+          "sentence": "Ia meninggalkan rumah pukul setengah delapan, merasa bersemangat menghadapi perjalanan itu.",
+          "digest": "5efa6180149cfc81318324594a60d6f73a15f212696f1aeb059cff03e2907e3f"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG01_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "Good morning. I'd like to buy a ticket to London, please.",
+          "digest": "8a266d57f2f418a010fe878ef883a3ceae3b340b8d63abf01d703f397574fab6"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG02_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "Could you tell me when the next train leaves?",
+          "digest": "c95530e57f862efbb67627bbc703170f634eadec564c3090e25e68f644440aed"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG03_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "I would prefer a direct train if there is one available.",
+          "digest": "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG01_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "Selamat pagi. Saya ingin membeli tiket ke London.",
+          "digest": "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG02_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "Bisakah Anda memberi tahu saya kapan kereta berikutnya berangkat?",
+          "digest": "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f"
+        },
+        {
+          "pathSuffix": "/Split/T01_James/SG03_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_3b609d5a-208b-4be8-b6c8-af7a800fe812",
+          "sentence": "Saya lebih memilih kereta langsung jika tersedia.",
+          "digest": "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG01_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "Certainly. The next direct train leaves at nine fifteen from platform four.",
+          "digest": "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG02_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "The journey usually takes about two hours, depending on the service.",
+          "digest": "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG03_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "Would you like a single ticket or a return ticket?",
+          "digest": "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG01_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "Tentu. Kereta langsung berikutnya berangkat pukul sembilan lewat lima belas dari peron empat.",
+          "digest": "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG02_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "Perjalanan biasanya memakan waktu sekitar dua jam, tergantung layanannya.",
+          "digest": "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2"
+        },
+        {
+          "pathSuffix": "/Split/T02_Ticket_Officer/SG03_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+          "sentence": "Apakah Anda ingin tiket sekali jalan atau pulang-pergi?",
+          "digest": "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG01_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "A return ticket would be better because I'm planning to come back on Sunday evening.",
+          "digest": "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG02_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "Could I also have a seat next to the window, if possible?",
+          "digest": "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG03_EN_RYAN.mp3",
+          "voiceId": "en-GB-RyanNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "I'd like to enjoy the view during the journey.",
+          "digest": "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG01_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "Tiket pulang-pergi lebih baik karena saya berencana kembali pada Minggu malam.",
+          "digest": "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG02_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "Bisakah saya mendapatkan tempat duduk di dekat jendela, jika memungkinkan?",
+          "digest": "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2"
+        },
+        {
+          "pathSuffix": "/Split/T03_James/SG03_ID_ARDI.mp3",
+          "voiceId": "id-ID-ArdiNeural",
+          "speakerId": "SPK_06B2E4AF",
+          "unitUid": "UNITUID_cf6247a4-d9a0-40e0-bbf5-d2d6badffa18",
+          "sentence": "Saya ingin menikmati pemandangan selama perjalanan.",
+          "digest": "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG01_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Of course. I've reserved a window seat for you in carriage B.",
+          "digest": "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG02_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Here is your ticket, and please keep it with you until you leave the station in London.",
+          "digest": "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG03_EN_LIBBY.mp3",
+          "voiceId": "en-GB-LibbyNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Have a pleasant journey, and thank you for travelling with us.",
+          "digest": "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG01_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Tentu. Saya telah memesan kursi dekat jendela untuk Anda di gerbong B.",
+          "digest": "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG02_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Ini tiket Anda, dan mohon simpan sampai Anda meninggalkan stasiun di London.",
+          "digest": "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2"
+        },
+        {
+          "pathSuffix": "/Split/T04_Ticket_Officer/SG03_ID_GADIS.mp3",
+          "voiceId": "id-ID-GadisNeural",
+          "speakerId": "SPK_64B5DB07",
+          "unitUid": "UNITUID_04153c92-0dc5-4ef4-8604-f60e1007e319",
+          "sentence": "Semoga perjalanan Anda menyenangkan, dan terima kasih telah bepergian bersama kami.",
+          "digest": "de548cc606a1187fbad3b5ca453977a84d00f63b66ffca6c8bcf2a9e900deb6f"
+        }
+      ],
+      "wavs": [
+        {
+          "pathSuffix": "/Full_Section/SC01_EN_SONIA.wav",
+          "digest": "5e817152788f5593c582d7437ce9600e14522feb0187f4e2a189477e1986f454",
+          "frames": 165888,
+          "orderedInputDigests": [
+            "8a266d57f2f418a010fe878ef883a3ceae3b340b8d63abf01d703f397574fab6",
+            "c95530e57f862efbb67627bbc703170f634eadec564c3090e25e68f644440aed",
+            "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1",
+            "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Section/SC01_ID_GADIS.wav",
+          "digest": "ef6750b6b045c90a84514e6d44e56eaa1476ace24a891f16e5cd8aecebbd1504",
+          "frames": 193536,
+          "orderedInputDigests": [
+            "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6",
+            "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f",
+            "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8",
+            "5efa6180149cfc81318324594a60d6f73a15f212696f1aeb059cff03e2907e3f"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T01_James_EN_RYAN.wav",
+          "digest": "93753d941b0c44d22cdcdcdb230ce3fa5ecdea01e2f64d558726578f8b8a18d9",
+          "frames": 103680,
+          "orderedInputDigests": [
+            "8a266d57f2f418a010fe878ef883a3ceae3b340b8d63abf01d703f397574fab6",
+            "c95530e57f862efbb67627bbc703170f634eadec564c3090e25e68f644440aed",
+            "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T01_James_ID_ARDI.wav",
+          "digest": "4383a5e2e14cb7976abb32f6fbbe90da28a15c97034f07756fa3216668bc7a06",
+          "frames": 124416,
+          "orderedInputDigests": [
+            "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6",
+            "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f",
+            "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T02_Ticket_Officer_EN_LIBBY.wav",
+          "digest": "4383a5e2e14cb7976abb32f6fbbe90da28a15c97034f07756fa3216668bc7a06",
+          "frames": 124416,
+          "orderedInputDigests": [
+            "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6",
+            "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f",
+            "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T02_Ticket_Officer_ID_GADIS.wav",
+          "digest": "f829683abf0609e7ce40a474c37efe3d84b45dda908483967ba4e8098d742f19",
+          "frames": 145152,
+          "orderedInputDigests": [
+            "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e",
+            "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2",
+            "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T03_James_EN_RYAN.wav",
+          "digest": "f829683abf0609e7ce40a474c37efe3d84b45dda908483967ba4e8098d742f19",
+          "frames": 145152,
+          "orderedInputDigests": [
+            "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e",
+            "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2",
+            "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T03_James_ID_ARDI.wav",
+          "digest": "cf66ed47de2d2d8cc67d2900354d0e1d2d0987ecce6b4fc294994a8fc10d7602",
+          "frames": 165888,
+          "orderedInputDigests": [
+            "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb",
+            "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2",
+            "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T04_Ticket_Officer_EN_LIBBY.wav",
+          "digest": "cf66ed47de2d2d8cc67d2900354d0e1d2d0987ecce6b4fc294994a8fc10d7602",
+          "frames": 165888,
+          "orderedInputDigests": [
+            "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb",
+            "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2",
+            "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Turn/T04_Ticket_Officer_ID_GADIS.wav",
+          "digest": "189ece3735deafdb0b0bffdc6b30255d7871b155a5bb522c9f48810e4f687e5b",
+          "frames": 186624,
+          "orderedInputDigests": [
+            "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1",
+            "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2",
+            "de548cc606a1187fbad3b5ca453977a84d00f63b66ffca6c8bcf2a9e900deb6f"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Card/EN_MULTI-SPEAKER.wav",
+          "digest": "935a4c8d0946672ee55b9b6e010df64d8a812b181e2c3dabc9031599a5cd93e7",
+          "frames": 539136,
+          "orderedInputDigests": [
+            "8a266d57f2f418a010fe878ef883a3ceae3b340b8d63abf01d703f397574fab6",
+            "c95530e57f862efbb67627bbc703170f634eadec564c3090e25e68f644440aed",
+            "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1",
+            "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6",
+            "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f",
+            "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8",
+            "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e",
+            "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2",
+            "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733",
+            "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb",
+            "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2",
+            "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f"
+          ]
+        },
+        {
+          "pathSuffix": "/Full_Card/ID_MULTI-SPEAKER.wav",
+          "digest": "a91a59cd94eeaa87b334b4ec5952fe9b6c0be75e2fa9ca15092908d22b99f7cc",
+          "frames": 622080,
+          "orderedInputDigests": [
+            "f964a06cc694f3901a7710d83187870a84b922633bbd106c960516917c73c8b6",
+            "e9b0c3c1b8f7372b6919dbc25aa56adf270cef79c05db823aadd8312230f175f",
+            "b5a6cabc3dbf2ec3805f9f633ca6d15369991d31bbd3abc2834c16a1671e13c8",
+            "149658543f5e91a45207370f8fccffb4a2657e7c9edd41b5fe25ca5983cce35e",
+            "10d7fb5a6999845a0f0a62873dc196c76da25fd9e0f7847d0c31dc3f15531ed2",
+            "87c95a00970aa1b87fa54d4d14d7c8480b31fe239115f03b15993db2eef5f733",
+            "b7004d9be628f84df379934bea90ec306667615797226907c44e05cc8c7de3eb",
+            "d0d4dc0d674c56c34aba52a1ae494677a0ee557e3e322647ba5361c9bec3f5a2",
+            "d2d1795d4bcc75626f598043ae8649a2824331639176842c2bf5a9ae1b410b8f",
+            "e6e10c75937caa5d55f051278c4dc9b378fc323da71ea819dcf227fa081bc3c1",
+            "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2",
+            "de548cc606a1187fbad3b5ca453977a84d00f63b66ffca6c8bcf2a9e900deb6f"
+          ]
+        }
+      ],
+      "alternate": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG01_EN_RYAN_74405bc4a31ecdda98904ac148f3ff1e0c62daad1f252e80023410e6204f3f8e.mp3",
+      "alternateDigest": "d5ce044433e3d80ba517ad976afa5358b698d0ed8ed98c8d9ad3691ce6e1f1b2"
+    },
+    "diagnostics": {
+      "missing": [
+        "metadata-only",
+        "unavailable-unit-input"
+      ],
+      "corrupt": [
+        "corrupt",
+        "unavailable-unit-input"
+      ]
+    },
+    "cancelled": {
+      "opened": 1,
+      "closed": 1,
+      "decodes": 1,
+      "status": "AUDIO_CANCELLED Normal audio export cancelled",
+      "downloads": 0
+    },
+    "stale": "STALE_RESULT The connected library changed during export",
+    "disposed": {
+      "outcome": {
+        "code": "AUDIO_CANCELLED",
+        "message": "Audio operation was cancelled"
+      },
+      "status": null
+    }
+  },
+  "playback": {
+    "groups": [
+      "Offline QA playback reports actual Split Sentence, owner, provider bytes and duration; Stop, resume, card navigation and From Here preserve their scopes"
+    ],
+    "paragraphFallback": {
+      "owner": "main",
+      "domain": "structured-text",
+      "sessionId": 1,
+      "state": "playing",
+      "precision": "segment",
+      "workspace": {
+        "id": "DOC_000001",
+        "uid": "WSUID_2099ecbe-6469-43a4-829e-324d53c67db2",
+        "title": "A Journey to London",
+        "collectionId": null
+      },
+      "card": {
+        "id": "TEXT_000001",
+        "uid": "CARDUID_b8d484a5-a08e-4e0f-abde-d1262c21848c",
+        "title": "Preparing for the Journey",
+        "ordinal": 1,
+        "total": 4,
+        "kind": "paragraph",
+        "kindOrdinal": 1
+      },
+      "unit": {
+        "id": "UNIT_000001",
+        "uid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+        "title": null,
+        "ordinal": 1,
+        "total": 2,
+        "kind": "paragraph"
+      },
+      "segment": {
+        "id": "SEGMENT_000001",
+        "uid": "SEGUID_948df168-290f-45d4-b3a5-9f14c74a447f",
+        "ordinal": 1,
+        "total": 4,
+        "text": "James woke up earlier than usual because he was travelling to London that morning.",
+        "meaning": "James bangun lebih awal dari biasanya karena pagi itu ia akan bepergian ke London."
+      },
+      "speaker": null,
+      "item": null,
+      "channel": "text",
+      "savedRepresentation": "full",
+      "requestedRepresentation": "full",
+      "commandRepresentation": "full",
+      "actualRepresentation": "split",
+      "representationFallback": true,
+      "boundary": null,
+      "source": "generated",
+      "provider": "edge",
+      "voice": "en-GB-SoniaNeural",
+      "rate": 1,
+      "scope": "card",
+      "queue": {
+        "kind": "card",
+        "ordinal": 1,
+        "total": 1
+      },
+      "timeline": {
+        "elapsedSeconds": 0.006753,
+        "durationSeconds": 0.432,
+        "seekable": true
+      },
+      "commandTarget": {
+        "scope": "card",
+        "boundary": null,
+        "blockId": "TEXT_000001",
+        "unitId": null,
+        "virtualUnit": false,
+        "segmentId": null,
+        "channel": null,
+        "cardChannel": null
+      }
+    },
+    "resumed": {
+      "owner": "main",
+      "domain": "structured-text",
+      "sessionId": 3,
+      "state": "playing",
+      "precision": "segment",
+      "workspace": {
+        "id": "DOC_000001",
+        "uid": "WSUID_2099ecbe-6469-43a4-829e-324d53c67db2",
+        "title": "A Journey to London",
+        "collectionId": null
+      },
+      "card": {
+        "id": "TEXT_000001",
+        "uid": "CARDUID_b8d484a5-a08e-4e0f-abde-d1262c21848c",
+        "title": "Preparing for the Journey",
+        "ordinal": 1,
+        "total": 4,
+        "kind": "paragraph",
+        "kindOrdinal": 1
+      },
+      "unit": {
+        "id": "UNIT_000001",
+        "uid": "UNITUID_e269957f-f4f0-4090-ba5d-f19b2d1d0115",
+        "title": null,
+        "ordinal": 1,
+        "total": 2,
+        "kind": "paragraph"
+      },
+      "segment": {
+        "id": "SEGMENT_000002",
+        "uid": "SEGUID_1cd50eee-8e2c-46fc-a857-389113bf5379",
+        "ordinal": 2,
+        "total": 4,
+        "text": "He had packed his suitcase the night before, but he still needed to check a few things.",
+        "meaning": "Ia telah mengemas kopernya malam sebelumnya, tetapi masih perlu memeriksa beberapa hal."
+      },
+      "speaker": null,
+      "item": null,
+      "channel": "text",
+      "savedRepresentation": "full",
+      "requestedRepresentation": "full",
+      "commandRepresentation": "full",
+      "actualRepresentation": "split",
+      "representationFallback": true,
+      "boundary": null,
+      "source": "generated",
+      "provider": "edge",
+      "voice": "en-GB-SoniaNeural",
+      "rate": 1,
+      "scope": "document",
+      "queue": {
+        "kind": "card",
+        "ordinal": 1,
+        "total": 4
+      },
+      "timeline": {
+        "elapsedSeconds": 0,
+        "durationSeconds": 0.72,
+        "seekable": true
+      },
+      "commandTarget": {
+        "scope": "document",
+        "boundary": null,
+        "blockId": null,
+        "unitId": null,
+        "virtualUnit": false,
+        "segmentId": null,
+        "channel": null,
+        "cardChannel": null
+      }
+    },
+    "offlineId": {
+      "owner": "main",
+      "domain": "structured-text",
+      "sessionId": 9,
+      "state": "playing",
+      "precision": "segment",
+      "workspace": {
+        "id": "DOC_000001",
+        "uid": "WSUID_2099ecbe-6469-43a4-829e-324d53c67db2",
+        "title": "A Journey to London",
+        "collectionId": null
+      },
+      "card": {
+        "id": "TEXT_000002",
+        "uid": "CARDUID_9945aee6-29e7-4356-8f45-1f18ef2136c0",
+        "title": "Buying a Train Ticket",
+        "ordinal": 2,
+        "total": 4,
+        "kind": "conversation",
+        "kindOrdinal": 1
+      },
+      "unit": {
+        "id": "UNIT_000004",
+        "uid": "UNITUID_f55f9c3f-3e68-40c1-8a8e-3951ac4e4046",
+        "title": null,
+        "ordinal": 2,
+        "total": 4,
+        "kind": "turn"
+      },
+      "segment": {
+        "id": "SEGMENT_000012",
+        "uid": "SEGUID_884f595b-048f-46a3-a859-09016a118d5d",
+        "ordinal": 1,
+        "total": 3,
+        "text": "Certainly. The next direct train leaves at nine fifteen from platform four.",
+        "meaning": "Tentu. Kereta langsung berikutnya berangkat pukul sembilan lewat lima belas dari peron empat."
+      },
+      "speaker": {
+        "id": "SPK_64B5DB07",
+        "name": "Ticket Officer"
+      },
+      "item": null,
+      "channel": "meaning",
+      "savedRepresentation": "full",
+      "requestedRepresentation": "full",
+      "commandRepresentation": "split",
+      "actualRepresentation": "split",
+      "representationFallback": false,
+      "boundary": null,
+      "source": "generated",
+      "provider": "edge",
+      "voice": "id-ID-GadisNeural",
+      "rate": 1,
+      "scope": "segment",
+      "queue": {
+        "kind": "segment",
+        "ordinal": 1,
+        "total": 1
+      },
+      "timeline": {
+        "elapsedSeconds": 0.007216,
+        "durationSeconds": 0.72,
+        "seekable": true
+      },
+      "commandTarget": {
+        "scope": "segment",
+        "boundary": null,
+        "blockId": null,
+        "unitId": null,
+        "virtualUnit": false,
+        "segmentId": "SEGMENT_000012",
+        "channel": "meaning",
+        "cardChannel": null
+      }
+    },
+    "sceneFull": {
+      "owner": "main",
+      "domain": "structured-text",
+      "sessionId": 4,
+      "state": "playing",
+      "precision": "card",
+      "workspace": {
+        "id": "DOC_000001",
+        "uid": "WSUID_2099ecbe-6469-43a4-829e-324d53c67db2",
+        "title": "A Journey to London",
+        "collectionId": null
+      },
+      "card": {
+        "id": "TEXT_000002",
+        "uid": "CARDUID_9945aee6-29e7-4356-8f45-1f18ef2136c0",
+        "title": "Buying a Train Ticket",
+        "ordinal": 2,
+        "total": 4,
+        "kind": "conversation",
+        "kindOrdinal": 1
+      },
+      "unit": null,
+      "segment": null,
+      "speaker": null,
+      "item": null,
+      "channel": "text",
+      "savedRepresentation": "full",
+      "requestedRepresentation": "full",
+      "commandRepresentation": "full",
+      "actualRepresentation": "full",
+      "representationFallback": false,
+      "boundary": null,
+      "source": "full-artifact",
+      "provider": null,
+      "voice": null,
+      "rate": 1,
+      "scope": "document",
+      "queue": {
+        "kind": "card",
+        "ordinal": 2,
+        "total": 4
+      },
+      "timeline": {
+        "elapsedSeconds": 0.00914,
+        "durationSeconds": 11.232,
+        "seekable": true
+      },
+      "commandTarget": {
+        "scope": "document",
+        "boundary": null,
+        "blockId": null,
+        "unitId": null,
+        "virtualUnit": false,
+        "segmentId": null,
+        "channel": null,
+        "cardChannel": null
+      }
+    }
+  },
+  "hardening": {
+    "groups": [
+      "Generation at 32, 33 and 67 logical entries preserves order, reuses shared RFs and resumes after cancellation, quota, stale and uncertain results",
+      "Generation fills an exact 64 MiB batch and carries the next verified render into its own batch without re-rendering",
+      "Generation restores one proven damaged provisional asset and fences protected, conflicting and uncertain ownership",
+      "The actual QA panel supports 67- and 71-Sentence Card and Workspace operations and verifies repeat requests without rendering",
+      "Pure Paragraph and Conversation report Split fallback, while consecutive same-Speaker Turns and independent channel readiness retain exact identities"
+    ],
+    "batching": {
+      "count32": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "53b5f1cb-cb69-4f94-83bf-9735f24c2c6e",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": null
+      },
+      "count33": {
+        "committed": 33,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "9d6446ff-b317-447a-9856-146ee1761593",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          },
+          {
+            "operationId": "0b34a361-2884-4ae3-9cd3-d770ebaaa12f",
+            "logical": 1,
+            "committed": 1,
+            "alreadyAvailable": 0,
+            "stored": 0,
+            "reused": 1,
+            "bytes": 10368
+          }
+        ],
+        "stopped": null
+      },
+      "again": {
+        "committed": 0,
+        "alreadyAvailable": 33,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": null,
+            "logical": 1,
+            "committed": 0,
+            "alreadyAvailable": 1,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          }
+        ],
+        "stopped": null
+      },
+      "cancelled": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "604729ee-2ae7-447d-90d7-8b20e068ae0d",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_CANCELLED",
+          "message": "Audio operation was cancelled",
+          "reloadRequired": false
+        }
+      },
+      "resumed": {
+        "committed": 35,
+        "alreadyAvailable": 32,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": "15ee0a98-5c84-49bd-9af9-9d4c20f5a766",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 1,
+            "bytes": 51840
+          },
+          {
+            "operationId": "592cac05-7956-48de-a988-74c2654fe7c2",
+            "logical": 3,
+            "committed": 3,
+            "alreadyAvailable": 0,
+            "stored": 3,
+            "reused": 0,
+            "bytes": 31104
+          }
+        ],
+        "stopped": null
+      },
+      "partial": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "e56ffe17-ee75-44df-a36b-3ed246cec87c",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_QUOTA",
+          "message": "Fixture quota",
+          "status": "precommit-failed",
+          "operationId": "829c3796-e3d2-4763-8d52-614267f27422",
+          "reloadRequired": false
+        }
+      },
+      "partialRetry": {
+        "committed": 35,
+        "alreadyAvailable": 32,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": "d35fa003-cc49-4f72-8d14-c9ecdf443789",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 1,
+            "bytes": 51840
+          },
+          {
+            "operationId": "d629476a-c45d-4eea-a3fb-e7c8b7686646",
+            "logical": 3,
+            "committed": 3,
+            "alreadyAvailable": 0,
+            "stored": 3,
+            "reused": 0,
+            "bytes": 31104
+          }
+        ],
+        "stopped": null
+      },
+      "stale": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "bcf6c991-cce8-45bf-9e97-4bab27a0d4b7",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": {
+          "code": "STALE_RESULT",
+          "message": "Audio operation was captured against an older library snapshot",
+          "reloadRequired": true
+        }
+      },
+      "staleRetry": {
+        "committed": 35,
+        "alreadyAvailable": 32,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": "78504ffa-de6d-4835-8d41-c72b951f8a46",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 1,
+            "bytes": 51840
+          },
+          {
+            "operationId": "ab1eb361-ddcc-47d9-a497-ccc05e46cc9d",
+            "logical": 3,
+            "committed": 3,
+            "alreadyAvailable": 0,
+            "stored": 3,
+            "reused": 0,
+            "bytes": 31104
+          }
+        ],
+        "stopped": null
+      },
+      "uncertain": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "4123d371-662c-4b74-862f-837d255c58a5",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_COMMIT_UNCERTAIN",
+          "message": "IndexedDB transaction failed",
+          "status": "uncertain",
+          "operationId": "aeb34d61-b4e3-451b-9536-138b31d09e3f",
+          "reloadRequired": true
+        }
+      },
+      "peerRetry": {
+        "committed": 3,
+        "alreadyAvailable": 64,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": "6933024a-75b3-4e07-a1c4-cb5c68f4d30c",
+            "logical": 3,
+            "committed": 3,
+            "alreadyAvailable": 0,
+            "stored": 3,
+            "reused": 0,
+            "bytes": 31104
+          }
+        ],
+        "stopped": null
+      },
+      "unaccepted": {
+        "committed": 32,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "c583c295-0bf6-47f6-b069-4599650b58b1",
+            "logical": 32,
+            "committed": 32,
+            "alreadyAvailable": 0,
+            "stored": 4,
+            "reused": 0,
+            "bytes": 41472
+          }
+        ],
+        "stopped": {
+          "code": "AUDIO_CANCELLED",
+          "message": "Audio operation was cancelled",
+          "status": "committed-unaccepted",
+          "operationId": "5bc79587-54a8-459a-b11a-12c1437a1777",
+          "reloadRequired": true
+        }
+      },
+      "acceptedRetry": {
+        "committed": 3,
+        "alreadyAvailable": 64,
+        "batches": [
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": null,
+            "logical": 32,
+            "committed": 0,
+            "alreadyAvailable": 32,
+            "stored": 0,
+            "reused": 0,
+            "bytes": 0
+          },
+          {
+            "operationId": "46e6009d-6c13-44e0-b0d1-b245e5295ee7",
+            "logical": 3,
+            "committed": 3,
+            "alreadyAvailable": 0,
+            "stored": 3,
+            "reused": 0,
+            "bytes": 31104
+          }
+        ],
+        "stopped": null
+      },
+      "journals": 18
+    },
+    "byteBoundary": {
+      "result": {
+        "committed": 3,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "5ccf177b-893f-45c9-8edf-2eb5e9f4c9f0",
+            "logical": 2,
+            "committed": 2,
+            "alreadyAvailable": 0,
+            "stored": 2,
+            "reused": 0,
+            "bytes": 67108864
+          },
+          {
+            "operationId": "9f904a7a-950e-4628-a8f5-12eabb7a098e",
+            "logical": 1,
+            "committed": 1,
+            "alreadyAvailable": 0,
+            "stored": 1,
+            "reused": 0,
+            "bytes": 576
+          }
+        ],
+        "stopped": null
+      },
+      "calls": 3,
+      "fileBytes": 33554432
+    },
+    "recovery": {
+      "recovered": {
+        "committed": 1,
+        "alreadyAvailable": 0,
+        "batches": [
+          {
+            "operationId": "bcc0fedb-2e3f-4fc8-b828-009008fe2513",
+            "logical": 1,
+            "committed": 1,
+            "alreadyAvailable": 0,
+            "stored": 1,
+            "reused": 0,
+            "bytes": 10368
+          }
+        ],
+        "stopped": null
+      },
+      "firstDigest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "recoveredDigest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+      "conflicting": {
+        "code": "AUDIO_BYTE_CONFLICT"
+      },
+      "direct": {
+        "committed": 0,
+        "alreadyAvailable": 0,
+        "batches": [],
+        "stopped": {
+          "code": "AUDIO_REPAIR_BYTES_REQUIRED",
+          "message": "Restore bytes matching this committed digest before generating this profile",
+          "reloadRequired": false
+        }
+      },
+      "otherOwner": {
+        "committed": 0,
+        "alreadyAvailable": 0,
+        "batches": [],
+        "stopped": {
+          "code": "AUDIO_REPAIR_BYTES_REQUIRED",
+          "message": "An existing committed binding protects this audio. Restore its exact bytes before generating.",
+          "reloadRequired": false
+        }
+      },
+      "rejected": {
+        "committed": 0,
+        "alreadyAvailable": 0,
+        "batches": [],
+        "stopped": {
+          "code": "AUDIO_STAGED_BYTES_UNAVAILABLE",
+          "message": "Damaged scoped audio has no confirmed uncommitted owner",
+          "reloadRequired": false
+        }
+      },
+      "uncertain": {
+        "code": "AUDIO_COMMIT_UNCERTAIN",
+        "status": "uncertain",
+        "operationId": "3fbb8695-ec1e-4d10-9aea-63d700b2a782"
+      }
+    },
+    "ui": {
+      "card": "67 committed, 0 already available.",
+      "workspace": "4 committed, 67 already available.",
+      "repeat": "0 committed, 71 already available."
+    },
+    "paragraphPlayback": {
+      "owner": "main",
+      "domain": "structured-text",
+      "sessionId": 1,
+      "state": "playing",
+      "precision": "segment",
+      "workspace": {
+        "id": "DOC_000002",
+        "uid": "WSUID_905a3897-859b-4faa-b02b-41854f092752",
+        "title": "Audio batch stress",
+        "collectionId": null
+      },
+      "card": {
+        "id": "TEXT_000005",
+        "uid": "CARDUID_7407299d-00e8-4601-b1c7-4868fbe90a70",
+        "title": "67 Sentences",
+        "ordinal": 1,
+        "total": 2,
+        "kind": "paragraph",
+        "kindOrdinal": 1
+      },
+      "unit": {
+        "id": "UNIT_000012",
+        "uid": "UNITUID_f681a1c0-7dde-4a2a-8ce4-537edf40089c",
+        "title": null,
+        "ordinal": 1,
+        "total": 1,
+        "kind": "paragraph"
+      },
+      "segment": {
+        "id": "SEGMENT_000038",
+        "uid": "SEGUID_55ae4d9e-873e-4c8b-bb01-e9a3d4af5acd",
+        "ordinal": 1,
+        "total": 67,
+        "text": "Stress 67 group 0 sentence 0.",
+        "meaning": "Arti 0 0."
+      },
+      "speaker": null,
+      "item": null,
+      "channel": "text",
+      "savedRepresentation": "full",
+      "requestedRepresentation": "full",
+      "commandRepresentation": "full",
+      "actualRepresentation": "split",
+      "representationFallback": true,
+      "boundary": null,
+      "source": "generated",
+      "provider": "edge",
+      "voice": "en-GB-SoniaNeural",
+      "rate": 1,
+      "scope": "card",
+      "queue": {
+        "kind": "card",
+        "ordinal": 1,
+        "total": 1
+      },
+      "timeline": {
+        "elapsedSeconds": 0.006597,
+        "durationSeconds": 2.592,
+        "seekable": true
+      },
+      "commandTarget": {
+        "scope": "card",
+        "boundary": null,
+        "blockId": "TEXT_000005",
+        "unitId": null,
+        "virtualUnit": false,
+        "segmentId": null,
+        "channel": null,
+        "cardChannel": null
+      }
+    },
+    "conversation": {
+      "cardId": "TEXT_000007",
+      "segments": [
+        "SEGMENT_000109",
+        "SEGMENT_000110",
+        "SEGMENT_000111"
+      ],
+      "units": [
+        [
+          "UNIT_000014",
+          "SPK_FA65FED8"
+        ],
+        [
+          "UNIT_000015",
+          "SPK_FA65FED8"
+        ],
+        [
+          "UNIT_000016",
+          "SPK_1A44B060"
+        ]
+      ],
+      "readiness": [
+        "ready",
+        "ready",
+        "ready",
+        "missing",
+        "ready"
+      ],
+      "voices": [
+        "en-GB-SoniaNeural",
+        "en-GB-SoniaNeural",
+        "en-GB-RyanNeural",
+        "id-ID-GadisNeural",
+        "id-ID-ArdiNeural"
+      ],
+      "sceneHeading": {
+        "owner": "main",
+        "domain": "structured-text",
+        "sessionId": 3,
+        "state": "playing",
+        "precision": "heading",
+        "workspace": {
+          "id": "DOC_000003",
+          "uid": "WSUID_0f6556dd-7f56-4ae4-b2d2-b786f436f6af",
+          "title": "Speaker audio stress",
+          "collectionId": null
+        },
+        "card": {
+          "id": "TEXT_000007",
+          "uid": "CARDUID_0b0de923-2869-47aa-81b8-50f945b587fc",
+          "title": "Bilingual scene",
+          "ordinal": 1,
+          "total": 1,
+          "kind": "conversation",
+          "kindOrdinal": 1
+        },
+        "unit": null,
+        "segment": null,
+        "speaker": null,
+        "item": null,
+        "channel": "text",
+        "savedRepresentation": null,
+        "requestedRepresentation": null,
+        "commandRepresentation": null,
+        "actualRepresentation": "heading",
+        "representationFallback": null,
+        "boundary": null,
+        "source": "tts",
+        "provider": "browser-tts",
+        "voice": "Fixture EN",
+        "rate": 1,
+        "scope": "card",
+        "queue": null,
+        "timeline": null,
+        "commandTarget": {
+          "scope": "card",
+          "boundary": null,
+          "blockId": "TEXT_000007",
+          "unitId": null,
+          "virtualUnit": false,
+          "segmentId": null,
+          "channel": null,
+          "cardChannel": null
+        },
+        "heading": {
+          "key": "scene",
+          "content": "Bilingual scene",
+          "channel": "text",
+          "slot": "heading",
+          "ownerUid": "CARDUID_0b0de923-2869-47aa-81b8-50f945b587fc",
+          "blockId": "TEXT_000007",
+          "id": "[\"CARDUID_0b0de923-2869-47aa-81b8-50f945b587fc\",\"heading\",\"text\"]",
+          "language": "en"
+        }
+      },
+      "observed": [
+        {
+          "unit": "UNIT_000014",
+          "speaker": "SPK_FA65FED8",
+          "voice": "en-GB-SoniaNeural"
+        },
+        {
+          "unit": "UNIT_000015",
+          "speaker": "SPK_FA65FED8",
+          "voice": "en-GB-SoniaNeural"
+        },
+        {
+          "unit": "UNIT_000016",
+          "speaker": "SPK_1A44B060",
+          "voice": "en-GB-RyanNeural"
+        }
+      ]
+    }
+  }
+}

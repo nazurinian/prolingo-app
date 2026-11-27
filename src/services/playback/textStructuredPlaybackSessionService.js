@@ -97,6 +97,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
   resolveBlockChannelPlaybackPlan = null,
   playStructuredFullStep = null,
   playHeadingStep = null,
+  trackFullFallback = false,
   atomicOnly = false,
   forceStopAll,
   addLog,
@@ -353,13 +354,21 @@ export const executeStructuredTextPlaybackSessionService = args => {
           }
           resumeSilentAnchor({ silentAudioRef });
           const cardFirstSegment = group.items[0]?.id || null;
-          if (cardFirstSegment) {
+          const resumeIndex = trackFullFallback && pass === 0 && groupIndex === firstGroupIndex && cursorId
+            ? Math.max(0, group.items.findIndex(item => item.id === cursorId)) : 0;
+          const reportCursor = segmentId => {
             if (playbackContextRef?.current?.sessionId === playbackSession) {
-              playbackContextRef.current.cursorSegmentId = cardFirstSegment;
+              playbackContextRef.current.cursorSegmentId = segmentId;
               playbackContextRef.current.blockId = group.blockId;
             }
-            onPlaybackCursor?.({ documentId: documentTree.id, segmentId: cardFirstSegment, blockId: group.blockId, orderedList: persistedOrderedList });
-          }
+            onPlaybackCursor?.({ documentId: documentTree.id, segmentId, blockId: group.blockId, orderedList: persistedOrderedList });
+          };
+          const onFallbackStep = trackFullFallback ? segmentId => {
+            setCurrentIndex(segmentId);
+            setPlayingIndex(segmentId);
+            reportCursor(segmentId);
+          } : null;
+          if (cardFirstSegment) reportCursor(group.items[resumeIndex].id);
 
           for (let channelIndex = 0; channelIndex < channelOrder.length; channelIndex += 1) {
             const channel = channelOrder[channelIndex];
@@ -374,7 +383,9 @@ export const executeStructuredTextPlaybackSessionService = args => {
             });
             const plan = typeof candidate?.then === 'function' ? await candidate : candidate;
             if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
-            const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+            const plannedSteps = Array.isArray(plan?.steps) ? plan.steps : [];
+            const steps = resumeIndex ? plannedSteps.filter(step => !step.segmentId
+              || group.items.findIndex(item => item.id === step.segmentId) >= resumeIndex) : plannedSteps;
 
             for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
               const step = steps[stepIndex];
@@ -386,16 +397,21 @@ export const executeStructuredTextPlaybackSessionService = args => {
               const item = step.segmentId
                 ? group.items.find(candidate => candidate.id === step.segmentId) || group.items[0]
                 : group.items[0];
-              setCurrentIndex(cardFirstSegment || item?.id || null);
-              // Full mode highlights the card/whole channel, never individual sentences.
-              setPlayingIndex(null);
               setSpeakingPart(step.channel || channel);
 
               const stepStartedAt = Date.now();
               if (step.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_LOCAL
                 || step.type === TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES.FULL_TTS) {
-                await playStructuredFullStep(step, group.block, item);
+                setCurrentIndex(cardFirstSegment || item?.id || null);
+                setPlayingIndex(null);
+                if (trackFullFallback && cardFirstSegment) reportCursor(cardFirstSegment);
+                await playStructuredFullStep(step, group.block, item, { onFallbackStep });
               } else {
+                if (onFallbackStep && step.segmentId) onFallbackStep(step.segmentId);
+                else {
+                  setCurrentIndex(cardFirstSegment || item?.id || null);
+                  setPlayingIndex(null);
+                }
                 await playStructuredChannel(step.content, item, step.channel || channel, {
                   representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
                   ignoreSegmentOverride: step.ignoreSegmentVoiceOverride !== false,

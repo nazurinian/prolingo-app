@@ -14,10 +14,10 @@ import { buildCanonicalTextRenderAudioFilename, buildCanonicalTextFullArtifactFi
 import { buildBookPortableAudioManifest, portableFilenameMatches, validateBookPortableAudioManifest } from '../src/domain/text/bookPortableAudioManifestDomain.js';
 import { validateProLingoTextAudioManifest } from '../src/domain/text/textAudioManifestDomain.js';
 import { bookPortableLegacyRequirements, listBookPortableTargets, resolveBookPortableReference } from '../src/domain/text/bookPortableAudioDomain.js';
-import { buildStoredZipBlob, crc32Blob } from '../src/services/audio/browserZipService.js';
+import { buildStoredZipBlob, crc32Blob, STORED_ZIP_END_BYTES, storedZipEntryBytes } from '../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../src/services/audio/textStructuredAudioZipArchiveService.js';
 import { exportBookPortableAudio, importBookPortableAudio } from '../src/services/audio/bookPortableAudioService.js';
-import { exportBookNormalAudio } from '../src/services/audio/bookNormalAudioService.js';
+import { assertNormalAudioZipCapacity, exportBookNormalAudio, NORMAL_AUDIO_ZIP_LIMITS } from '../src/services/audio/bookNormalAudioService.js';
 
 const { snapshot, ids } = createJourneyToLondonFixture();
 const tree = resolveTextLibraryDocumentTree(snapshot, ids.documentId);
@@ -73,7 +73,7 @@ test('portable relative paths round-trip and reject unsafe or colliding names', 
     await assert.rejects(buildStoredZipBlob([{ filename: unsafe, blob: audio }], { relativePaths: true }));
   }
   await assert.rejects(buildStoredZipBlob([{ filename, blob: audio }, { filename: filename.toLowerCase(), blob: audio }], { relativePaths: true }));
-  for (const names of [['Audio', 'audio/RF/x.mp3'], ['audio/RF/x.mp3', 'Audio'], ['\u212b', '\u00c5/x.mp3']]) {
+  for (const names of [['Audio', 'audio/RF/x.mp3'], ['audio/RF/x.mp3', 'Audio'], ['\u212b', '\u00c5/x.mp3'], ['\u00c5/x.mp3', '\u212b']]) {
     await assert.rejects(buildStoredZipBlob(names.map(name => ({ filename: name, blob: audio })), { relativePaths: true }));
   }
   await assert.rejects(buildStoredZipBlob([{ filename: 'x'.repeat(241), blob: audio }], { relativePaths: true }));
@@ -236,6 +236,39 @@ test('normal listening ZIP retains shared logical occurrences and reports missin
   assert(archive.entries.some(item => item.filename.includes('/Split/SC01/SG01_EN_LIBBY.mp3')));
   assert(report.omissions.some(item => item.status === 'missing-unit-input'));
   assert.deepEqual(before, copy);
+});
+
+test('normal listening rejects repeated logical bytes before starting ZIP serialization', async () => {
+  const source = firstNine(), doc = docTree(source), [split] = body(source);
+  const titled = { ...source, documents: source.documents.map(row => ({ ...row,
+    metadata: { ...row.metadata, bookMainTitleV1: { mode: 'custom', en: doc.blocks[0].segments[0].text } } })) };
+  const atomic = planBookAtomicGeneration(docTree(titled), null, 'mainTitle', 'text', preferences);
+  const binary = { ...proof, bytes: 64 * 1024 ** 2 };
+  const saved = applyBookQaAudioOperation(titled, [split, atomic].map(entry => ({ ...entry, binary })), 42).snapshot;
+  const virtualBlob = { size: binary.bytes, stream() { assert.fail('Oversized archive reached CRC serialization'); } };
+  await assert.rejects(exportBookNormalAudio({ snapshot: saved, preferences, channels: ['text'], representations: ['main-title', 'split'],
+    read: async () => ({ status: 'ready', binary, blob: virtualBlob }) }), { code: 'NORMAL_AUDIO_LIMIT' });
+});
+
+test('Normal ZIP admits exact entry and archive byte limits, including UTF-8 paths and WAV payloads', async () => {
+  const filename = 'Audio/\u00c5.wav';
+  const wav = new Blob(['RIFF test']);
+  const actual = await buildStoredZipBlob([{ filename, blob: wav }], { relativePaths: true });
+  const overhead = STORED_ZIP_END_BYTES + 76 + 2 * Buffer.byteLength(filename);
+  assert.equal(actual.size, overhead + wav.size);
+  assert.equal(storedZipEntryBytes(filename, wav.size), actual.size - STORED_ZIP_END_BYTES);
+  const { bytes, entries } = NORMAL_AUDIO_ZIP_LIMITS;
+  const exactPayload = bytes - overhead;
+  assert.equal(assertNormalAudioZipCapacity(entries - 1, STORED_ZIP_END_BYTES, filename, exactPayload), bytes);
+  assert.throws(() => assertNormalAudioZipCapacity(entries, STORED_ZIP_END_BYTES, filename, 44), { code: 'NORMAL_AUDIO_LIMIT' });
+  assert.throws(() => assertNormalAudioZipCapacity(0, STORED_ZIP_END_BYTES, filename, exactPayload + 1), { code: 'NORMAL_AUDIO_LIMIT' });
+});
+
+test('ZIP32 writer rejects count, payload and cumulative offset overflow before reading payloads', async () => {
+  const fake = size => ({ size, stream() { assert.fail('ZIP32 preflight read an inadmissible payload'); } });
+  await assert.rejects(buildStoredZipBlob(Array(0xffff).fill({ filename: 'a.mp3', blob: fake(1) })), /ZIP32 entry count/);
+  await assert.rejects(buildStoredZipBlob([{ filename: 'a.mp3', blob: fake(0x100000000) }]), /ZIP32 size/);
+  await assert.rejects(buildStoredZipBlob([{ filename: 'a.mp3', blob: fake(0x80000000) }, { filename: 'b.mp3', blob: fake(0x80000000) }]), /ZIP32 size/);
 });
 
 test('normal listening reports corrupt bytes and rejects non-unit composition rates', async () => {

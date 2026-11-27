@@ -288,6 +288,7 @@ const createAppVoiceRateHarness = ({
   const wrapped = `
     const useCallback = fn => fn;
     const useMemo = fn => fn();
+    const bookQaMode = false;
     ${transformed}
     return { resolveStructuredTextChannelVoiceState, resolveStructuredTextItemPlaybackRate };
   `;

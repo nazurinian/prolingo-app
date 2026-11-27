@@ -1,6 +1,17 @@
 # ProLingo v6.0 A1a — Book QA Persistence Capability Ledger
 
-**Status:** A1b-2B Book QA audio export. Earlier sections record their checkpoint capabilities.
+**Status:** A1b-2B is executor-verified in isolated Book QA. The A1b-G integrated browser run passed and the historical P7/HF2 audit still fails its starting-HEAD default-voice assertion. Both gates await independent source review and human approval. Production activation remains NO-GO. Earlier sections record their checkpoint capabilities.
+
+## A1b-G integrated audio hardening
+
+| Capability | Behavior |
+| --- | --- |
+| Card and Workspace Split generation | One explicit operation traverses the captured authored targets in order. Every publication retains the 32-logical-entry and 64 MiB unique-byte limits. Exact verified recordings skip synthesis and metadata publication. The next batch verifies the authoritative snapshot and exact owner identities. Cancellation or a failed batch retains accepted work. A stale, uncertain or committed-unaccepted receipt stops further publication until Refresh or reconnect reconciles the library. |
+| Damaged provisional generation | A new explicit generation may replace the bytes for one damaged provisional fingerprint in its scoped companion database. The originating job must be an exact journal match in a reconciled precommit-failed state, with no accepted marker or protected reference. Current authoritative bindings and matching committed journal entries protect the fingerprint across logical owners. The stage transaction checks the same asset metadata and origin job again before updating the blob and adding the new job. Intact provisional bytes are reused. Committed bytes can be restored only with the accepted exact byte proof. |
+| Body playback | Book QA Split fallback updates the actual Sentence, Section or Turn and resume cursor while preserving the user's Full preference. Full-scope Previous and Next navigate Cards. The Global Player derives the source, exact Speaker/voice and any seek range from the running media, with no inferred Sentence times for a Full artifact. Trusted derived Full verifies its scoped dependencies and uses 1× playback. Imported untrusted Full uses per-Sentence playback. |
+| Transfer | Text Pack identity and lineage can be restored independently of audio. Portable transfer retains exact binary proof, scoped logical references and additive profiles. A reconnect can read verified recorded audio offline and export Normal ZIP files within the selected scope. |
+
+The executor results, known historical audit failures and review prerequisites are tracked in [the integrated acceptance report](A1b_Integrated_Book_Audio_Acceptance_Report.md).
 
 ## A1b-2B listening and portable exports
 
@@ -8,7 +19,9 @@ Portable export uses the manifest's exact nested `Audio/RF/EN`, `Audio/RF/ID`, `
 
 Full Section and Turn files are export-time WAV compositions from complete current Split inputs, verified scoped bytes and effective 1× rates. Browser decoding and output validation are required. Each Unit is limited to 32 inputs, 64 MiB of input and two minutes of decoded audio. Missing or unavailable inputs, non-unit rates and composition errors are reported as omissions. No Unit audio is persisted. Derived Conversation Full is omitted unless its existing trusted-composition marker is present. QA export does not request provider synthesis.
 
-The existing A1b-G Body follow-ups remain open, including multi-batch Card generation, damaged provisional recovery, Full-to-Split presentation and broader bilingual and multi-speaker coverage.
+Normal ZIP admits up to 2,048 logical entries and 128 MiB of total stored archive bytes. Every repeated occurrence contributes its full payload, both UTF-8 path copies and both ZIP headers. Generated WAVs are checked before PCM allocation. The ZIP writer rejects count, size and offset overflow before serialization. Oversize operations have a typed retry diagnostic. Cancellation is checked during input reads, Unit decoding, CRC streaming and after the final authoritative snapshot read. The session releases its library lock before the UI reports the result.
+
+The corresponding A1b-G follow-ups are tracked in the integrated audio hardening section above.
 
 ## A1b-2A Portable Audio ZIP
 
@@ -64,7 +77,7 @@ The Book QA host supplies the same Reader panel to desktop and mobile. It expose
 | Preference writes | The typed `document.update` profile operation checks Workspace UID, channel, kind and registered Speaker identity within the existing command transaction. Reset clears the selected profile's overrides for resolution and preserves all audio and other scopes. Global settings remain session-only in Book QA. A playback session keeps its starting Workspace and profile during browsing and resets. |
 | Readiness | Exact durable bindings distinguish ready, missing, metadata-only, other-profile, stale, legacy-unverified and corrupt. Stable variants retain up to 64 distinct exact RF references. An overflow rejects the entire batch. A recorded URL belongs to its connection and exact staged key. |
 | Conversation composition | The scoped publisher reads the first expected compatible Split RF for every audible Sentence in authored order and verifies the bytes. The existing composer emits 48 kHz PCM WAV for 1× inputs. Publication records composition proof on the Full artifact. Earlier untrusted derived rows stay unverified. If composition is unavailable, playback uses per-Sentence recorded audio or Browser TTS. |
-| Recovery and repair | Generation reuses intact provisional bytes for the same exact RF. Failed cold recovery fences reads and writes until a successful Refresh. Explicit restoration requires locally supplied bytes that decode and match the committed SHA-256 and other binary proof. Restoration has no Text mutation and cannot replace another accepted digest. A damaged provisional row that lacks committed proof remains unavailable for repair. |
+| Recovery and repair | Generation reuses intact provisional bytes for the same exact RF. Failed cold recovery fences reads and writes until a successful Refresh. Explicit restoration requires locally supplied bytes that decode and match the committed SHA-256 and other binary proof. Restoration has no Text mutation and cannot replace another accepted digest. Targeted damaged provisional recovery is described under A1b-G. |
 | Deferred | Title and Heading audio, ZIP, folder access, general metadata editing, manual attachment, storage clear, release and destructive GC remain disabled. The panel uses existing Edge and Browser playback services. No new store, schema, fingerprint format or preference storage key is required. |
 
 ## A1b-1A audio foundation

@@ -79,14 +79,21 @@ export const collectBookHeadingAudioReferences = snapshot =>
   [...snapshot.documents, ...snapshot.blocks].flatMap(owner =>
     ['text', 'meaning'].flatMap(channel => Object.entries(readBookHeadingReferences(owner, channel))));
 
+const bookAudioByteProofs = (snapshot, fingerprint) => RF.test(fingerprint)
+  ? [...snapshot.audioVariants.map(variant => readBookAudioReferences(variant)[fingerprint]?.binary),
+    ...collectBookHeadingAudioReferences(snapshot).filter(([rf]) => rf === fingerprint).map(([, ref]) => ref.binary)]
+  : snapshot.blocks.flatMap(block => getTextStructuredFullAudioArtifacts(block).filter(item => item.id === fingerprint)
+    .map(item => item.metadata?.[BOOK_AUDIO_BINARY]));
+
 export const assertBookAudioCompatibleBytes = (snapshot, fingerprint, binary) => {
-  const references = RF.test(fingerprint)
-    ? [...snapshot.audioVariants.map(variant => readBookAudioReferences(variant)[fingerprint]?.binary),
-      ...collectBookHeadingAudioReferences(snapshot).filter(([rf]) => rf === fingerprint).map(([, ref]) => ref.binary)]
-    : snapshot.blocks.flatMap(block => getTextStructuredFullAudioArtifacts(block).filter(item => item.id === fingerprint)
-      .map(item => item.metadata?.[BOOK_AUDIO_BINARY]));
-  if (references.some(previous => previous && !same(previous, binary))) {
+  if (bookAudioByteProofs(snapshot, fingerprint).some(previous => previous && !same(previous, binary))) {
     fail('AUDIO_BYTE_CONFLICT', 'A committed reference already owns different bytes for this render identity');
+  }
+};
+
+export const assertBookAudioProvisionalUnbound = (snapshot, fingerprint) => {
+  if (bookAudioByteProofs(snapshot, fingerprint).some(Boolean)) {
+    fail('AUDIO_REPAIR_BYTES_REQUIRED', 'An existing committed binding protects this audio. Restore its exact bytes before generating.');
   }
 };
 

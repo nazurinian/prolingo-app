@@ -4,6 +4,9 @@ import { checkBookQaAudioStorage, bookAudioAuditLibraries } from './fixtures/a1b
 import { checkBookBodyAudio, bodyAuditLibraries } from './fixtures/a1b-1b/check-body-audio.mjs';
 import { checkBookHeadingAudio, headingAuditLibraries } from './fixtures/a1b-1c/check-heading-audio.mjs';
 import { checkBookPortableAudio, portableAuditLibraries } from './fixtures/a1b-2a/check-portable-audio.mjs';
+import { checkBookNormalAudio, normalAuditLibraries } from './fixtures/a1b-2b/check-normal-audio.mjs';
+import { checkBookAudioHardening, hardeningAuditLibraries } from './fixtures/a1b-g/check-hardening.mjs';
+import { checkBookHardeningPlayback } from './fixtures/a1b-g/check-hardening-playback.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -22,8 +25,10 @@ const audioAudit = process.env.BOOK_QA_AUDIO_AUDIT === '1';
 const bodyAudit = process.env.BOOK_QA_BODY_AUDIO_AUDIT === '1';
 const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
 const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
+const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
-  ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? portableAuditLibraries : {}) };
+  ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
+  ...(hardeningAudit ? hardeningAuditLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -37,6 +42,8 @@ await assertDir(productionRoot);
 const probeSource = `
 export * from './scripts/fixtures/a1b-1a/audio-browser-probe.js';
 export * from './scripts/fixtures/a1b-2a/portable-browser-probe.js';
+export * from './scripts/fixtures/a1b-2b/normal-browser-probe.js';
+export * from './scripts/fixtures/a1b-g/hardening-browser-probe.js';
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
 import { createBookQaConnection } from './src/services/bookQaSessionService.js';
@@ -190,13 +197,13 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
-      if (uatMode && (audioAudit || bodyAudit || headingAudit || portableAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+      if (uatMode && (audioAudit || bodyAudit || headingAudit || portableAudit || hardeningAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
         const frequency = pathname.includes('440') ? '440' : '660';
         response.setHeader('Content-Type', 'audio/mpeg');
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && (bodyAudit || headingAudit || portableAudit) && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -641,6 +648,22 @@ try {
   }
   if (portableAudit) {
     report.portableAudio = await checkBookPortableAudio({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin, call });
+    report.normalAudio = await checkBookNormalAudio({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin });
+    if (hardeningAudit) {
+      report.audioPlaybackHardening = await checkBookHardeningPlayback({ evaluate, waitFor, probe, call,
+        workspaceId: report.normalAudio.workspaceId, bilingual: report.normalAudio.bilingual });
+    }
+    const audit = await readAudit();
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+  }
+  if (hardeningAudit) {
+    report.audioHardening = await checkBookAudioHardening({ evaluate, navigate, waitFor, probe, chooseOptIn, clickButton, uatOrigin, bodyRequests });
     const audit = await readAudit();
     assert.deepEqual(await storageState(false), expectedStorage);
     assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
@@ -669,6 +692,11 @@ try {
   if (portableAudit) {
     report.production.bookPortablePanelAbsent = productionSources.every(source => !source.includes('data-book-portable-status'));
     assert(report.production.bookPortablePanelAbsent, 'Production output must exclude the Book QA Portable Audio panel');
+  }
+  if (hardeningAudit) {
+    report.production.bookAudioExecutorAbsent = productionSources.every(source => !source.includes('NORMAL_AUDIO_LIMIT')
+      && !source.includes('Damaged scoped audio has no confirmed uncommitted owner'));
+    assert(report.production.bookAudioExecutorAbsent, 'Production output must exclude scoped Book QA export and recovery executors');
   }
 
   await navigate(productionOrigin, '/?qa=book-qa');

@@ -127,3 +127,37 @@ test('scoped recorded playback honors explicit source profiles and Browser-only 
     assert.deepEqual(playback({ ...restricted, audioSourceMode: 'tts-only' }), []);
   }
 });
+
+test('bilingual render selection retains exact Workspace, Card and Sentence precedence after a voice edit', () => {
+  const speakerId = conversation.units[0].speakerId;
+  const settings = command('conversation', { edgeVoice: 'en-GB-RyanNeural' }, speakerId);
+  const idSettings = { ...settings, payload: { ...settings.payload, bodyAudioProfile: { ...settings.payload.bodyAudioProfile,
+    channel: 'meaning', values: { edgeVoice: 'id-ID-ArdiNeural' } } } };
+  let source = applyTextDataManagementCommand(fixture.snapshot, settings, access).snapshot;
+  source = applyTextDataManagementCommand(source, idSettings, access).snapshot;
+  const [one, two, three] = conversation.segments;
+  source = { ...source, blocks: source.blocks.map(row => row.id !== conversation.id ? row : { ...row,
+    metadata: buildTextStructuredAudioDownloadProfileMetadata({ metadata: row.metadata, channel: 'text', speakerId, voiceId: 'en-GB-LibbyNeural' })
+  }), segments: source.segments.map(row => row.id === one.id ? { ...row,
+    metadata: buildTextStructuredAudioDownloadProfileMetadata({ metadata: row.metadata, channel: 'text', voiceId: 'en-GB-MaisieNeural' })
+  } : row.id === two.id ? { ...row, meaning: '' } : row) };
+  const requests = (snapshot, channel) => {
+    const tree = resolveTextLibraryDocumentTree(snapshot, workspace.id);
+    const scene = tree.blocks.find(row => row.id === conversation.id);
+    return getBookBodyGenerationRequests(tree, scene, channel, { options });
+  };
+  const en = requests(source, 'text'), id = requests(source, 'meaning');
+  assert.deepEqual(en.slice(0, 3).map(entry => entry.descriptor.voiceId), ['en-GB-MaisieNeural', 'en-GB-LibbyNeural', 'en-GB-LibbyNeural']);
+  assert.equal(id.some(entry => entry.target.segmentId === two.id), false);
+  assert.equal(id.find(entry => entry.target.segmentId === three.id).descriptor.voiceId, 'id-ID-ArdiNeural');
+  const recorded = applyBookQaAudioOperation(source, [{ ...en[0], binary }, { ...id[0], binary }], 100).snapshot;
+  const edited = { ...recorded, segments: recorded.segments.map(row => row.id !== one.id ? row : { ...row,
+    metadata: buildTextStructuredAudioDownloadProfileMetadata({ metadata: row.metadata, channel: 'text', voiceId: 'en-GB-RyanNeural' })
+  }) };
+  const current = requests(edited, 'text')[0];
+  assert.equal(current.descriptor.voiceId, 'en-GB-RyanNeural');
+  assert.notEqual(current.fingerprint, en[0].fingerprint);
+  assert.equal(readBookAudioBinding(edited, current).status, 'other-profile');
+  assert.equal(readBookAudioBinding(edited, en[0]).status, 'bound');
+  assert.equal(readBookAudioBinding(edited, id[0]).status, 'bound');
+});

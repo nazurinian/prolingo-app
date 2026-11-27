@@ -83,7 +83,7 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   assert.notEqual(dest.preserve, source.workspaceId);
   const beforePreserve = await identity(dest.preserve), beforeCopy = await identity(dest.copy);
   const unrelated = await probe(`module.seedUnrelatedPortableAudio(${host}, ${q(dest.decoy)})`);
-  const first = await transfer(dest.preserve, [data.partA]);
+  const first = await transfer(dest.preserve, [data.reorganized]);
   assert.equal(first.stopped, null, q(first));
   assert.equal(first.logicalCommitted, data.partACount);
   assert(first.physicalStored < first.logicalCommitted);
@@ -98,6 +98,10 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   assert.equal(reread.physicalStored, 0);
   assert.equal(reread.alreadyAvailable, data.manifest.references.length);
   assert(reread.batches.every(batch => batch.operationId === null));
+  const reorganizedAgain = await transfer(dest.preserve, [data.reorganized]);
+  assert.equal(reorganizedAgain.logicalCommitted, 0);
+  assert.equal(reorganizedAgain.alreadyAvailable, data.partACount);
+  assert(reorganizedAgain.batches.every(batch => batch.operationId === null));
   assert.equal(await evaluate(`(async () => (await ${host}.audio.readRuntime(${q(unrelated)})).status)()`), 'ready');
   const state = await probe(`module.readPortableFixtureBindings(${host}, ${q(dest.preserve)}, ${q({ derived: data.derived, alternate: data.alternate })})`);
   assert.deepEqual(state.states, ['ready', 'ready', 'ready', 'ready', 'ready']);
@@ -105,7 +109,7 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   assert.equal(state.compositionTrusted, false);
   assert.deepEqual(state.identity, [source.workspaceUid, source.segmentUid, 4, 11, 37]);
   assert.deepEqual(await identity(dest.preserve), beforePreserve);
-  pass('Separate ZIP A and B merge, grouped reimport is a no-op, UID remapping and unrelated destination audio held');
+  pass('Reorganized ZIP A and ZIP B merge, both grouped and reorganized reimports are no-ops, and UID remapping preserves unrelated audio');
 
   const historical = await transfer(dest.preserve, data.historical);
   assert.equal(historical.stopped, null, q(historical));
@@ -143,7 +147,7 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   assert.equal(missingInputs.physicalValidated, 1);
   assert.equal(missingInputs.logicalCommitted, 0);
   assert.equal(missingInputs.logical[0].status, 'unverified-composition');
-  const interrupted = await transfer(dest.copy, [data.complete], 'cancel');
+  const interrupted = await transfer(dest.copy, [data.partA, data.partB], 'cancel');
   assert.equal(interrupted.stopped?.code, 'AUDIO_CANCELLED');
   assert.equal(interrupted.logicalCommitted, 32);
   assert.equal(interrupted.batches.length, 1);
@@ -171,6 +175,14 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
 
   await prep(names[1]);
   await connect();
+  const afterReconnect = await probe(`module.inspectTransferExports(${host}, ${q(dest.preserve)})`);
+  assert.equal(afterReconnect.libraryRoots.length, 3);
+  assert.equal(afterReconnect.workspaceRoots.length, 1);
+  assert(afterReconnect.paths.every(path => !path.includes('/02_C1_') || !path.includes('/Full_Card/')));
+  assert(afterReconnect.omissions.includes('unverified-composition'));
+  assert.equal(afterReconnect.portableReferences, data.manifest.references.length);
+  assert.deepEqual(await identity(dest.preserve), beforePreserve);
+  pass('After reconnect, Library and Workspace Normal trees differ by scope and untrusted imported Full stays out of the listening archive');
   const atomicAgain = await transfer(dest.decoy, atomic.files);
   assert.equal(atomicAgain.logicalCommitted, 0);
   assert.equal(atomicAgain.alreadyAvailable, 3);
@@ -221,5 +233,6 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   await waitFor(`document.querySelector('[data-book-portable-status]')?.textContent.includes('0 references committed and ${data.partACount} already available')`);
   await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 920, deviceScaleFactor: 1, mobile: false });
   pass('The real mobile panel imports selected ZIPs through the same bounded Workspace capability');
-  return { groups, first, next, reread, interrupted, stale, uncertain, complete, normal, portablePaths: data.manifest.assets.map(asset => asset.path) };
+  return { groups, first, next, reread, reorganizedAgain, interrupted, stale, uncertain, complete, normal, afterReconnect,
+    portablePaths: data.manifest.assets.map(asset => asset.path) };
 }

@@ -1,0 +1,274 @@
+{
+  "head": "d09401c1c63ff4332e9ee021e2cd97c23c67d709",
+  "branch": "test/text-v2-uat",
+  "method": "File SHA-256 hashes cover raw bytes. Tree hashes cover sorted UTF-8 lines with the format <sha256><two spaces><repo-relative path><LF>. Source paths are the tracked matches of pathspec plus untracked src/ and scripts/ entries.",
+  "source": {
+    "files": 513,
+    "sha256": "d72aacf8141fcd1b54d6f32d5d000e97186506733b946e9ed702bf1acd2d5c92",
+    "pathspec": [
+      "src",
+      "scripts",
+      "public",
+      "server",
+      "api",
+      "server.js",
+      "index.html",
+      "package.json",
+      "package-lock.json",
+      "vite.config.js",
+      "tailwind.config.js",
+      "postcss.config.js",
+      "eslint.config.js",
+      "vercel.json"
+    ],
+    "changedCode": [
+      {
+        "path": "scripts/audit-book-qa-a1a-browser.mjs",
+        "bytes": 49382,
+        "sha256": "236e80788f5965ef251e78de089e1008c0796a3e178aeb2726e68e903e33ada7"
+      },
+      {
+        "path": "scripts/audit-book-qa-body-audio.mjs",
+        "bytes": 12531,
+        "sha256": "73f62189b9ae14a22397d8ba787c26babcbb598e9fa631fd227b130edf4a0851"
+      },
+      {
+        "path": "scripts/audit-book-qa-portable-audio.mjs",
+        "bytes": 26735,
+        "sha256": "ec28fad574504a01a146beb6f97a867788df4ba08f9237c6fc428efa34a5561b"
+      },
+      {
+        "path": "scripts/audit-v603-p12c-conversation-playback.mjs",
+        "bytes": 93834,
+        "sha256": "a55c7b446031cbd3b0bc5c3bb58ecdff79ffa1ea49f04f97b9882145fe992630"
+      },
+      {
+        "path": "scripts/fixtures/a1b-2a/check-portable-audio.mjs",
+        "bytes": 16893,
+        "sha256": "1ce1b59c33f7cf01b96e2ad9d34bd8bae803ba26f81ee64a3e210c2b33360a5e"
+      },
+      {
+        "path": "scripts/fixtures/a1b-2a/portable-browser-probe.js",
+        "bytes": 18172,
+        "sha256": "26189f3c431efb3d1c05f06ff3d2c817f6fbfd9e3d56c2dbce1ad8a6dec09e99"
+      },
+      {
+        "path": "scripts/fixtures/a1b-2b/check-normal-audio.mjs",
+        "bytes": 7297,
+        "sha256": "355f73b49c6620dfa20e02dad79d0cbad71caa9a684ca880153d74838bf702f8"
+      },
+      {
+        "path": "scripts/fixtures/a1b-2b/normal-browser-probe.js",
+        "bytes": 14580,
+        "sha256": "5ac98144459056c301ea8dc1165dbf6623f637e0f0d1371d0fe2f65e60a46f6d"
+      },
+      {
+        "path": "scripts/fixtures/a1b-g/check-hardening-playback.mjs",
+        "bytes": 5882,
+        "sha256": "24198a8b83bbe24aae0b9c5baadc8139614673828e9cb574272ccf102a4e915c"
+      },
+      {
+        "path": "scripts/fixtures/a1b-g/check-hardening.mjs",
+        "bytes": 7476,
+        "sha256": "7ef8b02c23c74e0ec4896e4a5ba18bf87e1de2241036a5c4059886e0a8fe9f4a"
+      },
+      {
+        "path": "scripts/fixtures/a1b-g/hardening-browser-probe.js",
+        "bytes": 18319,
+        "sha256": "b037c5be88622140ec796e1ba6f3d43431288eb8fa89bf4dcb8285f2383b10d4"
+      },
+      {
+        "path": "src/App.jsx",
+        "bytes": 459638,
+        "sha256": "ac7857a4d1e8a33f1deb02b25d3f7bf78cdb3ea327a917e01d578d56dacb80e4"
+      },
+      {
+        "path": "src/components/text/BookQaBodyAudioPanel.jsx",
+        "bytes": 11038,
+        "sha256": "a5e4a7f925b117e9eec0a92d77c71b39fd34de187d798de9ff8e7280a9084c48"
+      },
+      {
+        "path": "src/components/text/BookQaPortableAudioPanel.jsx",
+        "bytes": 8693,
+        "sha256": "ff7cf615b20bbe7c5cf0738ec23e03c1a01b183b957efa2fd2655d3af9f8848c"
+      },
+      {
+        "path": "src/domain/text/bookQaAudioDomain.js",
+        "bytes": 18276,
+        "sha256": "a77941c39e232e27c84f40f487727e5e194efbf452a8027d7f80f32d48f0bfa8"
+      },
+      {
+        "path": "src/services/audio/bookNormalAudioService.js",
+        "bytes": 12568,
+        "sha256": "5023a2860ff759037b3f6a73ae9fe03653638736b395e25a70a0830ff1969da6"
+      },
+      {
+        "path": "src/services/audio/bookQaBodyAudioService.js",
+        "bytes": 2832,
+        "sha256": "a53beaf4fe1c8d45c90366f1e60c53355be7d62005dc054c67dd0f1080c1dfdd"
+      },
+      {
+        "path": "src/services/audio/browserZipService.js",
+        "bytes": 7016,
+        "sha256": "b647eb81b46d82eca6b75c04e7648332b17d470ab824b5f5a086bf20510a3def"
+      },
+      {
+        "path": "src/services/audio/textStructuredFullAudioExportService.js",
+        "bytes": 5381,
+        "sha256": "ba40f2b5ce54b4010e499c135b5f7fa664b8b803b0d53afc88cc42cc31692696"
+      },
+      {
+        "path": "src/services/bookQaAudioSessionService.js",
+        "bytes": 24669,
+        "sha256": "27e1acb93c7ac402b79c502be80234e7817fa9216e375961a48027b6c36a0052"
+      },
+      {
+        "path": "src/services/bookQaSessionService.js",
+        "bytes": 6544,
+        "sha256": "6f1e8164e8ab15d04b13aa0068549da0d6aba6f71b6bd6eb7ef6a2ca17bcf0d9"
+      },
+      {
+        "path": "src/services/persistence/bookQaAudioStagingService.js",
+        "bytes": 6759,
+        "sha256": "cd451fa522bf7a0301ae351ff7bdd80170914f2c5a5dbacb7d841e63700e6165"
+      },
+      {
+        "path": "src/services/playback/textStructuredPlaybackSessionService.js",
+        "bytes": 26477,
+        "sha256": "ee229f7f03eda7b3b0b6ddc8b1c782aee14ed50011c1a26f1c15d899ed102ef1"
+      }
+    ]
+  },
+  "normal": {
+    "files": 10,
+    "sha256": "152b70346549408c4802ecdd816335fc80a740f3d926206aac14338483e886b5",
+    "entries": [
+      {
+        "path": "dist/assets/index-BZwGR9Z_.js",
+        "bytes": 2054862,
+        "sha256": "7a655501c1026f2d0004b2a2214429239d8aeee8508f2a540f11afeaafb79ffe"
+      },
+      {
+        "path": "dist/assets/index-DiAa-aGk.css",
+        "bytes": 146823,
+        "sha256": "1095fd41511e4a5eda8d3db5ce4c1cef65cb8fadb9d107722b76b23af3632f09"
+      },
+      {
+        "path": "dist/assets/logo-bv2Zzi-r.svg",
+        "bytes": 1189,
+        "sha256": "21a338318c4105ecb2b1809209ad92729306f7e10669f18717095ecf991701a8"
+      },
+      {
+        "path": "dist/english_voices_from_msedge_tts.json",
+        "bytes": 23627,
+        "sha256": "1112721f1cc79f0968f10945d3230677aeda0b188f61547ba02b6f97fe3176bd"
+      },
+      {
+        "path": "dist/index.html",
+        "bytes": 843,
+        "sha256": "f75fbcb5e6e312d5ec1d30121a7c841a340e9556ffc3b42697480e949341c6ea"
+      },
+      {
+        "path": "dist/indonesian_voices_from_msedge_tts.json",
+        "bytes": 2924,
+        "sha256": "7571e2179b9006fba215374c1a77c9afe596fb6f564f158c1282713562d3375f"
+      },
+      {
+        "path": "dist/manifest.json",
+        "bytes": 294,
+        "sha256": "a6fcf0277cc8141a7c863dcb97eba552332a218ae00469b67294a9c0e08c7599"
+      },
+      {
+        "path": "dist/text-uat-icon-192.png",
+        "bytes": 3850,
+        "sha256": "1814f367fb6b79d47dd650763da5982904b2e379f96539f73b702f9169400f5e"
+      },
+      {
+        "path": "dist/text-uat-icon-512.png",
+        "bytes": 10343,
+        "sha256": "68d635611081dcdb349e72a7ff0315e92aa971cd9695f24f54d524b22cc604f8"
+      },
+      {
+        "path": "dist/vite.svg",
+        "bytes": 1497,
+        "sha256": "4a748afd443918bb16591c834c401dae33e87861ab5dbad0811c3a3b4a9214fb"
+      }
+    ]
+  },
+  "uat": {
+    "files": 14,
+    "sha256": "e1737d961e444991a231d226ad30b2332c8be296bfb0e553ab75506da70cf1ea",
+    "entries": [
+      {
+        "path": "dist-uat/assets/BookQaHost-CufBiORE.js",
+        "bytes": 75033,
+        "sha256": "8d9a7f1a8109582c3f30bfbafb776ddd267d7ab5c042c581e1469fd8b068dd48"
+      },
+      {
+        "path": "dist-uat/assets/StructuredTextBeta-Ec5rb1Aa.js",
+        "bytes": 203628,
+        "sha256": "a5bafff3a2b84fa0bf24d41a5e9bfd1c22d5ea19809aca6f49af20ff10f21eab"
+      },
+      {
+        "path": "dist-uat/assets/index-BR2h5Pax.js",
+        "bytes": 2078454,
+        "sha256": "ac441bec261fca5168099ea2690bde3eaa0d48333e7754332bdc713aca19eaa7"
+      },
+      {
+        "path": "dist-uat/assets/index-DiAa-aGk.css",
+        "bytes": 146823,
+        "sha256": "1095fd41511e4a5eda8d3db5ce4c1cef65cb8fadb9d107722b76b23af3632f09"
+      },
+      {
+        "path": "dist-uat/assets/logo-bv2Zzi-r.svg",
+        "bytes": 1189,
+        "sha256": "21a338318c4105ecb2b1809209ad92729306f7e10669f18717095ecf991701a8"
+      },
+      {
+        "path": "dist-uat/assets/structured-fixture-DfLyRdq2.js",
+        "bytes": 56264,
+        "sha256": "b334814a7477d19fe14451dc44d15b40548a991fd6099deaa556ca1b57f0da2c"
+      },
+      {
+        "path": "dist-uat/english_voices_from_msedge_tts.json",
+        "bytes": 23627,
+        "sha256": "1112721f1cc79f0968f10945d3230677aeda0b188f61547ba02b6f97fe3176bd"
+      },
+      {
+        "path": "dist-uat/index.html",
+        "bytes": 864,
+        "sha256": "8e84ff752a287a365b22d2ffe82ba396f0fa8416a716b6343a0abd0534abda88"
+      },
+      {
+        "path": "dist-uat/indonesian_voices_from_msedge_tts.json",
+        "bytes": 2924,
+        "sha256": "7571e2179b9006fba215374c1a77c9afe596fb6f564f158c1282713562d3375f"
+      },
+      {
+        "path": "dist-uat/manifest-text-uat.json",
+        "bytes": 374,
+        "sha256": "b3c63eb58bc405a2a1d2102429d06a0890aa57e57de1663191f3efb406829775"
+      },
+      {
+        "path": "dist-uat/manifest.json",
+        "bytes": 294,
+        "sha256": "a6fcf0277cc8141a7c863dcb97eba552332a218ae00469b67294a9c0e08c7599"
+      },
+      {
+        "path": "dist-uat/text-uat-icon-192.png",
+        "bytes": 3850,
+        "sha256": "1814f367fb6b79d47dd650763da5982904b2e379f96539f73b702f9169400f5e"
+      },
+      {
+        "path": "dist-uat/text-uat-icon-512.png",
+        "bytes": 10343,
+        "sha256": "68d635611081dcdb349e72a7ff0315e92aa971cd9695f24f54d524b22cc604f8"
+      },
+      {
+        "path": "dist-uat/vite.svg",
+        "bytes": 1497,
+        "sha256": "4a748afd443918bb16591c834c401dae33e87861ab5dbad0811c3a3b4a9214fb"
+      }
+    ]
+  }
+}

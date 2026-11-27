@@ -40,7 +40,10 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
         const exportOptions = { ...options, includeAlternate, channels: channel === 'both' ? ['text', 'meaning'] : [channel], representations,
           onProgress: progress => { if (!controller.signal.aborted) setMessage(`Checked ${progress.completed} audio occurrences.`); } };
         const { blob, report } = await (normal ? connection.audio.exportNormal(exportOptions) : connection.audio.exportPortable(exportOptions));
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          setMessage('AUDIO_CANCELLED Audio export was cancelled.');
+          return;
+        }
         setDetails(normal ? { ...report, normal: true } : report);
         setMessage(blob ? normal ? `Exported ${report.logical} listening occurrences.` : `Exported ${report.physical} verified assets and ${report.logical} references.` : 'No verified audio to export.');
         if (blob) {

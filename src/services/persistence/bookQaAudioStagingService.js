@@ -58,11 +58,17 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
         const stored = [], reused = [];
         const meta = tx.objectStore(META), bytes = tx.objectStore(BYTES), jobs = tx.objectStore(JOBS);
         if (await requestResult(jobs.get(job.id))) throw bookAudioError('AUDIO_OPERATION_EXISTS', 'This audio operation already exists');
-        for (const { fingerprint, binary, blob } of assets) {
+        for (const { fingerprint, binary, blob, recovery } of assets) {
           assertConnected();
           const id = assetId(fingerprint);
           const previous = await requestResult(meta.get(id));
-          if (previous) {
+          if (recovery) {
+            const origin = await requestResult(jobs.get(recovery.job.id));
+            if (!previous || canonicalJsonStringify(previous) !== canonicalJsonStringify(recovery.metadata)
+              || canonicalJsonStringify(origin) !== canonicalJsonStringify(recovery.job)) {
+              throw bookAudioError('AUDIO_STAGED_BYTES_UNAVAILABLE', 'Provisional audio ownership changed before recovery');
+            }
+          } else if (previous) {
             if (previous.library !== library || canonicalJsonStringify(previous.binary) !== canonicalJsonStringify(binary)) {
               throw bookAudioError('AUDIO_BYTE_CONFLICT', 'This render identity already owns different bytes');
             }
@@ -71,9 +77,15 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
             continue;
           }
           const wrapped = new Blob([blob], { type: binary.format === 'mp3' ? 'audio/mpeg' : 'audio/wav' });
-          meta.add({ id, mode: 'book-qa', library, mapKey: fingerprint, binary, size: binary.bytes, hasBlob: true,
-            batchSessionId: job.id, mimeType: wrapped.type });
-          bytes.add({ id, blob: wrapped });
+          const metadata = { id, mode: 'book-qa', library, mapKey: fingerprint, binary, size: binary.bytes, hasBlob: true,
+            batchSessionId: job.id, mimeType: wrapped.type };
+          if (recovery) {
+            meta.put(metadata);
+            bytes.put({ id, blob: wrapped });
+          } else {
+            meta.add(metadata);
+            bytes.add({ id, blob: wrapped });
+          }
           stored.push(fingerprint);
         }
         jobs.add(rowFor(job));
@@ -97,7 +109,7 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
         tx.objectStore(BYTES).put({ id, blob: new Blob([blob], { type: mimeType }) });
       });
     },
-    async read(fingerprint, expected = null) {
+    async read(fingerprint, expected = null, { withOwnership = false } = {}) {
       const id = assetId(fingerprint);
       const { meta, bytes } = await transact([META, BYTES], 'readonly', async tx => {
         const [meta, bytes] = await Promise.all([
@@ -106,12 +118,13 @@ export const createBookQaAudioStaging = (library, assertConnected) => {
         ]);
         return { meta, bytes };
       });
-      if (!bytes && (!meta || (meta.library === library && meta.mapKey === fingerprint))) return { status: 'metadata-only', binary: meta?.binary };
+      const unavailable = status => ({ status, binary: meta?.binary, ...(withOwnership ? { metadata: meta } : {}) });
+      if (!bytes && (!meta || (meta.library === library && meta.mapKey === fingerprint))) return unavailable('metadata-only');
       const binary = expected || meta?.binary;
       const blob = bytes?.blob;
       if (!binary || meta?.library !== library || meta.mapKey !== fingerprint || !(blob instanceof Blob) || blob.size !== binary.bytes
         || canonicalJsonStringify(meta.binary) !== canonicalJsonStringify(binary)
-        || await digestBookAudioBytes(await blob.arrayBuffer()) !== binary.digest) return { status: 'corrupt', binary: meta?.binary };
+        || await digestBookAudioBytes(await blob.arrayBuffer()) !== binary.digest) return unavailable('corrupt');
       return { status: 'ready', id, blob, binary };
     }
   };

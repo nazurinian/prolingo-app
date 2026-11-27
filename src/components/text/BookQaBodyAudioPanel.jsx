@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { BOOK_BODY_PROFILES, getBookBodyGenerationRequests } from '../../domain/text/bookQaBodyAudioDomain.js';
-import { BOOK_AUDIO_MAX_ITEMS, isBookBodyAudioCard } from '../../domain/text/bookQaAudioDomain.js';
+import { isBookBodyAudioCard } from '../../domain/text/bookQaAudioDomain.js';
 import { projectBookHeadings } from '../../domain/text/textBookHeadingDomain.js';
 import { getTextStructuredSpeakerRegistry } from '../../domain/text/textStructuredSpeakerIdentityDomain.js';
 import { readBookBodyAvailability } from '../../services/audio/bookQaBodyAudioService.js';
@@ -33,7 +33,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, setGlo
   const options = optionsFor(channel);
   const requests = (full, one = false) => card && (!one || segment)
     ? getBookBodyGenerationRequests(workspace, card, channel, { full, options, segment: one ? segment : null }) : [];
-  const canRun = entries => !busy && entries.length > 0 && entries.length <= BOOK_AUDIO_MAX_ITEMS;
+  const canRun = entries => !busy && entries.length > 0;
   const execute = async run => {
     if (active.current) return;
     const controller = new AbortController();
@@ -45,8 +45,11 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, setGlo
     finally { active.current = null; setBusy(false); }
   };
   const generate = entries => execute(async signal => {
-    const result = await connection.audio.generate(entries, { signal });
-    return result.results.length + ' committed';
+    const progress = ({ committed, alreadyAvailable }) => `${committed} committed, ${alreadyAvailable} already available.`;
+    const result = await connection.audio.generateSequence(entries, { signal, onProgress: next => setMessage(progress(next)) });
+    const stopped = result.stopped;
+    return stopped ? [progress(result), stopped.code, stopped.message, stopped.reloadRequired ? 'Refresh before retrying.' : ''].filter(Boolean).join(' ')
+      : progress(result);
   });
   const verify = entries => execute(async signal => {
     const counts = {};
@@ -65,6 +68,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, setGlo
     return 'Workspace audio profile saved.';
   });
   const one = requests(false, true), all = requests(false), full = requests(true);
+  const workspaceSplit = cards.flatMap(item => getBookBodyGenerationRequests(workspace, item, channel, { options }));
   return (
     <details className="mx-2 mb-2 rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700" data-book-body-audio="true"
       onToggle={event => { const next = event.currentTarget.open; setOpen(next); if (next) onOpen(); }}>
@@ -84,11 +88,11 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, setGlo
         <div className="flex flex-wrap gap-2">
           <button className={buttonClass} type="button" onClick={() => generate(one)} disabled={!canRun(one)}>Generate Sentence</button>
           <button className={buttonClass} type="button" onClick={() => generate(all)} disabled={!canRun(all)}>Generate Card Split</button>
+          <button className={buttonClass} type="button" onClick={() => generate(workspaceSplit)} disabled={!canRun(workspaceSplit)}>Generate Workspace Split</button>
           <button className={buttonClass} type="button" onClick={() => generate(full)} disabled={!canRun(full)}>{card?.blockType === 'conversation' ? 'Compose Scene Full' : 'Generate Card Full'}</button>
           <button className={buttonClass} type="button" onClick={() => verify([...all, ...full])} disabled={busy || !card}>Verify Card audio</button>
           {busy && <button className={buttonClass} type="button" onClick={() => active.current?.abort()}>Cancel</button>}
         </div>
-        {all.length > BOOK_AUDIO_MAX_ITEMS && <p>Cards over 32 Split targets can be generated one Sentence at a time.</p>}
         <button className={buttonClass} type="button" onClick={() => setRepairOpen(value => !value)} aria-expanded={repairOpen}>Restore committed bytes</button>
         {repairOpen && <div className="flex flex-wrap gap-2">
           {[['Sentence', one[0]], ['Full Card', full[0]]].map(([label, entry]) => entry && <label key={label} className="text-xs">

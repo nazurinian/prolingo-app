@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from '../domain/text/textCanonicalFingerprintDomain.js';
-import { BOOK_AUDIO_MAX_BYTES, BOOK_AUDIO_MAX_ITEMS, assertBookAudioCompatibleBytes, assertBookAudioReferenceCapacity, bookAudioCommitKey, bookAudioError,
+import { BOOK_AUDIO_MAX_BYTES, BOOK_AUDIO_MAX_ITEMS, assertBookAudioCompatibleBytes, assertBookAudioProvisionalUnbound, assertBookAudioReferenceCapacity, bookAudioCommitKey, bookAudioError,
   isBookAudioOperationId, readBookAudioBinding, resolveBookAudioTarget } from '../domain/text/bookQaAudioDomain.js';
 import { validateBookAudioBytes } from './audio/bookQaAudioBytes.js';
 import { createBookQaAudioStaging } from './persistence/bookQaAudioStagingService.js';
@@ -25,16 +25,16 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
   const connectionId = crypto.randomUUID();
   const urls = new Map();
   const lifetime = new AbortController();
-  let pending = false, disposed = false, touched = false, recovered = false;
+  let pending = false, generating = false, disposed = false, touched = false, recovered = false;
   let coldRead;
   const assertCurrent = () => {
     if (disposed) fail('AUDIO_CONNECTION_CLOSED', 'The audio connection has ended');
   };
   const staging = createBookQaAudioStaging(library, assertCurrent);
   const commit = createDisposableBookAudioCommitter({ dbName: library, connectionId, assertCurrent });
-  const guarded = async (run, signal) => {
+  const guarded = async (run, signal, generationBatch = false) => {
     assertCurrent();
-    if (pending) fail('AUDIO_BUSY', 'Another audio operation is active on this connection');
+    if (pending || (generating && !generationBatch)) fail('AUDIO_BUSY', 'Another audio operation is active on this connection');
     if (typeof navigator.locks?.request !== 'function') fail('AUDIO_LOCK_UNAVAILABLE', 'Cross-tab audio locking is unavailable');
     pending = true;
     try {
@@ -82,15 +82,33 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     recovered = true;
     return loaded;
   };
-  const render = async (entry, owner, before, signal) => {
+  const proveDamagedProvisional = async (initial, fingerprint, metadata) => {
+    assertBookAudioProvisionalUnbound(initial.snapshot, fingerprint);
+    const unproven = () => fail('AUDIO_STAGED_BYTES_UNAVAILABLE', 'Damaged scoped audio has no confirmed uncommitted owner');
+    if (metadata?.library !== library || metadata.mode !== 'book-qa' || metadata.mapKey !== fingerprint
+      || !metadata.binary || !isBookAudioOperationId(metadata.batchSessionId)) unproven();
+    const jobs = await staging.listJobs();
+    const job = jobs.find(item => item.id === metadata.batchSessionId);
+    if (jobs.some(item => item.mode !== 'book-qa' || item.library !== library || !isBookAudioOperationId(item.id)
+      || !isBookAudioOperationId(item.connectionId) || !Array.isArray(item.entries)
+      || !['precommit-failed', 'committed'].includes(item.status))) unproven();
+    if (!job || job.status !== 'precommit-failed' || markerFor(initial, job)
+      || !job.entries.some(entry => entry.fingerprint === fingerprint && same(entry.binary, metadata.binary))) unproven();
+    if (jobs.some(item => (item.status === 'committed' || markerFor(initial, item))
+      && item.entries.some(entry => entry.fingerprint === fingerprint))) unproven();
+    return { job, metadata };
+  };
+  const render = async (entry, owner, initial, signal) => {
     const { descriptor, fingerprint } = entry;
-    const binding = readBookAudioBinding(before, entry);
+    const binding = readBookAudioBinding(initial.snapshot, entry);
     const proof = binding.status === 'bound' ? binding.binary : null;
-    const staged = await staging.read(fingerprint, proof);
+    const staged = await staging.read(fingerprint, proof, { withOwnership: true });
     checkCancelled(signal);
-    if (staged.status !== 'ready' && (proof || staged.binary)) {
+    let recovery;
+    if (staged.status !== 'ready' && (proof || staged.metadata || staged.status === 'corrupt')) {
       if (proof) fail('AUDIO_REPAIR_BYTES_REQUIRED', 'Restore bytes matching this committed digest before generating this profile');
-      fail('AUDIO_STAGED_BYTES_UNAVAILABLE', 'Existing scoped bytes for this render identity failed verification');
+      recovery = await proveDamagedProvisional(initial, fingerprint, staged.metadata);
+      checkCancelled(signal);
     }
     if (descriptor.engine !== 'derived') {
       if (staged.status === 'ready') return { blob: staged.blob, binary: staged.binary };
@@ -99,7 +117,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         engine: 'edge', text: content, engineVoiceId: descriptor.voiceId,
         edgeRate: descriptor.rate, edgePitch: descriptor.pitch, signal
       });
-      return { blob };
+      return { blob, recovery };
     }
     if (binding.trustedComposition && staged.status === 'ready') return { ...staged, trustedComposition: true };
     const blobs = [];
@@ -112,11 +130,11 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     const composed = await buildDerivedTextConversationFullAudioWav({
       plan: { composition: descriptor.composition, entries: owner.dependencies, readyToCompose: true,
         fullArtifactRequirement: { descriptor } },
-      blobs
+      blobs, signal
     });
-    return { blob: composed.blob, trustedComposition: true };
+    return { blob: composed.blob, trustedComposition: true, recovery };
   };
-  const perform = async (items, callerSignal, generated, portable = null) => {
+  const perform = async (items, callerSignal, generated, portable = null, sequence = null) => {
     assertCurrent();
     assertWritable();
     const signal = callerSignal ? AbortSignal.any([callerSignal, lifetime.signal]) : lifetime.signal;
@@ -138,9 +156,9 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     });
     if (totalBytes > BOOK_AUDIO_MAX_BYTES) fail('INVALID_AUDIO_REQUEST', 'The operation exceeds the 64 MiB byte limit');
     const before = getSnapshot();
-    if (portable && portable.snapshot !== before) {
+    if ((portable && portable.snapshot !== before) || (sequence && sequence.snapshot !== before)) {
       blockWrites();
-      fail('STALE_RESULT', 'The connected library changed during portable transfer');
+      fail('STALE_RESULT', 'The connected library changed between audio batches');
     }
     const fingerprint = canonicalJsonStringify(before), revision = getRevision();
     assertBookAudioReferenceCapacity(before, captured.map(({ entry }) => entry), { bodyOnly: generated || Boolean(portable) });
@@ -153,24 +171,39 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         fail('STALE_RESULT', 'Audio operation was captured against an older library snapshot');
       }
       const entries = [], assets = new Map(), available = [], repaired = [], reused = new Set();
-      let renderedBytes = 0;
+      let renderedBytes = 0, processed = 0;
       for (const { blob: supplied, entry } of captured) {
+        checkCancelled(signal);
         const owner = resolveBookAudioTarget(before, entry);
         for (const input of owner.dependencies ?? []) {
-          if ((await staging.read(input.fingerprint, input.binary)).status !== 'ready') {
-            fail('INVALID_AUDIO_COMPOSITION', 'A referenced composition input is unavailable');
+          if ((await staging.read(input.fingerprint, input.binary)).status !== 'ready') fail('INVALID_AUDIO_COMPOSITION', 'A referenced composition input is unavailable');
+        }
+        if (sequence) {
+          const binding = readBookAudioBinding(before, entry);
+          if (binding.status === 'bound' && (entry.descriptor.engine !== 'derived' || binding.trustedComposition)
+            && (await staging.read(entry.fingerprint, binding.binary)).status === 'ready') {
+            available.push(entry);
+            processed++;
+            continue;
           }
         }
         const prior = assets.get(entry.fingerprint);
-        const prepared = generated ? (prior || await render(entry, owner, before, signal)) : { blob: supplied };
-        const { blob, trustedComposition } = prepared;
+        const carried = sequence?.carry?.fingerprint === entry.fingerprint ? sequence.carry.prepared : null;
+        if (carried) sequence.carry = null;
+        const prepared = generated ? (prior || carried || await render(entry, owner, initial, signal)) : { blob: supplied };
+        const { blob, trustedComposition, recovery } = prepared;
         const proof = portable?.proofs.get(entry.fingerprint);
         const binary = prepared.binary || (proof?.blob === blob ? proof?.binary : null) || await validateBookAudioBytes(blob, owner.format);
         checkCancelled(signal);
         assertBookAudioCompatibleBytes(before, entry.fingerprint, binary);
         if (prior && !same(prior.binary, binary)) fail('AUDIO_BYTE_CONFLICT', 'Operation supplies conflicting bytes for the same render identity');
+        if (!prior && renderedBytes + blob.size > BOOK_AUDIO_MAX_BYTES) {
+          if (!sequence || !entries.length) fail('INVALID_AUDIO_REQUEST', 'Rendered audio exceeds the 64 MiB operation limit');
+          sequence.carry = { fingerprint: entry.fingerprint, prepared: { ...prepared, binary } };
+          break;
+        }
         if (!prior) renderedBytes += blob.size;
-        if (renderedBytes > BOOK_AUDIO_MAX_BYTES) fail('INVALID_AUDIO_REQUEST', 'Rendered audio exceeds the 64 MiB operation limit');
+        processed++;
         if (portable) {
           const binding = readBookAudioBinding(before, entry);
           if (binding.status === 'bound' && same(binding.binary, binary)) {
@@ -192,20 +225,34 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
             continue;
           }
         }
-        assets.set(entry.fingerprint, { fingerprint: entry.fingerprint, binary, blob, trustedComposition });
+        assets.set(entry.fingerprint, { fingerprint: entry.fingerprint, binary, blob, trustedComposition, recovery });
         entries.push({ ...entry, binary, ...(trustedComposition ? { trustedComposition } : {}) });
       }
       if (!entries.length) {
         checkCancelled(signal);
-        if (getSnapshot() !== before || (await loadState()).snapshotFingerprint !== fingerprint) {
+        const latest = await loadState();
+        checkCancelled(signal);
+        assertCurrent();
+        if (getSnapshot() !== before || latest.snapshotFingerprint !== fingerprint) {
           blockWrites();
-          fail('STALE_RESULT', 'The connected library changed during portable readback');
+          fail('STALE_RESULT', 'The connected library changed during audio readback');
         }
-        return { results: [], snapshot: before, available, repaired, stored: [], reused: [...reused] };
+        return { results: [], snapshot: before, available, repaired, stored: [], reused: [...reused], ...(sequence ? { processed } : {}) };
       }
       const job = { id: crypto.randomUUID(), library, connectionId, status: 'provisional', createdAt: Date.now(), entries, revision };
       let phase = 'staging', receipt;
       try {
+        if ([...assets.values()].some(asset => asset.recovery)) {
+          const latest = await loadState();
+          checkCancelled(signal);
+          if (latest.snapshotFingerprint !== fingerprint || getSnapshot() !== before) {
+            fail('STALE_RESULT', 'The library changed before provisional recovery');
+          }
+          for (const asset of assets.values()) {
+            if (asset.recovery) asset.recovery = await proveDamagedProvisional(latest, asset.fingerprint, asset.recovery.metadata);
+          }
+          checkCancelled(signal);
+        }
         const physical = await staging.stage(job, assets.values());
         phase = 'provisional';
         for (const { fingerprint: key, binary } of assets.values()) {
@@ -234,7 +281,8 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         assertCurrent();
         publish(loaded);
         return { status: 'committed', operationId: job.id, results: receipt.result,
-          ...(portable ? { snapshot: getSnapshot(), available, repaired, stored: physical.stored, reused: [...new Set([...reused, ...physical.reused])] } : {}) };
+          ...(portable ? { snapshot: getSnapshot(), available, repaired, stored: physical.stored, reused: [...new Set([...reused, ...physical.reused])] } : {}),
+          ...(sequence ? { snapshot: getSnapshot(), processed, available, stored: physical.stored, reused: physical.reused, bytes: renderedBytes } : {}) };
       } catch (error) {
         const status = phase === 'committed-unaccepted' ? phase
           : phase === 'committing' && !error.audioPrecommitFailure && !['STALE_RESULT', 'AUDIO_CANCELLED'].includes(error.code)
@@ -247,7 +295,36 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         }
         throw Object.assign(bookAudioError(errorCode(error, status), error.message), { status, operationId: job.id, reloadRequired: reconcile });
       }
-    }, signal);
+    }, signal, Boolean(sequence));
+  };
+  const generateSequence = async (items, { signal, onProgress } = {}) => {
+    assertCurrent();
+    assertWritable();
+    if (pending || generating) fail('AUDIO_BUSY', 'Another audio operation is active on this connection');
+    if (!Array.isArray(items) || !items.length) fail('INVALID_AUDIO_REQUEST', 'Choose at least one audio target');
+    const requests = structuredClone(items);
+    if (new Set(requests.map(canonicalJsonStringify)).size !== requests.length) fail('INVALID_AUDIO_REQUEST', 'Generation contains a duplicate audio target');
+    const sequence = { snapshot: getSnapshot(), carry: null };
+    const report = { committed: 0, alreadyAvailable: 0, batches: [], stopped: null };
+    generating = true;
+    try {
+      for (let offset = 0; offset < requests.length;) {
+        checkCancelled(signal);
+        const batch = await perform(requests.slice(offset, offset + BOOK_AUDIO_MAX_ITEMS), signal, true, null, sequence);
+        sequence.snapshot = batch.snapshot;
+        offset += batch.processed;
+        report.committed += batch.results.length;
+        report.alreadyAvailable += batch.available.length;
+        report.batches.push({ operationId: batch.operationId ?? null, logical: batch.processed,
+          committed: batch.results.length, alreadyAvailable: batch.available.length,
+          stored: batch.stored.length, reused: batch.reused.length, bytes: batch.bytes ?? 0 });
+        if (offset < requests.length) await onProgress?.({ committed: report.committed, alreadyAvailable: report.alreadyAvailable, total: requests.length });
+      }
+    } catch (error) {
+      report.stopped = { code: error.code ?? 'AUDIO_GENERATION_FAILED', message: error.message,
+        status: error.status, operationId: error.operationId, reloadRequired: Boolean(error.reloadRequired) || error.code === 'STALE_RESULT' };
+    } finally { generating = false; }
+    return report;
   };
   const exportAudio = (options, exporter) => {
       assertCurrent();
@@ -265,7 +342,10 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
         const result = await exporter({ ...options, snapshot, read: staging.read, signal });
         checkCancelled(signal);
         assertCurrent();
-        if (getSnapshot() !== snapshot || (await loadState()).snapshotFingerprint !== canonicalJsonStringify(snapshot)) {
+        const latest = await loadState();
+        checkCancelled(signal);
+        assertCurrent();
+        if (getSnapshot() !== snapshot || latest.snapshotFingerprint !== canonicalJsonStringify(snapshot)) {
           blockWrites();
           fail('STALE_RESULT', 'The connected library changed during export');
         }
@@ -274,10 +354,11 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
   };
   return {
     name: staging.name,
-    get pending() { return pending; },
+    get pending() { return pending || generating; },
     get touched() { return touched; },
     submit: (items, { signal } = {}) => perform(items, signal, false),
     generate: (items, { signal } = {}) => perform(items, signal, true),
+    generateSequence,
     exportNormal: options => exportAudio(options, exportBookNormalAudio),
     exportPortable: options => exportAudio(options, exportBookPortableAudio),
     importPortable: (files, options) => {
@@ -317,8 +398,18 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
       const captured = getSnapshot();
       const binding = readBookAudioBinding(captured, entry);
       if (binding.status !== 'bound') return binding;
+      if (binding.trustedComposition) {
+        for (const input of resolveBookAudioTarget(captured, entry).dependencies) {
+          const source = await staging.read(input.fingerprint, input.binary);
+          assertCurrent();
+          assertReadable();
+          if (captured !== getSnapshot()) fail('STALE_RESULT', 'Audio source changed during runtime read');
+          if (source.status !== 'ready') return { status: 'unavailable-composition-input' };
+        }
+      }
       const result = await staging.read(entry.fingerprint, binding.binary);
       assertCurrent();
+      assertReadable();
       if (captured !== getSnapshot()) fail('STALE_RESULT', 'Audio source changed during runtime read');
       if (result.status !== 'ready') return result;
       if (withUrl && !urls.has(result.id)) urls.set(result.id, URL.createObjectURL(result.blob));

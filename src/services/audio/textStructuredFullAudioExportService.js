@@ -42,7 +42,8 @@ const bufferToPcm16 = (audioBuffer, channels) => {
   return bytes;
 };
 
-export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = null } = {}) => {
+export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = null, signal, maxDuration = Infinity, checkOutputSize } = {}) => {
+  signal?.throwIfAborted();
   const source = (Array.isArray(blobs) ? blobs : []).filter(blob => blob instanceof Blob && blob.size > 0);
   if (!source.length) throw new Error('Full derived audio requires at least one readable Segment binary.');
   const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
@@ -50,9 +51,14 @@ export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = nu
   const context = sampleRate ? new AudioContextCtor({ sampleRate }) : new AudioContextCtor();
   try {
     const decoded = [];
+    let duration = 0;
     for (const blob of source) {
       const arrayBuffer = await blob.arrayBuffer();
+      signal?.throwIfAborted();
       const audio = await context.decodeAudioData(arrayBuffer.slice(0));
+      signal?.throwIfAborted();
+      duration += Number(audio?.duration || 0);
+      if (duration > maxDuration) throw new Error('Decoded Full audio exceeds the duration limit');
       decoded.push(audio);
     }
     const outputSampleRate = context.sampleRate || decoded[0]?.sampleRate;
@@ -60,6 +66,7 @@ export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = nu
     const channels = Math.min(2, Math.max(1, ...decoded.map(buffer => Number(buffer?.numberOfChannels || 1))));
     const frames = decoded.reduce((sum, buffer) => sum + Number(buffer?.length || 0), 0);
     if (!frames) throw new Error('Decoded Full audio is empty.');
+    checkOutputSize?.(44 + frames * channels * 2);
     const parts = [wavHeader({ sampleRate: outputSampleRate, channels, frames })];
     decoded.forEach(buffer => parts.push(bufferToPcm16(buffer, channels)));
     return {
@@ -67,7 +74,7 @@ export const buildDerivedTextFullAudioWav = async ({ blobs = [], sampleRate = nu
       segmentCount: decoded.length,
       sampleRate: outputSampleRate,
       channels,
-      duration: decoded.reduce((sum, buffer) => sum + Number(buffer?.duration || 0), 0),
+      duration,
       format: 'wav-pcm16-derived-v1'
     };
   } finally {
@@ -82,7 +89,7 @@ export const buildDerivedTextFullAudioFilename = ({ documentTitle = 'Text', bloc
 
 // Persistent Conversation export uses the existing decoder/concatenator only when every
 // planned input is available. Never silently omit a Sentence or label unbaked rate changes.
-export const buildDerivedTextConversationFullAudioWav = async ({ plan, blobs = [] } = {}) => {
+export const buildDerivedTextConversationFullAudioWav = async ({ plan, blobs = [], signal } = {}) => {
   if (plan?.composition?.some(input => input.playbackRate !== 1)) {
     throw new Error('Conversation Full file requires rate-aware assembly; retain per-Sentence playback for non-unit rates');
   }
@@ -90,7 +97,7 @@ export const buildDerivedTextConversationFullAudioWav = async ({ plan, blobs = [
     || blobs.some(blob => !(blob instanceof Blob) || blob.size === 0)) {
     throw new Error('Conversation Full composition requires every planned Sentence binary');
   }
-  const output = await buildDerivedTextFullAudioWav({ blobs, sampleRate: plan.fullArtifactRequirement.descriptor.sampleRate });
+  const output = await buildDerivedTextFullAudioWav({ blobs, sampleRate: plan.fullArtifactRequirement.descriptor.sampleRate, signal });
   if (output.sampleRate !== plan.fullArtifactRequirement.descriptor.sampleRate) throw new Error('Unexpected Conversation Full output sample rate');
   return { ...output, fullArtifactRequirement: plan.fullArtifactRequirement };
 };
