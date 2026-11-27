@@ -1,4 +1,4 @@
-import { BOOK_AUDIO_BINARY, readBookAudioReferences, readBookHeadingReferences, resolveBookAudioTarget, isBookBodyAudioCard, bookAudioError } from './bookQaAudioDomain.js';
+import { BOOK_AUDIO_BINARY, BOOK_AUDIO_COMPOSITION, readBookAudioReferences, readBookHeadingReferences, resolveBookAudioTarget, isBookBodyAudioCard, bookAudioError } from './bookQaAudioDomain.js';
 import { resolveTextLibraryDocumentTree } from './textLibraryDomain.js';
 import { resolveBookAtomicHeading, planBookAtomicGeneration } from './bookQaHeadingAudioDomain.js';
 import { getBookBodyGenerationRequests } from './bookQaBodyAudioDomain.js';
@@ -48,15 +48,30 @@ const validates = (snapshot, entry) => {
   catch (error) { if (error.code) return error.code; throw error; }
 };
 
-const targetProfiles = (target, preferences) => {
+const targetProfile = (target, channel, preferences) => {
   const { doc, block, segment, native, representation } = target;
   const kind = BOOK_PORTABLE_KINDS[representation];
-  return channels.flatMap(channel => (kind === 'heading'
-    ? [planBookAtomicGeneration(doc, block, native.slot, channel, preferences)]
-    : getBookBodyGenerationRequests(doc, block, channel, { segment, full: kind === 'full', options: { preferences, globalRate: 1 } })).filter(Boolean));
+  return kind === 'heading' ? planBookAtomicGeneration(doc, block, native.slot, channel, preferences)
+    : getBookBodyGenerationRequests(doc, block, channel, { segment, full: kind === 'full', options: { preferences, globalRate: 1 } })[0];
 };
+const refFor = (target, fingerprint, channel) => ({
+  fingerprint, representation: target.representation, workspaceUid: target.doc.uid,
+  ownerUid: target.owner.uid, channel, order: target.order
+});
+
+// An authored channel can require audio even when the snapshot has no stored reference.
+export const listBookPortableRequirements = (targets, preferences = {}) => targets.flatMap(target =>
+  channels.flatMap(channel => {
+    const entry = targetProfile(target, channel, preferences);
+    if (entry) return [{ entry, ref: refFor(target, entry.fingerprint, channel) }];
+    if (target.representation === 'full-conversation' && target.block.segments.some(segment => segment[channel]?.trim())) {
+      return [{ entry: null, ref: refFor(target, null, channel), status: 'unsupported-composition' }];
+    }
+    return [];
+  }));
+
 export const currentBookPortableFingerprints = (targets, preferences) => new Map(targets.map(target =>
-  [JSON.stringify(target.native), new Set(targetProfiles(target, preferences).map(entry => entry.fingerprint))]));
+  [JSON.stringify(target.native), new Set(channels.map(channel => targetProfile(target, channel, preferences ?? {})?.fingerprint).filter(Boolean))]));
 
 const targetContentFingerprint = (target, channel) => {
   const kind = BOOK_PORTABLE_KINDS[target.representation];
@@ -67,6 +82,7 @@ const targetContentFingerprint = (target, channel) => {
 };
 
 export const collectBookPortableReferences = (snapshot, targets, preferences = {}) => {
+  const current = currentBookPortableFingerprints(targets, preferences);
   const variants = new Map();
   for (const variant of snapshot.audioVariants) {
     const list = variants.get(variant.segmentId) ?? [];
@@ -74,43 +90,52 @@ export const collectBookPortableReferences = (snapshot, targets, preferences = {
     variants.set(variant.segmentId, list);
   }
   return targets.flatMap(target => {
-    const { doc, block, segment, owner, representation, order } = target;
+    const { block, segment, owner, representation, native } = target;
     const kind = BOOK_PORTABLE_KINDS[representation];
-    const expected = new Set(targetProfiles(target, preferences).map(entry => entry.fingerprint));
+    const expected = current.get(JSON.stringify(native));
     const refs = kind === 'split'
-      ? (variants.get(segment.id) ?? []).flatMap(variant => Object.entries(readBookAudioReferences(variant)))
+      ? (variants.get(segment.id) ?? []).flatMap(variant => Object.entries(readBookAudioReferences(variant)).map(([fingerprint, row]) =>
+        [fingerprint, { ...row, channel: variant.channel }]))
       : kind === 'heading'
         ? channels.flatMap(channel => Object.entries(readBookHeadingReferences(owner, channel)))
         : getTextStructuredFullAudioArtifacts(block).map(artifact => [artifact.fullArtifactFingerprint, {
-          descriptor: artifact.descriptor, binary: artifact.metadata?.[BOOK_AUDIO_BINARY]
+          descriptor: artifact.descriptor, binary: artifact.metadata?.[BOOK_AUDIO_BINARY],
+          trustedComposition: artifact.metadata?.[BOOK_AUDIO_COMPOSITION] === true
         }]);
-    return refs.map(([fingerprint, { descriptor, binary }]) => {
-      const ref = { fingerprint, representation, workspaceUid: doc.uid, ownerUid: owner.uid, channel: descriptor?.channel ?? null, order };
+    return refs.map(([fingerprint, { descriptor, binary, channel, trustedComposition }]) => {
+      const ref = refFor(target, fingerprint, descriptor?.channel ?? channel ?? null);
       const entry = requestFor(target, fingerprint, descriptor);
-      const proof = binary ? 'verified' : 'legacy-unverified';
-      const state = !portablePhysicalType(fingerprint, descriptor) ? 'unsupported'
-        : validates(snapshot, entry) ? 'stale' : expected.has(fingerprint) ? 'current' : 'other-profile';
-      return { entry, ref, binary, proof, state };
+      let state = 'unsupported';
+      if (portablePhysicalType(fingerprint, descriptor)) {
+        const error = validates(snapshot, entry);
+        state = error === 'INVALID_AUDIO_COMPOSITION' && targetContentFingerprint(target, ref.channel) === descriptor.contentFingerprint
+          ? 'missing-composition-input' : error ? 'stale' : expected.has(fingerprint) ? 'current' : 'other-profile';
+      }
+      return { entry, ref, binary, state, trustedComposition };
     });
   });
 };
 
 export const resolveBookPortableReference = (snapshot, targets, ref, asset) => {
-  const choices = targets.filter(target => target.representation === ref.representation);
+  // 'rf' is an internal compatibility marker for a file without logical ownership.
+  const choices = targets.filter(target => ref.representation === 'rf'
+    ? BOOK_PORTABLE_KINDS[target.representation] !== 'full' : target.representation === ref.representation);
+  const matchedTarget = target => ({
+    status: 'matched', entry: requestFor(target, asset.fingerprint, asset.descriptor), representation: target.representation
+  });
   const exact = ref.ownerUid && choices.find(target => target.owner.uid === ref.ownerUid);
   if (exact) {
     const entry = requestFor(exact, asset.fingerprint, asset.descriptor);
     const invalid = validates(snapshot, entry);
-    return invalid ? { status: invalid === 'INVALID_AUDIO_COMPOSITION' ? 'unverified-composition' : 'stale' } : { status: 'matched', entry };
+    return invalid ? { status: invalid === 'INVALID_AUDIO_COMPOSITION' ? 'unverified-composition' : 'stale' } : matchedTarget(exact);
   }
   const copies = ref.ownerUid ? choices.filter(target =>
     target.owner.metadata?.prolingoTextPackSource?.sourceUid === ref.ownerUid
     && (target.doc.uid === ref.workspaceUid || target.doc.metadata?.prolingoTextPackSource?.sourceUid === ref.workspaceUid)) : [];
   if (copies.length) {
-    const candidates = copies.map(target => requestFor(target, asset.fingerprint, asset.descriptor));
-    const checked = candidates.map(entry => ({ entry, error: validates(snapshot, entry) }));
+    const checked = copies.map(target => ({ target, error: validates(snapshot, requestFor(target, asset.fingerprint, asset.descriptor)) }));
     const matching = checked.filter(row => !row.error);
-    if (matching.length === 1) return { status: 'matched', entry: matching[0].entry };
+    if (matching.length === 1) return matchedTarget(matching[0].target);
     return { status: matching.length > 1 ? 'ambiguous'
       : checked.some(row => row.error === 'INVALID_AUDIO_COMPOSITION') ? 'unverified-composition' : 'stale' };
   }
@@ -121,27 +146,21 @@ export const resolveBookPortableReference = (snapshot, targets, ref, asset) => {
     if (targetContentFingerprint(target, asset.descriptor.channel) !== asset.descriptor.contentFingerprint) continue;
     const entry = requestFor(target, asset.fingerprint, asset.descriptor);
     const error = validates(snapshot, entry);
-    if (!error) matched.push(entry);
+    if (!error) matched.push(target);
     else if (error === 'INVALID_AUDIO_COMPOSITION') compositionUnavailable = true;
     if (matched.length > 1) return { status: 'ambiguous' };
   }
-  return matched.length ? { status: 'matched', entry: matched[0] }
+  return matched.length ? matchedTarget(matched[0])
     : { status: compositionUnavailable ? 'unverified-composition' : 'unmatched' };
 };
 
-export const bookPortableLegacyRequirements = (snapshot, targets, preferences) => {
+export const bookPortableLegacyRequirements = (snapshot, targets, preferences = {}) => {
   const known = new Map();
   for (const { entry, state } of collectBookPortableReferences(snapshot, targets, preferences)) {
     if (['current', 'other-profile'].includes(state)) known.set(entry.fingerprint, entry.descriptor);
   }
-  for (const { doc, block, segment, representation } of targets) {
-    if (representation !== 'split' && representation !== 'full-paragraph') continue;
-    for (const channel of channels) {
-      const [entry] = getBookBodyGenerationRequests(doc, block, channel, {
-        segment, full: representation === 'full-paragraph', options: { preferences, globalRate: 1 }
-      });
-      if (entry) known.set(entry.fingerprint, entry.descriptor);
-    }
+  for (const { entry, ref } of listBookPortableRequirements(targets, preferences)) {
+    if (entry && ref.representation !== 'full-conversation') known.set(entry.fingerprint, entry.descriptor);
   }
   return known;
 };

@@ -8,7 +8,7 @@ import { seedDisposableTextManagementDatabase } from '../../../src/services/pers
 import { buildStoredZipBlob } from '../../../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../../../src/services/audio/textStructuredAudioZipArchiveService.js';
 import { buildBookPortableAudioManifest } from '../../../src/domain/text/bookPortableAudioManifestDomain.js';
-import { TEXT_AUDIO_MANIFEST_FILENAME } from '../../../src/domain/text/textFilenameDomain.js';
+import { buildCanonicalTextRenderAudioFilename, TEXT_AUDIO_MANIFEST_FILENAME } from '../../../src/domain/text/textFilenameDomain.js';
 import { validateBookAudioBytes } from '../../../src/services/audio/bookQaAudioBytes.js';
 import { withAddFault } from '../a1b-1a/audio-browser-probe.js';
 
@@ -48,10 +48,31 @@ export const seedPortableSource = async name => {
 
 export const seedPortableDestination = async (name, pack) => {
   const local = createJourneyToLondonFixture();
-  const preserve = mergeProLingoTextPack({ localSnapshot: local.snapshot, pack, uidMode: 'preserve' }).snapshot;
+  const tree = resolveTextLibraryDocumentTree(local.snapshot, local.ids.documentId);
+  const [paragraph, scene] = tree.blocks;
+  const titled = applyTextLibraryCommand(local.snapshot, { type: 'document.update', payload: {
+    id: tree.id, metadata: { ...tree.metadata, bookMainTitleV1: { mode: 'custom', en: 'A unique loose Main Title' } }
+  } }, 42).snapshot;
+  const prepared = { ...titled, blocks: titled.blocks.map(row => row.id === paragraph.id || row.id === scene.id
+    ? { ...row, title: row.id === paragraph.id ? 'A unique loose Paragraph Heading' : 'A unique loose Scene Heading' } : row) };
+  const preserve = mergeProLingoTextPack({ localSnapshot: prepared, pack, uidMode: 'preserve' }).snapshot;
   const copied = mergeProLingoTextPack({ localSnapshot: preserve, pack, uidMode: 'new-copy' }).snapshot;
   await seedDisposableTextManagementDatabase({ dbName: name, snapshot: copied, createOnly: true });
   return { decoy: local.ids.documentId, preserve: preserve.documents.at(-1).id, copy: copied.documents.at(-1).id };
+};
+
+export const looseAtomicPortableFixture = async (connection, workspaceId) => {
+  const tree = resolveTextLibraryDocumentTree(connection.session.getSnapshot(), workspaceId);
+  const [paragraph, scene] = tree.blocks;
+  const entries = [planBookAtomicGeneration(tree, null, 'mainTitle', 'text', preferences),
+    planBookAtomicGeneration(tree, paragraph, 'heading', 'text', preferences),
+    planBookAtomicGeneration(tree, scene, 'heading', 'text', preferences)];
+  const wrong = planBookAtomicGeneration(tree, scene, 'heading', 'text', { ...preferences, edgeRate: 17 });
+  const bytes = await encoded(await tone(440));
+  const fileFor = entry => ({ bytes, name: buildCanonicalTextRenderAudioFilename({
+    renderFingerprint: entry.fingerprint, engine: entry.descriptor.engine, voiceId: entry.descriptor.voiceId
+  }) });
+  return { entries, files: entries.map(fileFor), wrong: fileFor(wrong) };
 };
 
 export const buildPortableFixture = async (connection, workspaceId) => {
@@ -91,14 +112,15 @@ export const buildPortableFixture = async (connection, workspaceId) => {
   [{ filename: derivedAsset.path, blob: await contents(derivedAsset) }]);
 
   const shared = complete.manifest.assets.find(asset => asset.fingerprint === all[0].fingerprint);
+  const historicalSplit = complete.manifest.assets.find(asset => asset.fingerprint === all[1].fingerprint);
   const renderedFull = complete.manifest.assets.find(asset => asset.fingerprint === full.fingerprint);
   const oneReference = complete.manifest.references.find(ref => ref.fingerprint === shared.fingerprint && ref.representation === 'split');
   const historical = [];
   for (const version of [1, 2, 0]) {
     const legacy = { packageType: complete.manifest.packageType, packageVersion: version, entries: [
-      { representation: 'split', rf: shared.fingerprint, filename: shared.path, ...(version === 2 ? { render: shared.descriptor } : {}) }
+      { representation: 'split', rf: historicalSplit.fingerprint, filename: historicalSplit.path, ...(version === 2 ? { render: historicalSplit.descriptor } : {}) }
     ] };
-    const assetEntry = { filename: shared.path, blob: await contents(shared) };
+    const assetEntry = { filename: historicalSplit.path, blob: await contents(historicalSplit) };
     historical.push(await encoded(await buildStoredZipBlob([
       ...(version ? [{ filename: TEXT_AUDIO_MANIFEST_FILENAME, blob: json(legacy) }] : []), assetEntry
     ])));
@@ -116,10 +138,17 @@ export const buildPortableFixture = async (connection, workspaceId) => {
   ]);
   const conflict = await connection.audio.submit([{ ...all[0], blob: conflictBytes }]).then(() => null, error => error.code);
   check(conflict === 'AUDIO_BYTE_CONFLICT', 'Conflicting accepted physical bytes were replaced');
-  const loose = await Promise.all([shared, renderedFull].map(async asset => ({ name: asset.path, bytes: await encoded(await contents(asset)) })));
+  const loose = await Promise.all([historicalSplit, renderedFull].map(async asset => ({ name: asset.path, bytes: await encoded(await contents(asset)) })));
+  const ambiguous = { name: shared.path, bytes: await encoded(await contents(shared)) };
+  const historicalExplicit = await encoded(await packZip({
+    packageType: complete.manifest.packageType, packageVersion: 2, entries: [{
+      representation: 'split', rf: shared.fingerprint, filename: shared.path, render: shared.descriptor,
+      references: [{ representation: 'split', documentUid: tree.uid, segmentUid: paragraph.segments[0].uid, channel: 'text' }]
+    }]
+  }, [{ filename: shared.path, blob: await contents(shared) }]));
   return {
     partA: await encoded(partA.blob), partB: await encoded(partB), complete: await encoded(complete.blob), derivedOnly: await encoded(derivedOnly),
-    historical, loose, problems: await Promise.all([corrupt, badAudio, duplicateManifest].map(encoded)), conflicting: await encoded(conflicting),
+    historical, historicalExplicit, loose, ambiguous, problems: await Promise.all([corrupt, badAudio, duplicateManifest].map(encoded)), conflicting: await encoded(conflicting),
     manifest: complete.manifest, first: all[0], alternate: alt, derived,
     partACount: partA.manifest.references.length, partBCount: complete.manifest.references.length - partA.manifest.references.length
   };

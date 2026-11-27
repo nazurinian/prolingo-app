@@ -1,17 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { deflateRawSync } from 'node:zlib';
 import { createJourneyToLondonFixture } from './fixtures/uat4/journey-to-london.js';
 import { resolveTextLibraryDocumentTree } from '../src/domain/text/textLibraryDomain.js';
 import { buildTextStructuredAudioRenderFingerprint } from '../src/domain/text/textStructuredAudioRenderFingerprintDomain.js';
+import { applyBookQaAudioOperation } from '../src/domain/text/bookQaAudioDomain.js';
+import { getBookBodyGenerationRequests } from '../src/domain/text/bookQaBodyAudioDomain.js';
+import { planBookAtomicGeneration } from '../src/domain/text/bookQaHeadingAudioDomain.js';
+import { buildTextStructuredPlaybackRateProfileMetadata } from '../src/domain/text/textStructuredPlaybackRateProfileDomain.js';
 import { buildCanonicalTextRenderAudioFilename, TEXT_AUDIO_MANIFEST_FILENAME } from '../src/domain/text/textFilenameDomain.js';
 import { buildBookPortableAudioManifest, validateBookPortableAudioManifest } from '../src/domain/text/bookPortableAudioManifestDomain.js';
 import { validateProLingoTextAudioManifest } from '../src/domain/text/textAudioManifestDomain.js';
-import { listBookPortableTargets, resolveBookPortableReference } from '../src/domain/text/bookPortableAudioDomain.js';
+import { bookPortableLegacyRequirements, listBookPortableTargets, resolveBookPortableReference } from '../src/domain/text/bookPortableAudioDomain.js';
 import { buildStoredZipBlob, crc32Blob } from '../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../src/services/audio/textStructuredAudioZipArchiveService.js';
-import { importBookPortableAudio } from '../src/services/audio/bookPortableAudioService.js';
+import { exportBookPortableAudio, importBookPortableAudio } from '../src/services/audio/bookPortableAudioService.js';
 
 const { snapshot, ids } = createJourneyToLondonFixture();
 const tree = resolveTextLibraryDocumentTree(snapshot, ids.documentId);
@@ -116,5 +121,134 @@ test('an invalid v3 package never reaches the publisher, including duplicate man
     publish: () => assert.fail('Invalid package reached publication') });
   assert.deepEqual(report.issues.map(issue => issue.status), ['invalid-archive', 'invalid-archive', 'missing']);
   assert.equal(report.issues.at(-1).logicalReferences, 2);
+  assert.equal(report.logicalCommitted, 0);
+});
+
+const preferences = { edgeTextVoiceId: 'en-GB-LibbyNeural', edgeRate: 0, edgePitch: 0 };
+const proof = { digest: asset.digest, format: asset.codec, sampleRate: asset.sampleRate, bytes: asset.size };
+const docTree = source => resolveTextLibraryDocumentTree(source, ids.documentId);
+const body = (source, prefs = preferences) => docTree(source).blocks.flatMap(card =>
+  getBookBodyGenerationRequests(docTree(source), card, 'text', { options: { preferences: prefs, globalRate: 1 } }));
+const record = (source, ...items) => applyBookQaAudioOperation(source, items.map(item => ({ ...item, binary: proof })), 42).snapshot;
+const coverage = (report, kind, channel = 'text') => report.coverage.find(row => row.representation === kind && row.channel === channel);
+const readReady = async () => ({ status: 'ready', blob: audio, binary: proof });
+const reportFor = (source, options = {}) => exportBookPortableAudio({ snapshot: source, workspaceId: ids.documentId, preferences, read: readReady, ...options });
+
+const firstNine = () => {
+  const chosen = new Set(tree.blocks.flatMap(card => card.segments).slice(0, 9).map(row => row.id));
+  return {
+    ...snapshot,
+    documents: snapshot.documents.map(row => ({ ...row, metadata: { ...row.metadata, bookMainTitleV1: { mode: 'custom', en: 'An unrecorded title' } } })),
+    blocks: snapshot.blocks.map(row => ({ ...row, title: '', metadata: { ...row.metadata, bookHeadingV1: {} } })),
+    segments: snapshot.segments.filter(row => chosen.has(row.id)).map(row => ({ ...row, meaning: '' }))
+  };
+};
+
+test('export reports two recorded and seven missing EN Split requirements, and skips blank Heading channels', async () => {
+  const source = firstNine();
+  const entries = body(source);
+  assert.equal(entries.length, 9);
+  const { report, manifest } = await reportFor(record(source, entries[4], entries[6]));
+  assert.deepEqual(coverage(report, 'split'), {
+    representation: 'split', channel: 'text', expected: 9, available: 2, exported: 2, alternateExported: 0,
+    statuses: { missing: 7, ready: 2 }
+  });
+  assert.equal(coverage(report, 'main-title').statuses.missing, 1);
+  assert.equal(coverage(report, 'main-title', 'meaning'), undefined);
+  assert.equal(coverage(report, 'paragraph-heading'), undefined);
+  assert.equal(coverage(report, 'scene-heading'), undefined);
+  assert.equal(coverage(report, 'split', 'meaning'), undefined);
+  assert.equal(report.omissions.filter(row => row.ref.representation === 'split' && row.status === 'missing').length, 7);
+  assert.equal(manifest.references.length, 2);
+});
+
+test('coverage distinguishes metadata-only, corrupt, stale and alternate references from current ready slots', async () => {
+  const source = firstNine();
+  const [one, two, three, four] = body(source);
+  const alternate = body(source, { ...preferences, edgeRate: 5, edgePitch: 3 })[0];
+  const recorded = record(source, one, two, three, four, alternate);
+  const changed = { ...recorded, segments: recorded.segments.map(row => row.id === four.target.segmentId ? { ...row, text: 'Edited fourth sentence' } : row) };
+  const read = async rf => rf === two.fingerprint ? { status: 'metadata-only' }
+    : rf === three.fingerprint ? { status: 'corrupt' } : readReady();
+  const { report } = await reportFor(changed, { read });
+  assert.deepEqual(coverage(report, 'split').statuses, { ready: 1, 'metadata-only': 1, corrupt: 1, missing: 6 });
+  assert.equal(coverage(report, 'split').alternateExported, 1);
+  assert.equal(coverage(report, 'split').available, 1);
+  assert(report.omissions.some(row => row.ref.fingerprint === four.fingerprint && row.status === 'stale'));
+  const onlyCurrent = await reportFor(changed, { read, includeAlternate: false });
+  assert.equal(coverage(onlyCurrent.report, 'split').available, 1);
+  assert.equal(coverage(onlyCurrent.report, 'split').alternateExported, 0);
+});
+
+test('coverage counts shared RF consumers separately and keeps missing composition inputs unavailable', async () => {
+  const source = firstNine();
+  const doc = docTree(source), [split] = body(source);
+  const titled = { ...source, documents: source.documents.map(row => ({
+    ...row, metadata: { ...row.metadata, bookMainTitleV1: { mode: 'custom', en: doc.blocks[0].segments[0].text } }
+  })) };
+  const atomic = planBookAtomicGeneration(docTree(titled), null, 'mainTitle', 'text', preferences);
+  assert.equal(atomic.fingerprint, split.fingerprint);
+  let calls = 0;
+  const { report, manifest } = await reportFor(record(titled, split, atomic), { read: async () => { calls++; return readReady(); } });
+  assert.equal(calls, 1);
+  assert.equal(manifest.assets.length, 1);
+  assert.equal(manifest.references.length, 2);
+  assert.equal(coverage(report, 'split').available, 1);
+  assert.equal(coverage(report, 'main-title').available, 1);
+  assert.equal(coverage(report, 'full-conversation').available, 0);
+  assert.equal(coverage(report, 'full-conversation').statuses['missing-composition-input'], 1);
+});
+
+test('recorded Full with missing durable input stays unavailable and unverified composition is only a verified export', async () => {
+  const source = firstNine(), doc = docTree(source);
+  const scene = doc.blocks.find(row => row.blockType === 'conversation' && row.segments.length);
+  const splits = body(source).filter(item => item.target.cardId === scene.id);
+  const [full] = getBookBodyGenerationRequests(doc, scene, 'text', { full: true, options: { preferences, globalRate: 1 } });
+  const pcm = Buffer.alloc(46);
+  for (const [offset, text] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt '], [36, 'data']]) pcm.write(text, offset);
+  for (const [offset, number] of [[4, 38], [16, 16], [24, 48000], [28, 96000], [40, 2]]) pcm.writeUInt32LE(number, offset);
+  for (const [offset, number] of [[20, 1], [22, 1], [32, 2], [34, 16]]) pcm.writeUInt16LE(number, offset);
+  const binary = { digest: createHash('sha256').update(pcm).digest('hex'), format: 'wav', sampleRate: 48000, bytes: pcm.length };
+  const persisted = applyBookQaAudioOperation(record(source, ...splits), [{ ...full, binary }], 43).snapshot;
+  const wav = { status: 'ready', blob: new Blob([pcm]), binary };
+  const { report, manifest } = await reportFor(persisted, { read: async rf => rf === full.fingerprint ? wav : readReady() });
+  assert.equal(coverage(report, 'full-conversation').available, 0);
+  assert.equal(coverage(report, 'full-conversation').exported, 1);
+  assert.equal(coverage(report, 'full-conversation').statuses['unverified-composition'], 1);
+  assert(manifest.references.some(row => row.fingerprint === full.fingerprint));
+  const missing = await reportFor(persisted, { read: async rf => rf === full.fingerprint ? wav : { status: 'metadata-only' } });
+  assert.equal(missing.blob, null);
+  assert.equal(coverage(missing.report, 'full-conversation').statuses['missing-composition-input'], 1);
+
+  const unsupported = { ...source, blocks: source.blocks.map(row => row.id === scene.id ? { ...row,
+    metadata: buildTextStructuredPlaybackRateProfileMetadata({ metadata: row.metadata, channel: 'text', rate: 1.2 })
+  } : row) };
+  const blocked = await reportFor(unsupported);
+  assert.equal(coverage(blocked.report, 'full-conversation').statuses['unsupported-composition'], 1);
+});
+
+test('loose RF requirements include unrecorded atomic targets with strict logical ambiguity', async () => {
+  const source = firstNine();
+  const paragraph = docTree(source).blocks[0], scene = docTree(source).blocks.find(row => row.blockType === 'conversation');
+  const titled = { ...source, blocks: source.blocks.map(row => row.id === paragraph.id || row.id === scene.id
+    ? { ...row, title: row.id === paragraph.id ? 'Unique paragraph heading' : 'Unique scene heading' } : row) };
+  const doc = docTree(titled), targets = listBookPortableTargets(titled, doc.id);
+  const known = bookPortableLegacyRequirements(titled, targets, preferences);
+  for (const [card, representation] of [[null, 'main-title'], [doc.blocks[0], 'paragraph-heading'], [doc.blocks.find(row => row.blockType === 'conversation'), 'scene-heading']]) {
+    const request = planBookAtomicGeneration(doc, card, card ? 'heading' : 'mainTitle', 'text', preferences);
+    assert.deepEqual(known.get(request.fingerprint), request.descriptor);
+    assert.equal(resolveBookPortableReference(titled, targets, { representation: 'rf' }, request).representation, representation);
+  }
+  const split = body(titled)[0];
+  const shared = { ...titled, documents: titled.documents.map(row => ({
+    ...row, metadata: { ...row.metadata, bookMainTitleV1: { mode: 'custom', en: doc.blocks[0].segments[0].text } }
+  })) };
+  assert.equal(resolveBookPortableReference(shared, listBookPortableTargets(shared, doc.id), { representation: 'rf' }, split).status, 'ambiguous');
+  assert.equal(resolveBookPortableReference(shared, listBookPortableTargets(shared, doc.id), { ...mirror, workspaceUid: doc.uid, ownerUid: doc.uid }, split).representation, 'main-title');
+  const different = planBookAtomicGeneration(doc, doc.blocks[0], 'heading', 'text', { ...preferences, edgeRate: 17 });
+  const name = buildCanonicalTextRenderAudioFilename({ renderFingerprint: different.fingerprint, engine: 'edge', voiceId: different.descriptor.voiceId });
+  const report = await importBookPortableAudio({ files: [new File([audio], name)], snapshot: titled, workspaceId: doc.id, preferences,
+    publish: () => assert.fail('A mismatched Heading RF reached publication') });
+  assert.equal(report.issues[0].status, 'legacy-unverified');
   assert.equal(report.logicalCommitted, 0);
 });

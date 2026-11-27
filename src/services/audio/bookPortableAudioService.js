@@ -2,9 +2,9 @@ import { BOOK_AUDIO_MAX_BYTES, BOOK_AUDIO_MAX_ITEMS, bookAudioError, readBookAud
 import { canonicalJsonStringify } from '../../domain/text/textCanonicalFingerprintDomain.js';
 import {
   BOOK_PORTABLE_AUDIO_VERSION, BOOK_PORTABLE_MAX_ASSETS, BOOK_PORTABLE_MAX_REFERENCES, buildBookPortableAudioManifest,
-  portableFilenameMatches, portableMime, portablePhysicalType, validateBookPortableAudioManifest
+  portableFilenameMatches, portableMime, portablePhysicalType, portableReferenceKey, validateBookPortableAudioManifest
 } from '../../domain/text/bookPortableAudioManifestDomain.js';
-import { bookPortableLegacyRequirements, collectBookPortableReferences, currentBookPortableFingerprints, listBookPortableTargets, resolveBookPortableReference, uniqueBookPortableReferences } from '../../domain/text/bookPortableAudioDomain.js';
+import { bookPortableLegacyRequirements, collectBookPortableReferences, currentBookPortableFingerprints, listBookPortableRequirements, listBookPortableTargets, resolveBookPortableReference, uniqueBookPortableReferences } from '../../domain/text/bookPortableAudioDomain.js';
 import { validateProLingoTextAudioManifest } from '../../domain/text/textAudioManifestDomain.js';
 import {
   buildCanonicalTextFullArtifactFilename, buildCanonicalTextRenderAudioFilename, isSafePortableZipPath, parseCanonicalTextFullArtifactFilename,
@@ -46,12 +46,15 @@ export const buildBookPortableAudioIndex = manifest => {
 export const exportBookPortableAudio = async ({ snapshot, workspaceId = null, preferences, includeAlternate = true, read, signal }) => {
   const targets = listBookPortableTargets(snapshot, workspaceId);
   const rows = uniqueBookPortableReferences(collectBookPortableReferences(snapshot, targets, preferences));
-  const omissions = [], selected = [], reads = new Map();
+  const requirements = listBookPortableRequirements(targets, preferences);
+  const omissions = new Map(), selected = [], reads = new Map();
+  const omit = (ref, status) => omissions.set(portableReferenceKey(ref), { ref, status });
   const verified = async row => {
     const { entry, ref, binary } = row;
-    if (!binary) return { status: 'legacy-unverified' };
-    if (!reads.has(ref.fingerprint)) reads.set(ref.fingerprint, await read(ref.fingerprint, binary));
-    const result = reads.get(ref.fingerprint);
+    if (!binary) return { status: 'metadata-only' };
+    const key = canonicalJsonStringify([ref.fingerprint, binary]);
+    if (!reads.has(key)) reads.set(key, await read(ref.fingerprint, binary));
+    const result = reads.get(key);
     if (result.status !== 'ready') return result;
     if (canonicalJsonStringify(result.binary) !== canonicalJsonStringify(binary)) return { status: 'conflict' };
     const name = ref.fingerprint.startsWith('rf-')
@@ -65,33 +68,69 @@ export const exportBookPortableAudio = async ({ snapshot, workspaceId = null, pr
   };
   const splitByOwner = new Map(rows.filter(row => row.ref.representation === 'split')
     .map(row => [JSON.stringify([row.entry.target.segmentId, row.ref.fingerprint]), row]));
+  const fullCards = new Map(targets.filter(target => target.representation === 'full-conversation')
+    .map(target => [target.owner.uid, target.block]));
+  const compositionInputs = async ({ entry, ref }) => {
+    const audible = fullCards.get(ref.ownerUid).segments.filter(segment => segment[ref.channel]?.trim());
+    const dependencies = [];
+    for (const [index, input] of entry.descriptor.composition.entries()) {
+      abort(signal);
+      const source = splitByOwner.get(JSON.stringify([audible[index]?.id, input.renderFingerprint]));
+      if (!source || !['current', 'other-profile'].includes(source.state)) return null;
+      const result = await verified(source);
+      if (result.status !== 'ready') return null;
+      dependencies.push({ ...result, ref: source.ref, state: source.state });
+    }
+    return dependencies.length === audible.length ? dependencies : null;
+  };
   for (const row of rows) {
     abort(signal);
-    const { ref, state, entry } = row;
+    const { ref, state, trustedComposition } = row;
     if (!['current', 'other-profile'].includes(state) || (!includeAlternate && state === 'other-profile')) {
-      omissions.push({ ref, status: row.proof === 'legacy-unverified' ? row.proof : state });
+      omit(ref, state === 'unsupported' && !row.entry.descriptor && !row.binary ? 'legacy-unverified' : state);
       continue;
     }
     const result = await verified(row);
-    if (result.status !== 'ready') { omissions.push({ ref, status: result.status }); continue; }
-    const dependencies = [];
-    if (ref.representation === 'full-conversation') {
-      const card = targets.find(target => target.representation === ref.representation && target.owner.uid === ref.ownerUid).block;
-      const audible = card.segments.filter(segment => segment[ref.channel]?.trim());
-      for (const [index, item] of entry.descriptor.composition.entries()) {
-        const source = splitByOwner.get(JSON.stringify([audible[index]?.id, item.renderFingerprint]));
-        if (!source) break;
-        const dependency = await verified(source);
-        if (dependency.status !== 'ready') break;
-        dependencies.push({ ...dependency, ref: source.ref, state: source.state });
-      }
-      if (dependencies.length !== audible.length) { omissions.push({ ref, status: 'missing-composition-input' }); continue; }
-    }
-    selected.push(...dependencies, { ...result, ref, state });
+    if (result.status !== 'ready') { omit(ref, result.status); continue; }
+    const dependencies = ref.representation === 'full-conversation' ? await compositionInputs(row) : [];
+    if (!dependencies) { omit(ref, 'missing-composition-input'); continue; }
+    selected.push(...dependencies, { ...result, ref, state, trustedComposition });
   }
   const logical = uniqueBookPortableReferences(selected);
   const physical = [...new Map(logical.map(row => [row.asset.fingerprint, row])).values()];
-  const report = { physical: physical.length, logical: logical.length, omissions, alternate: logical.filter(row => row.state === 'other-profile').length };
+  const exported = new Map(logical.map(row => [portableReferenceKey(row.ref), row]));
+  const retained = new Map(rows.map(row => [portableReferenceKey(row.ref), row]));
+  const groups = new Map();
+  const groupFor = ({ representation, channel }) => {
+    const key = representation + '|' + channel;
+    if (!groups.has(key)) groups.set(key, { representation, channel, expected: 0, available: 0, exported: 0, alternateExported: 0, statuses: {} });
+    return groups.get(key);
+  };
+  for (const [key, row] of exported) {
+    omissions.delete(key);
+    if (row.state === 'other-profile') groupFor(row.ref).alternateExported++;
+  }
+  for (const requirement of requirements) {
+    abort(signal);
+    const { ref } = requirement;
+    const key = portableReferenceKey(ref), row = exported.get(key), previous = retained.get(key);
+    const group = groupFor(ref);
+    group.expected++;
+    let status = requirement.status ?? omissions.get(key)?.status ?? 'missing';
+    if (row) {
+      group.exported++;
+      status = ref.representation === 'full-conversation' && !row.trustedComposition ? 'unverified-composition' : 'ready';
+    } else if (previous && !previous.binary && status === 'legacy-unverified') {
+      status = 'metadata-only';
+    } else if (!previous && requirement.entry && ref.representation === 'full-conversation' && !await compositionInputs(requirement)) {
+      status = 'missing-composition-input';
+    }
+    if (status === 'ready') group.available++;
+    group.statuses[status] = (group.statuses[status] ?? 0) + 1;
+    if (!row) omit(ref, status);
+  }
+  const report = { physical: physical.length, logical: logical.length, omissions: [...omissions.values()],
+    coverage: [...groups.values()], alternate: logical.filter(row => row.state === 'other-profile').length };
   if (!physical.length) return { blob: null, manifest: null, report };
   if (physical.length > BOOK_PORTABLE_MAX_ASSETS || logical.length > BOOK_PORTABLE_MAX_REFERENCES) fail('PORTABLE_LIMIT', 'Export exceeds the portable asset or reference limit');
   const manifest = buildBookPortableAudioManifest(physical.map(row => row.asset), logical.map(row => row.ref));
@@ -105,6 +144,18 @@ export const exportBookPortableAudio = async ({ snapshot, workspaceId = null, pr
   return { blob, manifest, report };
 };
 
+const legacyReferences = (fingerprint, kind, descriptor, declared = []) => {
+  const stable = uid => typeof uid === 'string' && uid.trim() === uid && uid.length > 0 && uid.length <= 128;
+  const representation = kind === 'rf' ? 'split' : kind;
+  const refs = declared.flatMap(row => {
+    const ownerUid = kind === 'rf' ? row.segmentUid : row.cardUid;
+    if (!stable(ownerUid) || !stable(row.documentUid) || row.channel !== descriptor?.channel
+      || row.representation !== (kind === 'rf' ? 'split' : 'full')) return [];
+    return [{ fingerprint, representation, ownerUid, workspaceUid: row.documentUid, channel: row.channel }];
+  });
+  return refs.length ? refs : [{ fingerprint, representation: kind }];
+};
+
 const scanArchive = async (file, signal, known, report) => {
   if (LEGACY_AUDIO.test(file.name ?? '')) {
     const fingerprint = parseCanonicalTextRenderAudioFilename(file.name)?.renderFingerprint
@@ -115,7 +166,7 @@ const scanArchive = async (file, signal, known, report) => {
     const invalid = !kind ? 'legacy-unverified' : !isSafePortableZipPath(file.name) || !portableFilenameMatches(file.name, fingerprint, descriptor, codec) ? 'conflict' : null;
     report.physicalDiscovered++;
     return { archive: { read: () => file }, assets: [{ asset: { fingerprint, path: file.name, descriptor, codec, size: null }, entry: file,
-      refs: [{ fingerprint, representation: kind === 'rf' ? 'split' : kind }], legacy: true, invalid }] };
+      refs: legacyReferences(fingerprint, kind, descriptor), legacy: true, invalid }] };
   }
   const archive = await openPortableAudioZip(file, { signal });
   const manifests = archive.entries.filter(entry => portableZipPathKey(basename(entry.filename)) === TEXT_AUDIO_MANIFEST_FILENAME);
@@ -142,10 +193,10 @@ const scanArchive = async (file, signal, known, report) => {
     const paths = new Map(files.map(entry => [entry.filename, entry]));
     const byName = Map.groupBy(files, entry => portableZipPathKey(basename(entry.filename)));
     const used = new Set();
-    const add = (path, entry, fingerprint, descriptor, legacySize = null) => {
+    const add = (path, entry, fingerprint, descriptor, legacySize = null, declared = []) => {
       const legacy = true;
       const kind = portablePhysicalType(fingerprint, descriptor);
-      const refs = [{ fingerprint, representation: kind === 'rf' ? 'split' : kind }];
+      const refs = legacyReferences(fingerprint, kind, descriptor, declared);
       const codec = kind === 'full-conversation' ? 'wav' : 'mp3';
       const invalid = !kind ? 'legacy-unverified' : !portableFilenameMatches(path, fingerprint, descriptor, codec) ? 'conflict' : null;
       assets.push({ asset: { fingerprint, path, descriptor, codec, size: legacySize }, entry, refs, legacy, invalid });
@@ -157,7 +208,7 @@ const scanArchive = async (file, signal, known, report) => {
       const archiveEntry = paths.get(entry.filename) ?? (candidates.length === 1 ? candidates[0] : null);
       if (candidates.length > 1 && !paths.has(entry.filename)) fail('AMBIGUOUS_PORTABLE_PATH', 'Legacy filename matches multiple archive paths');
       if (archiveEntry && used.has(archiveEntry)) fail('AMBIGUOUS_PORTABLE_PATH', 'Multiple legacy rows claim the same archive entry');
-      add(archiveEntry?.filename ?? entry.filename, archiveEntry, entry.identity, entry.render ?? known.get(entry.identity), entry.size || null);
+      add(archiveEntry?.filename ?? entry.filename, archiveEntry, entry.identity, entry.render ?? known.get(entry.identity), entry.size || null, entry.references);
     }
     for (const entry of files.filter(item => !used.has(item))) {
       const fingerprint = parseCanonicalTextRenderAudioFilename(entry.filename)?.renderFingerprint
@@ -272,7 +323,7 @@ export const importBookPortableAudio = async ({ files, snapshot, workspaceId = n
           }
           if (!batchPhysical.has(entry.fingerprint)) { batchBytes += blob.size; batchPhysical.add(entry.fingerprint); }
           batch.push({ ...entry, blob });
-          representations.set(key, ref.representation);
+          representations.set(key, outcome.representation);
         }
       }
       await flush(batch, representations);

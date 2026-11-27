@@ -61,6 +61,7 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   }, { capture: true })`);
   await clickButton('Export Portable Audio');
   await waitFor(`window.__portableDownload?.endsWith('.zip') && document.querySelector('[data-book-portable-status]')?.textContent.includes('Exported')`);
+  assert(await evaluate(`[...document.querySelectorAll('[data-book-portable-coverage] li')].some(item => item.textContent.includes('Split ID') && item.textContent.includes('0/37 current available') && item.textContent.includes('37 missing'))`));
   pass('Scoped v3 export captures six representations, alternate profiles and three RF consumers on one asset');
 
   await prep(names[1]);
@@ -100,6 +101,20 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   const loose = await transfer(dest.preserve, data.loose);
   assert.equal(loose.physicalValidated, 2);
   assert.equal(loose.alreadyAvailable, 2);
+  const ambiguous = await transfer(dest.preserve, [data.ambiguous]);
+  assert.equal(ambiguous.physicalValidated, 1);
+  assert.equal(ambiguous.logicalCommitted, 0);
+  assert.equal(ambiguous.logical[0].status, 'ambiguous');
+  const explicit = await transfer(dest.preserve, [data.historicalExplicit]);
+  assert.equal(explicit.alreadyAvailable, 1);
+  assert.equal(explicit.logical[0].representation, 'split');
+
+  const atomic = await probe(`module.looseAtomicPortableFixture(${host}, ${q(dest.decoy)})`);
+  const atomicImport = await transfer(dest.decoy, [...atomic.files, atomic.wrong]);
+  assert.equal(atomicImport.stopped, null, q(atomicImport));
+  assert.equal(atomicImport.logicalCommitted, 3);
+  assert.deepEqual(atomicImport.logical.map(row => row.representation), ['main-title', 'paragraph-heading', 'scene-heading']);
+  assert.equal(atomicImport.issues[0].status, 'legacy-unverified');
   const problems = await transfer(dest.preserve, data.problems);
   assert.deepEqual(problems.issues.map(issue => issue.status), ['corrupt', 'corrupt', 'invalid-archive']);
   assert.equal(problems.logicalCommitted, 0);
@@ -143,6 +158,13 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
 
   await prep(names[1]);
   await connect();
+  const atomicAgain = await transfer(dest.decoy, atomic.files);
+  assert.equal(atomicAgain.logicalCommitted, 0);
+  assert.equal(atomicAgain.alreadyAvailable, 3);
+  assert(atomicAgain.batches.every(batch => batch.operationId === null));
+  const atomicReadback = await evaluate(`(async () => Promise.all(${q(atomic.entries)}.map(async entry => (await ${host}.audio.readRuntime(entry)).status)))()`);
+  assert.deepEqual(atomicReadback, ['ready', 'ready', 'ready']);
+  pass('Loose Title and both Heading representations bind uniquely, reject ambiguity and mismatches, and reimport after reconnect without writes');
   await select(dest.preserve);
   await click('[data-book-heading-audio] summary');
   await waitFor('document.querySelector("[data-book-heading-audio] input[name=edgeTextVoiceId]")');

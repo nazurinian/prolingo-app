@@ -8,6 +8,10 @@ const countsBy = (items, getKey) => Object.entries(items.reduce((counts, item) =
   counts[key] = (counts[key] ?? 0) + 1;
   return counts;
 }, {})).map(([key, count]) => key + ' ' + count).join(', ');
+const representationLabel = {
+  'main-title': 'Main Title', 'paragraph-heading': 'Paragraph Heading', 'scene-heading': 'Scene Heading',
+  split: 'Split', 'full-paragraph': 'Full Paragraph', 'full-conversation': 'Full Conversation'
+};
 
 export function BookQaPortableAudioPanel({ connection, workspace, preferences }) {
   const [open, setOpen] = useState(false);
@@ -82,6 +86,17 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
       </> : <>
         <p>Alternate references {details.alternate}, omitted {details.omissions.length}.</p>
         {details.omissions.length > 0 && <p>Omission reasons {countsBy(details.omissions, row => row.status)}.</p>}
+        {details.coverage.length > 0 && <ul data-book-portable-coverage className="space-y-1">
+          {details.coverage.map(({ representation, channel, expected, available, exported, alternateExported, statuses }) => {
+            const unavailable = Object.entries(statuses).filter(([status]) => status !== 'ready')
+              .map(([status, count]) => count + ' ' + status.replaceAll('-', ' '));
+            return <li key={representation + '|' + channel}>
+              {representationLabel[representation]} {channel === 'text' ? 'EN' : 'ID'} · {available}/{expected} current available · {exported} current exported
+              {alternateExported > 0 && ` · ${alternateExported} alternate exported`}
+              {unavailable.length > 0 && ` · ${unavailable.join(', ')}`}
+            </li>;
+          })}
+        </ul>}
       </>)}
     </div>}
   </details>;
