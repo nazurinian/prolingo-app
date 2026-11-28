@@ -129,9 +129,13 @@ export const resolveBookPortableReference = (snapshot, targets, ref, asset) => {
     const invalid = validates(snapshot, entry);
     return invalid ? { status: invalid === 'INVALID_AUDIO_COMPOSITION' ? 'unverified-composition' : 'stale' } : matchedTarget(exact);
   }
+  const hasSourceUid = (record, uid) => {
+    const source = record.metadata?.prolingoTextPackSource;
+    return Boolean(uid) && (record.uid === uid || source?.sourceUid === uid
+      || (Array.isArray(source?.sourceUids) && source.sourceUids.includes(uid)));
+  };
   const copies = ref.ownerUid ? choices.filter(target =>
-    target.owner.metadata?.prolingoTextPackSource?.sourceUid === ref.ownerUid
-    && (target.doc.uid === ref.workspaceUid || target.doc.metadata?.prolingoTextPackSource?.sourceUid === ref.workspaceUid)) : [];
+    hasSourceUid(target.owner, ref.ownerUid) && hasSourceUid(target.doc, ref.workspaceUid)) : [];
   if (copies.length) {
     const checked = copies.map(target => ({ target, error: validates(snapshot, requestFor(target, asset.fingerprint, asset.descriptor)) }));
     const matching = checked.filter(row => !row.error);

@@ -10,6 +10,7 @@ import App from '../../../App.jsx';
 import { BookQaBodyAudioPanel } from '../BookQaBodyAudioPanel.jsx';
 import { BookQaHeadingAudioPanel } from '../BookQaHeadingAudioPanel.jsx';
 import { BookQaPortableAudioPanel } from '../BookQaPortableAudioPanel.jsx';
+import BookQaDataManager from './BookQaDataManager.jsx';
 
 const DEFAULT_BOOK_QA_DATABASE = 'prolingo_text_library_d3b_qa_book_main';
 const emptyV2Snapshot = () => backfillTextContentUnits({
@@ -71,6 +72,7 @@ export default function BookQaHost() {
   const [optIn, setOptIn] = useState(false);
   const [databaseName, setDatabaseName] = useState(() => new URLSearchParams(window.location.search).get('db') || DEFAULT_BOOK_QA_DATABASE);
   const [connection, setConnection] = useState(null);
+  const [dataOpen, setDataOpen] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -100,7 +102,7 @@ export default function BookQaHost() {
     const adapter = createTextDataManagementPersistenceAdapter({
       dbName: safeName,
       boundary: 'disposable',
-      permissions: ['catalog', 'content'],
+      permissions: ['catalog', 'content', 'transfer'],
       bookAuthoring: true
     });
     const loaded = await adapter.loadState();
@@ -168,15 +170,19 @@ export default function BookQaHost() {
   }, [connection]);
 
   if (connection) {
-    return <App
+    return <><App
       bookQaConnection={connection}
       BookQaBodyAudioControls={BookQaBodyAudioPanel}
       BookQaHeadingAudioControls={BookQaHeadingAudioPanel}
       BookQaPortableAudioControls={BookQaPortableAudioPanel}
       onBookQaRefresh={refresh}
+      onOpenBookQaData={() => setDataOpen(true)}
       bookQaRefreshing={refreshing}
       bookQaRefreshError={error}
-    />;
+    />
+      {dataOpen && <BookQaDataManager connection={connection} onClose={() => setDataOpen(false)}
+        onRefresh={refresh} refreshing={refreshing} />}
+    </>;
   }
 
   return <main data-book-qa-host="disconnected" className="min-h-screen bg-slate-50 p-5 text-slate-800 dark:bg-slate-950 dark:text-slate-100">

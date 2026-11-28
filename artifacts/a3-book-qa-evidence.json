@@ -1,0 +1,178 @@
+{
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Edg/158.0.4370.45",
+    "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+    "jsVersion": "15.8.13.4"
+  },
+  "checks": [
+    "A3-A actual Root/Collection create, rename, order, nonempty guard, confirmed deletion, Workspace creation/search/order/move and Refresh",
+    "A3-B actual Mixed interleave, bilingual title and Heading, empty Card/Section/Turn, Scene threshold, Speaker rename/removal and independent Read",
+    "A3-B ID edit stales only its binding; restoring ID text recovers the original bytes and alternate EN profile",
+    "A3-C actual Workspace, Collection, Root and Library JSON downloads, and Portable v3 archive with matching asset bytes",
+    "A3-C cancellation, malformed JSON, real stale transaction, atomic new destination, remapped UID lineage and idempotent Portable restore",
+    "A3-C Root, Collection preservation/explicit destination and full Library recovery. A3-A confirmed Workspace delete, mobile and isolated reconnect"
+  ],
+  "zipName": "PL_PORTABLE__A3_Renamed_source__20261128T074713.684Z.zip",
+  "zip": {
+    "version": 3,
+    "paths": [
+      "prolingo-text-audio-manifest.json",
+      "AUDIO_INDEX.csv",
+      "Audio/RF/EN/RF_9A6664DEF882A882C04FEC661230F07C40280D1A63101FE4035FF66339DE5F55__EDGE__SONIA.mp3",
+      "Audio/RF/ID/RF_36F103048C3807A828DF4712AD5299FEE11AEF600584FCF323CE980FF5E8CF66__EDGE__GADIS.mp3",
+      "Audio/Full/EN/FULL_CF9288F9A239A75C8414E385B0D8E2DC8BC66697774E732CE6FA2550452F23CB__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_5E867104EB23E81880598DD1E77AD0A3674BE9D795E8083525D61D6A26EF76A9__EDGE__SONIA.mp3",
+      "Audio/RF/EN/RF_00466FC720222009473DDF233A7074A81F3BCE2B6F20B9D501116F2EEE2ADBFE__EDGE__SONIA.mp3",
+      "Audio/RF/ID/RF_958C6BEFE8795EE6199188A70E2FE7EC625C65541883BF30B628473518D0EFA6__EDGE__GADIS.mp3",
+      "Audio/RF/EN/RF_D79371A85F5FA408057DB5FD07881A96902CB7B1FA446FE583B187EA464F8737__EDGE__SONIA.mp3",
+      "Audio/Full/EN/FULL_8829F0F13D3FA7E69FF4433C82B216ECB861AF235AABE1EC39D07D5FE911543C__DERIVED__MULTI-SPEAKER.wav"
+    ],
+    "digests": {
+      "rf-sha256-9a6664def882a882c04fec661230f07c40280d1a63101fe4035ff66339de5f55": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "rf-sha256-36f103048c3807a828df4712ad5299fee11aef600584fcf323ce980ff5e8cf66": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "full-sha256-cf9288f9a239a75c8414e385b0d8e2dc8bc66697774e732ce6fa2550452f23cb": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "rf-sha256-5e867104eb23e81880598dd1e77ad0a3674be9d795e8083525d61d6a26ef76a9": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "rf-sha256-00466fc720222009473ddf233a7074a81f3bce2b6f20b9d501116f2eee2adbfe": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "rf-sha256-958c6befe8795ee6199188a70e2fe7ec625c65541883bf30b628473518d0efa6": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "rf-sha256-d79371a85f5fa408057db5fd07881a96902cb7b1fa446fe583b187ea464f8737": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "full-sha256-8829f0f13d3fa7e69ff4433c82b216ecb861af235aabe1ec39d07d5fe911543c": "c998bb718a1d988ea26dadda7e800c1b54e93bb51b6ee2e35b7d69b04d8603dd"
+    },
+    "references": 8
+  },
+  "source": {
+    "id": "DOC_000001",
+    "uid": "WSUID_51214d80-46b6-48a8-831f-b5c7a1a1a82e"
+  },
+  "copy": {
+    "id": "DOC_000002",
+    "uid": "WSUID_636cbe6c-0d6a-4250-b076-d636962b97ea"
+  },
+  "json": {
+    "workspace": "prolingo-text-pack",
+    "collection": "prolingo-text-pack",
+    "root": 2,
+    "library": 3
+  },
+  "beforeAudio": [
+    "legacy-unverified",
+    "legacy-unverified",
+    "legacy-unverified",
+    "metadata-only",
+    "missing",
+    "missing",
+    "legacy-unverified",
+    "stale"
+  ],
+  "sourceAudio": [
+    {
+      "fingerprint": "rf-sha256-5e867104eb23e81880598dd1e77ad0a3674be9d795e8083525d61d6a26ef76a9",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-958c6befe8795ee6199188a70e2fe7ec625c65541883bf30b628473518d0efa6",
+      "status": "ready",
+      "digest": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-00466fc720222009473ddf233a7074a81f3bce2b6f20b9d501116f2eee2adbfe",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "full-sha256-cf9288f9a239a75c8414e385b0d8e2dc8bc66697774e732ce6fa2550452f23cb",
+      "status": "ready",
+      "digest": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-9a6664def882a882c04fec661230f07c40280d1a63101fe4035ff66339de5f55",
+      "status": "ready",
+      "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-36f103048c3807a828df4712ad5299fee11aef600584fcf323ce980ff5e8cf66",
+      "status": "ready",
+      "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-d79371a85f5fa408057db5fd07881a96902cb7b1fa446fe583b187ea464f8737",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "full-sha256-8829f0f13d3fa7e69ff4433c82b216ecb861af235aabe1ec39d07d5fe911543c",
+      "status": "ready",
+      "digest": "c998bb718a1d988ea26dadda7e800c1b54e93bb51b6ee2e35b7d69b04d8603dd",
+      "trustedComposition": true
+    }
+  ],
+  "afterAudio": [
+    {
+      "fingerprint": "rf-sha256-5e867104eb23e81880598dd1e77ad0a3674be9d795e8083525d61d6a26ef76a9",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-958c6befe8795ee6199188a70e2fe7ec625c65541883bf30b628473518d0efa6",
+      "status": "ready",
+      "digest": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-00466fc720222009473ddf233a7074a81f3bce2b6f20b9d501116f2eee2adbfe",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "full-sha256-cf9288f9a239a75c8414e385b0d8e2dc8bc66697774e732ce6fa2550452f23cb",
+      "status": "ready",
+      "digest": "fb9e5cf81a1e90909cca6a149f4e0319f28d6accff02cdba23ca2b7b30582109",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-9a6664def882a882c04fec661230f07c40280d1a63101fe4035ff66339de5f55",
+      "status": "ready",
+      "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-36f103048c3807a828df4712ad5299fee11aef600584fcf323ce980ff5e8cf66",
+      "status": "ready",
+      "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "rf-sha256-d79371a85f5fa408057db5fd07881a96902cb7b1fa446fe583b187ea464f8737",
+      "status": "ready",
+      "digest": "0fd2486846541495155eba115bfd9c6cb8f574e54e7037ae9cdb9c7ef4348d23",
+      "trustedComposition": false
+    },
+    {
+      "fingerprint": "full-sha256-8829f0f13d3fa7e69ff4433c82b216ecb861af235aabe1ec39d07d5fe911543c",
+      "status": "ready",
+      "digest": "c998bb718a1d988ea26dadda7e800c1b54e93bb51b6ee2e35b7d69b04d8603dd",
+      "trustedComposition": false
+    }
+  ],
+  "safety": {
+    "qaHostChunkAbsent": true,
+    "qaHostModuleAbsent": true,
+    "qaRouteFallsBackToNormalApp": true,
+    "normalMainAppOpensCanonicalV1": true,
+    "normalMainAppMounted": true,
+    "tableAndLegacyPlayback": true,
+    "normalCredentialCleanup": true
+  },
+  "runtimeErrors": []
+}

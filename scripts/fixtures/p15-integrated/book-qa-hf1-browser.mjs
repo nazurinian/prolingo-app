@@ -161,7 +161,7 @@ export async function checkBookQaHostBoundaries({
     assert.deepEqual((await state(alternate)).snapshot, before);
     const mutation = { id: paragraph.id, heading: { en: 'Updated heading', id: 'Judul baru' } };
     await closeData();
-    const forbidden = await evaluate(`window.__bookQaProps('[data-book-qa-indicator]', 'bookQaConnection').bookQaConnection.session.dispatch(${quoted({ type: 'block.update', payload: mutation })})`);
+    const forbidden = await evaluate(`window.__bookQaProps('[data-book-qa-indicator]', 'bookQaConnection').bookQaConnection.session.dispatch({ type: 'audioPreferences.reset', payload: {} })`);
     assert.equal(forbidden.error.code, 'CAPABILITY_UNAVAILABLE');
     const receipt = await execute(mutation);
     assert.equal(receipt.ok && receipt.authoritative, true);

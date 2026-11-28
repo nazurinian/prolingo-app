@@ -39,6 +39,7 @@ const Header = ({
   bookQaRefreshing = false,
   bookQaPending = false,
   onBookQaRefresh = null,
+  onOpenBookQaData = null,
   isCsvDirty,
   csvChangeSummary,
   saveUpdatedCSV,
@@ -145,6 +146,8 @@ const Header = ({
           <span className="shrink-0">BOOK QA · ISOLATED v2</span>
           <span className="hidden lg:inline max-w-36 truncate font-mono font-normal normal-case" title={bookQaDatabaseName}>{bookQaDatabaseName}</span>
           <button type="button" aria-label="Refresh isolated Book QA library" title="Reload persisted Book QA snapshot" disabled={bookQaRefreshing || bookQaPending} onClick={() => { void onBookQaRefresh?.().catch(() => {}); }} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-amber-300 bg-white text-amber-800 disabled:opacity-40 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-200"><RefreshCcw className={`h-3 w-3 ${bookQaRefreshing ? 'animate-spin' : ''}`}/></button>
+          {onOpenBookQaData && <button type="button" onClick={onOpenBookQaData}
+            className="min-h-9 shrink-0 rounded border border-amber-300 bg-white px-2 text-[11px] font-semibold normal-case dark:border-amber-800 dark:bg-slate-900">Book Data</button>}
         </div>}
 
         {/* Desktop Header Tools (preserved intact) */}

@@ -25,9 +25,12 @@ await test('Dedicated origin and exact HTTP loopback ports', () => {
   }
 });
 
-await test('Session wrapper rejects destructive and audio commands before the P15 executor', async () => {
+await test('Session wrapper requires destructive confirmation and rejects out-of-scope audio before the P15 executor', async () => {
   const connection = createBookQaConnection({ execute() { throw Error('Unexpected executor call'); } }, source());
-  for (const type of ['document.delete', 'collection.delete', 'segment.update', 'audioVariant.upsert']) {
+  for (const type of ['document.delete', 'collection.delete', 'segment.delete']) {
+    assert.equal((await connection.session.dispatch({ type, payload: {} })).error.code, 'CONFIRMATION_REQUIRED');
+  }
+  for (const type of ['audioVariant.upsert', 'audioPreferences.reset']) {
     assert.equal((await connection.session.dispatch({ type, payload: {} })).error.code, 'CAPABILITY_UNAVAILABLE');
   }
   connection.session.dispose();

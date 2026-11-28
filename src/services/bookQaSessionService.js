@@ -3,7 +3,8 @@ import {
   TextDataManagementError, validateTextManagementSnapshot
 } from '../domain/text/textDataManagementDomain.js';
 import { createTextDataManagementSession } from './textDataManagementSession.js';
-import { isBookQaNativeCommand, isBookQaWorkspace } from '../domain/text/bookQaCapabilities.js';
+import { isBookQaDestructiveCommand, isBookQaNativeCommand, isBookQaWorkspace } from '../domain/text/bookQaCapabilities.js';
+import { createBookJsonExport } from '../domain/text/bookQaTransferDomain.js';
 import { createBookQaAudioSession } from './bookQaAudioSessionService.js';
 
 const origins = new Set(['https://text-uat.prolingo.web.id']);
@@ -17,6 +18,10 @@ const access = { boundary: 'disposable', permissions: ['catalog', 'content'], bo
 const failure = (code, message) => new TextDataManagementError(code, message);
 
 const reconcileSelection = (snapshot, previous) => {
+  if (!previous) {
+    const first = snapshot.documents.find(isBookQaWorkspace);
+    return first ? { workspaceId: first.id } : { collectionId: null };
+  }
   const workspace = snapshot.documents.find(item => item.id === previous.workspaceId && isBookQaWorkspace(item));
   if (workspace) {
     const selection = { workspaceId: workspace.id };
@@ -32,13 +37,12 @@ const reconcileSelection = (snapshot, previous) => {
   if (snapshot.collections.some(item => item.id === previous.collectionId)) {
     return { collectionId: previous.collectionId };
   }
-  const first = snapshot.documents.find(isBookQaWorkspace);
-  return first ? { workspaceId: first.id } : {};
+  return previous.collectionId === null ? { collectionId: null } : {};
 };
 
 // loadState validates the persisted sidecars and metadata in the same read as
 // the snapshot. Validate the exact projection before invoking P15 replacement.
-const prepareSource = (loaded, previous = {}) => {
+const prepareSource = (loaded, previous) => {
   const { snapshot: candidate, sourceAttachments, externalImports, metaRecords } = loaded;
   if (candidate?.schemaVersion !== 2) {
     throw failure('SCHEMA_UNSUPPORTED', 'Book QA accepts complete disposable v2 libraries only.');
@@ -54,7 +58,11 @@ const prepareSource = (loaded, previous = {}) => {
 };
 
 export const createBookQaConnection = (adapter, loaded, authorization = null) => {
-  const session = createTextDataManagementSession({ ...prepareSource(loaded), ...access, execute: adapter.execute });
+  const authorized = authorization?.optIn === true && authorization.origin === globalThis.location?.origin
+    && isBookQaOrigin(authorization.origin) && adapter.dbName === authorization.library && loaded.dbVersion === 2;
+  const canTransfer = authorized && adapter.permissions?.includes('transfer');
+  const session = createTextDataManagementSession({ ...prepareSource(loaded), ...access,
+    permissions: canTransfer ? [...access.permissions, 'transfer'] : access.permissions, execute: adapter.execute });
   let needsRefresh = false;
   let refreshing = false;
   const replace = source => {
@@ -66,9 +74,7 @@ export const createBookQaConnection = (adapter, loaded, authorization = null) =>
       throw failure('REFRESH_REPLACE_FAILED', replaced.error?.message || 'Book QA session replacement failed.');
     }
   };
-  const audio = authorization?.optIn === true && authorization.origin === globalThis.location?.origin
-    && isBookQaOrigin(authorization.origin) && adapter.dbName === authorization.library && loaded.dbVersion === 2
-    ? createBookQaAudioSession({
+  const audio = authorized ? createBookQaAudioSession({
       library: adapter.dbName,
       loadState: adapter.loadState,
       getSnapshot: session.getSnapshot,
@@ -92,15 +98,29 @@ export const createBookQaConnection = (adapter, loaded, authorization = null) =>
       getSnapshot: session.getSnapshot,
       subscribe: session.subscribe,
       navigate: session.navigate,
+      setDraft: session.setDraft,
+      getDraft: session.getDraft,
+      clearDraft: session.clearDraft,
+      exportBookJson(scope) {
+        if (!canTransfer) throw failure('PERMISSION_DENIED', 'Connect an authorized Book QA library to export.');
+        if (needsRefresh || refreshing || session.getState().pending) throw failure('REFRESH_REQUIRED', 'Finish the pending operation and refresh if needed before exporting.');
+        return createBookJsonExport(session.getSnapshot(), session.getState().view.selection, scope);
+      },
       dispose() { audio?.dispose(); session.dispose(); },
-      async dispatch(command) {
+      async dispatch(command, { confirmed = false, expectedRevision } = {}) {
         if (!isBookQaNativeCommand(command)) {
-          return { ok: false, error: { code: 'CAPABILITY_UNAVAILABLE', message: 'This command is unavailable in A1a Book QA.' } };
+          return { ok: false, error: { code: 'CAPABILITY_UNAVAILABLE', message: 'This command is unavailable in Book QA.' } };
         }
         if (needsRefresh || refreshing) {
           return { ok: false, error: { code: 'REFRESH_REQUIRED', message: 'Refresh the connected Book QA library before writing.' } };
         }
         if (audio?.pending) return { ok: false, error: { code: 'AUDIO_BUSY', message: 'Wait for the active audio operation.' } };
+        if (isBookQaDestructiveCommand(command) && !confirmed) {
+          return { ok: false, error: { code: 'CONFIRMATION_REQUIRED', message: 'Confirm the destructive action in Book Data.' } };
+        }
+        if (expectedRevision !== undefined && expectedRevision !== session.getState().revision) {
+          return { ok: false, error: { code: 'STALE_RESULT', message: 'The library or selection changed. Review the action again.' } };
+        }
         const result = await session.dispatch(command);
         if (result.error?.reloadRequired) needsRefresh = true;
         return result;

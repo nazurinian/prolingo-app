@@ -8,8 +8,8 @@
 | Branch | `test/text-v2-uat` |
 | Worktree | `prolingo-p12-integration-qa` |
 | Baseline saat ini | `2c695bd0f91c20573fd08004a000c40d46e21050` — A2-HF1 |
-| Status | Product contract retained. A2-HF2 implementation is at the review gate. |
-| Next | A2-HF2 → A3 → A3-G → A4 → A5 → A6/4H2 → R0–R3 |
+| Status | Owner accepted A2-HF2 4/4. A3 is at independent review and owner manual UAT. |
+| Next | A3 acceptance gate → A3-G → A4 → A5 → A6/4H2 → R0–R3 |
 | Production activation | **NO-GO** |
 
 > Dokumen ini mencatat pembahasan sejak A2-HF1 dan manual UAT kedua, termasuk koreksi dari diskusi lanjutan. Bukan perintah langsung untuk mengerjakan semua patch sekaligus. Tidak ada code, DB, konfigurasi, branch, commit, deployment atau release yang diubah oleh pembuatan catatan ini.
@@ -365,7 +365,9 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 
 **Exit:** Human-readable archive + reliable coverage, no proven unresolved serious lifecycle or focus bug, remaining physical/visual refinements tracked. GO for A3 only after source review and appropriate focused acceptance. Can execute HF2 then A3 in one Sol assignment with separate gates if explicitly authorized; default separate checkpoint to protect scope. No DB schema/version or canonical activation.
 
-**A2-HF2 review checkpoint, 28 November 2026.** Implemented from `cdfc32c006924b243537fc2fadc35a9460ba5305`, the documentation-only descendant of `2c695bd0f91c20573fd08004a000c40d46e21050`. Review the [HF2 report](A2_HF2_Book_QA_Targeted_Correction_Report.md) and its Indonesian retest checklist. The product requirements and downstream phase gates above remain in force. Owner acceptance and physical/provider retest remain open. Production activation is **NO-GO**.
+**A2-HF2 closure, 28 November 2026.** The owner reported **4/4 manual PASS** for Export and Naming, Coverage, Playback within the exercised scope, and Focus within the exercised scope. Browser fallback and comprehensive physical-device acceptance remain open. See the [HF2 implementation report](A2_HF2_Book_QA_Targeted_Correction_Report.md).
+
+The independent review of the owner's bilingual London exports found 86 recorded MP3s in Portable with manifest v3 and `AUDIO_INDEX.csv`. The Listening archive had the same 86 MP3s and 22 export-only WAVs, for 108 entries. All 86 MP3 byte digests matched and all decoded. All 22 WAV headers were valid. The archives included all 74 EN/ID Split Sentences, the Main Title and four Card Headings in both channels, and P1 Full in both channels. Six Full Card requirements remained missing as expected. The owner's archives contained no alternate render-rate or pitch recordings. These findings come from the historical independent review.
 
 ### 11.2 A3 — native Book Data Management & authoring (Sol High)
 
@@ -378,6 +380,8 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 
 **Exit:** Functional data-management capability, not production activation. User tests authoring/transfer on QA v2 before final UI polish.
 
+**A3 checkpoint, 28 November 2026.** The isolated Book QA AppBar opens Book Data. Catalog and authoring use the scoped P15 writer. JSON import creates copies in a single transaction and preserves source lineage for the separate Portable Audio import. Root and Library recovery are additive. Attach/sync, UID-preserving import, and destructive replace restore remain gated. Independent review and owner manual UAT are **NOT CONFIRMED**. Production activation is **NO-GO**. [A3 report](A3_Book_QA_Native_Data_Management_Report.md) · [Manual UAT checklist](A3_Book_QA_Manual_UAT_ID.md)
+
 ### 11.3 A3-G — functional playback/interaction contract + three-tab UAT integration (Sol High)
 
 **Goal:** Finish shared core semantics before Neon final styling; expose minimal safe controls sufficient for functional verification. Keep A3 persistence work accepted, no redundant storage redesign.
@@ -388,6 +392,20 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 - G-N Navigation: three tabs Table / Legacy / Book in approved UAT shell only. Book uses explicit isolated v2 connection; Table and Legacy retain existing approved paths, no transfer of QA scope/connection/prefs into canonical data. Fail closed if capability unavailable. Clear ownership/disposal when switching, no old audio callbacks changing new mode, no hidden canonical fallback; preserve normal build exclusion of QA activation. Explicitly review what data Table/Legacy UAT paths may read/write; if safe integration cannot be proven, keep read-only/disabled boundaries instead of broadening authority. No production Book activation until R1.
 - G acceptance: complete functional matrix of commands, selection/owner, scope/representation, repeat/resume/shuffle, headings and actual voices; stale/cancel and switched tab tests; baseline regression only affected shared paths plus integrated gate. Manual tests on London and pure/stress fixtures, normal/UAT builds and canonical/legacy/table sentinels. Record updated ledger and remaining A5 presentation work.
 
+Approved future timing defaults for A3-G:
+
+| Timing preference | Target default |
+| --- | ---: |
+| Channel Delay | 0 ms |
+| Sentence Delay | 0 ms |
+| Section / Turn Delay | 200 ms |
+| Card Delay | 350 ms |
+| Main Title Delay | 750 ms |
+| Card Heading Delay | 400 ms |
+| Repeat Delay | 500 ms |
+
+Use one applicable delay between adjacent playable steps. The A3-G planning rule gives Repeat Delay precedence at a repeat boundary. Within a pass, use Channel Delay between channels of the same item. After the final channel of an audible Main Title or Card Heading, use that heading's delay in place of a structural delay. For ordinary adjacent body items use the widest crossed boundary, in order Card, Section/Turn, then Sentence. Preserve existing preferences and Table/Legacy isolation. A3 leaves runtime values unchanged.
+
 **Exit:** Playback contract and safe UAT navigation accepted. Sol hands Neon stable shared APIs and preference ownership; no new independent player in UI.
 
 ### 11.4 A4 — Sidebar, Workspace Control Center & audio profiles (Neon; Sol review for logic)
@@ -397,6 +415,7 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 - A4-A navigation/control center: Table/Legacy/Book layout, Library Root and Collections, Workspace selection, Data/Audio/Audio Library/System controls with minimal duplication; responsive desktop/mobile, theme/density; clear isolated badge in UAT. Existing accepted Table/Legacy functionality stays intact.
 - A4-B audio settings: Browser voice catalog, Edge Generate voice/rate/pitch, Workspace Narrator/Speaker, EN/ID playback rate/priority; correct default/reset enabled only when changed, slider commit policy and voice catalog consistency (Natural flag/country labels/sort where applicable), unavailable voice truthful. Expose exact recorded profile selector incl same-voice differing render settings. Never confuse render rate and playback rate; choosing another profile must not replace audio.
 - A4-C audio library and transfer UI: coverage groups from HF2, scoped generation/verify/cancel/export, explicit Portable vs Listening, actual selected alternate/profile filters. Central Card Audio Settings Manager lists all authored Cards with same existing overrides; optional future bulk override not necessary. Full Structured/Clear shortcut planned A5. Legacy historical Audio Sidebar assertion disposition only as relevant to changed UI.
+- Show Split Complete separately from Full Card Ready/Missing. Preserve exact selection by engine, voice, render rate, pitch, and relevant fingerprint fields. Owner verification with actual alternate-rate and pitch recordings remains open.
 - A4 acceptance: real native commands/session paths, no mock UI, changes reflected across workspace/Card, preserve saved prefs and exact fingerprint, reset/flicker tests, generation/error/cancel smoke, responsive/keyboard. Core changes requiring Sol approval separated; no duplicate settings store.
 
 **Exit:** Complete discoverable Control Center with audio profile management and consistent state, ready for Reader/Player UI.
@@ -404,6 +423,8 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 ### 11.5 A5-A — Player Settings and Reader interaction controls (Neon + Sol for shared logic gaps)
 
 **Goal:** Make accepted A3-G command semantics accessible, not reimplement them. Global Player settings for global/manual/title read/From Here; Reader toolbar display and interaction controls. Show actual selected/playing/paused/ready states, compact controls and safe Reset. Tap to Play, Continue, Follow, Return, explicit From Here from Unit/header/selected anchor, accessible without opening Sentence List. Main toolbar stable, Focus orientation in sub-toolbar. Keep Player Settings accessible in Book QA. Preserve active owner across view switches. Verify four-state interaction truth table and repeat/resume presentation; desktop/mobile controls reachable.
+
+During ordinary waits keep media identity, channel, source, voice, and authored cursor stable. Update them when the next actual media step starts. Keep the media label as the media identity through “Between audio steps” and show “Waiting for next audio” in a separate stable status area. Apply this to Play All information, active Card/Unit, and Global Player. Preserve truthful Pause, Stop, waiting and timeline state and implement the agreed Follow Playback and Return to Playing contract.
 
 **Exit:** Shared settings and transport controls match core contract; no ambiguity between Full View and Full Audio, Show and Read, or selection and playback.
 
@@ -429,6 +450,10 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 
 **Goal:** Validate real browsers/devices, not just emulated viewport. Edge/Chrome Browser voices and authorized actual provider smoke, recorded EN/ID, background/lockscreen MediaSession title/source/controls, interruptions, resume, touch/wheel nested gestures, performance, refresh/reconnect, audio generation/transfer and ZIP. Revisit Packet C Edge timeout. Use approved UAT origins; preserve scope. Explicitly test unknown actual device capabilities, no unsupported claims. No automatic large AI model downloads. Close defects with narrow patches and rerun affected paths.
 
+Historical amplitude-threshold measurements on the owner's recordings found approximate median leading/trailing silence of EN 206/390 ms and ID 235/877 ms. Physical device latency still requires its own measurement. Track configured delay, silence contained within recordings, and the Silent Audio Anchor independently. Evaluate optional non-destructive silence reduction while preserving original audio, RF, exact bytes, and natural internal pauses. Default to original audio until safe reduction is verified.
+
+Audit the existing 30-second looping silent WAV anchor, actual Media Session ownership, mobile background restrictions, lock-screen metadata, local audio timeline, accurate Browser TTS timing availability, Pause/Resume, and mixed-source transitions.
+
 **Exit:** Physical acceptance matrix and known limitations approved, release rehearsal ready.
 
 ### 11.10 R0–R3 — production boundary (Sol + owner approval)
@@ -446,7 +471,8 @@ Post-Stable: Legacy modernisation v6.1, Table v6.2, content authoring v6.3 as ex
 - Keep prompts short and refer to this addendum, original architecture contract, current capability ledger and exact checkpoint. Sol only for core and acceptance, Neon for UI/prototype. Do not reread entire repo or rerun every historical audit for cosmetic changes; focused scope and escalation for shared persistence/runtime boundaries. Full regression at meaningful gates. Avoid repeated retries for unrelated baseline failures; compare and record evidence.
 - Each patch report: issue IDs and classification; actual starting HEAD; scope and non-goals; reproduction/source anchors; changed-file list; commands/counts/exit codes; evidence of unchanged invariants; manual checklist only affected items; outstanding debt and next phase; GO/CONDITIONAL GO/NO-GO for isolated scope. Explicitly distinguish executor reported vs independent source review vs human verification. Normal/UAT builds sequential after final changes where applicable; preserve final-byte evidence. Do not mark deferred/untested as PASS.
 - Pending UAT evidence: EN local listening confirmed; verify ID local and like-for-like latency; actual cancel/retry, portable reimport and browser restart with recordings only when tested; stress multi-batch manual status not implied by basic Workspace Split; exact Heading audio coverage/controls, manual repeat/resume/From Here settings after A3-G; full physical A6. Existing 12/22 first UAT tally remains historical; second retest records six responses and qualifications, not an automatic 22/22 replacement.
-- Next instruction to prepare after owner approves this document: **A2-HF2 targeted export/readiness and residual runtime/focus correction**. Include sections 2–3, 6.5, 8.1 (ownership only), register B01/B02/U01/U02/B04 audit and gate 11.1. No final carousel, Full Clear, new settings manager or A3-G resume implementation inside HF2. Separate A3 instructions after HF2 gate (or explicitly authorized sequential assignment). Record new commit before expanding scope.
+- Next gate is A3 independent review and owner manual UAT. A3-G starts only after separate authorization.
+- Cross-phase Reset contract: enable Reset only when normalized effective values differ from the group's defaults, and disable immediately when values manually return to defaults. Commit slider persistence on release. Reset only its settings group. Override Reset restores parent inheritance. Preserve data, recordings, unrelated preferences, existing explicit overrides, and accepted reset-dirty behavior. Avoid unnecessary confirmation, remount, reload, flicker, and repeated writes.
 
 ## 13. Source anchors and verification boundaries
 

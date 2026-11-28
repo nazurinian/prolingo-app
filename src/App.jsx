@@ -276,7 +276,7 @@ const rejectBookQaLocalSnapshotWrite = () => {
   throw new Error('Book QA projections are session-owned; local Text snapshots cannot be written.');
 };
 // --- MAIN COMPONENT ---
-const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, onOpenBookQaData = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
   const bookQaMode = Boolean(bookQaConnection?.session);
   const bookQaSession = bookQaConnection?.session || null;
   const bookQaSnapshot = useSyncExternalStore(
@@ -8288,7 +8288,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
 
   return <NowPlayingContext.Provider value={readNowPlaying}>{renderMainAppShellView({
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome,
-    bookQaMode, handleCreateBookQaSample, bookQaRefreshError,
+    bookQaMode, handleCreateBookQaSample, bookQaRefreshError, onOpenBookQaData,
     bookQaDatabaseName: bookQaConnection?.dbName || '',
     bookQaRefreshing,
     bookQaPending: Boolean(bookQaSessionState?.pending),
@@ -8352,7 +8352,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
 // --- APP WRAPPER (Theme & View Logic) ---
 const APP_VIEW_SESSION_KEY = 'prolingo:view:v1';
 
-const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
+const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHeadingAudioControls = null, BookQaPortableAudioControls = null, onBookQaRefresh = null, onOpenBookQaData = null, bookQaRefreshing = false, bookQaRefreshError = null }) => {
     const bookQaMode = Boolean(bookQaConnection?.session);
     // Keep the current root view across same-tab reloads/HMR fallbacks.
     // A new browser session still starts on Landing by default.
@@ -8447,6 +8447,7 @@ const App = ({ bookQaConnection = null, BookQaBodyAudioControls = null, BookQaHe
                     BookQaHeadingAudioControls={BookQaHeadingAudioControls}
                     BookQaPortableAudioControls={BookQaPortableAudioControls}
                     onBookQaRefresh={onBookQaRefresh}
+                    onOpenBookQaData={onOpenBookQaData}
                     bookQaRefreshing={bookQaRefreshing}
                     bookQaRefreshError={bookQaRefreshError}
                 />

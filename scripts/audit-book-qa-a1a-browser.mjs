@@ -9,6 +9,7 @@ import { checkBookAudioHardening, hardeningAuditLibraries } from './fixtures/a1b
 import { checkBookHardeningPlayback } from './fixtures/a1b-g/check-hardening-playback.mjs';
 import { checkPersistentBookQaDemo, demoAuditLibraries } from './fixtures/book-qa/check-persistent-demo.mjs';
 import { checkBookQaReaderRefinement, readerRefinementLibraries } from './fixtures/book-qa/check-reader-refinement.mjs';
+import { checkBookQaA3, a3Libraries } from './fixtures/book-qa/check-a3-browser.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -29,12 +30,13 @@ const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
 const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
 const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
 const demoAudit = process.env.BOOK_QA_A2_AUDIT === '1';
+const a3Audit = process.env.BOOK_QA_A3_AUDIT === '1';
 const readerRefinement = process.env.BOOK_QA_HF1_READER_AUDIT;
 const nativeSpeech = ['native', 'hf2-native'].includes(readerRefinement);
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
   ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
   ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}),
-  ...(readerRefinement ? readerRefinementLibraries : {}) };
+  ...(readerRefinement ? readerRefinementLibraries : {}), ...(a3Audit ? a3Libraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -51,6 +53,7 @@ export * from './scripts/fixtures/a1b-2a/portable-browser-probe.js';
 export * from './scripts/fixtures/a1b-2b/normal-browser-probe.js';
 export * from './scripts/fixtures/a1b-g/hardening-browser-probe.js';
 export * from './scripts/fixtures/book-qa/hf2-browser-probe.js';
+export * from './scripts/fixtures/book-qa/a3-browser-probe.js';
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
 import { createBookQaConnection } from './src/services/bookQaSessionService.js';
@@ -204,13 +207,13 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(probeBundle);
         return;
       }
-      if (uatMode && (audioAudit || bodyAudit || headingAudit || portableAudit || hardeningAudit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
+      if (uatMode && (audioAudit || bodyAudit || headingAudit || portableAudit || hardeningAudit || a3Audit) && ['/__book_audio_440.mp3', '/__book_audio_660.mp3'].includes(pathname)) {
         const frequency = pathname.includes('440') ? '440' : '660';
         response.setHeader('Content-Type', 'audio/mpeg');
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit || demoAudit || readerRefinement) && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit || demoAudit || readerRefinement || a3Audit) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -763,6 +766,19 @@ try {
     assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
   }
 
+  if (a3Audit) {
+    const requestsBefore = bodyRequests.length;
+    report.a3 = await checkBookQaA3({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, probe, uatOrigin });
+    const audit = await readAudit();
+    assert.deepEqual(await storageState(false), expectedStorage);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.deletes, []);
+    assert([...audit.opens, ...audit.writes].every(row => row.name === row.selected || row.name === companionByLibrary[row.selected]));
+    assert.equal(bodyRequests.length - requestsBefore, 2);
+    assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+  }
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
   report.production = {
@@ -770,6 +786,7 @@ try {
     qaHostModuleAbsent: productionSources.every(source => !source.includes('data-book-qa-host="disconnected"'))
   };
   assert(report.production.qaHostChunkAbsent && report.production.qaHostModuleAbsent, 'Production output must exclude the Book QA host module');
+  if (a3Audit) assert(productionSources.every(source => !source.includes('data-book-data-manager')), 'Production must exclude the Book Data manager');
   if (demoAudit) assert(productionSources.every(source => !source.includes('Initialize A2 demo library')), 'Production must exclude the A2 initializer');
   if (bodyAudit) {
     report.production.bookBodyAudioPanelAbsent = productionSources.every(source => !source.includes('data-book-body-audio-status'));
@@ -818,6 +835,11 @@ try {
 
   report.browserRuntimeErrors = runtimeErrors;
   assert(runtimeErrors.length === 0, 'Browser emitted runtime exceptions');
+  if (a3Audit) {
+    await fs.writeFile(path.join(evidenceDir, 'a3-book-qa-evidence.json'), JSON.stringify({
+      browser: await call('Browser.getVersion'), ...report.a3, safety: report.production, runtimeErrors
+    }, null, 2) + '\n');
+  }
   console.log(JSON.stringify(report, null, 2));
   }
 } catch (error) {

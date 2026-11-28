@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { resolveBookCardHeading, resolveBookMainTitle } from '../../../domain/text/textBookHeadingDomain.js';
 import {
   ArrowDown,
   ArrowUp,
@@ -41,7 +42,8 @@ export default function DataManagementStructuredEditor({
   getDraft,
   setDraft,
   clearDraft,
-  compact = false
+  compact = false,
+  book = false
 }) {
   const [showReaderPreview, setShowReaderPreview] = useState(true);
   const [editingCardId, setEditingCardId] = useState(null);
@@ -74,12 +76,17 @@ export default function DataManagementStructuredEditor({
   const defaultCardType = doc.documentType === 'conversation' ? 'conversation' : 'paragraph';
   const newCardTypeKey = { workspaceId: doc.id, entityId: doc.id, field: 'newCardType' };
   const newCardTitleKey = { workspaceId: doc.id, entityId: doc.id, field: 'newCardTitle' };
+  const newHeadingIdKey = { workspaceId: doc.id, entityId: doc.id, field: 'newHeadingId' };
   const newCardNoteKey = { workspaceId: doc.id, entityId: doc.id, field: 'newCardNote' };
   const newCardType = doc.documentType === 'mixed'
     ? (getDraft(newCardTypeKey) ?? defaultCardType)
     : defaultCardType;
   const newCardTitle = getDraft(newCardTitleKey) ?? '';
+  const newHeadingId = book ? getDraft(newHeadingIdKey) ?? '' : '';
   const newCardNote = getDraft(newCardNoteKey) ?? '';
+  const cardBlocked = book && (!resolveBookMainTitle(doc).saved
+    ? 'Save a valid Main Title in Workspace & Speakers first.'
+    : newCardType === 'conversation' && speakers.length < 2 ? 'Register at least two Speakers in Workspace & Speakers first.' : '');
 
   const rawBlockById = new Map((documentTree?.blocks || []).map(b => [b.id, b]));
   const rawSegById = new Map((documentTree?.blocks || []).flatMap(b => (b.segments || []).map(s => [s.id, s])));
@@ -90,7 +97,7 @@ export default function DataManagementStructuredEditor({
     const payload = {
       documentId: doc.id,
       blockType: newCardType,
-      title: clean(newCardTitle) || undefined
+      ...(book ? { heading: { en: newCardTitle, id: newHeadingId } } : { title: clean(newCardTitle) || undefined })
     };
     if (clean(newCardNote)) payload.metadata = { note: clean(newCardNote) };
     const res = await onDispatch({ type: 'block.create', payload });
@@ -98,6 +105,7 @@ export default function DataManagementStructuredEditor({
       clearDraft(newCardTypeKey);
       clearDraft(newCardTitleKey);
       clearDraft(newCardNoteKey);
+      if (book) clearDraft(newHeadingIdKey);
     }
   };
 
@@ -110,7 +118,7 @@ export default function DataManagementStructuredEditor({
   return (
     <div className="space-y-4">
       {/* Live Read-Only Shared Reader Preview */}
-      <section
+      {!book && <section
         aria-label="Read-Only Shared Reader Preview"
         data-dm-reader-preview="true"
         className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3"
@@ -156,7 +164,7 @@ export default function DataManagementStructuredEditor({
             )}
           </div>
         )}
-      </section>
+      </section>}
 
       {/* Structured Editor */}
       <section
@@ -170,7 +178,7 @@ export default function DataManagementStructuredEditor({
               Structured Content Editor ({presentation.cards.length} Cards in Global Order)
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {isV1
+              {book ? 'Cards stay in authored order across both kinds.' : isV1
                 ? 'Schema v1 Paragraph: Card & Segment edits work cleanly; virtual Sections (id: null) stay read-only.'
                 : 'Schema v2 Complete Units: Paragraph Sections and Conversation Speaker Turns stay cleanly separated per Card.'}
             </p>
@@ -208,7 +216,7 @@ export default function DataManagementStructuredEditor({
               </select>
             </label>
             <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
-              <span>Card Title (optional)</span>
+              <span>{book ? 'Card Heading EN (optional)' : 'Card Title (optional)'}</span>
               <input
                 aria-label="New Card title"
                 value={newCardTitle}
@@ -218,6 +226,11 @@ export default function DataManagementStructuredEditor({
                 className={DM_INPUT_CLASS}
               />
             </label>
+            {book && <label className="space-y-1 text-[11px] font-bold">
+              <span>Card Heading ID (optional)</span>
+              <input value={newHeadingId} onChange={e => setDraft(newHeadingIdKey, e.target.value)}
+                disabled={isPending || !canCreateCard} className={DM_INPUT_CLASS} />
+            </label>}
             <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
               <span>Card metadata.note</span>
               <input
@@ -230,11 +243,12 @@ export default function DataManagementStructuredEditor({
               />
             </label>
           </div>
+          {cardBlocked && <p className="text-xs text-amber-700 dark:text-amber-300">{cardBlocked}</p>}
           <div className="flex justify-end">
             <button
               type="submit"
               data-dm-create-card-submit="true"
-              disabled={isPending || !canCreateCard}
+              disabled={isPending || !canCreateCard || Boolean(cardBlocked)}
               title={canCreateCard ? 'Create new Card' : explainReason(capabilities['block.create']?.reason)}
               className={`${DM_CONTROL_BTN} border-indigo-600 bg-indigo-600 text-white`}
             >
@@ -256,8 +270,10 @@ export default function DataManagementStructuredEditor({
               const isCardSelected = selection.cardId === card.id;
               const isEditingCard = editingCardId === card.id;
               const cardTitleKey = { workspaceId: doc.id, entityId: card.id, field: 'title' };
+              const headingIdKey = { workspaceId: doc.id, entityId: card.id, field: 'headingId' };
               const cardNoteKey = { workspaceId: doc.id, entityId: card.id, field: 'note' };
               const draftCardTitle = getDraft(cardTitleKey) ?? card.title ?? '';
+              const draftHeadingId = book ? getDraft(headingIdKey) ?? resolveBookCardHeading(rawBlock).id : '';
               const draftCardNote = getDraft(cardNoteKey) ?? (typeof rawBlock.metadata?.note === 'string' ? rawBlock.metadata.note : '');
               const cardOpaqueMeta = listPreservedMetadataEntries(rawBlock.metadata, { exclude: ['note'] });
               const persistentUnits = card.units.filter(u => Boolean(u.id));
@@ -269,12 +285,13 @@ export default function DataManagementStructuredEditor({
                   type: 'block.update',
                   payload: {
                     id: card.id,
-                    title: clean(draftCardTitle) || null,
+                    ...(book ? { heading: { en: draftCardTitle, id: draftHeadingId } } : { title: clean(draftCardTitle) || null }),
                     metadata: buildReplacedMetadataWithNote(rawBlock.metadata, draftCardNote)
                   }
                 });
                 if (res?.ok) {
                   clearDraft(cardTitleKey);
+                  if (book) clearDraft(headingIdKey);
                   clearDraft(cardNoteKey);
                   setEditingCardId(null);
                 }
@@ -442,7 +459,7 @@ export default function DataManagementStructuredEditor({
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                          <span>Card Title</span>
+                          <span>{book ? 'Card Heading EN' : 'Card Title'}</span>
                           <input
                             aria-label={`Card title ${card.id}`}
                             value={draftCardTitle}
@@ -452,6 +469,11 @@ export default function DataManagementStructuredEditor({
                             className={DM_INPUT_CLASS}
                           />
                         </label>
+                        {book && <label className="space-y-1 text-[11px] font-bold">
+                          <span>Card Heading ID</span>
+                          <input value={draftHeadingId} onChange={e => setDraft(headingIdKey, e.target.value)}
+                            disabled={isPending} className={DM_INPUT_CLASS} />
+                        </label>}
                         <label className="space-y-1 text-[11px] font-bold text-slate-700 dark:text-slate-300">
                           <span>Card metadata.note</span>
                           <input
@@ -487,9 +509,10 @@ export default function DataManagementStructuredEditor({
                         <button
                           type="button"
                           data-dm-open-create-unit={card.id}
-                          disabled={isPending || !canCreateUnit}
+                          disabled={isPending || !canCreateUnit || (book && card.blockType === 'conversation' && !speakers.length)}
                           onClick={() => setCreatingUnitCardId(card.id)}
-                          title={canCreateUnit ? `Add ${card.blockType === 'conversation' ? 'Speaker Turn' : 'Section'}` : explainReason(capabilities?.['contentUnit.create']?.reason)}
+                          title={book && card.blockType === 'conversation' && !speakers.length ? 'Register a Workspace Speaker first.'
+                            : canCreateUnit ? `Add ${card.blockType === 'conversation' ? 'Speaker Turn' : 'Section'}` : explainReason(capabilities?.['contentUnit.create']?.reason)}
                           className={`${DM_SMALL_BTN} border-sky-300 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/30 text-sky-800 dark:text-sky-200`}
                         >
                           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
@@ -518,11 +541,11 @@ export default function DataManagementStructuredEditor({
                                   disabled={isPending}
                                   className={DM_INPUT_CLASS}
                                 >
-                                  <option value="__none__">Unassigned Speaker</option>
+                                  {!book && <option value="__none__">Unassigned Speaker</option>}
                                   {speakers.map(s => (
                                     <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
                                   ))}
-                                  <option value="__custom__">+ Custom Speaker Label...</option>
+                                  {!book && <option value="__custom__">+ Custom Speaker Label...</option>}
                                 </select>
                               </label>
                               {unitSpeakerChoice === '__custom__' && (
@@ -858,11 +881,11 @@ export default function DataManagementStructuredEditor({
                                         disabled={isPending}
                                         className={DM_INPUT_CLASS}
                                       >
-                                        <option value="__none__">Unassigned (Reset speaker)</option>
+                                        {(!book || draftUnitSpk === '__none__') && <option value="__none__" disabled={book}>{book ? 'Choose a registered Speaker' : 'Unassigned (Reset speaker)'}</option>}
                                         {speakers.map(s => (
                                           <option key={s.id} value={s.id}>{s.label} ({s.id})</option>
                                         ))}
-                                        <option value="__custom__">+ Custom Speaker Label...</option>
+                                        {!book && <option value="__custom__">+ Custom Speaker Label...</option>}
                                       </select>
                                     </label>
                                     {draftUnitSpk === '__custom__' && (

@@ -48,7 +48,7 @@ import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDo
 export const renderMainAppShellView = (props) => {
   const {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome, isSystemBusy,
-    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null, bookQaRefreshError = null, handleCreateBookQaSample,
+    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null, onOpenBookQaData = null, bookQaRefreshError = null, handleCreateBookQaSample,
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
@@ -113,6 +113,7 @@ export const renderMainAppShellView = (props) => {
         bookQaDatabaseName={bookQaDatabaseName}
         bookQaRefreshing={bookQaRefreshing}
         bookQaPending={bookQaPending}
+        onOpenBookQaData={onOpenBookQaData}
         onBookQaRefresh={onBookQaRefresh}
         isCsvDirty={isCsvDirty}
         csvChangeSummary={csvChangeSummary}
@@ -286,7 +287,7 @@ export const renderMainAppShellView = (props) => {
                   advancedDatasetStats={advancedDatasetStats}
               />}
 
-              {sidebarSection === 'data' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">A1a supports isolated Text Workspace catalog commands and v2 sample creation. CSV, Legacy, import/export and destructive reset paths are unavailable.</p>}
+              {sidebarSection === 'data' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Open Book Data in the AppBar to manage this library, edit Book content or transfer JSON.</p>}
               {sidebarSection === 'data' && !bookQaMode && <DesktopDataActions
                 mode={mode}
                 isSystemBusy={isSystemBusy}

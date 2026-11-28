@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { AlertOctagon, Lock, Save, Trash2, Users } from 'lucide-react';
 import ConversationSpeakerPanel from '../conversation/ConversationSpeakerPanel.jsx';
+import { BookMainTitleFields } from '../TextLibraryShell.jsx';
+import { resolveBookMainTitle } from '../../../domain/text/textBookHeadingDomain.js';
 import {
   buildReplacedMetadataWithNote,
   listPreservedMetadataEntries
@@ -27,7 +29,8 @@ export default function DataManagementWorkspaceInspector({
   getDraft,
   setDraft,
   clearDraft,
-  compact = false
+  compact = false,
+  book = false
 }) {
   const workspace = view?.workspace;
   const catalog = view?.catalog;
@@ -65,6 +68,8 @@ export default function DataManagementWorkspaceInspector({
   const textLangKey = { workspaceId: doc.id, entityId: doc.id, field: 'textLanguage' };
   const meanLangKey = { workspaceId: doc.id, entityId: doc.id, field: 'meaningLanguage' };
   const noteKey = { workspaceId: doc.id, entityId: doc.id, field: 'note' };
+  const mainTitleKey = { workspaceId: doc.id, entityId: doc.id, field: 'mainTitle' };
+  const mainTitle = book ? getDraft(mainTitleKey) ?? resolveBookMainTitle(doc) : null;
 
   const draftTitle = getDraft(titleKey) ?? doc.title ?? '';
   const draftCollectionId = getDraft(colKey) !== undefined ? getDraft(colKey) : (doc.collectionId ?? '__root__');
@@ -88,7 +93,9 @@ export default function DataManagementWorkspaceInspector({
         collectionId: targetCollectionId,
         textLanguage: clean(draftTextLang) || doc.textLanguage,
         meaningLanguage: clean(draftMeanLang) || doc.meaningLanguage,
-        metadata: buildReplacedMetadataWithNote(doc.metadata, draftNote)
+        metadata: buildReplacedMetadataWithNote(doc.metadata, draftNote),
+        ...(book ? { mainTitle: { mode: mainTitle.mode, id: mainTitle.id,
+          ...(mainTitle.mode === 'custom' ? { en: mainTitle.en } : {}) } } : {})
       }
     });
     if (res?.ok) {
@@ -97,6 +104,7 @@ export default function DataManagementWorkspaceInspector({
       clearDraft(textLangKey);
       clearDraft(meanLangKey);
       clearDraft(noteKey);
+      if (book) clearDraft(mainTitleKey);
     }
   };
 
@@ -253,7 +261,10 @@ export default function DataManagementWorkspaceInspector({
             </label>
           </div>
 
-          {preservedMeta.length > 0 && (
+          {book && <BookMainTitleFields value={mainTitle} disabled={isPending || !canUpdateWs}
+            onChange={value => setDraft(mainTitleKey, value)} />}
+
+          {preservedMeta.length > 0 && !book && (
             <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 space-y-1" data-dm-workspace-opaque-meta="true">
               <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Read-Only Opaque Metadata Preserved Byte-for-Byte
@@ -291,6 +302,7 @@ export default function DataManagementWorkspaceInspector({
                   clearDraft(textLangKey);
                   clearDraft(meanLangKey);
                   clearDraft(noteKey);
+                  if (book) clearDraft(mainTitleKey);
                 }}
                 className={`${DM_SMALL_BTN} border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300`}
               >
@@ -340,6 +352,7 @@ export default function DataManagementWorkspaceInspector({
               isBusy={isPending}
               onCommand={onDispatch}
               compact={compact}
+              book={book}
             />
             {workspace.speakers?.length > 0 && (
               <div className="flex flex-wrap gap-1.5" data-dm-speaker-uid-list="true">

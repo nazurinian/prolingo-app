@@ -99,7 +99,7 @@ const requireStructuredDocuments = documents => {
   if (incompatible) throw new Error(`Text Pack JSON only supports structured-v1 documents; ${incompatible.id} is ${incompatible.editorModel || 'unknown'}`);
 };
 
-export const validateProLingoTextPack = candidate => {
+export const validateProLingoTextPack = (candidate, { allowEmptyCollection = false } = {}) => {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) throw new Error('Text Pack JSON root must be an object');
   if (candidate.packageType !== PROLINGO_TEXT_PACK_TYPE) throw new Error(`Unsupported Text Pack type: ${candidate.packageType || 'missing'}`);
   if (candidate.packageVersion !== PROLINGO_TEXT_PACK_VERSION) throw new Error(`Unsupported Text Pack version: ${candidate.packageVersion}`);
@@ -132,7 +132,7 @@ export const validateProLingoTextPack = candidate => {
     audioVariants: Array.isArray(candidate.audioVariants) ? candidate.audioVariants.map(cloneRecord) : []
   };
   if (!pack.packageId) throw new Error('Text Pack packageId is required');
-  if (!pack.documents.length) throw new Error('Text Pack must contain at least one structured Document');
+  if (!pack.documents.length && !(allowEmptyCollection && scopeType === 'collection')) throw new Error('Text Pack must contain at least one structured Document');
   requireStructuredDocuments(pack.documents);
 
   if (scopeType === 'document') {
@@ -143,7 +143,6 @@ export const validateProLingoTextPack = candidate => {
   } else {
     if (pack.collections.length !== 1) throw new Error('Collection Text Pack must contain exactly one Collection');
     if (candidate.scope?.rootId !== pack.collections[0].id) throw new Error('Collection Text Pack scope.rootId must match its COLLECTION_ID');
-    if (!pack.documents.length) throw new Error('Collection Text Pack must contain at least one Document');
     pack.documents.forEach(document => {
       if (document.collectionId !== pack.collections[0].id) throw new Error(`Collection Text Pack Document ${document.id} has an invalid collection relationship`);
     });
@@ -178,7 +177,8 @@ export const createProLingoTextPack = ({
   rootId,
   source = {},
   now = Date.now(),
-  packageId = null
+  packageId = null,
+  allowEmptyCollection = false
 }) => {
   if (!PROLINGO_TEXT_PACK_SCOPE_TYPES.includes(scopeType)) throw new Error(`Unsupported Text Pack export scope: ${scopeType}`);
   const snapshot = normalizeTextLibraryRuntimeSnapshot(snapshotCandidate);
@@ -204,7 +204,7 @@ export const createProLingoTextPack = ({
     const collection = snapshot.collections.find(item => item.id === rootId);
     if (!collection) throw new Error(`Text Pack export Collection not found: ${rootId}`);
     documents = sortByOrderThenId(snapshot.documents.filter(item => item.collectionId === collection.id));
-    if (!documents.length) throw new Error(`Collection ${collection.id} has no Documents to export`);
+    if (!documents.length && !allowEmptyCollection) throw new Error(`Collection ${collection.id} has no Documents to export`);
     requireStructuredDocuments(documents);
     collections = [{ ...cloneRecord(collection), order: 1 }];
     sourceRootCreatedAt = collection.createdAt ?? null;
@@ -244,7 +244,7 @@ export const createProLingoTextPack = ({
     segments: portable.segments.map(cloneRecord),
     audioVariants: portable.audioVariants.map(cloneRecord)
   };
-  validateProLingoTextPack(pack);
+  validateProLingoTextPack(pack, { allowEmptyCollection });
   return pack;
 };
 
@@ -321,13 +321,22 @@ const sourceMetadata = ({ originalMetadata, pack, sourceId, sourceUid, entity, n
 
 const mapToObject = map => Object.fromEntries([...map.entries()]);
 
-export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: packCandidate, now = Date.now(), uidMode = PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY }) => {
+export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: packCandidate, now = Date.now(), uidMode = PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY,
+  allowEmptyCollection = false, preserveSourceAliases = false }) => {
   const local = normalizeTextLibraryRuntimeSnapshot(localCandidate);
-  const { pack, snapshot: validatedPortable } = validateProLingoTextPack(packCandidate);
+  const { pack, snapshot: validatedPortable } = validateProLingoTextPack(packCandidate, { allowEmptyCollection });
   if (![PROLINGO_TEXT_PACK_UID_MODE_PRESERVE, PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY].includes(uidMode)) throw new Error(`Unsupported Text Pack UID mode: ${uidMode}`);
 
   const localIsV2 = isContentUnitSnapshot(local);
   const portableSourceUid = record => localIsV2 && uidMode === PROLINGO_TEXT_PACK_UID_MODE_NEW_COPY ? record.uid : null;
+  const provenance = record => {
+    const sourceUid = portableSourceUid(record);
+    if (!preserveSourceAliases || !sourceUid) return { sourceUid };
+    const prior = record.metadata?.prolingoTextPackSource;
+    const priorAliases = Array.isArray(prior?.sourceUids) ? prior.sourceUids : [];
+    const sourceUids = [...new Set([prior?.sourceUid, ...priorAliases].filter(uid => typeof uid === 'string' && uid !== sourceUid && uid.length <= 128))].slice(0, 32);
+    return { sourceUid, ...(sourceUids.length ? { extra: { sourceUids } } : {}) };
+  };
   const packIsV2 = isContentUnitSnapshot(validatedPortable);
   if (packIsV2 && !localIsV2) {
     throw new Error('Cannot import a v2 Text Pack with persistent Content Units into an unmigrated v1 Text snapshot');
@@ -355,7 +364,8 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
     id: collectionAssignment.map.get(record.id),
     uid: importedUid(record, uidMode),
     order: localCollectionMaxOrder + index + 1,
-    metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'collection', now })
+    metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'collection', now,
+      ...(preserveSourceAliases ? provenance(record) : {}) })
   }));
 
   const docsByCollection = new Map();
@@ -369,6 +379,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
   for (const [sourceCollectionId, documents] of docsByCollection) {
     documents.forEach((record, index) => {
       const mappedCollectionId = sourceCollectionId === '__root__' ? null : collectionAssignment.map.get(sourceCollectionId);
+      const lineage = provenance(record);
       importedDocuments.push(createTextDocumentRecord({
         ...record,
         id: documentAssignment.map.get(record.id),
@@ -379,13 +390,13 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
           originalMetadata: importedMetadata(record, uidMode),
           pack,
           sourceId: record.id,
-          sourceUid: portableSourceUid(record),
+          ...lineage,
           entity: 'document',
           now,
-          extra: pack.scope.type === 'document' ? {
+          extra: { ...lineage.extra, ...(pack.scope.type === 'document' ? {
             sourceCollectionId: pack.scope.sourceCollectionId || null,
             sourceCollectionTitle: pack.scope.sourceCollectionTitle || null
-          } : {}
+          } : {}) }
         })
       }));
     });
@@ -406,7 +417,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       documentId: documentAssignment.map.get(sourceDocumentId),
       order: index + 1,
       metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id,
-        sourceUid: portableSourceUid(record), entity: 'block', now })
+        ...provenance(record), entity: 'block', now })
     })));
   }
 
@@ -426,7 +437,8 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
         documentId: documentAssignment.map.get(record.documentId),
         blockId: blockAssignment.map.get(sourceBlockId),
         order: index + 1,
-        metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'contentUnit', now })
+        metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id, entity: 'contentUnit', now,
+          ...(preserveSourceAliases ? provenance(record) : {}) })
       })));
     }
   }
@@ -448,7 +460,7 @@ export const mergeProLingoTextPack = ({ localSnapshot: localCandidate, pack: pac
       unitId: localIsV2 && record.unitId ? contentUnitAssignment.map.get(record.unitId) || null : null,
       order: index + 1,
       metadata: sourceMetadata({ originalMetadata: importedMetadata(record, uidMode), pack, sourceId: record.id,
-        sourceUid: portableSourceUid(record), entity: 'segment', now })
+        ...provenance(record), entity: 'segment', now })
     })));
   }
 

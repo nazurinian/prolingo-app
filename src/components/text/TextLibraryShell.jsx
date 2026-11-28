@@ -14,7 +14,7 @@ const formatBytes = value => { const bytes = Math.max(0, Number(value || 0)); if
 
 const LINKED_TITLE_DRAFT = { mode: 'workspace-name', en: '', id: '' };
 const toMainTitleInput = ({ mode, en, id }) => ({ mode, ...(mode === 'custom' ? { en } : {}), id });
-const BookMainTitleFields = ({ value, onChange, disabled }) => {
+export const BookMainTitleFields = ({ value, onChange, disabled }) => {
   const inputClass = 'block w-full min-h-10 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-sm';
   return (
     <fieldset disabled={disabled} className="space-y-1.5 text-xs text-slate-700 dark:text-slate-200">

@@ -158,7 +158,8 @@ export default function DataManagementLibraryExplorer({
   onDispatch,
   getDraft,
   setDraft,
-  clearDraft
+  clearDraft,
+  book = false
 }) {
   const [editingCollectionId, setEditingCollectionId] = useState(null);
   const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
@@ -196,7 +197,7 @@ export default function DataManagementLibraryExplorer({
 
   const handleCreateCollection = async event => {
     event.preventDefault();
-    const payload = { title: clean(newColTitle) || 'Untitled Collection' };
+    const payload = { title: clean(newColTitle) || (book ? '' : 'Untitled Collection') };
     if (clean(newColNote)) payload.metadata = { note: clean(newColNote) };
     const res = await onDispatch({ type: 'collection.create', payload });
     if (res?.ok) {
@@ -210,7 +211,7 @@ export default function DataManagementLibraryExplorer({
     event.preventDefault();
     const payload = {
       collectionId: targetCollectionId,
-      title: clean(newWsTitle) || 'Untitled Workspace',
+      title: clean(newWsTitle) || (book ? '' : 'Untitled Workspace'),
       documentType: newWsType,
       textLanguage: clean(newWsTextLang) || 'en',
       meaningLanguage: clean(newWsMeanLang) || 'id'
@@ -273,7 +274,7 @@ export default function DataManagementLibraryExplorer({
               : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
           }`}
         >
-          Root ({catalog.rootDocuments.length})
+          {book ? 'Root — Default Collection' : 'Root'} ({catalog.rootDocuments.length})
         </button>
       </nav>
 
@@ -579,7 +580,7 @@ export default function DataManagementLibraryExplorer({
                     <button
                       type="button"
                       data-dm-collection-delete={collection.id}
-                      disabled={isPending || !colDeleteCap?.enabled}
+                      disabled={isPending || !colDeleteCap?.enabled || (book && collection.documents.length > 0)}
                       onClick={() => onDispatch({ type: 'collection.delete', payload: { id: collection.id } })}
                       title={colDeleteCap?.enabled
                         ? (collection.documents.length > 0 ? 'Native command rejects deleting non-empty Collection' : 'Delete empty Collection')
@@ -591,7 +592,7 @@ export default function DataManagementLibraryExplorer({
                     {collection.documents.length > 0 && (
                       <span className="text-[10px] text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" aria-hidden="true" />
-                        Must be empty before deletion succeeds
+                        {book ? 'Move contained Workspaces to Root or another Collection first.' : 'Must be empty before deletion succeeds'}
                       </span>
                     )}
                   </div>

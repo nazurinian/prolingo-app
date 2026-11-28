@@ -9,6 +9,7 @@ import { canonicalJsonStringify } from './textCanonicalFingerprintDomain.js';
 import { buildTextStructuredAudioCoverageMap } from './textStructuredAudioCoverageDomain.js';
 import { getBookAuthoringField, prepareBookAuthoringCommand } from './textBookHeadingDomain.js';
 import { updateBookBodyProfileMetadata } from './bookQaBodyAudioDomain.js';
+import { applyBookJsonImport, validateBookJsonImport } from './bookQaTransferDomain.js';
 
 export class TextDataManagementError extends Error {
   constructor(code, message) { super(message); this.name = 'TextDataManagementError'; this.code = code; }
@@ -143,6 +144,14 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
   const snapshot = validateTextManagementSnapshot(candidate);
   const selected = resolveTextManagementSelection(snapshot, selection);
   const { type, payload: input = {} } = command || {};
+  if (type === 'bookPack.import') {
+    if (boundary !== 'disposable' || !bookAuthoring || !permissions.includes('transfer') || snapshot.schemaVersion !== 2 || !snapshot.initialized) {
+      fail('PERMISSION_DENIED', 'JSON import requires an initialized, authorized isolated Book QA library');
+    }
+    if (!plain(input) || Object.keys(input).some(key => !['candidate', 'destination'].includes(key))) fail('INVALID_COMMAND', 'Invalid Book JSON import command');
+    validateBookJsonImport(snapshot, input);
+    return { snapshot, selected, scoped: { type, payload: input } };
+  }
   const fields = Object.hasOwn(TEXT_DATA_MANAGEMENT_COMMAND_FIELDS, type) && TEXT_DATA_MANAGEMENT_COMMAND_FIELDS[type];
   const bookField = bookAuthoring === true ? getBookAuthoringField(type) : null;
   const bookSetting = bookAuthoring === true && type === 'document.update' && plain(input)
@@ -167,6 +176,11 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
     const doc = snapshot.documents.find(d => d.id === selected.workspaceId);
     if (type.startsWith('collection.') && ['collection.update', 'collection.delete'].includes(type) && payload.id !== collection.id) fail('OUT_OF_SCOPE', 'Collection must match current scope');
     if (['document.update', 'document.delete'].includes(type) && payload.id !== doc.id) fail('OUT_OF_SCOPE', 'Workspace must match current scope');
+    if (bookAuthoring && type === 'collection.delete' && snapshot.documents.some(record => record.collectionId === payload.id)) {
+      fail('COLLECTION_NOT_EMPTY', 'Move its Workspaces before deleting this Collection');
+    }
+    if (bookAuthoring && (type === 'collection.create' || (type === 'collection.update' && Object.hasOwn(payload, 'title')))
+      && (typeof payload.title !== 'string' || !payload.title.trim())) fail('BOOK_COLLECTION_NAME_REQUIRED', 'Enter a Collection name');
     if (['document.create', 'document.reorder'].includes(type) && (payload.collectionId ?? null) !== (selected.collectionId ?? null)) fail('OUT_OF_SCOPE', 'Command must target the selected Collection or Root');
     if (type === 'document.create' && bookAuthoring !== true && !['paragraph', ...(snapshot.schemaVersion === 2 ? ['conversation', 'mixed'] : [])].includes(payload.documentType ?? 'paragraph')) fail('PERSISTENT_UNITS_REQUIRED', 'Only complete v2 disposable snapshots can author Conversation or Mixed Workspaces');
     if (type === 'document.reorder' && snapshot.documents.some(d => d.collectionId === (payload.collectionId ?? null) && !supported(snapshot, d))) fail('UNSUPPORTED_WORKSPACE', 'Cannot reorder a group containing an unsupported Workspace');
@@ -199,7 +213,9 @@ export const validateAndScopeTextDataManagementCommand = (candidate, command, { 
 export const applyTextDataManagementCommand = (candidate, command, { selection = {}, boundary = 'read-only', permissions = [], bookAuthoring = false, now = Date.now() } = {}) => {
   const { snapshot, scoped } = validateAndScopeTextDataManagementCommand(candidate, command, { selection, boundary, permissions, bookAuthoring });
   try {
-    const outcome = applyTextLibraryCommand(snapshot, scoped, now);
+    const outcome = scoped.type === 'bookPack.import'
+      ? applyBookJsonImport(snapshot, scoped.payload, now)
+      : applyTextLibraryCommand(snapshot, scoped, now);
     validateTextManagementSnapshot(outcome.snapshot);
     // Validate every supported resulting Workspace, including speakers and projection.
     for (const doc of outcome.snapshot.documents.filter(d => supported(outcome.snapshot, d))) selectTextDataManagementState(outcome.snapshot, { selection: { workspaceId: doc.id } });

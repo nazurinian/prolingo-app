@@ -201,3 +201,17 @@ The following rows supersede the A1a limitations for the named Book QA capabilit
 | Authorization | Playback settings remain session-only. Workspace profiles continue through native scoped commands. Document transfer, canonical system/audio tools, the complete profile manager and final carousel remain assigned to their existing roadmap phases. |
 
 See the [HF2 report](A2_HF2_Book_QA_Targeted_Correction_Report.md) for the review gate, fixture archive trees and remaining device checks. Production activation is **NO-GO**.
+
+The owner closed A2-HF2 with **4/4 manual PASS** for Export and Naming, Coverage, Playback and Focus within the exercised scope. Browser fallback and comprehensive physical acceptance remain open. The historical independent bilingual London review verified 86 identical MP3 digests and decodes across both archives, all 74 bilingual Split recordings, bilingual Main Title and four Headings, bilingual P1 Full and six expected missing Full Card requirements. Portable included manifest v3 and `AUDIO_INDEX.csv`. Listening contained 108 entries including 22 composed WAVs with valid headers. Alternate render-rate and pitch recordings were absent from those owner archives. [Roadmap checkpoint](ProLingo_V6_Post_A2_UAT_Contract_and_Patch_Roadmap_v1.0.md#111-a2-hf2--export-clarity-and-residual-runtime-defects-sol-high)
+
+## A3 capability update
+
+| Capability | Book QA authority and boundary |
+| --- | --- |
+| Catalog | AppBar **Book Data** uses P15 catalog commands. Root is a virtual `collectionId: null` grouping. Custom Collections can be created, renamed, reordered and deleted when empty. Workspace create, search, rename, move, order and confirmed delete use the selected library. |
+| Native authoring | P15 scopes native P12 mutations to the selected Workspace. The Book surface exposes linked or custom Main Title, bilingual Heading, Cards, Sections, Speaker-bound Turns, bilingual Sentences and supported structural edits. The existing Reader Title and Heading panel owns Show/Read settings. |
+| JSON transfer | Authorized Book QA v2 session, with separate transfer permission. Workspace and nonempty Collection use Text Pack v1. Root, full Library and empty Collection use the additive Book Library v1 envelope. Import creates a new copy with stable source lineage, and new destination creation is atomic with import. |
+| Recording recovery | JSON carries recording reference metadata. Portable Audio ZIP installs physical bytes through the existing scoped verification and journals. Source UID lineage plus content/descriptor verification resolves remapped targets. Repeat ZIP import is additive and idempotent. |
+| Gated in Book QA | UID-preserving attach/sync, destructive replace restore, canonical write paths, canonical System tools, and complete Audio Control Center remain unavailable. Existing physical recording cleanup, playback timing, three-tab integration and final Reader work stay in their assigned phases. |
+
+The [A3 report](A3_Book_QA_Native_Data_Management_Report.md) and [Indonesian checklist](A3_Book_QA_Manual_UAT_ID.md) support independent review and owner UAT. Production activation is **NO-GO**.

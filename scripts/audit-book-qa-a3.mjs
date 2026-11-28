@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { applyTextDataManagementCommand, selectTextDataManagementState } from '../src/domain/text/textDataManagementDomain.js';
+import { backfillTextContentUnits } from '../src/domain/text/textContentUnitDomain.js';
+import { createBookJsonExport, inspectBookJson } from '../src/domain/text/bookQaTransferDomain.js';
+import { validateProLingoTextPack } from '../src/domain/text/textPackJsonDomain.js';
+
+const now = 1795834800000;
+const empty = () => backfillTextContentUnits({ schemaVersion: 1, initialized: true, activeDocumentId: null, counters: {},
+  collections: [], documents: [], blocks: [], segments: [], audioVariants: [] }, { now }).snapshot;
+const authority = { boundary: 'disposable', bookAuthoring: true, permissions: ['catalog', 'content', 'transfer'], now };
+let snapshot = empty();
+const run = (type, payload, selection) => {
+  const result = applyTextDataManagementCommand(snapshot, { type, payload }, { ...authority, selection });
+  snapshot = result.snapshot;
+  return result.result;
+};
+const reject = (type, payload, selection, code) => {
+  const before = structuredClone(snapshot);
+  assert.throws(() => run(type, payload, selection), { code });
+  assert.deepEqual(snapshot, before);
+};
+const collection = run('collection.create', { title: 'Reading' }).id;
+const emptyCollection = run('collection.create', { title: 'Empty' }).id;
+run('collection.reorder', { orderedIds: [emptyCollection, collection] });
+reject('collection.delete', { id: null }, { collectionId: null }, 'SELECT_COLLECTION');
+reject('collection.create', { title: ' ' }, {}, 'BOOK_COLLECTION_NAME_REQUIRED');
+const paragraph = run('document.create', { title: 'Audited Paragraph', documentType: 'paragraph' }).id;
+const mixed = run('document.create', { title: 'Audited Mixed', documentType: 'mixed', mainTitle: { mode: 'custom', en: 'Independent', id: 'Mandiri' } }).id;
+const uid = snapshot.documents.find(d => d.id === mixed).uid;
+run('document.reorder', { collectionId: null, orderedIds: [mixed, paragraph] }, { collectionId: null });
+run('document.update', { id: mixed, title: 'Renamed', collectionId: collection }, { workspaceId: mixed });
+assert.equal(snapshot.documents.find(d => d.id === mixed).uid, uid);
+assert.equal(snapshot.documents.find(d => d.id === mixed).metadata.bookMainTitleV1.en, 'Independent');
+reject('collection.delete', { id: collection }, { collectionId: collection }, 'COLLECTION_NOT_EMPTY');
+const root = selectTextDataManagementState(snapshot, { selection: { collectionId: null } }).catalog;
+assert.deepEqual(root.rootDocuments.map(d => d.id), [paragraph]);
+console.log('PASS A3-A virtual Root, exact order, stable movement and nonempty deletion guard');
+
+const scope = { workspaceId: mixed };
+reject('block.create', { documentId: mixed, blockType: 'conversation' }, scope, 'BOOK_SPEAKER_THRESHOLD');
+const p1 = run('block.create', { documentId: mixed, blockType: 'paragraph', heading: { en: 'Heading', id: 'Judul' } }, scope).id;
+const p2 = run('block.create', { documentId: mixed, blockType: 'paragraph' }, scope).id;
+for (const label of ['Mira', 'Andi', 'Nina']) run('speaker.register', { documentId: mixed, label }, scope);
+const speakers = () => selectTextDataManagementState(snapshot, { selection: scope }).workspace.speakers;
+const mira = speakers().find(s => s.label === 'Mira');
+const c1 = run('block.create', { documentId: mixed, blockType: 'conversation' }, scope).id;
+run('block.reorder', { documentId: mixed, orderedIds: [p1, c1, p2] }, scope);
+const u1 = run('contentUnit.create', { blockId: c1, kind: 'turn', speakerId: mira.id }, scope).id;
+const u2 = run('contentUnit.create', { blockId: c1, kind: 'turn', speakerId: mira.id }, scope).id;
+const sg = run('segment.create', { blockId: c1, unitId: u1, text: 'One. Two.', meaning: 'Satu. Dua.', joinAfter: 'space' }, scope).id;
+const uidSeg = snapshot.segments.find(row => row.id === sg).uid;
+run('speaker.rename', { documentId: mixed, speakerId: mira.id, label: 'Miranda' }, scope);
+assert.deepEqual(snapshot.contentUnits.filter(u => u.blockId === c1).map(u => [u.id, u.speakerId, u.speaker]), [[u1, mira.id, 'Miranda'], [u2, mira.id, 'Miranda']]);
+run('speaker.remove', { documentId: mixed, speakerId: speakers().find(s => s.label === 'Nina').id }, scope);
+reject('speaker.remove', { documentId: mixed, speakerId: mira.id }, scope, 'BOOK_SPEAKER_THRESHOLD');
+run('segment.move', { segmentId: sg, targetUnitId: u2 }, scope);
+assert(snapshot.contentUnits.some(u => u.id === u1));
+assert.equal(snapshot.segments.find(row => row.id === sg).uid, uidSeg);
+reject('block.update', { id: p1, heading: { en: '', id: 'ID only' } }, scope, 'BOOK_CARD_HEADING_INVALID');
+run('block.update', { id: p1, heading: { en: 'Edited heading' } }, scope);
+assert.equal(snapshot.blocks.find(b => b.id === p1).metadata.bookHeadingV1.id, 'Judul');
+assert.deepEqual(selectTextDataManagementState(snapshot, { selection: scope }).workspace.presentation.cards.map(c => c.id), [p1, c1, p2]);
+console.log('PASS A3-B bilingual heading, Scene threshold, empty same-Speaker Turns, identity-preserving edit and Mixed order');
+
+const pack = createBookJsonExport(snapshot, { workspaceId: mixed, collectionId: collection }, 'workspace', now);
+assert.equal(validateProLingoTextPack(pack).pack.audioBinaryIncluded, false);
+const library = createBookJsonExport(snapshot, {}, 'library', now);
+assert.deepEqual(library.packs.map(p => p.scope.type), ['document', 'collection', 'collection']);
+assert.equal(inspectBookJson(library).collectionCount, 2);
+const rootPack = createBookJsonExport(snapshot, {}, 'root', now);
+assert.deepEqual(rootPack.packs.map(p => p.documents[0].id), [paragraph]);
+const emptyPack = createBookJsonExport(snapshot, { collectionId: emptyCollection }, 'collection', now);
+assert.equal(inspectBookJson(emptyPack).workspaceCount, 0);
+const source = snapshot;
+const importCopy = (candidate, destination) => run('bookPack.import', { candidate, destination }, {});
+const imported = importCopy(pack, { kind: 'new', name: 'Reading' });
+const copy = snapshot.documents.find(d => d.id === imported.documentIds[0]);
+assert.notEqual(copy.uid, uid);
+assert.notEqual(copy.id, mixed);
+assert.equal(copy.metadata.prolingoTextPackSource.sourceUid, uid);
+const repack = createBookJsonExport(snapshot, { workspaceId: copy.id }, 'workspace', now);
+const recopy = importCopy(repack, { kind: 'root' });
+assert.deepEqual(snapshot.documents.find(d => d.id === recopy.documentIds[0]).metadata.prolingoTextPackSource.sourceUids, [uid]);
+const collectionPack = createBookJsonExport(source, { collectionId: collection }, 'collection', now);
+const flattened = importCopy(collectionPack, { kind: 'existing', collectionId: emptyCollection });
+assert.deepEqual(flattened.collectionIds, []);
+assert.equal(snapshot.documents.find(d => d.id === flattened.documentIds[0]).collectionId, emptyCollection);
+assert.equal(importCopy(emptyPack, { kind: 'preserve' }).collectionIds.length, 1);
+assert.equal(importCopy(library, { kind: 'preserve' }).collectionIds.length, 2);
+reject('bookPack.import', { candidate: library, destination: { kind: 'root' } }, {}, 'INVALID_DESTINATION');
+reject('bookPack.import', { candidate: pack, destination: { kind: 'existing', collectionId: 'missing' } }, {}, 'INVALID_DESTINATION');
+reject('bookPack.import', { candidate: { ...pack, packageVersion: 99 }, destination: { kind: 'root' } }, {}, 'INVALID_BOOK_JSON');
+assert.throws(() => applyTextDataManagementCommand(snapshot, {
+  type: 'bookPack.import', payload: { candidate: pack, destination: { kind: 'root' } }
+}, { ...authority, bookAuthoring: false }), { code: 'PERMISSION_DENIED' });
+console.log('PASS A3-C v1 Text Pack compatibility, scoped backups, explicit flatten, collision lineage and typed validation');

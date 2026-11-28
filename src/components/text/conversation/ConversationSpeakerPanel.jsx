@@ -8,7 +8,7 @@ const clean = value => String(value ?? '').trim();
  * Isolated Workspace Speaker Registry panel driven by selectTextConversationEditorState
  * and strictly scoped D4-A speaker.register / speaker.rename / speaker.remove commands.
  */
-export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, compact = false }) => {
+export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, compact = false, book = false }) => {
   const workspaceId = state?.workspace?.id || null;
   const [expanded, setExpanded] = useState(false);
   const [newLabelState, setNewLabelState] = useState({ workspaceId, value: '' });
@@ -16,6 +16,7 @@ export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, com
   const [localErrorState, setLocalErrorState] = useState({ workspaceId, error: null });
 
   const speakers = useMemo(() => collectConversationEditorSpeakers(state), [state]);
+  const minimum = book && state?.scenes?.length > 0 && speakers.filter(entry => entry.registered).length <= 2;
 
   if (!workspaceId) return null;
 
@@ -82,7 +83,7 @@ export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, com
 
   const handleRemove = async speaker => {
     if (!speaker?.id || isBusy) return;
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    if (!book && typeof window !== 'undefined' && typeof window.confirm === 'function') {
       if (!window.confirm(`Remove unused speaker "${speaker.label}" from the Workspace registry?`)) return;
     }
     await dispatchSpeaker({
@@ -153,7 +154,10 @@ export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, com
             </p>
           ) : (
             <div className="space-y-1.5">
-              {speakers.map(speaker => (
+              {speakers.map(speaker => {
+                const removalReason = book && (speaker.used ? 'This Speaker is referenced by a Turn.'
+                  : minimum ? 'Keep at least two registered Speakers while a Scene exists.' : '');
+                return (
                 <div key={speaker.id} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 p-2">
                   {editingId === speaker.id ? (
                     <div className="flex gap-1.5">
@@ -232,10 +236,10 @@ export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, com
                       </button>
                       <button
                         type="button"
-                        disabled={isBusy || !speaker.registered}
+                        disabled={isBusy || !speaker.registered || Boolean(removalReason)}
                         onClick={() => handleRemove(speaker)}
                         className="w-9 min-h-9 rounded-lg border border-red-200 dark:border-red-900 text-red-500 disabled:opacity-25"
-                        title={speaker.used ? 'Speaker is in use (command will reject removal)' : 'Remove unused speaker'}
+                        title={removalReason || (speaker.used ? 'Speaker is in use (command will reject removal)' : 'Remove unused speaker')}
                         aria-label={`Remove speaker ${speaker.label}`}
                       >
                         <Trash2 className="w-3.5 h-3.5 mx-auto" />
@@ -243,7 +247,8 @@ export const ConversationSpeakerPanel = ({ state, isBusy = false, onCommand, com
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
