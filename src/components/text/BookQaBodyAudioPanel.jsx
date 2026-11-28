@@ -3,8 +3,8 @@ import { BOOK_BODY_PROFILES, getBookBodyGenerationRequests } from '../../domain/
 import { isBookBodyAudioCard } from '../../domain/text/bookQaAudioDomain.js';
 import { projectBookHeadings } from '../../domain/text/textBookHeadingDomain.js';
 import { getTextStructuredSpeakerRegistry } from '../../domain/text/textStructuredSpeakerIdentityDomain.js';
-import { readBookBodyAvailability } from '../../services/audio/bookQaBodyAudioService.js';
 import { BookQaVoiceSelect } from './BookQaVoiceSelect.jsx';
+import { BookQaCoverageTable } from './BookQaCoverageTable.jsx';
 
 const fields = ['browserVoice', 'edgeVoice', 'localVoice', 'playbackRate'];
 const fieldClass = 'block w-full min-w-0 min-h-9 rounded border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-900';
@@ -18,6 +18,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
   const [profileKind, setProfileKind] = useState('paragraph');
   const [speakerId, setSpeakerId] = useState('');
   const [message, setMessage] = useState('');
+  const [coverage, setCoverage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
   const active = useRef(null);
@@ -43,6 +44,8 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
   const selected = (kind === 'conversation' ? saved?.speakers?.[speaker?.id]?.[channel] : saved?.paragraph?.[channel]) || {};
   const options = optionsFor(channel);
   const { browserVoices, edgeVoices } = options;
+  const { edgeRate, edgePitch, edgeTextVoiceId, edgeMeaningVoiceId, playbackTextVoiceName, playbackMeaningVoiceName } = options.preferences;
+  const coverageProfile = JSON.stringify([edgeRate, edgePitch, edgeTextVoiceId, edgeMeaningVoiceId, playbackTextVoiceName, playbackMeaningVoiceName]);
   const profileCard = kind === 'paragraph' ? (card?.blockType === kind ? card : cards.find(item => item.blockType === kind)) : null;
   const speakerCard = kind === 'conversation' ? cards.find(item => item.blockType === kind
     && item.units.some(unit => unit.speakerId === speaker?.id && unit.segments.some(row => row[channel]?.trim()))) : null;
@@ -57,6 +60,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
     if (active.current) return;
     const controller = new AbortController();
     active.current = controller;
+    setCoverage(null);
     setBusy(true);
     setMessage('Working…');
     try { setMessage(await run(controller.signal)); }
@@ -75,14 +79,20 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
     return stopped ? [progress(result), stopped.code, stopped.message, nextStep].filter(Boolean).join(' ')
       : progress(result);
   });
-  const verify = entries => execute(async signal => {
+  const verify = selectedCard => execute(async signal => {
+    const report = await connection.audio.verifyCoverage({
+      workspaceId: workspace.id, cardId: selectedCard?.id ?? null, preferences: options.preferences, signal
+    });
+    const scope = selectedCard ? `Card · ${headings[selectedCard.id].en || headings[selectedCard.id].fallback} · ${workspace.title}`
+      : `Workspace · ${workspace.title}`;
+    setCoverage({ report, scope, workspaceUid: workspace.uid, cardId: selectedCard?.id,
+      snapshot: connection.session.getSnapshot(), coverageProfile, edgeVoices });
     const counts = {};
-    for (const entry of entries) {
-      if (signal.aborted) return 'Cancelled';
-      const { status } = await readBookBodyAvailability(connection.audio, connection.session.getSnapshot(), entry, { withUrl: false });
-      counts[status] = (counts[status] || 0) + 1;
+    for (const row of report.groups.filter(group => group.channel === channel && (group.representation === 'split' || group.representation.startsWith('full-')))) {
+      for (const [status, count] of Object.entries(row.statuses)) counts[status] = (counts[status] ?? 0) + count;
     }
-    return Object.entries(counts).map(([status, count]) => count + ' ' + status.replaceAll('-', ' ')).join(', ') || 'No audible content.';
+    const summary = Object.entries(counts).map(([status, count]) => count + ' ' + status.replaceAll('-', ' ')).join(', ') || 'No audible Body content';
+    return `${channel === 'text' ? 'EN' : 'ID'} Split and Full Card · ${summary}.`;
   });
   const saveProfile = values => execute(async () => {
     const result = await connection.session.dispatch({ type: 'document.update', payload: { id: workspace.id, bodyAudioProfile: {
@@ -92,7 +102,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
     return 'Workspace audio profile saved.';
   });
   const one = requests(false, true), all = requests(false), full = requests(true);
-  const workspaceRequests = (full = false) => cards.flatMap(item => getBookBodyGenerationRequests(workspace, item, channel, { full, options }));
+  const workspaceRequests = () => cards.flatMap(item => getBookBodyGenerationRequests(workspace, item, channel, { options }));
   const workspaceHasContent = cards.some(item => item.segments.some(row => row[channel]?.trim()));
   const cardVoices = [...new Set(all.map(entry => entry.descriptor.voiceId))];
   return (
@@ -153,8 +163,8 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
             <button className={buttonClass} type="button" onClick={() => generate(all)} disabled={!canRun(all)}>Generate Card Split</button>
             <button className={buttonClass} type="button" onClick={() => generate(workspaceRequests())} disabled={busy || !workspaceHasContent}>Generate Workspace Split</button>
             <button className={buttonClass} type="button" onClick={() => generate(full)} disabled={!canRun(full)}>{card?.blockType === 'conversation' ? 'Compose Scene Full' : 'Generate Card Full'}</button>
-            <button className={buttonClass} type="button" onClick={() => verify([...all, ...full])} disabled={busy || !card}>Verify Card audio</button>
-            <button className={buttonClass} type="button" onClick={() => verify([...workspaceRequests(), ...workspaceRequests(true)])} disabled={busy || !workspaceHasContent}>Verify Workspace audio</button>
+            <button className={buttonClass} type="button" onClick={() => verify(card)} disabled={busy || !card}>Verify Card audio</button>
+            <button className={buttonClass} type="button" onClick={() => verify(null)} disabled={busy}>Verify Workspace audio</button>
             {busy && <button className={buttonClass} type="button" onClick={() => active.current?.abort()}>Cancel</button>}
           </div>
           <p>After verification, open <a href="#book-qa-zip" onClick={() => {
@@ -162,6 +172,9 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
             if (zip) zip.open = true;
           }} className="font-semibold underline">Portable Audio ZIP</a> to download a file.</p>
           <p role="status" data-book-body-audio-status="true">{message}</p>
+          {coverage?.workspaceUid === workspace.uid && coverage.coverageProfile === coverageProfile && coverage.edgeVoices === edgeVoices
+            && (!coverage.cardId || coverage.cardId === card?.id)
+            && coverage.snapshot === connection.session.getSnapshot() && <BookQaCoverageTable report={coverage.report} scope={coverage.scope} />}
         </fieldset>
         <details className="space-y-2">
           <summary className="cursor-pointer font-semibold">Session playback and repair</summary>
@@ -169,6 +182,7 @@ export function BookQaBodyAudioPanel({ connection, workspace, optionsFor, getBro
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             setGlobal({ rate: Number(data.get('rate')), pitch: Number(data.get('pitch')), source: data.get('source') });
+            setCoverage(null);
             setMessage('Session audio defaults updated.');
           }}>
             <label>Edge render rate<input className={fieldClass} name="rate" type="number" required min="-100" max="100" defaultValue={options.preferences.edgeRate} /></label>

@@ -189,3 +189,15 @@ The following rows supersede the A1a limitations for the named Book QA capabilit
 | Download | Portable and Normal ZIP actions download verified audio through the existing scoped exporters. Portable retains manifest v3 and alternate-reference handling. |
 | Continuous runtime | The Book owner retains its last started target between steps. Verified lookahead is bounded to upcoming work and subject to readable snapshot and exact binding checks at playback. During silence the Global Player has no current media timeline. |
 | Boundaries and acceptance | The manual A2 library still connects explicitly at its original database name. Canonical Text remains v1. The [HF1 report](A2_HF1_Book_QA_Manual_UAT_Refinement_Report.md) records automated evidence and open manual checks. Final design remains in the A5 backlog. Production activation is NO-GO. |
+
+## A2-HF2 capability update
+
+| Capability | Review-gate boundary |
+| --- | --- |
+| Portable ZIP | Scoped transfer and additive import. Alternates are included by default. Manifest v3, AUDIO_INDEX.csv, canonical names, RF/FULL identity and exact byte proofs continue to apply. |
+| Listening ZIP | Scoped listening download. Current profiles are the default. Compatible alternates and an exact verified Edge render profile are explicit choices. Authored occurrences retain order, including shared physical recordings. Full Section/Turn WAVs are composed for export from verified current inputs. |
+| Coverage | Read-only verification can group a connected Library, Workspace or a selected Card by EN/ID and representation. Persisted readiness and Unit composition eligibility are separate. The existing recovery lock, snapshot fence and exact byte checks govern the read. |
+| Playback and Focus | Global Player Details keeps the timeline section in place during the Book session and shows live timing only when an owned source supplies it. Paragraph Split fallback scans until the first verified source, then uses existing bounded lookahead. Outer scrolling leaves Unit selection to explicit navigation and playback-follow behavior. |
+| Authorization | Playback settings remain session-only. Workspace profiles continue through native scoped commands. Document transfer, canonical system/audio tools, the complete profile manager and final carousel remain assigned to their existing roadmap phases. |
+
+See the [HF2 report](A2_HF2_Book_QA_Targeted_Correction_Report.md) for the review gate, fixture archive trees and remaining device checks. Production activation is **NO-GO**.

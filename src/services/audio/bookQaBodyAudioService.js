@@ -1,6 +1,16 @@
-import { isBookBodyAudioCard, readBookAudioBinding } from '../../domain/text/bookQaAudioDomain.js';
+import { isBookBodyAudioCard, readBookAudioBinding, resolveBookAudioTarget } from '../../domain/text/bookQaAudioDomain.js';
 import { getBookFullPlaybackRequests, getBookSplitPlaybackRequests } from '../../domain/text/bookQaBodyAudioDomain.js';
 import { buildTextStructuredFullRepresentation } from '../../domain/text/textStructuredSplitFullDomain.js';
+
+export const readBoundBookAudioBytes = async (snapshot, entry, binding, read) => {
+  if (binding.trustedComposition) {
+    for (const input of resolveBookAudioTarget(snapshot, entry).dependencies) {
+      const source = await read(input.fingerprint, input.binary);
+      if (source.status !== 'ready') return { status: 'unavailable-composition-input' };
+    }
+  }
+  return read(entry.fingerprint, binding.binary);
+};
 
 export const readBookBodyAvailability = async (audio, snapshot, entry, options) => {
   const binding = readBookAudioBinding(snapshot, entry);
@@ -40,11 +50,16 @@ export const prepareBookFullPlayback = async ({ audio, snapshot, document, block
     let anyRecorded = false;
     for (const segment of block.segments) {
       if (!segment[channel]?.trim()) continue;
-      const split = await findBookBodyRuntime(audio, snapshot, getBookSplitPlaybackRequests(document, block, segment, channel, options));
+      // The first verified recording settles the Full-versus-Split decision.
+      // Later Sentences still verify through the session lookahead or on demand.
+      const checked = !anyRecorded;
+      const split = checked
+        ? await findBookBodyRuntime(audio, snapshot, getBookSplitPlaybackRequests(document, block, segment, channel, options))
+        : null;
       if (!stillCurrent()) return [];
       anyRecorded ||= Boolean(split);
       steps.push({ type: split ? 'split-local' : 'split-tts', segmentId: segment.id, content: segment[channel], channel,
-        ignoreSegmentVoiceOverride: true, bookRuntime: split, bookReadStamp: snapshot });
+        ignoreSegmentVoiceOverride: true, ...(checked ? { bookRuntime: split, bookReadStamp: snapshot } : {}) });
     }
     return anyRecorded ? steps : fallback.steps;
   };

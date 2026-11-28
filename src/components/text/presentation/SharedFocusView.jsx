@@ -488,7 +488,7 @@ const FocusSingleUnitView = ({
  * 4B2 / C-HF2 Focus Mode Surface: displays one active Content Unit (Paragraph Section
  * or Conversation Turn) per expanded Card with:
  * - Horizontal Focus: Swiper React centered carousel (`SharedHorizontalFocusCarousel`).
- * - Vertical Focus: Document-flow scroll-driven prominence (`SharedVerticalScrollFocusView`).
+ * - Vertical Focus: document flow with explicit Unit navigation (`SharedVerticalScrollFocusView`).
  * - Single-Unit Cards bypass all carousel/scroll mechanics completely.
  */
 export const SharedFocusView = ({
@@ -611,7 +611,6 @@ export const SharedFocusView = ({
           audioCoverageMap={audioCoverageMap}
           disabled={disabled}
           selection={selection}
-          onSelectUnit={onSelectUnit}
           onNavigateUnit={navigateVertically}
           navigationRef={verticalNavigationRef}
           onPlaySegment={onPlaySegment}

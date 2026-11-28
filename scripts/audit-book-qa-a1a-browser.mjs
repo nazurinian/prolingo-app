@@ -30,6 +30,7 @@ const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
 const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
 const demoAudit = process.env.BOOK_QA_A2_AUDIT === '1';
 const readerRefinement = process.env.BOOK_QA_HF1_READER_AUDIT;
+const nativeSpeech = ['native', 'hf2-native'].includes(readerRefinement);
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
   ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
   ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}),
@@ -49,6 +50,7 @@ export * from './scripts/fixtures/a1b-1a/audio-browser-probe.js';
 export * from './scripts/fixtures/a1b-2a/portable-browser-probe.js';
 export * from './scripts/fixtures/a1b-2b/normal-browser-probe.js';
 export * from './scripts/fixtures/a1b-g/hardening-browser-probe.js';
+export * from './scripts/fixtures/book-qa/hf2-browser-probe.js';
 import { createTextDataManagementPersistenceAdapter } from './src/services/persistence/textDataManagementPersistenceService.js';
 import { createTextDataManagementSession } from './src/services/textDataManagementSession.js';
 import { createBookQaConnection } from './src/services/bookQaSessionService.js';
@@ -244,7 +246,7 @@ const startServer = async (serveRoot, uatMode) => {
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(uatMode ? 4173 : 0, '127.0.0.1', resolve);
+    server.listen(uatMode ? Number(process.env.BOOK_QA_AUDIT_PORT || 4173) : 0, '127.0.0.1', resolve);
   });
   servers.push(server);
   return `http://127.0.0.1:${server.address().port}`;
@@ -298,7 +300,7 @@ const instrumentation = `(() => {
     };
   }
   window.__bookQaSpeech = [];
-  if (${JSON.stringify(readerRefinement === 'native')}) {
+  if (${JSON.stringify(nativeSpeech)}) {
     const speak = speechSynthesis.speak.bind(speechSynthesis);
     speechSynthesis.speak = utterance => {
       const voice = utterance.voice?.name;
@@ -438,7 +440,7 @@ try {
   };
   const evaluate = async (expression, sessionId) => {
     const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true,
-      ...(readerRefinement === 'native' ? { userGesture: true } : {}) }, sessionId);
+      ...(nativeSpeech ? { userGesture: true } : {}) }, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result?.value;
   };
@@ -502,7 +504,7 @@ try {
   const probe = async expression => evaluate(`(async () => { const module = window.__bookQaProbe || await import('/__a1a_probe.js'); window.__bookQaProbe = module; return ${expression}; })()`);
   if (readerRefinement) {
     const result = await checkBookQaReaderRefinement({
-      mode: readerRefinement, evaluate, navigate, waitFor, chooseOptIn, clickButton, uatOrigin, call, bodyRequests
+      mode: readerRefinement, evaluate, navigate, waitFor, chooseOptIn, clickButton, uatOrigin, call, bodyRequests, probe
     });
     const audit = await readAudit();
     assert.deepEqual(audit.storage, []);

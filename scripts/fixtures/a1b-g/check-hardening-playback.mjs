@@ -67,7 +67,7 @@ export async function checkBookHardeningPlayback({ evaluate, waitFor, probe, cal
     assert.equal(sceneFull.precision, 'card');
     assert.equal(sceneFull.segment, null);
     assert.equal(sceneFull.unit, null);
-    assert.equal(await verifyBytes(bilingual.wavs.find(item => item.pathSuffix.endsWith('/Full_Card/EN_MULTI-SPEAKER.wav')).digest), true);
+    assert.equal(await verifyBytes(bilingual.wavs.find(item => item.pathSuffix.endsWith('/Full_Card/EN_DERIVED_MULTI-SPEAKER.wav')).digest), true);
     await control('Previous card');
     await audible(paragraph.segments[0]);
     await control('Stop playback');

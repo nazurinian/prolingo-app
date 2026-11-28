@@ -145,9 +145,9 @@ const resolvePlayerAccentClasses = ({ phase, channel }) => {
   };
 };
 
-const PlayerTimeline = ({ timeline, progressFill }) => {
-  if (!timeline) return null;
-  const { elapsedSeconds, durationSeconds } = timeline;
+const PlayerTimeline = ({ timeline, progressFill, reserveSlot, phase, source }) => {
+  if (!timeline && !reserveSlot) return null;
+  const { elapsedSeconds, durationSeconds } = timeline ?? {};
   const hasElapsed = elapsedSeconds != null;
   const pct = hasElapsed && durationSeconds > 0
     ? Math.max(0, Math.min(100, (elapsedSeconds / durationSeconds) * 100))
@@ -156,15 +156,16 @@ const PlayerTimeline = ({ timeline, progressFill }) => {
   return (
     <div
       className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 px-3 py-2 space-y-1.5"
-      data-player-timeline
+      data-player-timeline={timeline ? '' : undefined}
+      data-player-timeline-slot={reserveSlot ? '' : undefined}
     >
       <div className="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-600 dark:text-slate-300 tabular-nums">
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           Media timeline
         </span>
-        <span>
+        {timeline ? <span>
           {hasElapsed ? `${formatTime(elapsedSeconds)} / ${formatTime(durationSeconds)}` : `Duration ${formatTime(durationSeconds)}`}
-        </span>
+        </span> : <span>{phase === 'waiting' ? 'Waiting for audio' : source === 'TTS' ? 'Timing unavailable for Browser TTS' : 'No active media timing'}</span>}
       </div>
       {hasElapsed && (
         <div className="relative h-2 w-full overflow-hidden rounded-full bg-slate-200/90 dark:bg-slate-700/85">
@@ -181,6 +182,7 @@ const PlayerTimeline = ({ timeline, progressFill }) => {
           />
         </div>
       )}
+      {reserveSlot && !hasElapsed && <div aria-hidden="true" className="h-2" />}
     </div>
   );
 };
@@ -602,7 +604,8 @@ export default function BottomPlayerBar({
               )}
 
               {/* 2. Actual Media Timeline (D4 — strictly real owned media only) */}
-              <PlayerTimeline timeline={player.timeline} progressFill={accent.progressFill} />
+              <PlayerTimeline timeline={player.timeline} progressFill={accent.progressFill} reserveSlot={player.timelineSlot}
+                phase={player.phase} source={player.sourceLabel} />
 
               {/* 3. Playback Information */}
               {player.playbackInfo.length > 0 && (

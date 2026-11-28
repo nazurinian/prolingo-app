@@ -192,8 +192,8 @@ export async function checkBookPortableAudio({ navigate, evaluate, waitFor, prob
   pass('Loose Title and both Heading representations bind uniquely, reject ambiguity and mismatches, and reimport after reconnect without writes');
   await select(dest.preserve);
   await click('[data-book-heading-audio] summary');
-  await waitFor('document.querySelector("[data-book-heading-audio] input[name=edgeTextVoiceId]")');
-  await change('[data-book-heading-audio] input[name="edgeTextVoiceId"]', 'en-GB-SoniaNeural');
+  await waitFor('document.querySelector("[data-book-heading-audio] select[name=edgeTextVoiceId]")');
+  await change('[data-book-heading-audio] select[name="edgeTextVoiceId"]', 'en-GB-SoniaNeural');
   await clickButton('Set session Global voices');
   await waitFor('document.querySelector("[data-book-heading-status]")?.textContent.includes("updated")');
   await clickButton('Play selected channel');

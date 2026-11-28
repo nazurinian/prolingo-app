@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { buildCanonicalTextBrowserAudioPackageFilename } from '../../domain/text/textFilenameDomain.js';
+import { buildBookAudioArchiveFilename } from '../../domain/text/textFilenameDomain.js';
 import { triggerBrowserDownload } from '../../utils/audioUtils.js';
+import { BookQaCoverageTable } from './BookQaCoverageTable.jsx';
 
 const button = 'min-h-9 rounded border border-slate-300 px-3 font-semibold disabled:opacity-45 dark:border-slate-700';
 const countsBy = (items, getKey) => Object.entries(items.reduce((counts, item) => {
@@ -8,15 +9,21 @@ const countsBy = (items, getKey) => Object.entries(items.reduce((counts, item) =
   counts[key] = (counts[key] ?? 0) + 1;
   return counts;
 }, {})).map(([key, count]) => key + ' ' + count).join(', ');
-const representationLabel = {
+const listeningRepresentation = representation => representation.endsWith('-heading') ? 'heading'
+  : representation.startsWith('full-') ? 'full' : representation;
+const portableLabels = {
   'main-title': 'Main Title', 'paragraph-heading': 'Paragraph Heading', 'scene-heading': 'Scene Heading',
   split: 'Split', 'full-paragraph': 'Full Paragraph', 'full-conversation': 'Full Conversation'
 };
+const profileLabel = ({ voiceId, engine, language, rate, pitch, rendererVersion, codecProfile, derivationVersion }) =>
+  [engine.toUpperCase(), voiceId, language, `render ${rate}% / ${pitch} Hz`, rendererVersion, codecProfile, derivationVersion].filter(Boolean).join(' · ');
 
 export function BookQaPortableAudioPanel({ connection, workspace, preferences }) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState(workspace ? 'workspace' : 'library');
-  const [includeAlternate, setIncludeAlternate] = useState(true);
+  const [portableAlternates, setPortableAlternates] = useState(true);
+  const [listeningProfile, setListeningProfile] = useState('current');
+  const [preview, setPreview] = useState(null);
   const [channel, setChannel] = useState('both');
   const [representations, setRepresentations] = useState(['main-title', 'heading', 'full', 'unit', 'split']);
   const [files, setFiles] = useState([]);
@@ -24,21 +31,34 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
   const [message, setMessage] = useState('');
   const [details, setDetails] = useState(null);
   const operation = useRef(null);
+  const lastTimestamp = useRef(0);
   useEffect(() => () => operation.current?.abort(), [connection]);
+  const workspaceId = scope === 'workspace' ? workspace?.id ?? null : null;
+  const scopeLabel = workspaceId ? `Workspace · ${workspace.title}` : 'Connected Library';
+  const channels = channel === 'both' ? ['text', 'meaning'] : [channel];
+  const verified = preview?.workspaceId === workspaceId && preview.snapshot === connection.session.getSnapshot() ? preview : null;
+  const profiles = (verified?.report.profiles ?? []).filter(profile => profile.channels.some(value => channels.includes(value))
+    && profile.representations.some(value => representations.includes(listeningRepresentation(value))));
+  const exactProfile = profiles.find(profile => profile.key === listeningProfile);
+  const unavailableProfile = !['current', 'alternate'].includes(listeningProfile) && !exactProfile;
   const run = async direction => {
-    if (operation.current) return;
+    if (operation.current || (direction === 'normal' && unavailableProfile)) return;
     const controller = new AbortController();
     operation.current = controller;
     setBusy(true);
     setDetails(null);
     setMessage(direction === 'import' ? 'Checking archives and audio bytes…' : 'Checking scoped audio bytes…');
-    const workspaceId = scope === 'workspace' ? workspace?.id ?? null : null;
     const options = { workspaceId, preferences, signal: controller.signal };
     try {
-      if (direction !== 'import') {
+      if (direction === 'preview') {
+        const report = await connection.audio.verifyCoverage(options);
+        setPreview({ workspaceId, snapshot: connection.session.getSnapshot(), report, preferences });
+        setMessage('Coverage and compatible recording profiles verified.');
+      } else if (direction !== 'import') {
         const normal = direction === 'normal';
-        const exportOptions = { ...options, includeAlternate, channels: channel === 'both' ? ['text', 'meaning'] : [channel], representations,
-          onProgress: progress => { if (!controller.signal.aborted) setMessage(`Checked ${progress.completed} audio occurrences.`); } };
+        const exportOptions = normal ? { ...options, includeAlternate: listeningProfile === 'alternate', profileKey: exactProfile?.key ?? null, channels, representations,
+          onProgress: progress => { if (!controller.signal.aborted) setMessage(`Checked ${progress.completed} audio occurrences.`); } }
+          : { ...options, includeAlternate: portableAlternates };
         const { blob, report } = await (normal ? connection.audio.exportNormal(exportOptions) : connection.audio.exportPortable(exportOptions));
         if (controller.signal.aborted) {
           setMessage('AUDIO_CANCELLED Audio export was cancelled.');
@@ -49,8 +69,9 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
         if (blob) {
           const url = URL.createObjectURL(blob);
           try {
-            const title = workspaceId ? workspace.title : 'Book_QA_Library';
-            triggerBrowserDownload(url, buildCanonicalTextBrowserAudioPackageFilename({ title: normal ? `${title}_Listening` : title }));
+            lastTimestamp.current = Math.max(Date.now(), lastTimestamp.current + 1);
+            triggerBrowserDownload(url, buildBookAudioArchiveFilename({ title: workspaceId ? workspace.title : undefined,
+              listening: normal, createdAt: lastTimestamp.current }));
           } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
         }
       } else {
@@ -72,33 +93,50 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
     }}>
     <summary className="cursor-pointer font-semibold">Portable Audio ZIP</summary>
     {open && <div className="mt-2 space-y-2">
-      <p>Download verified recordings as a Portable ZIP for reimport or a Normal ZIP for listening.</p>
       <label className="mr-4">Scope <select className="min-h-9 max-w-full rounded border px-2 dark:bg-slate-900" value={workspace ? scope : 'library'}
-        disabled={busy} onChange={event => setScope(event.target.value)}>
+        disabled={busy} onChange={event => { setScope(event.target.value); setListeningProfile('current'); setDetails(null); }}>
         {workspace && <option value="workspace">Selected Workspace</option>}
         <option value="library">Connected Library</option>
       </select></label>
-      <label className="inline-flex items-center gap-2"><input type="checkbox" checked={includeAlternate}
-        disabled={busy} onChange={event => setIncludeAlternate(event.target.checked)} />Include alternate profiles in export</label>
+      <button className={button} type="button" disabled={busy} onClick={() => run('preview')}>Check coverage and profiles</button>
+      {verified && verified.preferences === preferences && <BookQaCoverageTable report={verified.report} scope={scopeLabel} />}
+      <fieldset className="space-y-2 rounded border border-slate-300 p-2 dark:border-slate-700">
+        <legend className="font-semibold">Portable ZIP</legend>
+        <p>Transfer or reimport with manifest v3 and exact recording identities.</p>
+        <label className="inline-flex items-center gap-2"><input type="checkbox" checked={portableAlternates}
+          disabled={busy} onChange={event => setPortableAlternates(event.target.checked)} />Include alternate profiles in Portable export</label>
+        <div><button className={button} type="button" disabled={busy} onClick={() => run('export')}>Export Portable Audio</button></div>
+      </fieldset>
+      <fieldset className="space-y-2 rounded border border-slate-300 p-2 dark:border-slate-700">
+        <legend className="font-semibold">Listening ZIP</legend>
+        <label className="block">Listening profiles <select className="block max-w-full" name="listeningProfile" value={listeningProfile}
+          disabled={busy} onChange={event => setListeningProfile(event.target.value)}>
+          <option value="current">Current Profiles Only</option>
+          <option value="alternate">Include compatible alternate profiles</option>
+          {unavailableProfile && <option value={listeningProfile}>Selected exact profile unavailable in this view</option>}
+          {profiles.length > 0 && <optgroup label="Exact verified Edge profiles">{profiles.map(profile =>
+            <option key={profile.key} value={profile.key}>{profileLabel(profile.descriptor)}</option>)}</optgroup>}
+        </select></label>
       <label className="block">Listening channels <select value={channel} disabled={busy} onChange={event => setChannel(event.target.value)}>
         <option value="both">EN and ID</option><option value="text">EN</option><option value="meaning">ID</option>
       </select></label>
       <fieldset><legend>Listening representations</legend>
         {Object.entries({ 'main-title': 'Main Title', heading: 'Headings', full: 'Full Card', unit: 'Full Section/Turn', split: 'Split' }).map(([key, text]) =>
-          <label key={key} className="mr-3 inline-flex gap-1"><input type="checkbox" disabled={busy} checked={representations.includes(key)}
+          <label key={key} className="mr-3 inline-flex gap-1"><input type="checkbox" disabled={busy || (key === 'unit' && Boolean(exactProfile))} checked={representations.includes(key)}
             onChange={event => setRepresentations(current => event.target.checked ? [...current, key] : current.filter(item => item !== key))} />{text}</label>)}
       </fieldset>
-      <p>Full Section and Turn use current profiles at 1×.</p>
+      <p>{exactProfile ? 'Exact profile selection exports matching Edge recordings.' : 'Full Section and Turn are composed from current profiles at 1×.'}</p>
+      <button className={button} type="button" disabled={busy || unavailableProfile} onClick={() => run('normal')}>Export Normal Audio</button>
+      </fieldset>
       <label className="block">ZIP packages or canonical audio files<input type="file" accept=".zip,.mp3,.wav,application/zip" multiple
         className="block max-w-full" disabled={busy} onChange={event => setFiles([...event.target.files])} /></label>
       <div className="flex flex-wrap gap-2">
-        <button className={button} type="button" disabled={busy} onClick={() => run('export')}>Export Portable Audio</button>
-        <button className={button} type="button" disabled={busy} onClick={() => run('normal')}>Export Normal Audio</button>
         <button className={button} type="button" disabled={busy || !files.length} onClick={() => run('import')}>Import selected files</button>
         {busy && <button className={button} type="button" onClick={() => operation.current?.abort()}>Cancel transfer</button>}
       </div>
       <p role="status" data-book-portable-status>{message}</p>
-      {details && (details.normal ? <p>Listening omissions {countsBy(details.omissions, row => row.status) || 'none'}.</p> : 'physicalDiscovered' in details ? <>
+      {details && (details.normal ? <p>{details.persisted} persisted occurrences and {details.composed} export-only Unit WAVs.
+        {' '}Listening omissions {countsBy(details.omissions, row => row.status) || 'none'}.</p> : 'physicalDiscovered' in details ? <>
         <p>Asset entries discovered {details.physicalDiscovered}, validated {details.physicalValidated}. Unique verified assets {details.physicalUniqueValidated}, stored {details.physicalStored},
           reused {details.physicalReused}, repaired {details.physicalRepaired}. Logical matches {details.logicalMatched}, other profiles {details.otherProfile}.</p>
         {details.issues.length > 0 && <p>Archive and asset issues {countsBy(details.issues, row => row.status)}.</p>}
@@ -111,7 +149,7 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
             const unavailable = Object.entries(statuses).filter(([status]) => status !== 'ready')
               .map(([status, count]) => count + ' ' + status.replaceAll('-', ' '));
             return <li key={representation + '|' + channel}>
-              {representationLabel[representation]} {channel === 'text' ? 'EN' : 'ID'} · {available}/{expected} current available · {exported} current exported
+              {portableLabels[representation]} {channel === 'text' ? 'EN' : 'ID'} · {available}/{expected} current available · {exported} current exported
               {alternateExported > 0 && ` · ${alternateExported} alternate exported`}
               {unavailable.length > 0 && ` · ${unavailable.join(', ')}`}
             </li>;

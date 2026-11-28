@@ -437,14 +437,11 @@ export const SharedHorizontalFocusCarousel = ({
 };
 
 /**
- * Document-Flow Scroll-Driven Vertical Focus (Approved Hybrid C-HF2 Alternative).
+ * Document-flow Vertical Focus. Page scrolling and Unit selection are independent.
  * Renders all authored Units in stable vertical document flow with ZERO fixed-height
  * containers and ZERO nested vertical scroll traps so oversized bilingual Units stay
  * 100% readable and ordinary document scrolling works seamlessly across multiple open Cards.
  *
- * One lightweight rAF-throttled viewport focal-band observer per multi-Unit Card dynamically
- * promotes the Unit passing through the reading focal band to full active prominence while
- * scaling neighbors down smoothly (respecting prefers-reduced-motion).
  */
 export const SharedVerticalScrollFocusView = ({
   card,
@@ -461,7 +458,6 @@ export const SharedVerticalScrollFocusView = ({
   audioCoverageMap = null,
   disabled = false,
   selection,
-  onSelectUnit,
   onNavigateUnit,
   navigationRef,
   onPlaySegment,
@@ -476,7 +472,6 @@ export const SharedVerticalScrollFocusView = ({
   const activeIndex = Math.max(0, Math.min(units.length - 1, selection.selectedUnitIndex >= 0 ? selection.selectedUnitIndex : 0));
   const cardTerms = getSharedUnitTerms(card);
 
-  const flowRootRef = useRef(null);
   const unitNodeMapRef = useRef(new Map());
   const setUnitNode = useCallback((viewKey, node) => {
     if (node) unitNodeMapRef.current.set(viewKey, node);
@@ -496,41 +491,8 @@ export const SharedVerticalScrollFocusView = ({
 
   useLayoutEffect(() => () => { navigationRef.current = null; }, [navigationRef]);
 
-  useLayoutEffect(() => {
-    const root = flowRootRef.current;
-    // A passive viewport observation must not create a manual selection during Book playback.
-    if (!root || !scroll || units.length <= 1 || playbackCursor?.continuousPresentation) return undefined;
-    return scroll.registerVerticalFocus(root, ({ top, bottom, focalY, scrollTop, maxScrollTop }) => {
-      const flowRect = root.getBoundingClientRect();
-      let nearest;
-      if (scrollTop <= 8 && flowRect.top >= top - 40 && flowRect.top <= focalY) {
-        nearest = units[0];
-      } else if (scrollTop >= maxScrollTop - 20 && flowRect.bottom >= bottom - 120 && flowRect.bottom <= bottom + 80) {
-        nearest = units[units.length - 1];
-      } else {
-        let nearestEdge = Infinity;
-        let nearestCenter = Infinity;
-        for (const unit of units) {
-          const rect = unitNodeMapRef.current.get(unit.viewKey)?.getBoundingClientRect();
-          if (!rect || rect.bottom < top || rect.top > bottom) continue;
-          const edge = Math.max(rect.top - focalY, focalY - rect.bottom, 0);
-          const center = Math.abs((rect.top + rect.bottom) / 2 - focalY);
-          if (edge < nearestEdge || (edge === nearestEdge && center < nearestCenter)) {
-            nearest = unit;
-            nearestEdge = edge;
-            nearestCenter = center;
-          }
-        }
-      }
-      if (nearest && nearest.viewKey !== selection.selectedUnitViewKey) {
-        onSelectUnit?.(nearest.viewKey);
-      }
-    });
-  }, [scroll, units, selection.selectedUnitViewKey, onSelectUnit, playbackCursor?.continuousPresentation]);
-
   return (
     <div
-      ref={flowRootRef}
       className="space-y-3.5"
       data-shared-part-layout="vertical-focus"
       data-shared-focus-orientation="vertical-focus"

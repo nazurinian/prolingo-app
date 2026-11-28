@@ -8,6 +8,8 @@ import { executeTextStructuredAudioGenerationRequest } from './audio/textStructu
 import { buildDerivedTextConversationFullAudioWav } from './audio/textStructuredFullAudioExportService.js';
 import { exportBookPortableAudio, importBookPortableAudio } from './audio/bookPortableAudioService.js';
 import { exportBookNormalAudio } from './audio/bookNormalAudioService.js';
+import { readBoundBookAudioBytes } from './audio/bookQaBodyAudioService.js';
+import { verifyBookAudioCoverage } from './audio/bookQaAudioCoverageService.js';
 
 const fail = (code, message) => { throw bookAudioError(code, message); };
 const same = (left, right) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -360,6 +362,7 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
     generate: (items, { signal } = {}) => perform(items, signal, true),
     generateSequence,
     exportNormal: options => exportAudio(options, exportBookNormalAudio),
+    verifyCoverage: options => exportAudio(options, verifyBookAudioCoverage),
     exportPortable: options => exportAudio(options, exportBookPortableAudio),
     importPortable: (files, options) => {
       assertCurrent();
@@ -403,19 +406,13 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
       const captured = getSnapshot();
       const binding = readBookAudioBinding(captured, entry);
       if (binding.status !== 'bound') return binding;
-      if (binding.trustedComposition) {
-        for (const input of resolveBookAudioTarget(captured, entry).dependencies) {
-          const source = await staging.read(input.fingerprint, input.binary);
-          assertCurrent();
-          assertReadable();
-          if (captured !== getSnapshot()) fail('STALE_RESULT', 'Audio source changed during runtime read');
-          if (source.status !== 'ready') return { status: 'unavailable-composition-input' };
-        }
-      }
-      const result = await staging.read(entry.fingerprint, binding.binary);
-      assertCurrent();
-      assertReadable();
-      if (captured !== getSnapshot()) fail('STALE_RESULT', 'Audio source changed during runtime read');
+      const result = await readBoundBookAudioBytes(captured, entry, binding, async (fingerprint, binary) => {
+        const verified = await staging.read(fingerprint, binary);
+        assertCurrent();
+        assertReadable();
+        if (captured !== getSnapshot()) fail('STALE_RESULT', 'Audio source changed during runtime read');
+        return verified;
+      });
       if (result.status !== 'ready') return result;
       if (withUrl && !urls.has(result.id)) urls.set(result.id, URL.createObjectURL(result.blob));
       return { status: 'ready', ...(withUrl ? { url: urls.get(result.id) } : {}), binary: binding.binary, id: result.id,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { checkHf2Runtime } from './check-hf2-runtime.mjs';
 
 const name = 'prolingo_text_library_d3b_qa_a2_hf1_browser';
 export const readerRefinementLibraries = {
@@ -12,7 +13,7 @@ const player = 'window.__bookQaProps("[data-global-player]", "readPlayer", true)
 const body = '[data-book-body-audio]';
 const bodyStatus = 'document.querySelector("[data-book-body-audio-status]")?.textContent';
 
-export async function checkBookQaReaderRefinement({ mode, evaluate, navigate, waitFor, chooseOptIn, clickButton, uatOrigin, call, bodyRequests }) {
+export async function checkBookQaReaderRefinement({ mode, evaluate, navigate, waitFor, chooseOptIn, clickButton, uatOrigin, call, bodyRequests, probe }) {
   const baseline = mode === 'baseline';
   const result = { mode, observations: {}, checks: [] };
   const record = label => { result.checks.push(label); console.log('PASS', label); };
@@ -135,6 +136,10 @@ export async function checkBookQaReaderRefinement({ mode, evaluate, navigate, wa
   const ari = c1.segments[2];
   const [sentence, second] = p1.segments;
   await selectWorkspace(paragraph);
+  if (mode.startsWith('hf2-')) return checkHf2Runtime({
+    mode, evaluate, waitFor, clickButton, click, change, control, selectWorkspace, openBody, run, record, result,
+    adjustPlayback, playFrom, waitAudible, stop, selectMode, reader, player, host, body, paragraph, conversation, mixed, probe, call, saveVoice
+  });
   if (mode === 'native') {
     await waitFor(`speechSynthesis.getVoices().length > 0`, 10000).catch(() => {});
     const catalog = await evaluate(`speechSynthesis.getVoices().map(({ name, lang, localService }) => ({ name, lang, localService }))`);

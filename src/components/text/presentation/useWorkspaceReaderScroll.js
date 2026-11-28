@@ -38,12 +38,6 @@ const isScrollbarPress = (event, viewport) => {
 
 export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUserNavigation }) => {
   const controllerRef = useRef(null);
-  const observersRef = useRef(new Map());
-  const registerVerticalFocus = useCallback((element, callback) => {
-    const observers = observersRef.current;
-    observers.set(element, callback);
-    return () => { observers.delete(element); };
-  }, []);
   const reveal = useCallback(request => controllerRef.current?.reveal(request), []);
 
   useLayoutEffect(() => {
@@ -61,17 +55,8 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
       return rect.top <= focalY && rect.bottom >= focalY;
     };
     let motion = null;
-    let userScroll = null;
-    let observedViewport = getViewport();
-    let lastScrollTop = readViewport(observedViewport).scrollTop;
     let touch = null;
-    let selectionFrame = null;
     let motionFrame = null;
-
-    const cancelSelection = () => {
-      if (selectionFrame !== null) window.cancelAnimationFrame(selectionFrame);
-      selectionFrame = null;
-    };
 
     const finishMotion = (request, interrupt = false) => {
       if (motion !== request) return;
@@ -85,15 +70,7 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
     };
 
     const beginUserScroll = viewport => {
-      const interrupted = motion?.viewport === viewport;
-      if (interrupted) finishMotion(motion, true);
-      // Chromium can move the compositor before delivering a passive wheel event.
-      // Keep the last observed position so its pending scroll event still counts.
-      if (interrupted || observedViewport !== viewport) {
-        observedViewport = viewport;
-        lastScrollTop = readViewport(viewport).scrollTop;
-      }
-      userScroll = { viewport, moved: false };
+      if (motion?.viewport === viewport) finishMotion(motion, true);
       onUserNavigation?.();
     };
 
@@ -122,8 +99,6 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
 
       const top = Math.min(position.maxScrollTop, Math.max(0, desiredTop));
       if (Math.abs(top - position.scrollTop) <= POSITION_TOLERANCE) return undefined;
-      cancelSelection();
-      userScroll = null;
       const request = { viewport, origin, top };
       motion = request;
       viewport.scrollTo({ top, behavior: isPrefersReducedMotion() ? 'instant' : 'smooth' });
@@ -148,37 +123,6 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
       return () => finishMotion(request, true);
     };
 
-    const evaluateFocus = viewport => {
-      selectionFrame = null;
-      if (motion || viewport !== getViewport()) return;
-      const position = readViewport(viewport);
-      const focalY = position.top + (position.bottom - position.top) * 0.42;
-      let activeObserver;
-      let nearest = 64;
-      for (const [element, callback] of observersRef.current) {
-        if (!root.contains(element)) continue;
-        const rect = element.getBoundingClientRect();
-        const distance = Math.max(rect.top - focalY, focalY - rect.bottom, 0);
-        if (distance < nearest) {
-          activeObserver = callback;
-          nearest = distance;
-        }
-      }
-      activeObserver?.({ ...position, focalY });
-    };
-
-    const handleScroll = event => {
-      const viewport = getViewport();
-      if (!isViewportEvent(event, viewport)) return;
-      const { scrollTop } = readViewport(viewport);
-      if (observedViewport === viewport && scrollTop === lastScrollTop) return;
-      observedViewport = viewport;
-      lastScrollTop = scrollTop;
-      if (motion || userScroll?.viewport !== viewport) return;
-      userScroll.moved = true;
-      if (selectionFrame !== null) return;
-      selectionFrame = window.requestAnimationFrame(() => evaluateFocus(viewport));
-    };
     const handleScrollEnd = event => {
       const viewport = getViewport();
       if (!isViewportEvent(event, viewport)) return;
@@ -186,8 +130,6 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
         && Math.abs(readViewport(viewport).scrollTop - motion.top) <= POSITION_TOLERANCE) {
         finishMotion(motion);
       }
-      // An interrupted reveal can emit scrollend before the new user scroll starts.
-      if (userScroll?.viewport === viewport && userScroll.moved) userScroll = null;
     };
     const handleWheel = event => {
       if (event.isTrusted && !event.ctrlKey && Math.abs(event.deltaY) > Math.abs(event.deltaX) && isInsideReader(event.target)) {
@@ -226,15 +168,9 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
         beginUserScroll(viewport);
       }
     };
-    const handleResize = () => {
-      userScroll = null;
-      cancelSelection();
-    };
-
     const controller = { reveal: revealTarget };
     controllerRef.current = controller;
     const listeners = [
-      ['scroll', handleScroll, { capture: true, passive: true }],
       ['scrollend', handleScrollEnd, { capture: true, passive: true }],
       ['wheel', handleWheel, { passive: true }],
       ['keydown', handleKeyDown],
@@ -242,17 +178,15 @@ export const useWorkspaceReaderScroll = ({ rootRef, workspaceKey, enabled, onUse
       ['touchmove', handleTouchMove, { passive: true }],
       ['touchend', clearTouch, { passive: true }],
       ['touchcancel', clearTouch, { passive: true }],
-      ['pointerdown', handlePointerDown, { capture: true, passive: true }],
-      ['resize', handleResize]
+      ['pointerdown', handlePointerDown, { capture: true, passive: true }]
     ];
     for (const [name, handler, options] of listeners) window.addEventListener(name, handler, options);
     return () => {
       if (controllerRef.current === controller) controllerRef.current = null;
       for (const [name, handler, options] of listeners) window.removeEventListener(name, handler, options);
-      cancelSelection();
       if (motion) finishMotion(motion, true);
     };
   }, [rootRef, workspaceKey, enabled, onUserNavigation]);
 
-  return useMemo(() => ({ registerVerticalFocus, reveal }), [registerVerticalFocus, reveal]);
+  return useMemo(() => ({ reveal }), [reveal]);
 };

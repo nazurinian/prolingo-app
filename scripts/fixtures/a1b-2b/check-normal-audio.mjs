@@ -75,7 +75,7 @@ export async function checkBookNormalAudio({ navigate, evaluate, waitFor, probe,
   await run();
   await finished();
   assert.equal(await count(), 1);
-  assert.match(await evaluate('window.__normalDownloads[0].name'), /Listening.*\.zip$/u);
+  assert.match(await evaluate('window.__normalDownloads[0].name'), /^PL_LISTENING__.+__\d{8}T\d{6}(?:\.\d{3})?Z\.zip$/u);
   pass('Normal control cancels after native Unit decode, closes its AudioContext and lock, and retries without partial output or data changes');
   const bilingual = await probe(`module.inspectBilingualNormal(${host}, ${q(fixture.workspaceId)})`);
   assert.deepEqual([prepared.splits, prepared.units, prepared.fulls], [32, 10, 2]);

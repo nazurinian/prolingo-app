@@ -64,6 +64,11 @@ export const buildCanonicalTextAudioFilename = ({ audioVariantId, segmentId, cha
 export const buildCanonicalTextBrowserAudioPackageFilename = ({ title = 'Text', createdAt = null } = {}) =>
   `${join('ProLingo', 'TEXT_AUDIO', title, formatTextFilenameTimestamp(createdAt))}.zip`;
 
+export const buildBookAudioArchiveFilename = ({ listening = false, title, createdAt = Date.now() }) => {
+  const timestamp = new Date(createdAt).toISOString().replace(/[-:]/g, '').replace(/\.000Z$/u, 'Z');
+  return `PL_${listening ? 'LISTENING' : 'PORTABLE'}__${sanitizeTextFilenameToken(title, 'Book_QA_Library')}__${timestamp}.zip`;
+};
+
 const normalizeVoiceGroup = voiceIds => {
   const labels = [...new Set((Array.isArray(voiceIds) ? voiceIds : [voiceIds]).filter(Boolean).map(compactTextVoiceFilenameLabel))];
   if (!labels.length) return 'Voice';

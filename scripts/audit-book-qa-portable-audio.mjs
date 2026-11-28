@@ -10,14 +10,15 @@ import { applyBookQaAudioOperation } from '../src/domain/text/bookQaAudioDomain.
 import { getBookBodyGenerationRequests } from '../src/domain/text/bookQaBodyAudioDomain.js';
 import { planBookAtomicGeneration } from '../src/domain/text/bookQaHeadingAudioDomain.js';
 import { buildTextStructuredPlaybackRateProfileMetadata } from '../src/domain/text/textStructuredPlaybackRateProfileDomain.js';
-import { buildCanonicalTextRenderAudioFilename, buildCanonicalTextFullArtifactFilename, textVoiceFilenameTokenMatches, TEXT_AUDIO_MANIFEST_FILENAME } from '../src/domain/text/textFilenameDomain.js';
+import { buildBookAudioArchiveFilename, buildCanonicalTextRenderAudioFilename, buildCanonicalTextFullArtifactFilename, textVoiceFilenameTokenMatches, TEXT_AUDIO_MANIFEST_FILENAME } from '../src/domain/text/textFilenameDomain.js';
 import { buildBookPortableAudioManifest, portableFilenameMatches, validateBookPortableAudioManifest } from '../src/domain/text/bookPortableAudioManifestDomain.js';
 import { validateProLingoTextAudioManifest } from '../src/domain/text/textAudioManifestDomain.js';
 import { bookPortableLegacyRequirements, listBookPortableTargets, resolveBookPortableReference } from '../src/domain/text/bookPortableAudioDomain.js';
 import { buildStoredZipBlob, crc32Blob, STORED_ZIP_END_BYTES, storedZipEntryBytes } from '../src/services/audio/browserZipService.js';
 import { openPortableAudioZip } from '../src/services/audio/textStructuredAudioZipArchiveService.js';
 import { exportBookPortableAudio, importBookPortableAudio } from '../src/services/audio/bookPortableAudioService.js';
-import { assertNormalAudioZipCapacity, exportBookNormalAudio, NORMAL_AUDIO_ZIP_LIMITS } from '../src/services/audio/bookNormalAudioService.js';
+import { assertNormalAudioZipCapacity, bookListeningProfileKey, exportBookNormalAudio, NORMAL_AUDIO_ZIP_LIMITS } from '../src/services/audio/bookNormalAudioService.js';
+import { verifyBookAudioCoverage } from '../src/services/audio/bookQaAudioCoverageService.js';
 
 const { snapshot, ids } = createJourneyToLondonFixture();
 const tree = resolveTextLibraryDocumentTree(snapshot, ids.documentId);
@@ -232,8 +233,8 @@ test('normal listening ZIP retains shared logical occurrences and reports missin
   const archive = await openPortableAudioZip(blob);
   assert.equal(report.logical, 2);
   assert.equal(archive.entries.length, 2);
-  assert(archive.entries.some(item => item.filename.includes('/00_Title/EN_LIBBY.mp3')));
-  assert(archive.entries.some(item => item.filename.includes('/Split/SC01/SG01_EN_LIBBY.mp3')));
+  assert(archive.entries.some(item => item.filename.includes('/00_Title/EN_EDGE_LIBBY.mp3')));
+  assert(archive.entries.some(item => item.filename.includes('/Split/SC01/SG01_EN_EDGE_LIBBY.mp3')));
   assert(report.omissions.some(item => item.status === 'missing-unit-input'));
   assert.deepEqual(before, copy);
 });
@@ -295,6 +296,41 @@ test('normal listening respects channel, alternate profile and cancellation choi
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(exportBookNormalAudio({ ...options, signal: controller.signal }), { code: 'AUDIO_CANCELLED' });
+});
+
+test('Book archive prefixes, UTC precision, readable render labels and deterministic collisions preserve exact profiles', async () => {
+  const createdAt = Date.parse('2026-11-28T02:55:48Z');
+  assert.equal(buildBookAudioArchiveFilename({ title: 'A Journey to London', createdAt }), 'PL_PORTABLE__A_Journey_to_London__20261128T025548Z.zip');
+  assert.equal(buildBookAudioArchiveFilename({ listening: true, title: '../../bad:name', createdAt: createdAt + 1 }),
+    'PL_LISTENING__bad-name__20261128T025548.001Z.zip');
+  const source = firstNine(), current = body(source)[0];
+  const [rate, pitch, voice] = [
+    { edgeRate: 20 }, { edgePitch: 10 }, { edgeTextVoiceId: 'en-GB-SoniaNeural' }
+  ].map(overrides => body(source, { ...preferences, ...overrides })[0]);
+  const alternateRender = buildTextStructuredAudioRenderFingerprint({
+    ...current.descriptor, content: docTree(source).blocks[0].segments[0].text, voiceId: 'en-US-LibbyNeural'
+  });
+  const collision = { ...current, fingerprint: alternateRender.renderFingerprint, descriptor: alternateRender.descriptor };
+  const saved = record(source, current, rate, pitch, voice, collision);
+  const options = { snapshot: saved, preferences, read: readReady, channels: ['text'], representations: ['split'] };
+  const names = async result => (await openPortableAudioZip(result.blob)).entries.map(item => item.filename.split('/').at(-1));
+  assert.deepEqual(await names(await exportBookNormalAudio(options)), ['SG01_EN_EDGE_LIBBY.mp3']);
+  const all = await names(await exportBookNormalAudio({ ...options, includeAlternate: true }));
+  assert.deepEqual(all, ['SG01_EN_EDGE_LIBBY.mp3', 'SG01_EN_EDGE_LIBBY_P+10Hz.mp3', 'SG01_EN_EDGE_LIBBY_R+20Pct.mp3',
+    'SG01_EN_EDGE_LIBBY_V02.mp3', 'SG01_EN_EDGE_SONIA.mp3']);
+  assert.deepEqual(await names(await exportBookNormalAudio({ ...options, snapshot: record(source, collision, voice, pitch, rate, current),
+    includeAlternate: true })), all);
+  assert.deepEqual(await names(await exportBookNormalAudio({ ...options, profileKey: bookListeningProfileKey(rate.descriptor) })),
+    ['SG01_EN_EDGE_LIBBY_R+20Pct.mp3']);
+  const onlyAlternate = { ...options, snapshot: record(source, rate) };
+  assert.equal((await exportBookNormalAudio(onlyAlternate)).blob, null);
+  assert.deepEqual(await names(await exportBookNormalAudio({ ...onlyAlternate, includeAlternate: true })),
+    ['SG01_EN_EDGE_LIBBY_R+20Pct.mp3']);
+  const coverage = await verifyBookAudioCoverage({ ...onlyAlternate, workspaceId: ids.documentId });
+  const split = coverage.groups.find(group => group.representation === 'split' && group.channel === 'text');
+  assert.equal(split.statuses['other-profile'], 1);
+  assert.equal(split.otherReady, 1);
+  assert.equal(coverage.profiles[0].key, bookListeningProfileKey(rate.descriptor));
 });
 
 test('recorded Full with missing durable input stays unavailable and unverified composition is only a verified export', async () => {

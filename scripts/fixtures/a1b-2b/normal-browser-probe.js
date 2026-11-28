@@ -57,12 +57,12 @@ export const populateBilingualNormal = async (connection, workspaceId, speakers)
           const fixture = tones[(index + unitIndex + channelIndex) % 2];
           const blob = new Blob(Array(3 + channelIndex + unitIndex + 2 * index).fill(fixture), { type: 'audio/mpeg' });
           const digest = (await validateBookAudioBytes(blob, 'mp3')).digest;
-          const tail = `/Split/${unitName}/SG${pad(index + 1)}_${lang}_${token}.mp3`;
+          const tail = `/Split/${unitName}/SG${pad(index + 1)}_${lang}_EDGE_${token}.mp3`;
           splits.push({ cardOrder, tail, digest, entry, speaker, unitUid: unit.uid, speakerId: unit.speakerId, sentence: segment[channel] });
           members.push({ blob, digest, fingerprint: entry.fingerprint, sentence: segment[channel] });
           requests.push({ ...entry, blob });
         }
-        units.push({ cardOrder, tail: `/Full_${block === scene ? 'Turn' : 'Section'}/${unitName}_${lang}_${token}.wav`, members, speaker, channel });
+        units.push({ cardOrder, tail: `/Full_${block === scene ? 'Turn' : 'Section'}/${unitName}_${lang}_DERIVED_${token}.wav`, members, speaker, channel });
       }
     }
   }
@@ -78,7 +78,7 @@ export const populateBilingualNormal = async (connection, workspaceId, speakers)
     const members = units.filter(unit => unit.cardOrder === '02_C1_' && unit.channel === channel).flatMap(unit => unit.members);
     check(entry.descriptor.composition.every((input, index) => input.renderFingerprint === members[index].fingerprint),
       'Derived plan used a different order or render identity');
-    fulls.push({ cardOrder: '02_C1_', tail: `/Full_Card/${channelIndex ? 'ID' : 'EN'}_MULTI-SPEAKER.wav`, members, entry });
+    fulls.push({ cardOrder: '02_C1_', tail: `/Full_Card/${channelIndex ? 'ID' : 'EN'}_DERIVED_MULTI-SPEAKER.wav`, members, entry });
   }
   await connection.audio.generate(fulls.map(full => full.entry));
   for (const full of fulls) {
@@ -135,7 +135,7 @@ export const inspectBilingualNormal = async (connection, workspaceId) => {
   const settings = { workspaceId, preferences: options.preferences, channels: ['text'], representations: ['split'] };
   const { blob } = await connection.audio.exportNormal({ ...settings, includeAlternate: true });
   const profiles = await openPortableAudioZip(blob);
-  const alternate = profiles.entries.find(item => item.filename.endsWith(expected.alternate.fingerprint.split('-').at(-1) + '.mp3'));
+  const alternate = profiles.entries.find(item => item.filename.endsWith('_P+9Hz.mp3'));
   check(alternate && !archive.entries.some(item => item.filename === alternate.filename), 'Current and alternate profiles were not separated');
   check((await validateBookAudioBytes(await profiles.read(alternate), 'mp3')).digest === expected.alternateDigest, 'Alternate bytes were substituted');
   check(profiles.entries.every(item => item.filename.includes('_EN_') && item.filename.includes('/Split/')), 'Channel or representation was ignored');

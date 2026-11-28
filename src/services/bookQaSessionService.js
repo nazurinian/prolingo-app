@@ -86,7 +86,7 @@ export const createBookQaConnection = (adapter, loaded, authorization = null) =>
   return {
     dbName: adapter.dbName,
     ...(audio ? { audio: { name: audio.name, submit: audio.submit, readRuntime: audio.readRuntime, getPlaybackReadStamp: audio.getPlaybackReadStamp, generate: audio.generate, generateSequence: audio.generateSequence, repair: audio.repair,
-      exportNormal: audio.exportNormal, exportPortable: audio.exportPortable, importPortable: audio.importPortable } } : {}),
+      exportNormal: audio.exportNormal, exportPortable: audio.exportPortable, importPortable: audio.importPortable, verifyCoverage: audio.verifyCoverage } } : {}),
     session: {
       getState: session.getState,
       getSnapshot: session.getSnapshot,

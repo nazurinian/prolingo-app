@@ -1,0 +1,1813 @@
+{
+  "startingHead": "cdfc32c006924b243537fc2fadc35a9460ba5305",
+  "acceptedImplementation": "2c695bd0f91c20573fd08004a000c40d46e21050",
+  "branch": "test/text-v2-uat",
+  "origin": "http://127.0.0.1:5173",
+  "testedOn": "2026-11-28",
+  "baseline": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "hf2-baseline",
+    "observations": {
+      "transitions": {
+        "recordedEnToIdZero": {
+          "endToNextMs": 12.1,
+          "nativeMediaStartupMs": 11.3,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 9.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000042",
+              "channel": "text",
+              "ms": 8.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000043",
+              "channel": "text",
+              "ms": 3.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 9.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 29.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 9.1,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 10,
+          "waitingFrames": 1,
+          "waitingRetained": 1,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875,
+            532.875
+          ],
+          "timelineHeights": [
+            48,
+            0
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "meaning"
+        },
+        "recordedIdToNextEnZero": {
+          "endToNextMs": 18.1,
+          "nativeMediaStartupMs": 16.9,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 9.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 29.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 9.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 21.8,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 11,
+          "waitingFrames": 1,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875,
+            532.875
+          ],
+          "timelineHeights": [
+            48,
+            0
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "text"
+        },
+        "recordedAcrossSections": {
+          "endToNextMs": 20.7,
+          "nativeMediaStartupMs": 19.6,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 21.8,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000040",
+              "channel": "text",
+              "ms": 20.4,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 12,
+          "waitingFrames": 1,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875,
+            532.875
+          ],
+          "timelineHeights": [
+            48,
+            0
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "text"
+        },
+        "recordedEnToId500": {
+          "endToNextMs": 548.4,
+          "nativeMediaStartupMs": 10.3,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 4.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 17.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 5.9,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 42,
+          "waitingFrames": 33,
+          "waitingRetained": 33,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875,
+            532.875
+          ],
+          "timelineHeights": [
+            48,
+            0
+          ],
+          "owners": [
+            3
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "meaning"
+        },
+        "recordedToBrowser": {
+          "endToNextMs": 0.7,
+          "nativeMediaStartupMs": null,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 5.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000041",
+              "channel": "text",
+              "ms": 8.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000042",
+              "channel": "text",
+              "ms": 7.7,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 9,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875,
+            532.875
+          ],
+          "timelineHeights": [
+            48,
+            0
+          ],
+          "owners": [
+            5
+          ],
+          "sources": [
+            "generated",
+            "tts"
+          ],
+          "channel": "meaning"
+        },
+        "acrossCards": {
+          "endToNextMs": 15.8,
+          "nativeMediaStartupMs": 13.4,
+          "reads": [
+            {
+              "id": "SEGMENT_000041",
+              "channel": "text",
+              "ms": 8.7,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000042",
+              "channel": "text",
+              "ms": 7.7,
+              "readyBeforeEnd": null
+            }
+          ],
+          "frames": 3,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            532.875,
+            474.875
+          ],
+          "timelineHeights": [
+            0,
+            48
+          ],
+          "owners": [
+            5
+          ],
+          "sources": [
+            "tts",
+            "generated"
+          ],
+          "channel": "text"
+        },
+        "browserOnly": {
+          "endToNextMs": 3,
+          "nativeMediaStartupMs": null,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 7.7,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 2.9,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000040",
+              "channel": "text",
+              "ms": 2.2,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000041",
+              "channel": "text",
+              "ms": 2.3,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 13.5,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 12.4,
+              "readyBeforeEnd": null
+            }
+          ],
+          "frames": 2,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            532.875
+          ],
+          "timelineHeights": [
+            0
+          ],
+          "owners": [
+            9
+          ],
+          "sources": [
+            "tts"
+          ],
+          "channel": "meaning"
+        },
+        "recordedAcrossTurns": {
+          "endToNextMs": 10.9,
+          "nativeMediaStartupMs": 9.8,
+          "reads": [
+            {
+              "id": "SEGMENT_000047",
+              "channel": "text",
+              "ms": 9.2,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "meaning",
+              "ms": 3.6,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000045",
+              "channel": "meaning",
+              "ms": 2.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000046",
+              "channel": "meaning",
+              "ms": 2.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000047",
+              "channel": "meaning",
+              "ms": 5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000048",
+              "channel": "text",
+              "ms": 2.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000049",
+              "channel": "text",
+              "ms": 2.6,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000048",
+              "channel": "meaning",
+              "ms": 2.2,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "text",
+              "ms": 10.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "meaning",
+              "ms": 23.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000045",
+              "channel": "text",
+              "ms": 6.7,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 9,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            472.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            11
+          ],
+          "sources": [
+            "generated"
+          ],
+          "channel": "text"
+        }
+      },
+      "intrinsicFixtureSilence": {
+        "durationMs": 2592,
+        "leadingMs": 28,
+        "trailingMs": 10.3,
+        "threshold": "1% peak amplitude"
+      },
+      "fullFallbackStartup": {
+        "beforeStart": 4,
+        "verificationTotalMs": 15.1,
+        "playback": "split",
+        "fallback": true
+      },
+      "focus": {
+        "idle": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000013",
+          "offset": [
+            0,
+            448
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        },
+        "playing": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000012",
+          "offset": [
+            0,
+            447
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        },
+        "paused": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000012",
+          "offset": [
+            0,
+            447
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        }
+      }
+    },
+    "checks": [
+      "Details-open recorded, fallback and Browser-only transition matrix",
+      "Vertical Focus passive scroll and explicit Return to Playing checked in all states"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 19
+  },
+  "refinement": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "hf2-final",
+    "observations": {
+      "transitions": {
+        "recordedEnToIdZero": {
+          "endToNextMs": 14.1,
+          "nativeMediaStartupMs": 13.3,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 9.6,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000042",
+              "channel": "text",
+              "ms": 2.4,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000043",
+              "channel": "text",
+              "ms": 1.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 13.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 50.7,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 10,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated"
+          ],
+          "channel": "meaning"
+        },
+        "recordedIdToNextEnZero": {
+          "endToNextMs": 13.1,
+          "nativeMediaStartupMs": 12.3,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 13.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 50.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 16,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 6.4,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 11,
+          "waitingFrames": 1,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 1,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "text"
+        },
+        "recordedAcrossSections": {
+          "endToNextMs": 21.9,
+          "nativeMediaStartupMs": 21.1,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 16,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "meaning",
+              "ms": 6.4,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000040",
+              "channel": "text",
+              "ms": 8.5,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 11,
+          "waitingFrames": 1,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 1,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            1
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "text"
+        },
+        "recordedEnToId500": {
+          "endToNextMs": 513.5,
+          "nativeMediaStartupMs": 10,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 4.6,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000038",
+              "channel": "meaning",
+              "ms": 11.7,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 4.9,
+              "readyBeforeEnd": false
+            }
+          ],
+          "frames": 40,
+          "waitingFrames": 32,
+          "waitingRetained": 32,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 32,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            3
+          ],
+          "sources": [
+            "generated",
+            "silent"
+          ],
+          "channel": "meaning"
+        },
+        "recordedToBrowser": {
+          "endToNextMs": 0.7,
+          "nativeMediaStartupMs": null,
+          "reads": [
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 4.9,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000041",
+              "channel": "text",
+              "ms": 7,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 9,
+          "waitingFrames": 1,
+          "waitingRetained": 1,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 1,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            5
+          ],
+          "sources": [
+            "generated",
+            "silent",
+            "tts"
+          ],
+          "channel": "meaning"
+        },
+        "acrossCards": {
+          "endToNextMs": 27.7,
+          "nativeMediaStartupMs": 18.7,
+          "reads": [
+            {
+              "id": "SEGMENT_000041",
+              "channel": "text",
+              "ms": 7,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000042",
+              "channel": "text",
+              "ms": 11.4,
+              "readyBeforeEnd": null
+            }
+          ],
+          "frames": 4,
+          "waitingFrames": 2,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 2,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            5
+          ],
+          "sources": [
+            "tts",
+            "silent",
+            "generated"
+          ],
+          "channel": "text"
+        },
+        "browserOnly": {
+          "endToNextMs": 2,
+          "nativeMediaStartupMs": null,
+          "reads": [
+            {
+              "id": "SEGMENT_000038",
+              "channel": "text",
+              "ms": 9.9,
+              "readyBeforeEnd": null
+            },
+            {
+              "id": "SEGMENT_000039",
+              "channel": "text",
+              "ms": 17.3,
+              "readyBeforeEnd": null
+            }
+          ],
+          "frames": 2,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            474.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            9
+          ],
+          "sources": [
+            "tts"
+          ],
+          "channel": "meaning"
+        },
+        "recordedAcrossTurns": {
+          "endToNextMs": 11.3,
+          "nativeMediaStartupMs": 10.8,
+          "reads": [
+            {
+              "id": "SEGMENT_000044",
+              "channel": "text",
+              "ms": 4.6,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000045",
+              "channel": "text",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000046",
+              "channel": "text",
+              "ms": 7.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000047",
+              "channel": "text",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "meaning",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000045",
+              "channel": "meaning",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000046",
+              "channel": "meaning",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000047",
+              "channel": "meaning",
+              "ms": 4.2,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000048",
+              "channel": "text",
+              "ms": 2.5,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000049",
+              "channel": "text",
+              "ms": 2.4,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000048",
+              "channel": "meaning",
+              "ms": 2.3,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "text",
+              "ms": 9.8,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000044",
+              "channel": "meaning",
+              "ms": 24.1,
+              "readyBeforeEnd": true
+            },
+            {
+              "id": "SEGMENT_000045",
+              "channel": "text",
+              "ms": 10,
+              "readyBeforeEnd": true
+            }
+          ],
+          "frames": 9,
+          "waitingFrames": 0,
+          "waitingRetained": 0,
+          "falseLiveTimeline": 0,
+          "waitingWithTimelineSlot": 0,
+          "detailsTops": [
+            668
+          ],
+          "drawerTops": [
+            472.875
+          ],
+          "timelineHeights": [
+            48
+          ],
+          "owners": [
+            11
+          ],
+          "sources": [
+            "generated"
+          ],
+          "channel": "text"
+        }
+      },
+      "intrinsicFixtureSilence": {
+        "durationMs": 2592,
+        "leadingMs": 28,
+        "trailingMs": 10.3,
+        "threshold": "1% peak amplitude"
+      },
+      "fullFallbackStartup": {
+        "beforeStart": 1,
+        "verificationTotalMs": 9.9,
+        "playback": "split",
+        "fallback": true
+      },
+      "focus": {
+        "idle": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000012",
+          "offset": [
+            0,
+            448
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        },
+        "playing": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000012",
+          "offset": [
+            0,
+            447
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        },
+        "paused": {
+          "before": "UNIT_000012",
+          "after": "UNIT_000012",
+          "offset": [
+            0,
+            447
+          ],
+          "sameOwner": true,
+          "sameCursor": true
+        }
+      },
+      "coverage": {
+        "card": [
+          {
+            "group": "split",
+            "en": "8/8 current Ready",
+            "id": "0/8 current Ready8 Missing"
+          },
+          {
+            "group": "full-paragraph",
+            "en": "1/1 current Ready",
+            "id": "0/1 current Ready1 Missing"
+          },
+          {
+            "group": "full-conversation",
+            "en": "No requirement",
+            "id": "No requirement"
+          },
+          {
+            "group": "main-title",
+            "en": "No requirement",
+            "id": "No requirement"
+          },
+          {
+            "group": "paragraph-heading",
+            "en": "0/1 current Ready1 Missing",
+            "id": "0/1 current Ready1 Missing"
+          },
+          {
+            "group": "scene-heading",
+            "en": "No requirement",
+            "id": "No requirement"
+          },
+          {
+            "group": "section-composition",
+            "en": "2/2 eligible",
+            "id": "0/2 eligible2 Missing current Split input"
+          },
+          {
+            "group": "turn-composition",
+            "en": "No requirement",
+            "id": "No requirement"
+          }
+        ],
+        "workspace": [
+          {
+            "group": "split",
+            "en": "37/37 current Ready",
+            "id": "0/37 current Ready37 Missing"
+          },
+          {
+            "group": "full-paragraph",
+            "en": "1/2 current Ready1 Missing",
+            "id": "0/2 current Ready2 Missing"
+          },
+          {
+            "group": "full-conversation",
+            "en": "0/2 current Ready2 Missing",
+            "id": "0/2 current Ready2 Missing"
+          },
+          {
+            "group": "main-title",
+            "en": "0/1 current Ready1 Missing",
+            "id": "0/1 current Ready1 Missing"
+          },
+          {
+            "group": "paragraph-heading",
+            "en": "0/2 current Ready2 Missing",
+            "id": "0/2 current Ready2 Missing"
+          },
+          {
+            "group": "scene-heading",
+            "en": "0/2 current Ready2 Missing",
+            "id": "0/2 current Ready2 Missing"
+          },
+          {
+            "group": "section-composition",
+            "en": "3/3 eligible",
+            "id": "0/3 eligible3 Missing current Split input"
+          },
+          {
+            "group": "turn-composition",
+            "en": "8/8 eligible",
+            "id": "0/8 eligible8 Missing current Split input"
+          }
+        ]
+      },
+      "archives": {
+        "names": [
+          "PL_PORTABLE__A_Journey_to_London__20261128T062232.237Z.zip",
+          "PL_LISTENING__A_Journey_to_London__20261128T062233.379Z.zip"
+        ],
+        "portable": [
+          {
+            "path": "prolingo-text-audio-manifest.json",
+            "size": 34734
+          },
+          {
+            "path": "AUDIO_INDEX.csv",
+            "size": 16818
+          },
+          {
+            "path": "Audio/Full/EN/FULL_60714483D24F0C1B55D94DF6FD95EDDBEAB83DD55E518778E8F5B1E5F6669DBB__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_B80E8CD648A5D66FE51B3A11865BDFE61238035FBACFB0CEA42E5751865D11A0__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_4AFC5C1690C034DADAC4F92AF9FC3A86AB91BD4F45710AED0D923DBAB9C57424__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_EF25919B8D91C5DCD965FB46975989BB38F48724ED22064B6783DD0A21BDC76F__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_B7D1AE4EDCF5655EF2C46A73B1980CEECDB41AD0DB1A95246FBFD2AE6500CED0__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_202529F6F2DF55803853C0569C9202672DBBF7950D32C994919DF1E4DC989416__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_CD6EFEC897AC245026CDE815CC273AE510DE2FCB37177ACC4B1D24F35CD16E39__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_59F2C7C30E353E7B1B33AE8E83E4606B5275E85777228551D4B2CB022A62EA7B__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_E4F51E7713556CEDCD63235949F1A433E520F46C585C2DF5703FA0FE2330B6E1__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_D2D65DDA508C0A834FD426B29A40392CBC1E5BA3AE3B2678DA5D88AD879D8B03__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_7664FD08D203C5D76DF68C520453CF252BFA7C8B38962D20ED9CBBDFDB4BD53A__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_C37A50E5B0EB227DF44F23F11D77B463C06B430B6FAB42D51B6417F085ED1F55__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_912CBD3F906E6E2C1B90C7F8568529F68716A4708A741C9BE7FB48EE381A90AC__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_23C41790F1DD979E9BE6E2E3900F96084019BBCCADC5CA6EFB2AD7BBEDC69F63__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_663958A151336E725E206C33B1CF3CD00F7C0D5B9D15E59DE7AEF21FA6F69529__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_5D39F0B621B4C3A07B8DC984DE30CD9AB38D24EB8C7F53D20F417C8CF2F2EF97__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_FB26E252B91D17F6F4C744AE2D7E376E3DCF17CEE36AB051F8F434CC9D80B8B6__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_67BBB9CF7B4270655BF5DC7C6F488B980B5B06372FCB50310079AE804281E9EB__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_42AE4C68C4D34150AF1420A5EA4A9DA64E4EC44BEBED5553F3484E9DC69AE6EA__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_19ECC5DA4148FB886FB43BB2E92EF1841373C06F5C4C629FC8266B88D4F2872D__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_206C2CE90170C6C92A2EAC9C1021A068B7D64B55A20C13FEFE89B20C2F968531__EDGE__LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_6A4AC98FCC0E61698D23FDC96010333C8EE0A3121D52C369432FD94EE050B8F1__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_EC21E348821E58A52474907CDF603FB35BC9CC1EBFF2E3A58EB05B2C3FDC264A__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_C93579BEBA82B6E6C8637BAB8BC33C0F3EC804AFBF4BA8DB7C51C183543606AF__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_54F548E201D214B3BDFBBA3D18D19F1DCE032FF22F25E9D34E08F1C8C65078BA__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_12E3335028957EC1AC915061E603E7B53A9C28A40A29CE3B436A212725ED050F__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_4CD34124E643C97C14160AA7343D7DB3A300E58479B56D183528E22DD01DF41D__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_A5621BF903362CD528259A9A4AA834D6A8263962ECCF9EC3F616DCDF4064EEA0__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_658BF08C8CDDC871AC8D9ACC14B5C9C0D5902B29DC15E8C2528424505DC4C808__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_B73680DBDF6FF2D8DEC634DB954B44A3F1B59F4DE6AA963C45967C209B08983C__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_D1C115845E1F4D776119BE746B994E86DD1EC072A809FD17C5CAB7402EAC3CBD__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_7A9D305F2FB51E4CB88D6B1045536006F55F51AC0218B6D7A9B96FDB7D49ED56__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_FBF600F05A4E1E5B522C23C5C5B8682D7BAA63291195D002900969AD043E4A66__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_70A50AFA24B33DE38DC602C11AA8A7DF8AFCC884DA571145AAEF3DFD5D1830A6__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_76D7866E0D0185388E0768E141A68009BD00F0EB0E9C647C943BD74211C49B59__EDGE__SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_769199E4D729F5BC3C711A6DA97EBCF25CE6AC346518DA75A3354C55855BCA16__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_20A49EFF1245AF574EBA9DB37CE84927DCD13A123F2F5B75DBC35BAB42E6EA5C__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "Audio/RF/EN/RF_442BE54D29612111F430F0C9FF4328C54C7257C7CEFBEA26AC423F084278DDA0__EDGE__RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          }
+        ],
+        "listening": [
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Full_Card/EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Full_Section/SC01_EN_DERIVED_SONIA.wav",
+            "size": 995372,
+            "digest": "0c6a18c6611f2de5d92aaf80a24a7f02e2ba3ff7a788f28f5e9189db981b84e8",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Full_Section/SC02_EN_DERIVED_SONIA.wav",
+            "size": 995372,
+            "digest": "0c6a18c6611f2de5d92aaf80a24a7f02e2ba3ff7a788f28f5e9189db981b84e8",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG01_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG02_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG03_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG04_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC02/SG01_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC02/SG02_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC02/SG03_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC02/SG04_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T01_James_EN_DERIVED_RYAN.wav",
+            "size": 746540,
+            "digest": "748267e0f989ac0c255f6ed02f9eca9dd7765acbb824a84d9fadd0a01091605a",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T02_Ticket_Officer_EN_DERIVED_LIBBY.wav",
+            "size": 746540,
+            "digest": "28b6700272e7bdd31f8d8cbced10c1966cd9d6d8b14d0e7e852ba0be6a2c2fac",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T03_James_EN_DERIVED_RYAN.wav",
+            "size": 746540,
+            "digest": "748267e0f989ac0c255f6ed02f9eca9dd7765acbb824a84d9fadd0a01091605a",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Full_Turn/T04_Ticket_Officer_EN_DERIVED_LIBBY.wav",
+            "size": 746540,
+            "digest": "28b6700272e7bdd31f8d8cbced10c1966cd9d6d8b14d0e7e852ba0be6a2c2fac",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG01_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG02_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T01_James/SG03_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG01_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG02_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T02_Ticket_Officer/SG03_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG01_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG02_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T03_James/SG03_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG01_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG02_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/02_C1_Buying_a_Train_Ticket/Split/T04_Ticket_Officer/SG03_EN_EDGE_LIBBY.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Full_Section/SC01_EN_DERIVED_SONIA.wav",
+            "size": 1244204,
+            "digest": "accda0e2c92a26f3b4448f6ed826e651fb3a0315e275024678af97928fa4a75b",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG01_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG02_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG03_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG04_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/03_P2_On_the_Train/Split/SC01/SG05_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T01_Emma_EN_DERIVED_SONIA.wav",
+            "size": 746540,
+            "digest": "28b6700272e7bdd31f8d8cbced10c1966cd9d6d8b14d0e7e852ba0be6a2c2fac",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T02_James_EN_DERIVED_RYAN.wav",
+            "size": 746540,
+            "digest": "748267e0f989ac0c255f6ed02f9eca9dd7765acbb824a84d9fadd0a01091605a",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T03_Emma_EN_DERIVED_SONIA.wav",
+            "size": 746540,
+            "digest": "28b6700272e7bdd31f8d8cbced10c1966cd9d6d8b14d0e7e852ba0be6a2c2fac",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Full_Turn/T04_James_EN_DERIVED_RYAN.wav",
+            "size": 746540,
+            "digest": "748267e0f989ac0c255f6ed02f9eca9dd7765acbb824a84d9fadd0a01091605a",
+            "sampleRate": 48000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG01_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG02_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T01_Emma/SG03_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG01_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG02_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T02_James/SG03_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG01_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG02_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T03_Emma/SG03_EN_EDGE_SONIA.mp3",
+            "size": 10368,
+            "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG01_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG02_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          },
+          {
+            "path": "01_A_Journey_to_London/04_C2_Meeting_Another_Passenger/Split/T04_James/SG03_EN_EDGE_RYAN.mp3",
+            "size": 10368,
+            "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c",
+            "sampleRate": 24000
+          }
+        ],
+        "manifest": {
+          "version": 3,
+          "assets": 38,
+          "references": 38
+        },
+        "additive": {
+          "committed": 38,
+          "splitReferences": 37
+        },
+        "reimport": {
+          "alreadyAvailable": 38,
+          "logicalCommitted": 0,
+          "stopped": null
+        }
+      },
+      "exactSelection": {
+        "path": "01_A_Journey_to_London/01_P1_Preparing_for_the_Journey/Split/SC01/SG01_EN_EDGE_SONIA_R+20Pct.mp3",
+        "size": 10368,
+        "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe",
+        "sampleRate": 24000
+      }
+    },
+    "checks": [
+      "Details-open recorded, fallback and Browser-only transition matrix",
+      "Vertical Focus passive scroll and explicit Return to Playing checked in all states",
+      "London fixture reproduces 9 Card Ready and 38 Workspace Ready / 3 Full Missing",
+      "Actual Reader ZIP downloads, matching digests, generated Unit WAVs and Portable roundtrip",
+      "Portable defaults to alternates while Listening defaults to current and supports exact recorded selection"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 58
+  },
+  "nativeBrowserTts": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "hf2-native",
+    "observations": {
+      "native": {
+        "status": "PASS",
+        "fallback": {
+          "owner": 1,
+          "source": "tts",
+          "voice": "Microsoft Andika - Indonesian (Indonesia)",
+          "liveTimeline": false,
+          "mediaEnd": 1774.5,
+          "events": [
+            [
+              "speak",
+              "Jalur ini mengikuti aliran sungai.",
+              "Microsoft Andika - Indonesian (Indonesia)",
+              1775.4000000059605
+            ],
+            [
+              "start",
+              "Jalur ini mengikuti aliran sungai.",
+              "Microsoft Andika - Indonesian (Indonesia)",
+              1866,
+              null
+            ]
+          ]
+        },
+        "both": [
+          [
+            "speak",
+            "The path follows the river.",
+            "Microsoft David - English (United States)",
+            2020.2000000029802
+          ],
+          [
+            "start",
+            "The path follows the river.",
+            "Microsoft David - English (United States)",
+            2097.60000000149,
+            null
+          ],
+          [
+            "speak",
+            "Jalur ini mengikuti aliran sungai.",
+            "Microsoft Andika - Indonesian (Indonesia)",
+            4365.20000000298
+          ],
+          [
+            "end",
+            "The path follows the river.",
+            "Microsoft David - English (United States)",
+            4365.30000000447,
+            null
+          ],
+          [
+            "start",
+            "Jalur ini mengikuti aliran sungai.",
+            "Microsoft Andika - Indonesian (Indonesia)",
+            4410.60000000149,
+            null
+          ],
+          [
+            "speak",
+            "The morning air feels cool.",
+            "Microsoft David - English (United States)",
+            7585.20000000298
+          ],
+          [
+            "end",
+            "Jalur ini mengikuti aliran sungai.",
+            "Microsoft Andika - Indonesian (Indonesia)",
+            7585.20000000298,
+            null
+          ]
+        ]
+      }
+    },
+    "checks": [
+      "Actual installed EN and ID voices: native Browser startup and recorded-to-ID fallback"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 1
+  },
+  "smoke": {
+    "checks": [
+      "Empty second library, exact DB targets and unchanged first library",
+      "UI creates and renames Collection and Workspace, moves and selects stable identity",
+      "T1 Main Title input, repair-safe mode changes and reconnect in the real App",
+      "T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection",
+      "T1 stale title writer and committed-but-unaccepted receipt never replay",
+      "Real Reader and Global Player transport retain audible ownership across navigation",
+      "External move, invalid Refresh, mutation lock and deleted selection recovery",
+      "Direct edit callback rejects and mobile exposes only Book QA capabilities",
+      "Mobile creates a native v2 sample through the same catalogue contract",
+      "Scoped v3 export captures six representations, alternate profiles and three RF consumers on one asset",
+      "Normal listening archive retains authored mixed order, scoped bytes and verified Section/Turn WAV",
+      "Reorganized ZIP A and ZIP B merge, both grouped and reorganized reimports are no-ops, and UID remapping preserves unrelated audio",
+      "Legacy v1/v2 and loose RF/Full bytes validate, while digest, invalid codec, duplicate manifest and accepted-byte conflicts fail closed",
+      "New-copy transfer preserves London and stops at batch boundaries, reconciles stale writers and uncertain receipts without replay",
+      "After reconnect, Library and Workspace Normal trees differ by scope and untrusted imported Full stays out of the listening archive",
+      "Loose Title and both Heading representations bind uniquely, reject ambiguity and mismatches, and reimport after reconnect without writes",
+      "Imported recorded Main Title plays after reconnect, while imported Conversation Full uses truthful per-Sentence fallback",
+      "The real mobile panel imports selected ZIPs through the same bounded Workspace capability",
+      "Normal control cancels after native Unit decode, closes its AudioContext and lock, and retries without partial output or data changes",
+      "Normal browser download preserves exact EN and ID voices, Split hashes and complete ordered PCM for each Turn, Section and trusted Full Conversation",
+      "An external authoritative write during the real Normal control yields typed stale status and zero downloads, then Refresh enables retry",
+      "Disposal during the final durable read produces a typed failure and no download, with a successful new connection",
+      "A2 fixture keeps the exact London Body order, two pure Workspaces, blank channels and empty Units",
+      "A2 create-only shell initializes four Workspaces and explicit EN/ID fixture generation exports two verified recordings",
+      "A2 Refresh, refused initialization and a new browser process preserve user edits and exact scoped audio bytes"
+    ],
+    "productionGuards": {
+      "qaHostChunkAbsent": true,
+      "qaHostModuleAbsent": true,
+      "bookPortablePanelAbsent": true,
+      "qaRouteFallsBackToNormalApp": true,
+      "normalMainAppOpensCanonicalV1": true,
+      "normalMainAppMounted": true,
+      "tableAndLegacyPlayback": true,
+      "normalCredentialCleanup": true
+    },
+    "browserRuntimeErrors": []
+  },
+  "exits": {
+    "normalBuild": 0,
+    "uatBuild": 0,
+    "baseline": 0,
+    "refinement": 0,
+    "native": 0,
+    "smoke": 0,
+    "lintComparison": 0,
+    "diffCheck": 0
+  }
+}

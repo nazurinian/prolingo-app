@@ -8,7 +8,7 @@
 | Branch | `test/text-v2-uat` |
 | Worktree | `prolingo-p12-integration-qa` |
 | Baseline saat ini | `2c695bd0f91c20573fd08004a000c40d46e21050` — A2-HF1 |
-| Status | Product decisions consolidated; next execution instructions not yet issued |
+| Status | Product contract retained. A2-HF2 implementation is at the review gate. |
 | Next | A2-HF2 → A3 → A3-G → A4 → A5 → A6/4H2 → R0–R3 |
 | Production activation | **NO-GO** |
 
@@ -364,6 +364,8 @@ A2-HF2 should not be called a database patch. A3 is a data-management capability
 - HF2 acceptance: focused Node/browser tests, actual ZIP tree and digest checks, roundtrip Portable, scope/isolation, normal/UAT builds sequentially, preserve original manual A2 library. User retest only corrected items; no requirement to repeat every accepted A2 scenario. If available, compare EN/ID recordings on same Card and capture residual delay. Record explicit PASS/FAIL/NOT CONFIRMED/DEFERRED; if blocked, hold dependent behavior or record reason, not pretend pass.
 
 **Exit:** Human-readable archive + reliable coverage, no proven unresolved serious lifecycle or focus bug, remaining physical/visual refinements tracked. GO for A3 only after source review and appropriate focused acceptance. Can execute HF2 then A3 in one Sol assignment with separate gates if explicitly authorized; default separate checkpoint to protect scope. No DB schema/version or canonical activation.
+
+**A2-HF2 review checkpoint, 28 November 2026.** Implemented from `cdfc32c006924b243537fc2fadc35a9460ba5305`, the documentation-only descendant of `2c695bd0f91c20573fd08004a000c40d46e21050`. Review the [HF2 report](A2_HF2_Book_QA_Targeted_Correction_Report.md) and its Indonesian retest checklist. The product requirements and downstream phase gates above remain in force. Owner acceptance and physical/provider retest remain open. Production activation is **NO-GO**.
 
 ### 11.2 A3 — native Book Data Management & authoring (Sol High)
 

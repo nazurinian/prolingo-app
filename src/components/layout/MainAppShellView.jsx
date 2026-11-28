@@ -189,7 +189,7 @@ export const renderMainAppShellView = (props) => {
 
               </>}
 
-              {sidebarSection === 'system' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">System services are unavailable in A1a; generation, credentials, storage recovery and destructive maintenance are not connected to isolated Book QA.</p>}
+              {sidebarSection === 'system' && bookQaMode && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">Use Body audio or Title and Heading audio in the Reader for scoped generation. Shared system maintenance is disabled in Book QA.</p>}
               {sidebarSection === 'system' && !bookQaMode && <DesktopSystemControls
                 generatorEngine={generatorEngine}
                 setGeneratorEngine={setGeneratorEngine}

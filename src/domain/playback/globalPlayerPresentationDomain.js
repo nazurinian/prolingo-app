@@ -116,6 +116,7 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
     compactStatus: join(state, channel, actual, labeledSource),
     details,
     timeline: nowPlaying.timeline,
+    timelineSlot: Boolean(nowPlaying.continuousPresentation),
     navLabel: queueLabels[transport.navKind],
     canNavigate: transport.canNavigate,
     phase: transport.phase,
