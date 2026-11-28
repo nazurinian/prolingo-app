@@ -47,7 +47,7 @@ import { TextStructuredPlayer } from './components/text/TextStructuredPlayer.jsx
 import { getBookSplitPlaybackRequests, projectBookBodyAudioDocument } from './domain/text/bookQaBodyAudioDomain.js';
 import { bookHeadingBoundarySteps, planBookAtomicPlayback } from './domain/text/bookQaHeadingAudioDomain.js';
 import { BOOK_HEADING_DEFAULTS } from './domain/text/textBookHeadingDomain.js';
-import { findBookBodyRuntime, prepareBookFullPlayback } from './services/audio/bookQaBodyAudioService.js';
+import { canStartVerifiedBookAudio, findBookBodyRuntime, prepareBookFullPlayback } from './services/audio/bookQaBodyAudioService.js';
 import { useBookQaBodyCoverage } from './hooks/useBookQaBodyCoverage.js';
 import TextMainReaderControl from './components/text/presentation/TextMainReaderControl.jsx';
 import { isBookQaNativeCommand, isBookQaWorkspace } from './domain/text/bookQaCapabilities.js';
@@ -108,7 +108,7 @@ import { resolveGlobalPlayerTransport } from './domain/playback/globalPlayerPres
 import { NowPlayingContext } from './components/playback/NowPlayingContext.js';
 import { OVERLAY_SOURCES, announcePresentationOverlayOpen } from './components/text/presentation/sharedOverlayCoordinator.js';
 import { executeMediaSessionLifecycleService } from './services/playback/mediaSessionLifecycleService';
-import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation } from './services/playback/playbackInteractionService';
+import { executeForceStopPlaybackService, executeGlobalPlayInteraction, executeIndependentPlaybackInteraction, executeManualRowPlaybackInteraction, executeSmartPlaybackNavigation, stopPlaybackStep } from './services/playback/playbackInteractionService';
 import { executeMobileTabSwitch, executeModeSwitch, executeTableViewTabSwitch } from './services/navigation/viewNavigationService';
 import { buildLegacyTextAudioDatasetSignature, getBatchScopeKey, isBatchPopupAllowed, isLegacyAudioFolderSupported, isLegacyTextMode, isMatchingAudioFolderScope, resolveGuardedBatchOpenValue, shouldClearLegacyTextAudioOnDocumentState } from './domain/view/dataSystemBoundaryDomain';
 import { executeMobileHeaderScroll, executePendingScrollRestoration } from './services/navigation/scrollViewportService';
@@ -1117,6 +1117,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     },
     globalPlaybackOrder: structuredTextGlobalAudioPlaybackOrder,
     audioSourceMode: textStructuredPreferences.audioSourceMode,
+    browserVoices: (channel === 'meaning' ? indonesianVoices : voices) || [],
+    edgeVoices,
+    browserVoiceName: channel === 'meaning' ? textStructuredPreferences.browserMeaningVoiceName : textStructuredPreferences.browserTextVoiceName,
     globalRate: resolveTextStructuredPlaybackRate(textStructuredPreferences, channel)
   });
   const resolveStructuredTextChannelVoiceState = useCallback((item, channel, options = {}) => {
@@ -1969,7 +1972,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     const nowPlaying = readNowPlaying();
     const transport = resolveGlobalPlayerTransport({
       session: readOwnedPlaybackSession(nowPlayingRefs), paused: pauseStateRef.current,
-      audible: nowPlaying.precision !== 'none', structuredView: structuredTextModeActive,
+      audible: nowPlaying.state === 'playing' && nowPlaying.precision !== 'none', structuredView: structuredTextModeActive,
       savedRepresentation: textStructuredPreferences.playbackRepresentationMode
     });
     return { nowPlaying, transport, media: readOwnedNowPlayingMedia(nowPlayingRefs) };
@@ -2093,6 +2096,26 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     onStarted: refreshNowPlaying,
     onError: error => addLog('Playback', error?.message || 'Playback failed.')
   });
+
+  const continueBookPlayback = async (action, next, previous) => {
+    if (previous !== readOwnedPlaybackSession(nowPlayingRefs)) return;
+    const token = ++playbackSessionRef.current;
+    playbackContextRef.current = {
+      ...next, sessionId: token, presentationSessionId: previous.presentationSessionId ?? previous.sessionId,
+      lastStarted: previous.lastStarted
+    };
+    stopSignalRef.current = false;
+    try {
+      stopPlaybackStep({ currentAudioObjRef, currentUtteranceRef, synth, settlePlaybackPromise });
+      const execution = action();
+      refreshNowPlaying();
+      await execution;
+    } catch (error) {
+      if (token !== playbackSessionRef.current) return;
+      forceStopAll();
+      addLog('Playback', error?.message || 'Playback failed.');
+    }
+  };
 
   const handleIndependentPlay = (item, part, uiId) => getBasePlaybackListForContext(mode === 'table' ? tableViewMode : 'text')
     .some(candidate => candidate.id === item?.id) && executeIndependentPlaybackInteraction({
@@ -4002,11 +4025,44 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     });
     if (!bookQaConnection?.audio || representationMode !== 'full' || !allowFullArtifact) return plan;
     const token = playbackSessionRef.current;
+    const bookReadStamp = getBookPlaybackReadStamp();
+    if (!bookReadStamp) return plan;
     return prepareBookFullPlayback({
-      audio: bookQaConnection.audio, snapshot: textLibrarySnapshot, document: owner, block: targetBlock, channel: normalizedChannel,
+      audio: bookQaConnection.audio, snapshot: bookReadStamp, document: owner, block: targetBlock, channel: normalizedChannel,
       options: bookBodyOptionsForChannel(normalizedChannel), fallback: plan,
       stillCurrent: () => !stopSignalRef.current && playbackSessionRef.current === token
     });
+  };
+
+  const getBookPlaybackReadStamp = () => {
+    try { return bookQaConnection.audio.getPlaybackReadStamp(); }
+    catch { return null; }
+  };
+
+  const prepareBookSplitStep = (item, channel, givenBlock) => {
+    const block = givenBlock || activeTextDocumentTree.blocks.find(candidate => candidate.id === item?.blockId);
+    const segment = block?.segments.find(candidate => candidate.id === (item?.segmentId || item?.id));
+    const snapshot = getBookPlaybackReadStamp();
+    if (!segment || !snapshot || resolveTextStructuredEffectiveTtsOnly({
+      documentTree: activeTextDocumentTree, block,
+      globalTtsOnly: textStructuredPreferences.audioSourceMode === TEXT_STRUCTURED_AUDIO_SOURCE_MODES.TTS_ONLY
+    }).enabled) return null;
+    const owner = projectBookBodyAudioDocument(activeTextDocumentTree, block.blockType);
+    return findBookBodyRuntime(bookQaConnection.audio, snapshot,
+      getBookSplitPlaybackRequests(owner, block, segment, channel, bookBodyOptionsForChannel(channel)));
+  };
+
+  const bindStructuredRuntime = (target, token, prepareFollowing, fallbackReason) => {
+    const publish = bindNowPlayingRuntime(nowPlayingRefs, target, token);
+    if (!publish || !bookQaMode) return publish;
+    let prepared = false;
+    return runtime => {
+      publish(runtime && fallbackReason ? { ...runtime, fallbackReason } : runtime);
+      if (runtime && !prepared) {
+        prepared = true;
+        prepareFollowing?.();
+      }
+    };
   };
 
   const speakStructuredTextBrowserTts = ({
@@ -4021,7 +4077,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     documentId = null,
     playbackSessionId = null,
     heading = null,
-    rateOverride = null
+    rateOverride = null,
+    prepareFollowing = null
   }) => {
     const resolvedDocumentId = documentId || activeTextDocumentTree?.id || item?.documentId || null;
     const resolvedSessionId = playbackSessionId ?? playbackSessionRef.current;
@@ -4095,10 +4152,13 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       rateRef: null,
       rate: rateOverride ?? resolveStructuredTextItemPlaybackRate(item, normalizedChannel),
       pitch: 1,
-      onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+      continuous: bookQaMode,
+      language: bookQaMode ? (normalizedChannel === 'meaning' ? activeTextDocumentTree?.meaningLanguage : activeTextDocumentTree?.textLanguage) : null,
+      onError: bookQaMode ? error => addLog('Warn', `Browser TTS could not play: ${error}. Check available system voices or use verified recordings.`) : null,
+      onNowPlaying: bindStructuredRuntime({
         cardId: blockId, segmentId, channel: normalizedChannel,
         representation: heading ? 'heading' : segmentId ? 'split' : 'full', ...(heading ? { heading } : {})
-      }, resolvedSessionId)
+      }, resolvedSessionId, prepareFollowing, voiceState?.fallbackReason)
     });
   };
 
@@ -4118,7 +4178,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       const result = await executeStructuredTextRuntimeAudioPlaybackService({
         url: recorded.runtime.url, currentAudioObjRef, playbackResolveRef, stopSignalRef, playbackSessionRef, waitWhilePaused,
         playbackRate: options.globalRate,
-        onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, { heading, cardId: heading.blockId, channel, representation: 'heading' }, playbackSessionId),
+        continuous: true,
+        canStart: () => canStartVerifiedBookAudio(getBookPlaybackReadStamp(), recorded.request, recorded.runtime),
+        onNowPlaying: bindStructuredRuntime({ heading, cardId: heading.blockId, channel, representation: 'heading' }, playbackSessionId),
         sourceEvidence: { source: 'generated', provider: engine, voice: voiceId },
         addLog, label: heading.id
       });
@@ -4131,7 +4193,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
     });
   };
 
-  const playStructuredTextFullStep = async (step, block, item, { onFallbackStep } = {}) => {
+  const playStructuredTextFullStep = async (step, block, item, { onFallbackStep, prepareFollowing } = {}) => {
     const normalizedChannel = step?.channel === 'meaning' ? 'meaning' : 'text';
     const playbackSessionId = playbackSessionRef.current;
     const playbackStillCurrent = () => !stopSignalRef.current && playbackSessionRef.current === playbackSessionId;
@@ -4191,9 +4253,11 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
           playbackSessionRef,
           waitWhilePaused,
           playbackRate: bookQaMode && composed ? 1 : resolveStructuredTextItemPlaybackRate(firstSegmentItem, normalizedChannel),
-          onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+          continuous: bookQaMode,
+          canStart: bookQaMode ? () => canStartVerifiedBookAudio(getBookPlaybackReadStamp(), runtimeFull.request, runtime) : null,
+          onNowPlaying: bindStructuredRuntime({
             cardId: block?.id, channel: normalizedChannel, representation: 'full'
-          }, playbackSessionId),
+          }, playbackSessionId, prepareFollowing),
           sourceEvidence: {
             source: 'full-artifact',
             provider: composed ? null : runtimeFull?.profile?.engine || null,
@@ -4212,14 +4276,14 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       for (const fallback of fallbacks) {
         if (!playbackStillCurrent()) return;
         if (!fallback.segmentId) {
-          await playStructuredTextFullStep(fallback, block, item);
+          await playStructuredTextFullStep(fallback, block, item, { prepareFollowing });
           continue;
         }
         const segment = block.segments.find(row => row.id === fallback.segmentId);
         if (!segment) continue;
         onFallbackStep?.(segment.id);
         await playStructuredTextChannel(fallback.content, { ...segment, blockType: block.blockType }, normalizedChannel, {
-          block, representationMode: 'full', ignoreSegmentOverride: fallback.ignoreSegmentVoiceOverride !== false, step: fallback
+          block, representationMode: 'full', ignoreSegmentOverride: fallback.ignoreSegmentVoiceOverride !== false, step: fallback, prepareFollowing
         });
       }
       return;
@@ -4238,7 +4302,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       representation: 'full',
       item: firstSegmentItem,
       documentId: resolvedDocumentId,
-      playbackSessionId
+      playbackSessionId,
+      prepareFollowing
     });
   };
 
@@ -4289,9 +4354,10 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       const localAllowed = textStructuredPreferences.audioSourceMode !== TEXT_STRUCTURED_AUDIO_SOURCE_MODES.CUSTOM_LOCAL || Boolean(customLocalVoiceId);
       let bookRuntime = null;
       if (bookQaConnection?.audio && block) {
-        const owner = projectBookBodyAudioDocument(activeTextDocumentTree, block.blockType);
-        bookRuntime = options.step?.bookRuntime || await findBookBodyRuntime(bookQaConnection.audio, textLibrarySnapshot,
-          getBookSplitPlaybackRequests(owner, block, segment, normalizedChannel, bookBodyOptionsForChannel(normalizedChannel)));
+        const step = options.step;
+        bookRuntime = options.preparedRuntime !== undefined ? options.preparedRuntime
+          : step?.bookReadStamp && step.bookReadStamp === getBookPlaybackReadStamp() ? step.bookRuntime
+            : await prepareBookSplitStep(item, normalizedChannel, block);
       }
       const runtimeAudio = bookQaMode ? (bookRuntime ? {
         url: bookRuntime.runtime.url, runtime: bookRuntime.runtime,
@@ -4381,11 +4447,13 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
             playbackSessionRef,
             waitWhilePaused,
             playbackRate: resolveStructuredTextItemPlaybackRate(item, channel),
-            onNowPlaying: bindNowPlayingRuntime(nowPlayingRefs, {
+            continuous: bookQaMode,
+            canStart: bookRuntime ? () => canStartVerifiedBookAudio(getBookPlaybackReadStamp(), bookRuntime.request, bookRuntime.runtime) : null,
+            onNowPlaying: bindStructuredRuntime({
               cardId: block?.id || item?.blockId,
               segmentId: item?.segmentId || item?.id,
               channel: normalizedChannel, representation: 'split'
-            }, playbackSessionId),
+            }, playbackSessionId, options.prepareFollowing),
             sourceEvidence: {
               source: runtimeAudio.variant?.source === 'generated' ? 'generated' : 'local-rf',
               provider: runtimeAudio.variant?.engine || null,
@@ -4410,7 +4478,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       item,
       speaker: item?.speaker || null,
       documentId: resolvedDocumentId,
-      playbackSessionId
+      playbackSessionId,
+      prepareFollowing: options.prepareFollowing
     });
   };
 
@@ -4489,8 +4558,8 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       repeatMode,
       repeatCount,
       orderedListOverride,
-      onPlaybackAccepted: ({ segmentId, orderedList }) => {
-        setStructuredTextPlaybackSourceStatus(null);
+      onPlaybackAccepted: ({ segmentId, orderedList, continuing }) => {
+        if (!continuing) setStructuredTextPlaybackSourceStatus(null);
         // Remember the validated target before the async transition, including
         // when the user presses Stop before the first audio step.
         structuredTextResumeCursorRef.current = {
@@ -4525,6 +4594,9 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
       playStructuredFullStep: playStructuredTextFullStep,
       playHeadingStep: bookQaConnection?.audio ? playBookHeadingStep : null,
       trackFullFallback: Boolean(bookQaConnection?.audio),
+      prepareSplitStep: bookQaConnection?.audio ? prepareBookSplitStep : null,
+      getPreparationStamp: bookQaConnection?.audio ? getBookPlaybackReadStamp : null,
+      continuePlayback: bookQaConnection?.audio ? continueBookPlayback : null,
       atomicOnly,
       forceStopAll,
       addLog
@@ -7974,6 +8046,7 @@ const MainApp = ({ goHome, theme, setTheme, bookQaConnection = null, BookQaBodyA
           connection={bookQaConnection}
           workspace={activeTextDocumentTree}
           optionsFor={bookBodyOptionsForChannel}
+          getBrowserVoice={resolveStructuredTextChannelVoiceState}
           onOpen={() => setBookBodyCoverageConnection(bookQaConnection)}
           setGlobal={({ rate, pitch, source }) => {
             setStructuredTextAudioGenerationPreferences(before => normalizeTextStructuredAudioGenerationPreferences({

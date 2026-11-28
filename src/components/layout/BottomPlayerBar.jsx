@@ -185,8 +185,8 @@ const PlayerTimeline = ({ timeline, progressFill }) => {
   );
 };
 
-const StatusGlyph = ({ phase, dotClass }) => {
-  if (phase === 'pending' || phase === 'waiting') {
+const StatusGlyph = ({ phase, betweenSteps, dotClass }) => {
+  if (phase === 'pending' || (phase === 'waiting' && !betweenSteps)) {
     return <Loader2 aria-hidden="true" className="h-3 w-3 shrink-0 animate-spin" />;
   }
   if (phase === 'paused') {
@@ -316,7 +316,7 @@ export default function BottomPlayerBar({
                     className={`inline-flex shrink-0 max-w-[58%] items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-snug ${accent.statusPill}`}
                     title={player.status}
                   >
-                    <StatusGlyph phase={player.phase} dotClass={accent.dot} />
+                    <StatusGlyph phase={player.phase} betweenSteps={player.betweenSteps} dotClass={accent.dot} />
                     <span className="truncate">{player.compactStatus}</span>
                   </p>
                 </div>
@@ -414,7 +414,7 @@ export default function BottomPlayerBar({
                     className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-snug ${accent.statusPill}`}
                     title={player.status}
                   >
-                    <StatusGlyph phase={player.phase} dotClass={accent.dot} />
+                    <StatusGlyph phase={player.phase} betweenSteps={player.betweenSteps} dotClass={accent.dot} />
                     <span>{player.compactStatus}</span>
                   </p>
                   {variationPill}

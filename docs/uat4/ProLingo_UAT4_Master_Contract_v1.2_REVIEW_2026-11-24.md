@@ -251,3 +251,17 @@ Keep 16 subpatches in §9; no extra release version needed. Align contract is no
 ### B3. Companion interactive reference
 
 `ProLingo_UAT4_Mixed_Reader_Reference_v1.2.html` is a standalone design reference using all 37 pairs, not repository code or a UAT test result. It demonstrates four modes, common alignment, speaker positioning, paragraph indent, supported ordinary bilingual styles, Card visibility, Unit/Segment selection and simulated shared playback metadata. Focus navigation is illustrative, not a verified carousel. Notebook is deliberately shown as pending rather than falsely implemented; no actual audio, browser/Android background verification, or data persistence. Use the existing Markdown fixture as the authoritative content reference. Neither companion changes user data or installs dependencies.
+
+### B4. A5 Reader UI backlog from Book QA A2-HF1
+
+| Item | Deferred acceptance |
+| --- | --- |
+| 3D Focus Carousel | Evaluate the installed Swiper. The focused Section or Turn is centered and largest. Adjacent Units are smaller and recede in depth. During transition the outgoing Unit shrinks as the incoming Unit grows. |
+| Focus gestures | Horizontal mode responds to left/right drag and Vertical to up/down drag. Keep Sentences directly clickable and distinguish Unit navigation from page scrolling. Cover keyboard use and reduced motion with the existing accessibility contract. |
+| Follow Playback | Make following optional. When enabled, return to the active Unit with a stable Card anchor below the AppBar. When disabled, support independent manual browsing. Keep page position, Card/Unit selection and actual playback cursor independently identifiable. |
+| Reader Toolbar | Finish responsive styling for Reader mode, language, Focus orientation and Reading Settings, including with the expanded Sidebar. |
+| Notebook and bilingual feedback | Refine guide lines, active-channel color and the paired-language indicator. Keep Full recordings at Card precision wherever no timed Sentence data exists. |
+| Global Player | Refine the stable session presentation through transitions, pause/resume and transport while retaining truthful source and timing. |
+| CSS build | Remediate the Swiper/PostCSS nesting warning and recheck both builds. |
+
+Preserve the accepted Book appearance and Main Title. The carousel dependency evaluation and final animation are A5 work.

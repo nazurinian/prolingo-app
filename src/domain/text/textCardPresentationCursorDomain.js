@@ -10,7 +10,9 @@ export const resolveNowPlayingReaderCursor = ({ presentation, nowPlaying } = {})
   const active = Object.freeze({
     ...idle,
     sessionId: nowPlaying.sessionId,
-    state: nowPlaying.state,
+    continuousPresentation: nowPlaying.continuousPresentation,
+    // The Reader retains its active channel during transition silence.
+    state: nowPlaying.state === 'waiting' && nowPlaying.continuousPresentation ? 'playing' : nowPlaying.state,
     commandTarget: nowPlaying.commandTarget,
     savedRepresentation: nowPlaying.savedRepresentation ?? null,
     requestedRepresentation: nowPlaying.requestedRepresentation ?? null,

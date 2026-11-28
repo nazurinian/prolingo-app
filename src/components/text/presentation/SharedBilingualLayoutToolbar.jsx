@@ -1423,12 +1423,12 @@ export const SharedBilingualLayoutToolbar = ({
               </div>
 
               {/* Language + Focus Orientation (when Focus) + Reading Settings Trigger */}
-              <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between sm:justify-end gap-1.5 sm:gap-2 max-w-full sm:flex-auto">
                 <div
                   role="group"
                   aria-label="Reading language and display order (display only)"
                   data-shared-reading-language-group="true"
-                  className={`grid grid-cols-4 sm:inline-flex flex-1 sm:flex-initial items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
+                  className={`inline-flex flex-wrap max-w-full items-center gap-0.5 ${SHARED_SURFACE_TOKENS.segmentedTrack}`}
                 >
                   {SHARED_READING_LANGUAGE_OPTIONS.map(option => {
                     const active = activeState.readingLanguage === option.id;

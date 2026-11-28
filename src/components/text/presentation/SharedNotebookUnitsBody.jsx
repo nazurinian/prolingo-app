@@ -157,7 +157,7 @@ export default function SharedNotebookUnitsBody({
       {!layout || layout.reason ? (
         <>
           {layout?.reason && <p role="note" data-shared-notebook-fallback={layout.reason} className="text-xs text-slate-500 dark:text-slate-400 mb-2">Sentence Interlinear for this unit</p>}
-          {renderFallback()}
+          <div data-shared-notebook-fallback-rows>{renderFallback()}</div>
         </>
       ) : (
         <>

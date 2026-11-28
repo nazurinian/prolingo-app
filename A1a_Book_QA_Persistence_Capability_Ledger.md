@@ -177,3 +177,15 @@ The browser harness instruments storage only in its disposable test profile. It 
 Audio staging is currently shared between Text and Table in one origin-level database. The isolated testing origin prevents sharing with Stable origin storage, but separate QA database names on that same origin still share this staging namespace. No A1a flow touches it. Physical folders also outlive origin separation, so folder handles and external source ownership need an explicit A1b policy.
 
 The clean sample creator executes a sequence of individually transactional commands. If a later command fails, earlier successful commands remain committed; Refresh is available and no command sequence is auto-replayed. A future complete acceptance library is A2. Direct editing, search, bulk operations, transfer, backup/restore, audio metadata/identity, staging and supported recorded audio workflows remain outside A1a; P15 completion is A3.
+
+## A2-HF1 capability update
+
+The following rows supersede the A1a limitations for the named Book QA capabilities. The [A2 acceptance report](A2_Book_QA_Persistent_Demo_Report.md) records the intervening integration.
+
+| Capability | Book QA entry and boundary |
+| --- | --- |
+| Narrator and Speaker voices | Body audio exposes browser and Edge catalogs per channel. Workspace profile edits go through the existing scoped document transaction. Browser selection and fallback use the live browser catalog. Recorded selection uses the existing render and playback precedence. |
+| Record and verify | Sentence, Card Split, Workspace Split, Paragraph Full and derived Conversation Full use the existing scoped generator. Card and Workspace verification check current render coverage. An explicit generate action can contact Edge. |
+| Download | Portable and Normal ZIP actions download verified audio through the existing scoped exporters. Portable retains manifest v3 and alternate-reference handling. |
+| Continuous runtime | The Book owner retains its last started target between steps. Verified lookahead is bounded to upcoming work and subject to readable snapshot and exact binding checks at playback. During silence the Global Player has no current media timeline. |
+| Boundaries and acceptance | The manual A2 library still connects explicitly at its original database name. Canonical Text remains v1. The [HF1 report](A2_HF1_Book_QA_Manual_UAT_Refinement_Report.md) records automated evidence and open manual checks. Final design remains in the A5 backlog. Production activation is NO-GO. |

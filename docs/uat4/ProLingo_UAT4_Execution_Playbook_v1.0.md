@@ -92,3 +92,9 @@ No file edits, installs, commits, deploy, migrations, schema/data changes, produ
 ## 7. Release and rollback
 
 Each accepted batch becomes the next baseline. If a new issue appears, patch the smallest responsible layer; do not ask Neon to fix core or Codex to redesign UI silently. Revert only an identified approved change with user authorization; never overwrite existing local work. No release promotion until 4H1 regression/build and 4H2 actual desktop/Android acceptance. A Notebook feasibility failure or Android TTS limitation requires explicit user disposition, not a hidden downgrade. Master Contract v1.2 remains authoritative until an approved revision.
+
+## 8. Book QA roadmap after A2-HF1
+
+- **A2-HF1** refines the isolated Reader controls and playback. Keep the original manual library and record manual acceptance separately from runtime evidence.
+- **A5** evaluates the installed Swiper implementation for the 3D Focus interaction and addresses the deferred UI backlog in the Master Contract. Preserve the accepted Book appearance, Main Title and authored hierarchy.
+- **A6/4H2** retains physical desktop and Android acceptance, including voice availability and background playback. Production activation remains NO-GO.

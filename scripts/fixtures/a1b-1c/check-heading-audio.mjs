@@ -53,7 +53,7 @@ export async function checkBookHeadingAudio({ evaluate, navigate, waitFor, probe
     for (const [name, value] of Object.entries({
       browserTextVoiceName: 'Fixture EN', browserMeaningVoiceName: 'Fixture ID',
       edgeTextVoiceId: 'en-GB-RyanNeural', edgeMeaningVoiceId: 'id-ID-ArdiNeural'
-    })) await change(`${heading} input[name="${name}"]`, value);
+    })) await change(`${heading} select[name="${name}"]`, value);
     await run('Set session Global voices', 'updated');
   };
   const transport = label => click(`[data-global-player] button[aria-label="${label}"]`);

@@ -382,6 +382,11 @@ export const createBookQaAudioSession = ({ library, loadState, getSnapshot, getR
       if ((await staging.read(requested.fingerprint, binary)).status !== 'ready') fail('AUDIO_READBACK_FAILED', 'Repaired audio failed verification');
       return { status: 'repaired' };
     }),
+    getPlaybackReadStamp() {
+      assertCurrent();
+      assertReadable();
+      return getSnapshot();
+    },
     async readRuntime(entry, { withUrl = true } = {}) {
       assertCurrent();
       assertReadable();

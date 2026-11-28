@@ -19,7 +19,8 @@ const ownedContext = ({ playbackContextRef, playbackSessionRef, stopSignalRef },
 /**
  * Bind an existing execution call to the current owner. The evidence lives on
  * that owner's existing context. No new session, queue or playback cursor.
- * Only execution boundaries report a started source or clear it on settlement.
+ * Execution boundaries report actual starts and settlements. Book retains
+ * the last started target between steps without carrying forward live media.
  */
 export const bindNowPlayingRuntime = (refs, target, sessionId = refs.playbackSessionRef.current) => {
   const context = ownedContext(refs, sessionId);
@@ -34,6 +35,10 @@ export const bindNowPlayingRuntime = (refs, target, sessionId = refs.playbackSes
     if (runtime?.media && previous?.media === runtime.media && previous.source === runtime.source
       && previous.provider === runtime.provider && previous.voice === runtime.voice) return;
     observation.runtime = runtime;
+    if (runtime && current.continuousPresentation) {
+      const { media, ...source } = runtime;
+      current.lastStarted = { target, source: { ...source, rate: media?.playbackRate ?? source.rate } };
+    }
     refs.onChange?.();
   };
 };
@@ -138,17 +143,21 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     : context.context === 'text' ? 'legacy-text'
     : ['master', 'study'].includes(context.context) ? 'table' : null;
   if (!domain) return IDLE;
-  const target = runtime ? evidence.target : null;
+  const retained = context.continuousPresentation ? context.lastStarted : null;
+  const target = runtime ? evidence.target : retained?.target ?? null;
+  const source = runtime ?? retained?.source;
   const structure = domain === 'structured-text' ? readStructuredIdentity(context.documentTree, target) : {};
   const item = readItem(target?.item, target?.part, domain, target?.playedText);
-  const rate = runtime?.media?.playbackRate ?? runtime?.rate;
+  const rate = runtime?.media?.playbackRate ?? source?.rate;
   const structured = domain === 'structured-text';
   const commandRepresentation = structured && !target?.heading
     ? (target && context.temporarySplitCardIds?.includes(target.cardId) ? 'split' : context.playbackRepresentationMode ?? null)
     : null;
   const actualRepresentation = target?.representation ?? null;
   return Object.freeze({
-    ...IDLE, owner, domain, sessionId, state: refs.pauseStateRef?.current ? 'paused' : 'playing',
+    ...IDLE, owner, domain, sessionId: context.presentationSessionId ?? sessionId,
+    state: refs.pauseStateRef?.current ? 'paused' : context.continuousPresentation && !runtime ? 'waiting' : 'playing',
+    continuousPresentation: Boolean(context.continuousPresentation),
     precision: item ? (domain === 'table' ? 'word' : 'item') : 'none',
     ...structure, item,
     channel: domain === 'structured-text' ? target?.channel ?? null : domain === 'table' ? tableChannel(target?.part) : null,
@@ -159,7 +168,8 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     representationFallback: commandRepresentation && actualRepresentation
       ? commandRepresentation === 'full' && actualRepresentation === 'split' : null,
     boundary: context.boundary ?? null,
-    source: runtime?.source ?? null, provider: runtime?.provider ?? null, voice: runtime?.voice ?? null,
+    source: source?.source ?? null, provider: source?.provider ?? null, voice: source?.voice ?? null,
+    fallbackReason: source?.fallbackReason ?? null,
     rate: Number.isFinite(rate) && rate > 0 ? rate : null,
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
     commandTarget: structured ? context.commandTarget ?? null : null,
@@ -171,7 +181,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
 /** Command ownership remains stable while the audible target moves through its queue. */
 export const matchesStructuredPlaybackControl = (playback, target) => {
   const command = playback?.commandTarget;
-  if (!command || !['playing', 'paused'].includes(playback.state) || command.scope !== target.scope) return false;
+  if (!command || !['playing', 'paused', 'waiting'].includes(playback.state) || command.scope !== target.scope) return false;
   if (command.scope === 'segment') return command.segmentId === target.segmentId && command.channel === (target.channel ?? null);
   if (command.scope === 'unit') {
     return command.blockId === target.blockId && (command.virtualUnit

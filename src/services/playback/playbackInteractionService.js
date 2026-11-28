@@ -89,6 +89,22 @@ export const executeManualRowPlaybackInteraction = ({
       });
 };
 
+export const stopPlaybackStep = ({ currentAudioObjRef, currentUtteranceRef, synth, settlePlaybackPromise }) => {
+    const activeAudio = currentAudioObjRef.current;
+    if (activeAudio) {
+      activeAudio.pause();
+      activeAudio.currentTime = 0;
+      activeAudio.onended = null;
+      activeAudio.onerror = null;
+      activeAudio.onplaying = null;
+      activeAudio.onwaiting = null;
+    }
+    synth.cancel();
+    settlePlaybackPromise();
+    currentAudioObjRef.current = null;
+    currentUtteranceRef.current = null;
+};
+
 export const executeForceStopPlaybackService = ({
   playbackSessionRef, stopSignalRef, pauseStateRef, currentAudioObjRef, synth,
   settlePlaybackPromise, currentUtteranceRef, silentAudioRef, setIsPlaying,
@@ -98,19 +114,7 @@ export const executeForceStopPlaybackService = ({
     if (playbackContextRef) playbackContextRef.current = null;
     stopSignalRef.current = true;
     pauseStateRef.current = false;
-
-    const activeAudio = currentAudioObjRef.current;
-    if (activeAudio) {
-      activeAudio.pause();
-      activeAudio.currentTime = 0;
-      activeAudio.onended = null;
-      activeAudio.onerror = null;
-      activeAudio.onplaying = null;
-    }
-    synth.cancel();
-    settlePlaybackPromise();
-    currentAudioObjRef.current = null;
-    currentUtteranceRef.current = null;
+    stopPlaybackStep({ currentAudioObjRef, currentUtteranceRef, synth, settlePlaybackPromise });
 
     if (silentAudioRef.current) {
         silentAudioRef.current.pause();

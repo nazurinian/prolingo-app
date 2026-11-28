@@ -20,7 +20,7 @@ const FAST_STEP_YIELD_MS = 16;
 const FAST_PASS_BACKOFF_STEP_MS = 40;
 const FAST_PASS_MAX_YIELD_MS = 250;
 
-const waitPlaybackFeelDelay = async ({ durationMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession }) => {
+const waitPlaybackFeelDelay = async ({ durationMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession, pauseStateRef }) => {
   let remaining = Math.max(0, Number(durationMs) || 0);
   while (remaining > 0) {
     if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) return false;
@@ -28,7 +28,7 @@ const waitPlaybackFeelDelay = async ({ durationMs, waitWhilePaused, stopSignalRe
     if (stopSignalRef.current || playbackSession !== playbackSessionRef.current) return false;
     const slice = Math.min(100, remaining);
     await new Promise(resolve => setTimeout(resolve, slice));
-    remaining -= slice;
+    if (!pauseStateRef?.current) remaining -= slice;
   }
   return !(stopSignalRef.current || playbackSession !== playbackSessionRef.current);
 };
@@ -98,6 +98,10 @@ export const executeStructuredTextPlaybackSessionService = args => {
   playStructuredFullStep = null,
   playHeadingStep = null,
   trackFullFallback = false,
+  prepareSplitStep = null,
+  getPreparationStamp = null,
+  continuePlayback = null,
+  continuation = null,
   atomicOnly = false,
   forceStopAll,
   addLog,
@@ -167,28 +171,58 @@ export const executeStructuredTextPlaybackSessionService = args => {
       playbackChannelMode, playbackOrderMode, playbackRepresentationMode: normalizedRepresentation,
       repeatMode, repeatCount: repeatLimit === Number.POSITIVE_INFINITY ? null : repeatLimit,
       channelDelayMs, segmentDelayMs, repeatPass: pass + 1,
+      continuousPresentation: Boolean(continuePlayback),
+      presentationSessionId: continuation?.presentationSessionId,
       baseList: resolved.fullList, orderedList,
       restart: item => executeStructuredTextPlaybackSessionService({
-        ...args, transportSegmentId: item.id, orderedListOverride: orderedList
+        ...args, transportSegmentId: item.id, orderedListOverride: orderedList,
+        continuation: continuePlayback ? playbackContextRef.current : null
       })
     };
   };
 
-  if (firstOrder.length) onPlaybackAccepted?.({ segmentId: cursorId ?? firstOrder[0].id, orderedList: shuffleOrderActive ? firstOrder : null });
-  safePlayTransition(async () => {
+  if (firstOrder.length) onPlaybackAccepted?.({ segmentId: cursorId ?? firstOrder[0].id,
+    orderedList: shuffleOrderActive ? firstOrder : null, continuing: Boolean(continuation) });
+  const transition = continuation ? continuePlayback : safePlayTransition;
+  transition(async () => {
     const playbackSession = playbackSessionRef.current;
 
     setPlayingContext(TEXT_STRUCTURED_PLAYBACK_CONTEXT);
     setIsPlaying(true);
-    setIsPaused(false);
-    pauseStateRef.current = false;
+    if (!continuation) {
+      setIsPaused(false);
+      pauseStateRef.current = false;
+    }
     const repeatLabel = repeatMode === TEXT_STRUCTURED_REPEAT_MODES.LOOP ? repeatMode : `${repeatLimit}×`;
     const representationLabel = fullRuntimeEnabled ? 'full' : normalizedRepresentation === TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL ? 'full→split (runtime unavailable)' : 'split';
     addLog?.('Text Player', `${documentTree.title || documentTree.id} • ${scope} • ${scopedList.length} segment${scopedList.length === 1 ? '' : 's'} • ${playbackChannelMode} • ${representationLabel} • ${playbackOrderMode} • ${repeatLabel}.`);
 
-    if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
+    if (!pauseStateRef.current && silentAudioRef.current) silentAudioRef.current.play().catch(() => {});
 
     const stopArgs = { stopSignalRef, playbackSessionRef, playbackSession };
+    const waitGap = durationMs => waitPlaybackFeelDelay({
+      durationMs, waitWhilePaused, ...stopArgs, pauseStateRef: continuePlayback ? pauseStateRef : null
+    });
+    // A prepared result belongs to one execution and one readable snapshot.
+    // Only the immediately following step is prepared. A stale read is retried
+    // through the normal resolver with its full scope and byte checks.
+    const lookAhead = () => {
+      let next;
+      return {
+        prepare(key, read) {
+          if (!getPreparationStamp || next?.key === key || shouldStop(stopArgs)) return;
+          const stamp = getPreparationStamp();
+          if (stamp) next = { key, stamp, result: Promise.resolve().then(read).catch(() => undefined) };
+        },
+        async take(key) {
+          if (next?.key !== key) return undefined;
+          const { stamp, result } = next;
+          next = null;
+          const value = await result;
+          return !shouldStop(stopArgs) && stamp === getPreparationStamp() ? value : undefined;
+        }
+      };
+    };
     const playHeadings = async (steps, intro = false) => {
       const context = playbackContextRef?.current;
       if (intro && context?.sessionId === playbackSession) context.headingIntro = true;
@@ -210,7 +244,12 @@ export const executeStructuredTextPlaybackSessionService = args => {
       const orderedList = pass === 0 ? firstOrder
         : resolveStructuredTextPlaybackOrder({ list: scopedList, orderMode: playbackOrderMode, random });
       if (playbackContextRef) {
-        playbackContextRef.current = { ...makeSession(orderedList, pass === 0 ? cursorId : null, pass), sessionId: playbackSession };
+        const previous = playbackContextRef.current;
+        playbackContextRef.current = {
+          ...makeSession(orderedList, pass === 0 ? cursorId : null, pass), sessionId: playbackSession,
+          presentationSessionId: previous?.presentationSessionId ?? playbackSession,
+          lastStarted: previous?.lastStarted
+        };
       }
       if (!scopedList.length) {
         await playHeadings(standalone);
@@ -252,6 +291,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
         await playHeadings(steps);
       };
       const playSplitItems = async (items, firstItemIndex, { partialBlock = null, hasNextGroup = false, plans = null } = {}) => {
+        const prepared = lookAhead();
         for (let itemIndex = firstItemIndex; itemIndex < items.length; itemIndex += 1) {
           const item = items[itemIndex];
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
@@ -281,11 +321,19 @@ export const executeStructuredTextPlaybackSessionService = args => {
 
             setSpeakingPart(step.channel);
             const stepStartedAt = Date.now();
-            if (partialBlock) {
+            if (partialBlock || prepareSplitStep) {
+              const nextItem = items[itemIndex + 1];
+              const following = channelSteps[stepIndex + 1];
+              const followingItem = following ? item : nextItem;
+              const followingStep = following || (nextItem && resolveStructuredTextPlaybackChannelSteps(nextItem, playbackChannelMode)[0]);
+              const preparedRuntime = await prepared.take(`${item.id}:${step.channel}`);
+              if (shouldStop(stopArgs)) break;
               await playStructuredChannel(step.content, item, step.channel, {
-                representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.SPLIT,
-                block: partialBlock,
-                step: plans.get(step.channel)?.get(item.id)
+                ...(partialBlock ? { block: partialBlock, step: plans.get(step.channel)?.get(item.id) } : {}),
+                preparedRuntime,
+                prepareFollowing: prepareSplitStep && followingStep ? () => prepared.prepare(
+                  `${followingItem.id}:${followingStep.channel}`, () => prepareSplitStep(followingItem, followingStep.channel, partialBlock)
+                ) : null
               });
             } else {
               await playStructuredChannel(step.content, item, step.channel);
@@ -299,7 +347,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
                 ? channelDelayMs
                 : (fastStepStreak >= 2 ? FAST_STEP_YIELD_MS : 0);
               if (effectiveChannelDelayMs > 0) {
-                const keepGoing = await waitPlaybackFeelDelay({ durationMs: effectiveChannelDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+                const keepGoing = await waitGap(effectiveChannelDelayMs);
                 if (!keepGoing) break;
               }
             }
@@ -311,7 +359,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
               ? segmentDelayMs
               : (fastStepStreak >= 2 ? FAST_STEP_YIELD_MS : 0);
             if (effectiveSegmentDelayMs > 0) {
-              const keepGoing = await waitPlaybackFeelDelay({ durationMs: effectiveSegmentDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+              const keepGoing = await waitGap(effectiveSegmentDelayMs);
               if (!keepGoing) break;
             }
           }
@@ -326,6 +374,11 @@ export const executeStructuredTextPlaybackSessionService = args => {
           : 0;
         const firstGroupIndex = cursorGroupIndex >= 0 ? cursorGroupIndex : 0;
         const channelOrder = resolveStructuredTextPlaybackChannelOrder(playbackChannelMode);
+        const preparedFull = lookAhead();
+        const readFull = (group, channel) => resolveBlockChannelPlaybackPlan({
+          block: group.block, fullBlock: group.block, channel, allowFullArtifact: true,
+          representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL, items: group.items, segmentIds: null
+        });
 
         for (let groupIndex = firstGroupIndex; groupIndex < groups.length; groupIndex += 1) {
           const group = groups[groupIndex];
@@ -372,20 +425,19 @@ export const executeStructuredTextPlaybackSessionService = args => {
 
           for (let channelIndex = 0; channelIndex < channelOrder.length; channelIndex += 1) {
             const channel = channelOrder[channelIndex];
-            const candidate = resolveBlockChannelPlaybackPlan({
-              block: group.block,
-              fullBlock: group.block,
-              channel,
-              allowFullArtifact: true,
-              representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
-              items: group.items,
-              segmentIds: null
-            });
+            const cached = getPreparationStamp ? await preparedFull.take(`${group.blockId}:${channel}`) : undefined;
+            if (shouldStop(stopArgs)) break;
+            const candidate = cached ?? readFull(group, channel);
             const plan = typeof candidate?.then === 'function' ? await candidate : candidate;
             if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
             const plannedSteps = Array.isArray(plan?.steps) ? plan.steps : [];
             const steps = resumeIndex ? plannedSteps.filter(step => !step.segmentId
               || group.items.findIndex(item => item.id === step.segmentId) >= resumeIndex) : plannedSteps;
+            const nextGroup = channelIndex + 1 < channelOrder.length ? group : groups[groupIndex + 1];
+            const nextChannel = channelOrder[channelIndex + 1] ?? channelOrder[0];
+            const prepareNextFull = getPreparationStamp && nextGroup && !resolved.partialCardIds.has(nextGroup.blockId)
+              ? () => preparedFull.prepare(`${nextGroup.blockId}:${nextChannel}`, () => readFull(nextGroup, nextChannel)) : null;
+            const preparedSplit = lookAhead();
 
             for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
               const step = steps[stepIndex];
@@ -397,6 +449,11 @@ export const executeStructuredTextPlaybackSessionService = args => {
               const item = step.segmentId
                 ? group.items.find(candidate => candidate.id === step.segmentId) || group.items[0]
                 : group.items[0];
+              const nextStep = steps[stepIndex + 1];
+              const nextItem = nextStep?.segmentId && group.items.find(candidate => candidate.id === nextStep.segmentId);
+              const prepareFollowing = prepareSplitStep && nextItem && !Object.hasOwn(nextStep, 'bookRuntime')
+                ? () => preparedSplit.prepare(nextItem.id, () => prepareSplitStep(nextItem, nextStep.channel || channel, group.block))
+                : prepareNextFull;
               setSpeakingPart(step.channel || channel);
 
               const stepStartedAt = Date.now();
@@ -405,8 +462,10 @@ export const executeStructuredTextPlaybackSessionService = args => {
                 setCurrentIndex(cardFirstSegment || item?.id || null);
                 setPlayingIndex(null);
                 if (trackFullFallback && cardFirstSegment) reportCursor(cardFirstSegment);
-                await playStructuredFullStep(step, group.block, item, { onFallbackStep });
+                await playStructuredFullStep(step, group.block, item, { onFallbackStep, prepareFollowing });
               } else {
+                const preparedRuntime = prepareSplitStep ? await preparedSplit.take(item.id) : undefined;
+                if (shouldStop(stopArgs)) break;
                 if (onFallbackStep && step.segmentId) onFallbackStep(step.segmentId);
                 else {
                   setCurrentIndex(cardFirstSegment || item?.id || null);
@@ -416,7 +475,9 @@ export const executeStructuredTextPlaybackSessionService = args => {
                   representationMode: TEXT_STRUCTURED_PLAYBACK_REPRESENTATION_MODES.FULL,
                   ignoreSegmentOverride: step.ignoreSegmentVoiceOverride !== false,
                   block: group.block,
-                  step
+                  step,
+                  preparedRuntime,
+                  prepareFollowing
                 });
               }
               const stepElapsedMs = Date.now() - stepStartedAt;
@@ -428,7 +489,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
                   ? segmentDelayMs
                   : (fastStepStreak >= 2 ? FAST_STEP_YIELD_MS : 0);
                 if (effectiveStepDelayMs > 0) {
-                  const keepGoing = await waitPlaybackFeelDelay({ durationMs: effectiveStepDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+                  const keepGoing = await waitGap(effectiveStepDelayMs);
                   if (!keepGoing) break;
                 }
               }
@@ -437,14 +498,14 @@ export const executeStructuredTextPlaybackSessionService = args => {
             if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
             const hasNextChannel = channelIndex < channelOrder.length - 1;
             if (hasNextChannel && channelDelayMs > 0) {
-              const keepGoing = await waitPlaybackFeelDelay({ durationMs: channelDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+              const keepGoing = await waitGap(channelDelayMs);
               if (!keepGoing) break;
             }
           }
 
           if (shouldStop({ stopSignalRef, playbackSessionRef, playbackSession })) break;
           if (hasNextGroup && segmentDelayMs > 0) {
-            const keepGoing = await waitPlaybackFeelDelay({ durationMs: segmentDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+            const keepGoing = await waitGap(segmentDelayMs);
             if (!keepGoing) break;
           }
         }
@@ -470,7 +531,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
           : 0;
         const nextPassDelayMs = Math.max(Number(segmentDelayMs) || 0, floorDelayMs);
         if (nextPassDelayMs > 0) {
-          const keepGoing = await waitPlaybackFeelDelay({ durationMs: nextPassDelayMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession });
+          const keepGoing = await waitGap(nextPassDelayMs);
           if (!keepGoing) break;
         }
       }
@@ -488,7 +549,7 @@ export const executeStructuredTextPlaybackSessionService = args => {
       addLog?.('Text Player', 'Structured Text playback finished.');
       forceStopAll();
     }
-  }, makeSession(firstOrder, cursorId, 0));
+  }, makeSession(firstOrder, cursorId, 0), continuation);
 
   return true;
 };

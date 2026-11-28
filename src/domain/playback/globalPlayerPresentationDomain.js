@@ -53,6 +53,8 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
   const channel = { text: 'EN', meaning: 'ID' }[nowPlaying.channel];
   const actual = headingLabel || representation[nowPlaying.actualRepresentation];
   const source = sources[nowPlaying.source] ?? nowPlaying.source;
+  const betweenSteps = Boolean(nowPlaying.continuousPresentation && nowPlaying.state === 'waiting' && source);
+  const labeledSource = betweenSteps ? `Last source: ${source}` : source;
   const scope = nowPlaying.scope === 'from-here' ? `From here · Through ${scopes[nowPlaying.boundary] ?? 'unknown boundary'}` : scopes[nowPlaying.scope];
   const saved = representation[nowPlaying.savedRepresentation];
   const requested = representation[nowPlaying.requestedRepresentation];
@@ -88,34 +90,36 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
   const details = [
     ['Workspace', workspace?.title], ['Card', card?.title], ['Authored position', authored], ['Speaker', speaker],
     ['Segment', segmentText], ['Heading', heading?.content],
-    ['Channel', channel], ['Scope', scope], ['Source', source], ['Provider', nowPlaying.provider], ['Voice', nowPlaying.voice],
+    ['Channel', channel], ['Scope', scope], ['Source', labeledSource], ['Provider', nowPlaying.provider], ['Voice', nowPlaying.voice],
     ['Rate', nowPlaying.rate > 0 && `${nowPlaying.rate}×`], ['Queue', queueSummary],
     ['Representation', representationSummary]
   ].filter(([, value]) => value);
   const playbackInfo = [
-    ['Source', source],
+    ['Source', labeledSource],
     ['Rate', nowPlaying.rate > 0 && `${nowPlaying.rate}×`],
     ['Scope', scope],
     ['Queue', queueSummary],
-    ['Voice', nowPlaying.voice]
+    ['Voice', nowPlaying.voice],
+    ['Voice fallback', nowPlaying.fallbackReason]
   ].filter(([, value]) => value);
   const technicalDetails = [
     ['Provider', nowPlaying.provider],
     ['Representation', representationSummary]
   ].filter(([, value]) => value);
-  const state = stateLabels[transport.phase];
+  const state = betweenSteps ? 'Between audio steps' : stateLabels[transport.phase];
   const title = workspace?.title ?? (item?.title ? (table ? capitalizeDisplayText(item.title) : item.title) : null);
   const context = authored || join(itemContext, partLabel);
   return {
     title,
     context,
-    status: join(state, channel, actual, source, variation),
-    compactStatus: join(state, channel, actual, source),
+    status: join(state, channel, actual, labeledSource, variation),
+    compactStatus: join(state, channel, actual, labeledSource),
     details,
     timeline: nowPlaying.timeline,
     navLabel: queueLabels[transport.navKind],
     canNavigate: transport.canNavigate,
     phase: transport.phase,
+    betweenSteps,
     playLabel: { pending: 'Starting playback', paused: 'Resume playback', playing: 'Pause playback', waiting: 'Pause playback' }[transport.phase] ?? 'Start playback',
     domain: nowPlaying.domain ?? null,
     cardKind: card?.kind ?? null,

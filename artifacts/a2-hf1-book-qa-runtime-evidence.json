@@ -1,0 +1,445 @@
+{
+  "startingHead": "cbef9f50f2976352dbc438ef4729c1428b42bb50",
+  "branch": "test/text-v2-uat",
+  "testedOn": "2026-11-28",
+  "baseline": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "baseline",
+    "observations": {
+      "configuredBrowserGap": {
+        "from": "SEGMENT_000038",
+        "to": "SEGMENT_000038",
+        "elapsedMs": 551,
+        "silentFrames": 33,
+        "withTarget": 0,
+        "withHighlight": 0,
+        "withVoice": 0,
+        "withTimeline": 0,
+        "withLoadingGlyph": 33,
+        "sessionIds": [
+          1
+        ]
+      },
+      "recordedTransition": {
+        "nextStartMs": 48.8,
+        "allSourcesGapMs": 574.8,
+        "voice": "en-GB-SoniaNeural",
+        "precision": "segment",
+        "duration": 2.592,
+        "via": "blob",
+        "mediaStartupMs": [
+          1.8,
+          13,
+          21
+        ],
+        "verification": [
+          {
+            "segmentId": "SEGMENT_000038",
+            "verifiedMs": 4.8,
+            "startedBeforePreviousCompletion": false
+          },
+          {
+            "segmentId": "SEGMENT_000039",
+            "verifiedMs": 12.4,
+            "startedBeforePreviousCompletion": false
+          }
+        ]
+      },
+      "toolbar": [
+        {
+          "width": 1440,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": true,
+          "clipped": false
+        },
+        {
+          "width": 1280,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": true,
+          "clipped": false
+        },
+        {
+          "width": 1180,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": true,
+          "clipped": false
+        },
+        {
+          "width": 980,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": true,
+          "clipped": false
+        },
+        {
+          "width": 768,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": true,
+          "clipped": true
+        },
+        {
+          "width": 390,
+          "visible": 10,
+          "sidebarExpanded": false,
+          "overlap": false,
+          "clipped": false
+        }
+      ]
+    },
+    "checks": [
+      "Configured EN to ID gap measured through actual Reader and Global Player"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 4
+  },
+  "refinement": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "final",
+    "observations": {
+      "configuredBrowserGap": {
+        "from": "SEGMENT_000038",
+        "to": "SEGMENT_000038",
+        "elapsedMs": 528.4,
+        "silentFrames": 32,
+        "withTarget": 32,
+        "withHighlight": 32,
+        "withVoice": 32,
+        "withTimeline": 0,
+        "withLoadingGlyph": 0,
+        "sessionIds": [
+          1
+        ]
+      },
+      "recordedTransition": {
+        "nextStartMs": 33,
+        "allSourcesGapMs": 552,
+        "voice": "en-GB-SoniaNeural",
+        "precision": "segment",
+        "duration": 2.592,
+        "via": "blob",
+        "mediaStartupMs": [
+          2,
+          14.1,
+          17.8
+        ],
+        "verification": [
+          {
+            "segmentId": "SEGMENT_000038",
+            "verifiedMs": 5.7,
+            "startedBeforePreviousCompletion": false
+          },
+          {
+            "segmentId": "SEGMENT_000039",
+            "verifiedMs": 9.5,
+            "startedBeforePreviousCompletion": true
+          }
+        ]
+      },
+      "missingVoice": {
+        "actual": "Fixture Speaker EN",
+        "reason": "Requested voice \"HF1 saved voice absent from the catalog\" (Workspace speaker profile) is unavailable in this browser; falling back to Fixture Speaker EN (Global Browser TTS)."
+      },
+      "recordedSpeakers": [
+        {
+          "speaker": "Maya",
+          "voice": "en-GB-LibbyNeural",
+          "source": "generated",
+          "digest": "acef3cdcfc22a232abb45ecbe06b7ed113f38bed4742f3df3880e5f4a86f44fe"
+        },
+        {
+          "speaker": "Ari",
+          "voice": "en-GB-RyanNeural",
+          "source": "generated",
+          "digest": "6c546f06708061541a0d399aa47bc16a68989497ebe126a028a6f9d57c27412c"
+        }
+      ],
+      "providerError": "0 committed, 0 already available. FIXTURE_PROVIDER_OFFLINE Edge 503: Provider unreachable For local UAT, start npm run server in a second terminal and check its output before retrying.",
+      "downloads": [
+        "ProLingo__TEXT_AUDIO__Conversation_At_the_information_desk__20261128T021830Z.zip",
+        "ProLingo__TEXT_AUDIO__Conversation_At_the_information_desk_Listening__20261128T021830Z.zip"
+      ],
+      "authoredTraversal": {
+        "paragraph": {
+          "from": "paragraph",
+          "to": "paragraph",
+          "crossedUnits": true
+        },
+        "conversation": {
+          "from": "conversation",
+          "to": "conversation",
+          "crossedUnits": true
+        },
+        "mixed": {
+          "from": "paragraph",
+          "to": "conversation",
+          "crossedUnits": true
+        }
+      },
+      "full": [
+        {
+          "workspace": "Paragraph · A morning by the river",
+          "precision": "segment",
+          "actualRepresentation": "split",
+          "source": "generated",
+          "representationFallback": true,
+          "channel": "text"
+        },
+        {
+          "workspace": "Conversation · At the information desk",
+          "precision": "card",
+          "actualRepresentation": "full",
+          "source": "full-artifact",
+          "representationFallback": false,
+          "channel": "text"
+        },
+        {
+          "workspace": "Conversation · At the information desk",
+          "precision": "segment",
+          "actualRepresentation": "split",
+          "source": "tts",
+          "representationFallback": true,
+          "channel": "meaning"
+        },
+        {
+          "workspace": "A Journey to London",
+          "precision": "segment",
+          "actualRepresentation": "split",
+          "source": "tts",
+          "representationFallback": true,
+          "channel": "text"
+        }
+      ],
+      "toolbar": [
+        {
+          "width": 1440,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": false,
+          "clipped": false
+        },
+        {
+          "width": 1280,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": false,
+          "clipped": false
+        },
+        {
+          "width": 1180,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": false,
+          "clipped": false
+        },
+        {
+          "width": 980,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": false,
+          "clipped": false
+        },
+        {
+          "width": 768,
+          "visible": 11,
+          "sidebarExpanded": true,
+          "overlap": false,
+          "clipped": false
+        },
+        {
+          "width": 390,
+          "visible": 10,
+          "sidebarExpanded": false,
+          "overlap": false,
+          "clipped": false
+        }
+      ],
+      "notebookGuideModes": [
+        "full",
+        "card",
+        "focus",
+        "segment"
+      ],
+      "focusScroll": [
+        842,
+        1239
+      ]
+    },
+    "checks": [
+      "Configured EN to ID gap measured through actual Reader and Global Player",
+      "Browser catalog choices and scoped recorded Edge profiles resolve independently per Speaker",
+      "Explicit generation can be cancelled and provider errors give the local startup command",
+      "Reader shell generation, coverage verification, Full composition and both ZIP exports",
+      "Next, Previous, Pause, and Resume retain the Book presentation session",
+      "Start From Here continues across authored Sections, Turns, and Cards in all workspace types",
+      "Paragraph, Conversation and Mixed Full fallback preserves actual source, precision and session",
+      "Focus controls fit with the Sidebar open on desktop and in the mobile settings",
+      "Notebook guides render across four levels; EN/ID highlighting switches with a paired underline",
+      "Passive vertical scroll, explicit Unit selection and return preserve the playback owner"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 13
+  },
+  "nativeBrowserTts": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Edg/158.0.4370.45",
+      "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+      "jsVersion": "15.8.13.4"
+    },
+    "mode": "native",
+    "observations": {
+      "nativeCatalog": {
+        "total": 338,
+        "localEnglish": 13,
+        "localIndonesian": 1
+      },
+      "speechEvents": [
+        [
+          "speak",
+          "The path follows the river.",
+          "Microsoft David - English (United States)",
+          1649.8999999985099
+        ],
+        [
+          "start",
+          "The path follows the river.",
+          "Microsoft David - English (United States)",
+          1775.5,
+          null
+        ],
+        [
+          "end",
+          "The path follows the river.",
+          "Microsoft David - English (United States)",
+          4043.099999997765,
+          null
+        ],
+        [
+          "speak",
+          "Where is the nearest bridge?",
+          "Microsoft Catherine - English (Australia)",
+          4291.199999999255
+        ],
+        [
+          "start",
+          "Where is the nearest bridge?",
+          "Microsoft Catherine - English (Australia)",
+          4343.800000000745,
+          null
+        ],
+        [
+          "end",
+          "Where is the nearest bridge?",
+          "Microsoft Catherine - English (Australia)",
+          6772.5,
+          null
+        ],
+        [
+          "speak",
+          "James woke up earlier than usual because he was travelling to London that morning.",
+          "Microsoft David - English (United States)",
+          7051.699999999255
+        ],
+        [
+          "start",
+          "James woke up earlier than usual because he was travelling to London that morning.",
+          "Microsoft David - English (United States)",
+          7110.39999999851,
+          null
+        ],
+        [
+          "end",
+          "James woke up earlier than usual because he was travelling to London that morning.",
+          "Microsoft David - English (United States)",
+          12142.5,
+          null
+        ],
+        [
+          "speak",
+          "Good morning. I'd like to buy a ticket to London, please.",
+          "Microsoft Catherine - English (Australia)",
+          12418.89999999851
+        ],
+        [
+          "start",
+          "Good morning. I'd like to buy a ticket to London, please.",
+          "Microsoft Catherine - English (Australia)",
+          12470.89999999851,
+          null
+        ],
+        [
+          "end",
+          "Good morning. I'd like to buy a ticket to London, please.",
+          "Microsoft Catherine - English (Australia)",
+          17942.89999999851,
+          null
+        ]
+      ]
+    },
+    "checks": [
+      "Native Browser TTS starts and ends distinct installed Narrator and Speaker voices in all workspace types"
+    ],
+    "runtimeErrors": [],
+    "qaRequests": 0
+  },
+  "localProviderStartup": {
+    "previewHttp": 200,
+    "proxiedHealthHttp": 200,
+    "exitCode": 0
+  },
+  "browserExitCodes": {
+    "baseline": 0,
+    "refinement": 0,
+    "nativeBrowserTts": 0
+  },
+  "integrationSmoke": {
+    "exitCode": 0,
+    "checks": [
+      "Empty second library, exact DB targets and unchanged first library",
+      "UI creates and renames Collection and Workspace, moves and selects stable identity",
+      "T1 Main Title input, repair-safe mode changes and reconnect in the real App",
+      "T1 disposable v2 Heading transaction, Refresh and Classic/Full Reader projection",
+      "T1 stale title writer and committed-but-unaccepted receipt never replay",
+      "Real Reader and Global Player transport retain audible ownership across navigation",
+      "External move, invalid Refresh, mutation lock and deleted selection recovery",
+      "Direct edit callback rejects and mobile exposes only Book QA capabilities",
+      "Mobile creates a native v2 sample through the same catalogue contract",
+      "Valid provisional reuse, exact-digest repair for corrupt and missing bytes, and failed cold recovery fence",
+      "Actual scoped Split playback, Media Session, pause/resume and ownership across navigation and reset",
+      "Actual untimed Full Paragraph playback and same-voice alternate RF retention",
+      "Recorded Single, Continue and Start From Here use the existing bounded transport",
+      "Incomplete Conversation falls back to TTS, then plays trusted composed 48 kHz Full",
+      "Controlled provider failure, cancellation and stale authoritative generation reject without replay",
+      "Reconnect and mobile profile reset preserve the stable variant and all rate/pitch references",
+      "Actual Indonesian recorded Main Title, Media Session and owned Pause/Resume across Workspace navigation",
+      "Heading and Body use one durable RF asset and one connection URL without provider synthesis",
+      "ID-EN recorded and EN-ID controlled Browser TTS retain exact text, voice and atomic owner",
+      "Two stable Speaker voices render in authored Split order and leave the Scene Heading profile unchanged",
+      "Cancelled and stale Heading generation uploads no binding and explicit Refresh projects the external edit",
+      "Title-only normal transport, uncertain Heading receipt recovery, retained alternate profiles and session disposal",
+      "Same RF in a second library remains scoped, with the same Heading controls on mobile",
+      "A2 fixture keeps the exact London Body order, two pure Workspaces, blank channels and empty Units",
+      "A2 create-only shell initializes four Workspaces and explicit EN/ID fixture generation exports two verified recordings",
+      "A2 Refresh, refused initialization and a new browser process preserve user edits and exact scoped audio bytes"
+    ],
+    "canonicalV1AndNormalPlayback": true,
+    "runtimeErrors": []
+  }
+}

@@ -22,8 +22,16 @@ export const findBookBodyRuntime = async (audio, snapshot, requests) => {
   return null;
 };
 
+export const canStartVerifiedBookAudio = (snapshot, request, runtime) => {
+  if (!snapshot || !request || !runtime?.binary) return false;
+  const binding = readBookAudioBinding(snapshot, request);
+  return binding.status === 'bound'
+    && ['digest', 'format', 'bytes', 'sampleRate'].every(field => binding.binary[field] === runtime.binary[field])
+    && (request.descriptor.engine !== 'derived' || binding.trustedComposition);
+};
+
 export const prepareBookFullPlayback = async ({ audio, snapshot, document, block, channel, options, fallback, stillCurrent }) => {
-  if (!isBookBodyAudioCard(block)) return fallback;
+  if (!isBookBodyAudioCard(block) || options.audioSourceMode === 'tts-only') return fallback;
   // Retain the established Paragraph Full fallback. Any verified Split input
   // selects the per-Sentence fallback path; all-TTS stays a whole-card read.
   const resolveFallback = async () => {
@@ -36,7 +44,7 @@ export const prepareBookFullPlayback = async ({ audio, snapshot, document, block
       if (!stillCurrent()) return [];
       anyRecorded ||= Boolean(split);
       steps.push({ type: split ? 'split-local' : 'split-tts', segmentId: segment.id, content: segment[channel], channel,
-        ignoreSegmentVoiceOverride: true, bookRuntime: split });
+        ignoreSegmentVoiceOverride: true, bookRuntime: split, bookReadStamp: snapshot });
     }
     return anyRecorded ? steps : fallback.steps;
   };
@@ -47,7 +55,7 @@ export const prepareBookFullPlayback = async ({ audio, snapshot, document, block
   return { steps: [{
     type: 'full-local', channel, blockId: block.id, segmentId: null,
     content: buildTextStructuredFullRepresentation({ block, channel }).content,
-    runtimeFull: { runtime, profile: request.descriptor, artifact: { descriptor: request.descriptor } },
+    runtimeFull: { request, runtime, profile: request.descriptor, artifact: { descriptor: request.descriptor } },
     resolveFallback
   }] };
 };

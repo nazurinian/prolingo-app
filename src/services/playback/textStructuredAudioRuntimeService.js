@@ -7,6 +7,8 @@ export const executeStructuredTextRuntimeAudioPlaybackService = async ({
   waitWhilePaused,
   playbackRate = 1,
   onNowPlaying = null,
+  continuous = false,
+  canStart = null,
   sourceEvidence = null,
   addLog,
   label = 'Structured Text audio'
@@ -15,6 +17,7 @@ export const executeStructuredTextRuntimeAudioPlaybackService = async ({
   const isCurrent = () => !stopSignalRef.current && playbackSessionRef?.current === session;
   if (isCurrent() && url && waitWhilePaused) await waitWhilePaused();
   if (!isCurrent() || !url) return { status: 'stopped' };
+  if (canStart && !canStart()) return { status: 'stale' };
 
   return new Promise(resolve => {
     const audio = new Audio(url);
@@ -28,6 +31,7 @@ export const executeStructuredTextRuntimeAudioPlaybackService = async ({
       audio.onerror = null;
       if (onNowPlaying) {
         audio.onplaying = null;
+        audio.onwaiting = null;
         onNowPlaying(null);
       }
       if (playbackResolveRef.current === settleFromExternal) playbackResolveRef.current = null;
@@ -44,6 +48,9 @@ export const executeStructuredTextRuntimeAudioPlaybackService = async ({
     playbackResolveRef.current = settleFromExternal;
     if (onNowPlaying) audio.onplaying = () => {
       if (!settled && isCurrent()) onNowPlaying({ ...sourceEvidence, media: audio });
+    };
+    if (continuous && onNowPlaying) audio.onwaiting = () => {
+      if (!settled && isCurrent()) onNowPlaying(null);
     };
     audio.onended = () => finish(isCurrent() ? 'played' : 'stopped');
     audio.onerror = () => {

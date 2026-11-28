@@ -498,7 +498,8 @@ export const SharedVerticalScrollFocusView = ({
 
   useLayoutEffect(() => {
     const root = flowRootRef.current;
-    if (!root || !scroll || units.length <= 1) return undefined;
+    // A passive viewport observation must not create a manual selection during Book playback.
+    if (!root || !scroll || units.length <= 1 || playbackCursor?.continuousPresentation) return undefined;
     return scroll.registerVerticalFocus(root, ({ top, bottom, focalY, scrollTop, maxScrollTop }) => {
       const flowRect = root.getBoundingClientRect();
       let nearest;
@@ -525,7 +526,7 @@ export const SharedVerticalScrollFocusView = ({
         onSelectUnit?.(nearest.viewKey);
       }
     });
-  }, [scroll, units, selection.selectedUnitViewKey, onSelectUnit]);
+  }, [scroll, units, selection.selectedUnitViewKey, onSelectUnit, playbackCursor?.continuousPresentation]);
 
   return (
     <div

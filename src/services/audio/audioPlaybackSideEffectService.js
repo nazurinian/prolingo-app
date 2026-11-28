@@ -18,7 +18,9 @@ export const executeBrowserTtsPlaybackService = ({
   rate,
   pitch,
   onError = null,
-  onNowPlaying = null
+  onNowPlaying = null,
+  continuous = false,
+  language = null
 }) => {
     const session = playbackSessionRef?.current;
     const isCurrent = () => !stopSignalRef.current && playbackSessionRef?.current === session;
@@ -32,7 +34,7 @@ export const executeBrowserTtsPlaybackService = ({
           return;
       }
 
-      if (typeof synth.cancel === 'function') {
+      if (!continuous && typeof synth.cancel === 'function') {
           try { synth.cancel(); } catch { onError?.('cancel-failed'); resolve(); return; }
       }
       let settled = false;
@@ -75,6 +77,7 @@ export const executeBrowserTtsPlaybackService = ({
           const generation = ++utteranceGeneration;
           currentUtteranceRef.current = utterance;
           if (targetVoice) utterance.voice = targetVoice;
+          else if (language) utterance.lang = language;
           utterance.rate = Number(rateRef?.current ?? rate) || 1;
           utterance.pitch = Number(pitch) || 1;
           utterance.onend = event => handleUtteranceDone(event, generation);
@@ -129,7 +132,7 @@ export const executeBrowserTtsPlaybackService = ({
       const startSpeechWhenActive = async () => {
           // Keep the short startup deferral from the frozen baseline, but do not
           // let a pending utterance start after the user has already pressed Pause.
-          await new Promise(resolveStart => setTimeout(resolveStart, 10));
+          if (!continuous) await new Promise(resolveStart => setTimeout(resolveStart, 10));
           while (!settled && pauseStateRef?.current && isCurrent()) {
               await new Promise(resolvePause => setTimeout(resolvePause, 50));
           }

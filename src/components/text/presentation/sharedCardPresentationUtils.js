@@ -597,6 +597,8 @@ export const buildSharedSegmentRenderFlags = ({
   disabled = false
 }) => {
   const active = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id && cursor.channel === channel;
+  const paired = isSpeakingCard && cursor.precision === 'segment' && cursor.segmentId === segment.id
+    && cursor.channel && cursor.channel !== channel && Boolean(segment.text?.trim() && segment.meaning?.trim());
   const paused = active && cursor.state === 'paused';
   const speaking = active && !paused;
   const stop = !selectionOnly && matchesStructuredPlaybackControl(cursor, { scope: 'segment', segmentId: segment.id, channel });
@@ -607,6 +609,7 @@ export const buildSharedSegmentRenderFlags = ({
   const isMeaning = channel === 'meaning';
 
   const visualStateClasses = [];
+  if (paired) visualStateClasses.push('underline decoration-slate-500/75 dark:decoration-slate-300/80 decoration-2 underline-offset-4');
   if (paused && !fullChannelHighlighted) {
     visualStateClasses.push(SHARED_SEMANTIC_COLORS.paused.segmentPaused);
     if (!selected) {
@@ -638,6 +641,7 @@ export const buildSharedSegmentRenderFlags = ({
       ...(!selectionOnly ? { 'data-reader-playback-action': stop ? 'stop' : 'play' } : {}),
       ...(selected ? { 'data-shared-segment-selected': 'true' } : {}),
       ...(paused ? { 'data-shared-segment-paused': 'true' } : {}),
+      ...(paired ? { 'data-shared-segment-paired': 'true' } : {}),
       ...(selectionOnly ? { 'data-shared-segment-select-only': 'true' } : {})
     },
     title: selectionOnly

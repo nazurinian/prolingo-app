@@ -8,6 +8,7 @@ import { checkBookNormalAudio, normalAuditLibraries } from './fixtures/a1b-2b/ch
 import { checkBookAudioHardening, hardeningAuditLibraries } from './fixtures/a1b-g/check-hardening.mjs';
 import { checkBookHardeningPlayback } from './fixtures/a1b-g/check-hardening-playback.mjs';
 import { checkPersistentBookQaDemo, demoAuditLibraries } from './fixtures/book-qa/check-persistent-demo.mjs';
+import { checkBookQaReaderRefinement, readerRefinementLibraries } from './fixtures/book-qa/check-reader-refinement.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -17,7 +18,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const uatRoot = path.join(root, 'dist-uat');
+const uatRoot = process.env.BOOK_QA_HF1_BUILD || path.join(root, 'dist-uat');
 const productionRoot = path.join(root, 'dist');
 const qaDbName = 'prolingo_text_library_d3b_qa_a1a_browser';
 const qaPrefix = 'prolingo_text_library_d3b_qa_';
@@ -28,9 +29,11 @@ const headingAudit = process.env.BOOK_QA_HEADING_AUDIO_AUDIT === '1';
 const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
 const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
 const demoAudit = process.env.BOOK_QA_A2_AUDIT === '1';
+const readerRefinement = process.env.BOOK_QA_HF1_READER_AUDIT;
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
   ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
-  ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}) };
+  ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}),
+  ...(readerRefinement ? readerRefinementLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -205,7 +208,7 @@ const startServer = async (serveRoot, uatMode) => {
         response.end(await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a', 'tone-' + frequency + '.mp3')));
         return;
       }
-      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit || demoAudit) && pathname === '/api/tts' && request.method === 'POST') {
+      if (uatMode && (bodyAudit || headingAudit || portableAudit || hardeningAudit || demoAudit || readerRefinement) && pathname === '/api/tts' && request.method === 'POST') {
         const buffers = [];
         for await (const chunk of request) buffers.push(chunk);
         const body = JSON.parse(Buffer.concat(buffers).toString());
@@ -215,9 +218,14 @@ const startServer = async (serveRoot, uatMode) => {
           response.end(JSON.stringify({ code: 'FIXTURE_RENDER_REJECTED', error: 'Fixture provider rejected the render' }));
           return;
         }
+        if (readerRefinement && body.rate === '+16%') {
+          response.writeHead(503, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ code: 'FIXTURE_PROVIDER_OFFLINE', error: 'Provider unreachable' }));
+          return;
+        }
         if (['+14%', '+15%'].includes(body.rate)) await new Promise(resolve => setTimeout(resolve, 900));
         const tone = await fs.readFile(path.join(root, 'scripts/fixtures/a1b-1a',
-          /Ryan|Libby/u.test(body.voice) ? 'tone-660.mp3' : 'tone-440.mp3'));
+          (readerRefinement ? /Ryan/u : /Ryan|Libby/u).test(body.voice) ? 'tone-660.mp3' : 'tone-440.mp3'));
         response.writeHead(200, { 'Content-Type': 'audio/mpeg' });
         response.end(Buffer.concat(Array(18).fill(tone)));
         return;
@@ -248,7 +256,7 @@ const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'))
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const launchBrowser = () => spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
-  ...(bodyAudit || headingAudit || portableAudit || demoAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
+  ...(bodyAudit || headingAudit || portableAudit || demoAudit || readerRefinement ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const waitForBrowserExit = browser => new Promise(resolve => {
@@ -290,17 +298,35 @@ const instrumentation = `(() => {
     };
   }
   window.__bookQaSpeech = [];
+  if (${JSON.stringify(readerRefinement === 'native')}) {
+    const speak = speechSynthesis.speak.bind(speechSynthesis);
+    speechSynthesis.speak = utterance => {
+      const voice = utterance.voice?.name;
+      window.__bookQaSpeech.push(['speak', utterance.text, voice, performance.now()]);
+      for (const event of ['start', 'end', 'error']) {
+        utterance.addEventListener(event, details => window.__bookQaSpeech.push([event, utterance.text, voice, performance.now(), details.error]));
+      }
+      return speak(utterance);
+    };
+  } else {
   window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
   Object.defineProperty(window, 'speechSynthesis', { value: {
     speaking: false, paused: false, pending: false,
     getVoices: () => [{ name: 'Fixture EN', lang: 'en-US', voiceURI: 'fixture-en', localService: true },
-      { name: 'Fixture ID', lang: 'id-ID', voiceURI: 'fixture-id', localService: true }],
-    speak(utterance) { this.speaking = true; this.utterance = utterance; window.__bookQaSpeech.push(['speak', utterance.text, utterance.voice?.name]); utterance.onstart?.(); },
+      { name: 'Fixture ID', lang: 'id-ID', voiceURI: 'fixture-id', localService: true },
+      ...(${Boolean(readerRefinement)} ? [
+        { name: 'Fixture Speaker EN', lang: 'en-GB', voiceURI: 'fixture-speaker-en', localService: true },
+        { name: 'Fixture Speaker ID', lang: 'id-ID', voiceURI: 'fixture-speaker-id', localService: true }
+      ] : [])],
+    speak(utterance) { this.speaking = true; this.utterance = utterance; window.__bookQaSpeech.push(
+      ${Boolean(readerRefinement)} ? ['speak', utterance.text, utterance.voice?.name, performance.now()] : ['speak', utterance.text, utterance.voice?.name]
+    ); utterance.onstart?.(); },
     finish() { this.speaking = false; this.utterance?.onend?.(); },
     pause() { this.paused = true; window.__bookQaSpeech.push(['pause']); },
     resume() { this.paused = false; window.__bookQaSpeech.push(['resume']); },
     cancel() { this.speaking = false; this.paused = false; window.__bookQaSpeech.push(['cancel']); }
   } });
+  }
   if (qaMode) {
     window.__bookQaProps = (selector, prop, currentOnly = false) => {
       const node = document.querySelector(selector);
@@ -411,7 +437,8 @@ try {
     }
   };
   const evaluate = async (expression, sessionId) => {
-    const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
+    const result = await call('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true,
+      ...(readerRefinement === 'native' ? { userGesture: true } : {}) }, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result?.value;
   };
@@ -473,6 +500,20 @@ try {
     return auditByOrigin.get(pageAudit.origin) || pageAudit.audit || {};
   };
   const probe = async expression => evaluate(`(async () => { const module = window.__bookQaProbe || await import('/__a1a_probe.js'); window.__bookQaProbe = module; return ${expression}; })()`);
+  if (readerRefinement) {
+    const result = await checkBookQaReaderRefinement({
+      mode: readerRefinement, evaluate, navigate, waitFor, chooseOptIn, clickButton, uatOrigin, call, bodyRequests
+    });
+    const audit = await readAudit();
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.deletes, []);
+    assert.deepEqual(runtimeErrors, []);
+    assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
+    const evidence = { browser: await call('Browser.getVersion'), ...result, runtimeErrors, qaRequests: qaApiRequests.length };
+    if (process.env.BOOK_QA_HF1_RESULT) await fs.writeFile(process.env.BOOK_QA_HF1_RESULT, JSON.stringify(evidence, null, 2) + '\n');
+    console.log(JSON.stringify(evidence, null, 2));
+  } else {
   const withPeerTab = async (url, run) => {
     const { targetId } = await call('Target.createTarget', { url: 'about:blank', background: true });
     try {
@@ -776,6 +817,7 @@ try {
   report.browserRuntimeErrors = runtimeErrors;
   assert(runtimeErrors.length === 0, 'Browser emitted runtime exceptions');
   console.log(JSON.stringify(report, null, 2));
+  }
 } catch (error) {
   console.error('Book QA audit failed:', error.message);
   throw error;

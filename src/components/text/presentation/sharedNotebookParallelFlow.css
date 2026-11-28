@@ -27,8 +27,9 @@
   padding-bottom: .2rem;
 }
 
-[data-shared-notebook-guides="on"] .prolingo-notebook-line {
-  box-shadow: 0 1px color-mix(in srgb, currentColor 10%, transparent);
+[data-shared-notebook-guides="on"] .prolingo-notebook-line,
+[data-shared-notebook-guides="on"] [data-shared-notebook-fallback-rows] [data-shared-interlinear-segment] {
+  box-shadow: 0 1px color-mix(in srgb, currentColor 24%, transparent);
 }
 
 .prolingo-notebook-fragment {

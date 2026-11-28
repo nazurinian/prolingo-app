@@ -3,6 +3,7 @@ import { BOOK_HEADING_LABELS, planBookAtomicGeneration, planBookAtomicPlayback }
 import { projectBookHeadings, resolveBookHeadingRead } from '../../domain/text/textBookHeadingDomain.js';
 import { resolveStructuredTextPlaybackChannelOrder, TEXT_STRUCTURED_PLAYBACK_CHANNEL_MODES as CHANNELS } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { readBookBodyAvailability } from '../../services/audio/bookQaBodyAudioService.js';
+import { BookQaVoiceSelect } from './BookQaVoiceSelect.jsx';
 
 const button = 'min-h-9 rounded border border-slate-300 px-2 font-semibold disabled:opacity-45 dark:border-slate-700';
 const input = 'block min-h-9 w-full rounded border border-slate-300 bg-white px-2 dark:border-slate-700 dark:bg-slate-900';
@@ -38,12 +39,13 @@ export function BookQaHeadingAudioPanel({ connection, workspace, visibility, set
     catch (error) { setMessage([error.code, error.message, error.reloadRequired ? 'Refresh before retrying.' : ''].filter(Boolean).join(' ')); }
     finally { operation.current = null; setBusy(false); }
   };
-  const preferences = options.preferences;
+  const en = optionsFor('text');
+  const id = optionsFor('meaning');
   const voices = [
-    ['browserTextVoiceName', 'Global Browser EN', preferences.playbackTextVoiceName],
-    ['browserMeaningVoiceName', 'Global Browser ID', preferences.playbackMeaningVoiceName],
-    ['edgeTextVoiceId', 'Global Edge EN', preferences.edgeTextVoiceId],
-    ['edgeMeaningVoiceId', 'Global Edge ID', preferences.edgeMeaningVoiceId]
+    ['browserTextVoiceName', 'Session Browser EN', en.browserVoiceName, en.browserVoices],
+    ['browserMeaningVoiceName', 'Session Browser ID', id.browserVoiceName, id.browserVoices],
+    ['edgeTextVoiceId', 'Session Edge EN', en.preferences.edgeTextVoiceId, en.edgeVoices, true],
+    ['edgeMeaningVoiceId', 'Session Edge ID', id.preferences.edgeMeaningVoiceId, id.edgeVoices, true]
   ];
   return <details className="mx-2 mb-2 rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700"
     data-book-heading-audio onToggle={event => setOpen(event.currentTarget.open)}>
@@ -112,8 +114,9 @@ export function BookQaHeadingAudioPanel({ connection, workspace, visibility, set
         setVoices(Object.fromEntries(new FormData(event.currentTarget)));
         setMessage('Session Global voices updated.');
       }}>
-        {voices.map(([name, label, value]) => <label key={name}>{label}<input name={name} className={input}
-          maxLength={128} defaultValue={value || ''} /></label>)}
+        {voices.map(([name, label, value, catalog, edge]) => <BookQaVoiceSelect key={name + ':' + value}
+          name={name} label={label} saved={value} catalog={catalog} className={input}
+          edge={edge} inheritLabel="Use default voice" />)}
         <button type="submit" className={button} disabled={busy}>Set session Global voices</button>
       </form>
       <p role="status" data-book-heading-status>{message}</p>

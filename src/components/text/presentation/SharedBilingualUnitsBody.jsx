@@ -296,15 +296,18 @@ const ContextualReturnToPlayingButton = ({ audibleTarget, onFollowContextualAudi
 const ContextualTranslationText = ({ text, segmentId, channel, onPlaySegment, disabled, cursor }) => {
  const stop = matchesStructuredPlaybackControl(cursor, { scope: 'segment', segmentId, channel });
  const audible = cursor?.precision === 'segment' && cursor.segmentId === segmentId && cursor.channel === channel;
+ const paired = cursor?.precision === 'segment' && cursor.segmentId === segmentId && cursor.channel && cursor.channel !== channel;
  const paused = audible && cursor.state === 'paused';
  return (
   <TextSegmentInteraction segmentId={segmentId} channel={channel}
     interactive={Boolean(onPlaySegment)} disabled={disabled}
     active={audible} speaking={audible && !paused} paused={paused}
     accessibleLabel={`${stop ? 'Stop' : 'Play'} ${channel === 'meaning' ? 'Indonesian translation' : 'English text'}`}
-    className={paused ? SHARED_SEMANTIC_COLORS.paused.segmentPaused : ''}
+    className={paused ? SHARED_SEMANTIC_COLORS.paused.segmentPaused : paired
+      ? 'underline decoration-slate-500/75 dark:decoration-slate-300/80 decoration-2 underline-offset-4' : ''}
     dataAttributes={{ 'data-shared-card-segment': segmentId, 'data-shared-card-channel': channel,
-      'data-reader-playback-action': stop ? 'stop' : 'play', 'data-shared-segment-paused': paused ? 'true' : undefined }}
+      'data-reader-playback-action': stop ? 'stop' : 'play', 'data-shared-segment-paused': paused ? 'true' : undefined,
+      'data-shared-segment-paired': paired ? 'true' : undefined }}
     onActivate={() => onPlaySegment?.(segmentId, channel)}
   >{text}</TextSegmentInteraction>
  );

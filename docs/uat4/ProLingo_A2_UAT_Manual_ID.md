@@ -14,7 +14,17 @@ npm.cmd run preview -- --host 127.0.0.1 --port 4173 --strictPort --outDir dist-u
 2. Centang **I explicitly opt in to isolated Book QA storage**. Untuk nama baru, pilih **Initialize A2 demo library**. Jika nama itu sudah ada, pilih **Load / Connect existing v2 library**. Inisialisasi ulang menampilkan `EXISTING_DB_PROTECTED` dan mempertahankan isinya.
 3. Gunakan pemilih Workspace pada AppBar. Pertahankan URL, host, port, profil browser, dan nama database yang sama saat membuka kembali. IndexedDB terikat pada origin dan profil browser.
 
-Library dimulai dengan nol rekaman. Uji baca dan Browser TTS dapat dilakukan langsung jika browser menyediakan suara. Untuk **uji yang memerlukan rekaman**, impor arsip Portable yang cocok atau jalankan `npm.cmd run server` di terminal PowerShell lain. Dengan server aktif, tombol **Generate** mengirim permintaan ke Edge TTS atas tindakan penguji. Untuk membuat cakupan parsial, pilih satu Sentence pada Paragraph, pilih **English** lalu **Generate Sentence**. Ulangi untuk **Indonesian** jika diperlukan. Setelah **Verify Card audio**, Sentence terpilih semestinya Ready dan Sentence lain masih berstatus Missing.
+Library baru dimulai dengan nol rekaman. Library yang sudah dipakai tetap dapat dihubungkan dengan **Load / Connect existing v2 library**. Pilih **Shared UI (Beta)** untuk menguji Full, Card, Focus, Segment, dan Notebook. Browser TTS memakai katalog suara yang tersedia di browser.
+
+Untuk membuat rekaman melalui Edge, jalankan perintah berikut di terminal PowerShell kedua. Preview meneruskan permintaan `/api/tts` ke port 3001. Pemeriksaan kesehatan ini tidak meminta sintesis.
+
+```powershell
+npm.cmd run server
+# Dari terminal lain, saat server aktif.
+(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/health).Content
+```
+
+Di **Body audio**, pilih kanal serta Card dan Sentence yang ingin diuji. Pilih profil Narrator atau Speaker, pilih suara Browser untuk playback dan suara Edge untuk membuat rekaman, lalu tekan **Save Workspace profile**. Gunakan **Generate Sentence**, **Generate Card Split**, atau **Generate Workspace Split** untuk menyimpan rekaman di library. **Compose Scene Full** memerlukan rekaman Split lengkap pada 1×. Periksa **Verify Card audio** atau **Verify Workspace audio**. Buka **Portable Audio ZIP** untuk mengunduh arsip Portable atau Normal. Untuk cakupan parsial, cukup buat satu Sentence dalam satu kanal.
 
 ## Checklist
 

@@ -65,13 +65,14 @@ export function BookQaPortableAudioPanel({ connection, workspace, preferences })
     } catch (error) { setMessage([error.code, error.message].filter(Boolean).join(' ')); }
     finally { operation.current = null; setBusy(false); }
   };
-  return <details className="mx-2 mb-2 rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700" data-book-portable-audio
+  return <details id="book-qa-zip" className="mx-2 mb-2 rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700" data-book-portable-audio
     onToggle={event => {
       setOpen(event.currentTarget.open);
       if (!event.currentTarget.open) setFiles([]);
     }}>
     <summary className="cursor-pointer font-semibold">Portable Audio ZIP</summary>
     {open && <div className="mt-2 space-y-2">
+      <p>Download verified recordings as a Portable ZIP for reimport or a Normal ZIP for listening.</p>
       <label className="mr-4">Scope <select className="min-h-9 max-w-full rounded border px-2 dark:bg-slate-900" value={workspace ? scope : 'library'}
         disabled={busy} onChange={event => setScope(event.target.value)}>
         {workspace && <option value="workspace">Selected Workspace</option>}
