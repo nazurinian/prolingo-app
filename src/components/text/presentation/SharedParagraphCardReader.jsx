@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { BookReaderInteractionContext } from './BookReaderInteractionContext.js';
 import { ChevronRight, Play, Radio, Square } from 'lucide-react';
 import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import {
@@ -453,6 +454,7 @@ export const SharedCardReadingSurface = ({
   );
 
   const standaloneSelectionStore = useSharedReaderSelectionStore(workspaceKey);
+  const followPlayback = useContext(BookReaderInteractionContext)?.follow !== false;
   const usesExternalSelectionOwner = Boolean(
     cardSelectionState !== null
     || typeof onSelectCardUnit === 'function'
@@ -472,7 +474,8 @@ export const SharedCardReadingSurface = ({
     workspaceKey,
     manualAnchor: effectiveCardSelectionState.manualAnchor,
     unitSegmentMemory: effectiveCardSelectionState.byUnitViewKey,
-    dismissedFocusNonce: effectiveCardSelectionState.dismissedFocusNonce
+    dismissedFocusNonce: effectiveCardSelectionState.dismissedFocusNonce,
+    followPlayback
   }), [
     card,
     lookup,
@@ -482,7 +485,8 @@ export const SharedCardReadingSurface = ({
     workspaceKey,
     effectiveCardSelectionState.manualAnchor,
     effectiveCardSelectionState.byUnitViewKey,
-    effectiveCardSelectionState.dismissedFocusNonce
+    effectiveCardSelectionState.dismissedFocusNonce,
+    followPlayback
   ]);
 
   const activePlaybackSessionId = cursor.state === 'playing' || cursor.state === 'paused'

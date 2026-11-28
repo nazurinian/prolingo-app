@@ -134,6 +134,7 @@ export const readOwnedPlaybackSession = ({ playbackSessionRef, playbackContextRe
 
 export const navigateOwnedPlayback = (session, direction) => {
   if (!session) return false;
+  if (session.navigate) return session.navigate(direction);
   const { orderedList, nowPlayingCardOrder, cursorSegmentId, blockId, queueIndex, restart } = session;
   const queue = nowPlayingCardOrder ?? orderedList;
   if (!restart || !queue?.length || !['prev', 'next'].includes(direction)) return false;

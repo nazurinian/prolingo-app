@@ -355,7 +355,7 @@ export default function BottomPlayerBar({
                   type="button"
                   className={secondaryControlClass}
                   aria-label={`Previous ${player.navLabel}`}
-                  disabled={!player.canNavigate}
+                  disabled={!player.canPrevious}
                   onClick={() => handleSmartNav('prev')}
                 >
                   <SkipBack aria-hidden="true" size={16} />
@@ -373,7 +373,7 @@ export default function BottomPlayerBar({
                   type="button"
                   className={secondaryControlClass}
                   aria-label={`Next ${player.navLabel}`}
-                  disabled={!player.canNavigate}
+                  disabled={!player.canNext}
                   onClick={() => handleSmartNav('next')}
                 >
                   <SkipForward aria-hidden="true" size={16} />
@@ -438,7 +438,7 @@ export default function BottomPlayerBar({
                 type="button"
                 className={secondaryControlClass}
                 aria-label={`Previous ${player.navLabel}`}
-                disabled={!player.canNavigate}
+                disabled={!player.canPrevious}
                 onClick={() => handleSmartNav('prev')}
               >
                 <SkipBack aria-hidden="true" size={16} />
@@ -456,7 +456,7 @@ export default function BottomPlayerBar({
                 type="button"
                 className={secondaryControlClass}
                 aria-label={`Next ${player.navLabel}`}
-                disabled={!player.canNavigate}
+                disabled={!player.canNext}
                 onClick={() => handleSmartNav('next')}
               >
                 <SkipForward aria-hidden="true" size={16} />

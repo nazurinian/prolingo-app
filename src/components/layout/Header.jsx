@@ -40,6 +40,8 @@ const Header = ({
   bookQaPending = false,
   onBookQaRefresh = null,
   onOpenBookQaData = null,
+  uatTabSlot = null,
+  uatTable = false,
   isCsvDirty,
   csvChangeSummary,
   saveUpdatedCSV,
@@ -198,7 +200,7 @@ const Header = ({
         <div className="md:hidden ml-auto flex items-center gap-1 flex-shrink-0" data-mobile-appbar-actions="true">
           <button
             type="button"
-            disabled={isSystemBusy || bookQaMode}
+            disabled={isSystemBusy || bookQaMode || uatTable}
             onClick={() => {
               setMobileOverflowOpen(false);
               const targetMode = mode === 'table' ? 'text' : 'table';
@@ -206,7 +208,7 @@ const Header = ({
               if (mobileTab !== 'player') handleMobileTabSwitch?.('player');
             }}
             className={`h-9 px-2.5 rounded-lg border border-slate-200/90 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-indigo-700 dark:hover:text-indigo-200 inline-flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed ${SHARED_CONTROL_TOKENS.focusRing}`}
-            title={bookQaMode ? 'Table mode is unavailable in isolated Book QA' : `Switch to ${mode === 'table' ? 'Text' : 'Table'}`}
+            title={bookQaMode ? 'Table mode is unavailable in isolated Book QA. Use UAT tabs.' : uatTable ? 'Use UAT tabs to leave Table' : `Switch to ${mode === 'table' ? 'Text' : 'Table'}`}
             aria-label={`Switch to ${mode === 'table' ? 'Text' : 'Table'} mode`}
             data-mobile-mode-switch="true"
           >
@@ -350,6 +352,7 @@ const Header = ({
         </div>
       </div>
 
+      {uatTabSlot}
       {/* 2. TABLE WORKSPACE TABS (Mobile). Utility navigation lives behind Controls. */}
       {isMobile && mode === 'table' && mobileTab === 'player' && (
         <>

@@ -1,0 +1,166 @@
+{
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Edg/158.0.4370.45",
+    "revision": "@b68f961247905cbca598f78f879145c09aacc1cf",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/158.0.0.0 Safari/537.36 Edg/158.0.0.0",
+    "jsVersion": "15.8.13.4"
+  },
+  "checks": [
+    "G-P2/G-P4 scoped From Here, exact ID Continue, bounded Restart, paused Next, timing defaults and scoped Reset",
+    "G-P3 all four text interaction cases, pending priority and one owner through Full/Card/Focus/Segment view switches",
+    "G-P3 explicit Unit From Here, independent Focus, one-shot return and Follow restoration on the next actual sentence"
+  ],
+  "defaults": {
+    "Channel Delay": 0,
+    "Sentence Delay": 0,
+    "Section / Turn Delay": 200,
+    "Card Delay": 350,
+    "Main Title Delay": 750,
+    "Card Heading Delay": 400,
+    "Repeat Delay": 500
+  },
+  "pausedWait": {
+    "unchanged": true,
+    "timeline": null
+  },
+  "document": "DOC_000001",
+  "currentOwner": 16,
+  "tabs": {
+    "legacyGate": true,
+    "tablePlayback": true,
+    "nativeOpens": [
+      "prolingo_audio_staging_v1",
+      "prolingo_audio_folder_handles_v1"
+    ],
+    "nativeWrites": [],
+    "bookSnapshotUnchanged": true
+  },
+  "importedComposition": {
+    "requested": "full",
+    "actual": "split",
+    "precision": "segment",
+    "source": "generated",
+    "verifiedWavDigest": "c998bb718a1d988ea26dadda7e800c1b54e93bb51b6ee2e35b7d69b04d8603dd",
+    "destinationTrusted": false
+  },
+  "safety": {
+    "qaHostChunkAbsent": true,
+    "qaHostModuleAbsent": true,
+    "qaRouteFallsBackToNormalApp": true,
+    "normalMainAppOpensCanonicalV1": true,
+    "normalMainAppMounted": true,
+    "tableAndLegacyPlayback": true,
+    "normalCredentialCleanup": true
+  },
+  "runtimeErrors": [],
+  "hf2Regression": {
+    "checks": [
+      "Details-open recorded, fallback and Browser-only transition matrix",
+      "Vertical Focus passive scroll and explicit Return to Playing checked in all states",
+      "London fixture reproduces 9 Card Ready and 38 Workspace Ready / 3 Full Missing",
+      "Actual Reader ZIP downloads, matching digests, generated Unit WAVs and Portable roundtrip",
+      "Portable defaults to alternates while Listening defaults to current and supports exact recorded selection"
+    ],
+    "transitions": {
+      "recordedEnToIdZero": {
+        "endToNextMs": 21.5,
+        "nativeMediaStartupMs": 17.7,
+        "falseLiveTimeline": 0,
+        "owners": [
+          1
+        ],
+        "waitingFrames": 2
+      },
+      "recordedIdToNextEnZero": {
+        "endToNextMs": 206.7,
+        "nativeMediaStartupMs": 201.8,
+        "falseLiveTimeline": 0,
+        "owners": [
+          1
+        ],
+        "waitingFrames": 14
+      },
+      "recordedAcrossSections": {
+        "endToNextMs": 215.9,
+        "nativeMediaStartupMs": 10.7,
+        "falseLiveTimeline": 0,
+        "owners": [
+          1
+        ],
+        "waitingFrames": 13
+      },
+      "recordedEnToId500": {
+        "endToNextMs": 523.4,
+        "nativeMediaStartupMs": 10,
+        "falseLiveTimeline": 0,
+        "owners": [
+          3
+        ],
+        "waitingFrames": 31
+      },
+      "recordedToBrowser": {
+        "endToNextMs": 3.6,
+        "nativeMediaStartupMs": null,
+        "falseLiveTimeline": 0,
+        "owners": [
+          5
+        ],
+        "waitingFrames": 0
+      },
+      "acrossCards": {
+        "endToNextMs": 373.1,
+        "nativeMediaStartupMs": 11.1,
+        "falseLiveTimeline": 0,
+        "owners": [
+          5
+        ],
+        "waitingFrames": 22
+      },
+      "browserOnly": {
+        "endToNextMs": 3.5,
+        "nativeMediaStartupMs": null,
+        "falseLiveTimeline": 0,
+        "owners": [
+          9
+        ],
+        "waitingFrames": 0
+      },
+      "recordedAcrossTurns": {
+        "endToNextMs": 217.3,
+        "nativeMediaStartupMs": 11.4,
+        "falseLiveTimeline": 0,
+        "owners": [
+          11
+        ],
+        "waitingFrames": 13
+      }
+    },
+    "encodedFixtureSilence": {
+      "durationMs": 2592,
+      "leadingMs": 28,
+      "trailingMs": 10.3,
+      "threshold": "1% peak amplitude"
+    },
+    "nativeBrowser": {
+      "status": "PASS",
+      "recordedToID": {
+        "voice": "Microsoft Andika - Indonesian (Indonesia)",
+        "stateRetainedOwner": 1,
+        "liveTimeline": false,
+        "queueAfterMediaEndMs": 3.8,
+        "startAfterQueueMs": 101
+      },
+      "nativeOnly": [
+        {
+          "voice": "Microsoft David - English (United States)",
+          "startAfterQueueMs": 88
+        },
+        {
+          "voice": "Microsoft Andika - Indonesian (Indonesia)",
+          "startAfterQueueMs": 47.5
+        }
+      ]
+    }
+  }
+}

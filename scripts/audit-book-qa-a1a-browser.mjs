@@ -10,6 +10,7 @@ import { checkBookHardeningPlayback } from './fixtures/a1b-g/check-hardening-pla
 import { checkPersistentBookQaDemo, demoAuditLibraries } from './fixtures/book-qa/check-persistent-demo.mjs';
 import { checkBookQaReaderRefinement, readerRefinementLibraries } from './fixtures/book-qa/check-reader-refinement.mjs';
 import { checkBookQaA3, a3Libraries } from './fixtures/book-qa/check-a3-browser.mjs';
+import { checkBookQaA3G, checkBookUatTabBoundaries, a3gLibraries } from './fixtures/book-qa/check-a3g-browser.mjs';
 import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import http from 'node:http';
@@ -31,12 +32,13 @@ const portableAudit = process.env.BOOK_QA_PORTABLE_AUDIO_AUDIT === '1';
 const hardeningAudit = process.env.BOOK_QA_HARDENING_AUDIT === '1';
 const demoAudit = process.env.BOOK_QA_A2_AUDIT === '1';
 const a3Audit = process.env.BOOK_QA_A3_AUDIT === '1';
+const a3gAudit = process.env.BOOK_QA_A3G_AUDIT === '1';
 const readerRefinement = process.env.BOOK_QA_HF1_READER_AUDIT;
 const nativeSpeech = ['native', 'hf2-native'].includes(readerRefinement);
 const companionByLibrary = { ...(audioAudit ? bookAudioAuditLibraries : {}), ...(bodyAudit ? bodyAuditLibraries : {}),
   ...(headingAudit ? headingAuditLibraries : {}), ...(portableAudit ? { ...portableAuditLibraries, ...normalAuditLibraries } : {}),
   ...(hardeningAudit ? hardeningAuditLibraries : {}), ...(demoAudit ? demoAuditLibraries : {}),
-  ...(readerRefinement ? readerRefinementLibraries : {}), ...(a3Audit ? a3Libraries : {}) };
+  ...(readerRefinement ? readerRefinementLibraries : {}), ...(a3Audit ? a3Libraries : {}), ...(a3gAudit ? a3gLibraries : {}) };
 const bodyRequests = [];
 const evidenceDir = process.env.BOOK_QA_EVIDENCE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-book-qa-evidence-'));
 const evidenceFile = path.join(evidenceDir, 'a1a-bookqa-main-app.png');
@@ -261,7 +263,7 @@ const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'prolingo-a1a-bookqa-'))
 const browserPath = process.env.P15_BROWSER_PATH || process.env.A1_BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const launchBrowser = () => spawn(browserPath, [
   '--headless=new', '--disable-gpu', '--disable-extensions', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0',
-  ...(bodyAudit || headingAudit || portableAudit || demoAudit || readerRefinement ? ['--autoplay-policy=no-user-gesture-required'] : []),
+  ...(bodyAudit || headingAudit || portableAudit || demoAudit || readerRefinement || a3gAudit ? ['--autoplay-policy=no-user-gesture-required'] : []),
   `--user-data-dir=${profile}`, 'about:blank'
 ], { windowsHide: true, stdio: 'ignore' });
 const waitForBrowserExit = browser => new Promise(resolve => {
@@ -283,7 +285,10 @@ const instrumentation = `(() => {
   const qaPrefix = ${JSON.stringify(qaPrefix)};
   const selected = new URLSearchParams(location.search).get('db');
   const companion = ${JSON.stringify(companionByLibrary)}[selected];
-  const permitted = name => (name.startsWith(qaPrefix) && name === selected) || (companion && name === companion);
+  const tableSurface = ${a3gAudit} && new URLSearchParams(location.search).get('qa') === 'table-uat';
+  const tableOwned = ['prolingo_audio_staging_v1', 'prolingo_audio_folder_handles_v1'];
+  const permitted = name => tableSurface ? tableOwned.includes(name)
+    : (name.startsWith(qaPrefix) && name === selected) || (companion && name === companion);
   const save = () => {
     window.__bookQaAudit = audit;
     try { window.__a1aIdbAudit(JSON.stringify({ origin: location.origin, audit })); } catch {}
@@ -768,7 +773,7 @@ try {
 
   if (a3Audit) {
     const requestsBefore = bodyRequests.length;
-    report.a3 = await checkBookQaA3({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, probe, uatOrigin });
+    report.a3 = await checkBookQaA3({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, probe, uatOrigin, a3gAudit });
     const audit = await readAudit();
     assert.deepEqual(await storageState(false), expectedStorage);
     assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
@@ -779,6 +784,19 @@ try {
     assert.equal(bodyRequests.length - requestsBefore, 2);
     assert(qaApiRequests.every(url => url === uatOrigin + '/api/tts'));
   }
+  if (a3gAudit) {
+    const { persisted, ...bookResult } = await checkBookQaA3G({ evaluate, waitFor, navigate, chooseOptIn, clickButton, probe, uatOrigin });
+    const audit = await readAudit();
+    assert.deepEqual(audit.storage, []);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(await probe(`module.checkSentinels(${JSON.stringify(sentinelNames)}, false)`), sentinels);
+    const { reconnect, ...tabs } = await checkBookUatTabBoundaries({ evaluate, waitFor, clickButton, chooseOptIn, probe, readAudit, starting: audit });
+    assert.deepEqual(reconnect, persisted.snapshot);
+    assert.deepEqual((await readAudit()).violations, []);
+    assert.deepEqual((await readAudit()).deletes, []);
+    report.a3g = { ...bookResult, tabs: { ...tabs, bookSnapshotUnchanged: true } };
+    console.log('PASS G-N UAT routes retain separate authority and release playback across Book, gated Legacy and Table');
+  }
   const productionScripts = (await fs.readdir(path.join(productionRoot, 'assets'))).filter(name => name.endsWith('.js'));
   const productionSources = await Promise.all(productionScripts.map(name => fs.readFile(path.join(productionRoot, 'assets', name), 'utf8')));
   report.production = {
@@ -787,6 +805,7 @@ try {
   };
   assert(report.production.qaHostChunkAbsent && report.production.qaHostModuleAbsent, 'Production output must exclude the Book QA host module');
   if (a3Audit) assert(productionSources.every(source => !source.includes('data-book-data-manager')), 'Production must exclude the Book Data manager');
+  if (a3gAudit) assert(productionSources.every(source => !source.includes('data-uat-tabs') && !source.includes('data-uat-legacy-gate')), 'Production must exclude the three-tab UAT shell');
   if (demoAudit) assert(productionSources.every(source => !source.includes('Initialize A2 demo library')), 'Production must exclude the A2 initializer');
   if (bodyAudit) {
     report.production.bookBodyAudioPanelAbsent = productionSources.every(source => !source.includes('data-book-body-audio-status'));
@@ -838,6 +857,12 @@ try {
   if (a3Audit) {
     await fs.writeFile(path.join(evidenceDir, 'a3-book-qa-evidence.json'), JSON.stringify({
       browser: await call('Browser.getVersion'), ...report.a3, safety: report.production, runtimeErrors
+    }, null, 2) + '\n');
+  }
+  if (a3gAudit) {
+    await fs.writeFile(path.join(evidenceDir, 'a3g-book-qa-evidence.json'), JSON.stringify({
+      browser: await call('Browser.getVersion'), ...report.a3g, importedComposition: report.a3?.importedComposition,
+      safety: report.production, runtimeErrors
     }, null, 2) + '\n');
   }
   console.log(JSON.stringify(report, null, 2));

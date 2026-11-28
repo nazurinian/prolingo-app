@@ -18,12 +18,16 @@ const learningPart = part => {
 
 export const resolveGlobalPlayerTransport = ({ session, paused, audible, structuredView, savedRepresentation }) => {
   const queue = session?.nowPlayingCardOrder ?? session?.orderedList;
+  const canNavigate = !session || Boolean(session.restart && (queue?.length > 1 || (session.headingIntro && queue?.length)));
+  const precision = session?.book?.cursor?.step.kind;
   return {
     phase: !session ? 'idle' : session.pending ? 'pending' : paused ? 'paused' : audible ? 'playing' : 'waiting',
     workspace: session?.documentTree ?? null,
-    navKind: session ? (session.nowPlayingCardOrder ? 'card' : session.context === 'text-structured' ? 'segment' : 'item')
+    navKind: session ? (session.nowPlayingCardOrder || precision === 'full' ? 'card' : session.context === 'text-structured' ? 'segment' : 'item')
       : structuredView ? (savedRepresentation === 'full' ? 'card' : 'segment') : 'item',
-    canNavigate: !session || Boolean(session.restart && (queue?.length > 1 || (session.headingIntro && queue?.length)))
+    canNavigate,
+    canPrevious: session?.canNavigateTo ? session.canNavigateTo('prev') : canNavigate,
+    canNext: session?.canNavigateTo ? session.canNavigateTo('next') : canNavigate
   };
 };
 
@@ -107,8 +111,12 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
     ['Representation', representationSummary]
   ].filter(([, value]) => value);
   const state = betweenSteps ? 'Between audio steps' : stateLabels[transport.phase];
+  const ready = transport.ready;
+  const readyContext = ready ? join(ready.completed ? 'Completed · Ready at session start' : ready.pending ? 'Selected target' : 'Ready',
+    ready.heading === 'mainTitle' ? 'Main Title' : ready.heading ? 'Card Heading' : ready.segmentId ?? ready.cardId,
+    ready.channel === 'meaning' ? 'ID' : 'EN') : null;
   const title = workspace?.title ?? (item?.title ? (table ? capitalizeDisplayText(item.title) : item.title) : null);
-  const context = authored || join(itemContext, partLabel);
+  const context = authored || readyContext || join(itemContext, partLabel);
   return {
     title,
     context,
@@ -119,6 +127,8 @@ export const presentGlobalPlayer = ({ nowPlaying = {}, transport }) => {
     timelineSlot: Boolean(nowPlaying.continuousPresentation),
     navLabel: queueLabels[transport.navKind],
     canNavigate: transport.canNavigate,
+    canPrevious: transport.canPrevious ?? transport.canNavigate,
+    canNext: transport.canNext ?? transport.canNavigate,
     phase: transport.phase,
     betweenSteps,
     playLabel: { pending: 'Starting playback', paused: 'Resume playback', playing: 'Pause playback', waiting: 'Pause playback' }[transport.phase] ?? 'Start playback',

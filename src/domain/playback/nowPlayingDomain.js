@@ -83,9 +83,10 @@ const readStructuredIdentity = (tree, target) => {
 };
 
 const readQueue = (context, target) => {
-  if (Array.isArray(context.nowPlayingCardOrder)) {
-    const index = context.nowPlayingCardOrder.indexOf(target.cardId);
-    return index >= 0 ? Object.freeze({ kind: 'card', ...indexed(context.nowPlayingCardOrder, index) }) : null;
+  const cardOrder = context.book && target.representation === 'full' ? context.book.plan.cardOrder : context.nowPlayingCardOrder;
+  if (Array.isArray(cardOrder)) {
+    const index = cardOrder.indexOf(target.cardId);
+    return index >= 0 ? Object.freeze({ kind: 'card', ...indexed(cardOrder, index) }) : null;
   }
   const list = context.orderedList;
   if (!Array.isArray(list)) return null;
@@ -150,8 +151,10 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
   const item = readItem(target?.item, target?.part, domain, target?.playedText);
   const rate = runtime?.media?.playbackRate ?? source?.rate;
   const structured = domain === 'structured-text';
+  const currentStep = context.book?.cursor?.step;
+  const temporarySplit = currentStep?.kind === 'split' && !currentStep.runtime;
   const commandRepresentation = structured && !target?.heading
-    ? (target && context.temporarySplitCardIds?.includes(target.cardId) ? 'split' : context.playbackRepresentationMode ?? null)
+    ? (temporarySplit || target && context.temporarySplitCardIds?.includes(target.cardId) ? 'split' : context.playbackRepresentationMode ?? null)
     : null;
   const actualRepresentation = target?.representation ?? null;
   return Object.freeze({
@@ -172,6 +175,7 @@ export const readOwnedNowPlaying = (refs, owner, { isPlaying = false, current = 
     fallbackReason: source?.fallbackReason ?? null,
     rate: Number.isFinite(rate) && rate > 0 ? rate : null,
     scope: context.scope ?? (context.kind === 'independent' ? 'item' : 'queue'),
+    ...(context.book ? { repeatPass: context.repeatPass, repeatCount: context.repeatCount } : {}),
     commandTarget: structured ? context.commandTarget ?? null : null,
     queue: target && !target.heading ? readQueue(context, target) : null,
     timeline: readNowPlayingMediaTimeline(runtime?.media)

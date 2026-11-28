@@ -1018,7 +1018,8 @@ export const resolveEffectiveCardSelection = ({
   workspaceKey = null,
   manualAnchor = null,
   unitSegmentMemory = null,
-  dismissedFocusNonce = null
+  dismissedFocusNonce = null,
+  followPlayback = true
 }) => {
   const resolvedLookup = lookup || buildCardUnitLookup(card);
   const { units, unitByViewKey, unitIndexByViewKey, entryBySegmentId } = resolvedLookup;
@@ -1099,10 +1100,10 @@ export const resolveEffectiveCardSelection = ({
   } else if (hasValidManual) {
     selectedUnitViewKey = resolvedManualUnitViewKey;
     source = 'manual';
-  } else if (audiblePlayingKey && audibleUnitViewKey) {
+  } else if (followPlayback && audiblePlayingKey && audibleUnitViewKey) {
     selectedUnitViewKey = audibleUnitViewKey;
     source = 'audible';
-  } else if (isAudibleOnCard && cursor?.state === 'paused' && audibleUnitViewKey) {
+  } else if (followPlayback && isAudibleOnCard && cursor?.state === 'paused' && audibleUnitViewKey) {
     selectedUnitViewKey = audibleUnitViewKey;
     source = 'paused-cursor';
   }
@@ -1121,9 +1122,9 @@ export const resolveEffectiveCardSelection = ({
         : (selectedUnitSegments[0]?.id || null);
     } else if (hasValidManual) {
       selectedSegmentId = resolvedManualSegmentId || pickValidRememberedOrFirstSegment(selectedUnit);
-    } else if (audiblePlayingKey && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
+    } else if (followPlayback && audiblePlayingKey && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
       selectedSegmentId = audibleSegmentId;
-    } else if (isAudibleOnCard && cursor?.state === 'paused' && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
+    } else if (followPlayback && isAudibleOnCard && cursor?.state === 'paused' && audibleSegmentId && audibleUnitViewKey === selectedUnitViewKey) {
       selectedSegmentId = audibleSegmentId;
     } else {
       selectedSegmentId = pickValidRememberedOrFirstSegment(selectedUnit);
@@ -1187,7 +1188,8 @@ export const resolveWorkspaceContextualTarget = ({
   workspaceId = null,
   workspaceKey = null,
   activeContextualSelection = null,
-  dismissedFocusNonce = null
+  dismissedFocusNonce = null,
+  followPlayback = true
 } = {}) => {
   const safeCards = Array.isArray(cards) ? cards : [];
   const locateSegment = (cardId, segmentId) => {
@@ -1261,7 +1263,7 @@ export const resolveWorkspaceContextualTarget = ({
   } else if (manualLocation) {
     resolved = manualLocation;
     source = 'manual';
-  } else if (audibleLocation) {
+  } else if (followPlayback && audibleLocation) {
     resolved = audibleLocation;
     source = cursor?.state === 'paused' ? 'paused-cursor' : 'audible';
   }

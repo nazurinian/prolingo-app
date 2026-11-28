@@ -215,3 +215,18 @@ The owner closed A2-HF2 with **4/4 manual PASS** for Export and Naming, Coverage
 | Gated in Book QA | UID-preserving attach/sync, destructive replace restore, canonical write paths, canonical System tools, and complete Audio Control Center remain unavailable. Existing physical recording cleanup, playback timing, three-tab integration and final Reader work stay in their assigned phases. |
 
 The [A3 report](A3_Book_QA_Native_Data_Management_Report.md) and [Indonesian checklist](A3_Book_QA_Manual_UAT_ID.md) support independent review and owner UAT. Production activation is **NO-GO**.
+
+## A3-G capability update
+
+The owner authorized A3-G after a conditional independent A3 engineering GO and deferred A3 manual acceptance into the combined A3 + A3-G owner UAT. Neither package has passed that manual gate.
+
+| Capability | Boundary |
+| --- | --- |
+| Book playback authority | One Book intent planner and existing playback owner. Frozen scoped plan, actual media cursor and Ready plan stay in memory. Stop and restart preserve the approved scope, and authored-snapshot changes fence obsolete targets. |
+| Book Reader and timing | Tap/Continue, Follow/Return and timing preferences stay within the connected Book App. Seven timing edges use the existing bounded normalization and group Reset. Timing changes have no IndexedDB or canonical preference effect. |
+| Book tabs | Reconnecting Book requires explicit authorization and the same disposable v2 database name. Leaving releases playback and disposes the Book connection. |
+| Native Table tab | Explicit entry uses normal Table authority at the approved UAT origin. The tab suppresses Text v1 bootstrap and Text preference persistence. |
+| Legacy tab | Live startup is gated because existing Legacy initialization can write Text v1. Normal Legacy remains on its existing path. |
+| Portable Full Conversation | Exact import proofs survive transfer and reimport. Playback requires trusted local composition before authorizing derived Full and may use verified Split fallback. |
+
+See the [A3-G report](A3G_Book_QA_Implementation_Report.md) and [combined Indonesian checklist](A3_A3G_Book_QA_Integrated_Manual_UAT_ID.md). Production activation remains **NO-GO**.

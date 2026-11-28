@@ -19,7 +19,7 @@ import { MOBILE_AUX_TOP_OFFSET, MOBILE_BOTTOM_PLAYER_RESERVE_CSS, getMobilePlaye
 import { OVERLAY_SOURCES, subscribeOtherPresentationOverlayOpen } from '../text/presentation/sharedOverlayCoordinator.js';
 import { usePresentationOverlayFocus } from '../text/presentation/usePresentationOverlayFocus.js';
 
-const MobileToolsSurface = ({ open, onClose, children }) => {
+const MobileToolsSurface = ({ open, onClose, children, extraTop = 0 }) => {
   const panelRef = useRef(null);
   useEffect(() => {
     if (open) return subscribeOtherPresentationOverlayOpen(OVERLAY_SOURCES.MOBILE_TOOLS, onClose);
@@ -37,7 +37,7 @@ const MobileToolsSurface = ({ open, onClose, children }) => {
       data-mobile-tools-surface="true"
       hidden={!open}
       className="absolute inset-0 z-30 overflow-y-auto overscroll-contain bg-slate-50 dark:bg-slate-900 md:hidden"
-      style={{ paddingTop: `${MOBILE_AUX_TOP_OFFSET}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS }}
+      style={{ paddingTop: `${MOBILE_AUX_TOP_OFFSET + extraTop}px`, paddingBottom: MOBILE_BOTTOM_PLAYER_RESERVE_CSS }}
     >
       {children}
     </div>
@@ -48,7 +48,7 @@ import { getTextWorkspaceBadge } from '../../domain/text/textWorkspaceTaxonomyDo
 export const renderMainAppShellView = (props) => {
   const {
     isMobile, showAppBar, isSidebarOpen, setIsSidebarOpen, goHome, isSystemBusy,
-    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null, onOpenBookQaData = null, bookQaRefreshError = null, handleCreateBookQaSample,
+    bookQaMode = false, bookQaDatabaseName = '', bookQaRefreshing = false, bookQaPending = false, onBookQaRefresh = null, onOpenBookQaData = null, bookQaRefreshError = null, handleCreateBookQaSample, uatTabSlot, uatTable,
     savedDecks, selectedDeckId, handleLoadDeck, handleDeleteDeckInit, currentDeckName, setCurrentDeckName,
     handleSaveDeck, mode, isCsvDirty, csvChangeSummary, saveUpdatedCSV, folderInputRef, audioZipInputRef,
     sourceInputRef, fullPackInputRef, handleFolderSelect, handleAudioZipSelect, handleSourceUpload, handleFullPackUpload, mobileTab,
@@ -84,6 +84,7 @@ export const renderMainAppShellView = (props) => {
     structuredTextAudioSidebarControls, structuredTextAudioLibraryControls, structuredTextAudioCoverageMap,
     hideMobileTextDocumentStrip = false
   } = props;
+  const uatTabHeight = uatTabSlot ? 36 : 0;
 
   const mobileTextDocuments = mode === 'text' ? [
     ...(textLibraryCatalog?.rootDocuments || []),
@@ -114,6 +115,8 @@ export const renderMainAppShellView = (props) => {
         bookQaRefreshing={bookQaRefreshing}
         bookQaPending={bookQaPending}
         onOpenBookQaData={onOpenBookQaData}
+        uatTabSlot={uatTabSlot}
+        uatTable={uatTable}
         onBookQaRefresh={onBookQaRefresh}
         isCsvDirty={isCsvDirty}
         csvChangeSummary={csvChangeSummary}
@@ -163,6 +166,7 @@ export const renderMainAppShellView = (props) => {
              <div className="p-4 border-b border-slate-100 dark:border-slate-700 space-y-4 flex-shrink-0">
               
               <SidebarTopControls
+                uatTable={uatTable}
                 theme={theme}
                 setTheme={setTheme}
                 isSystemBusy={isSystemBusy}
@@ -390,6 +394,7 @@ export const renderMainAppShellView = (props) => {
             {!isMobile && mode === 'table' && renderWorkspaceTabs(false)}
 
             <MobileToolsSurface
+              extraTop={uatTabHeight}
               open={isMobile && mobileTab === 'tools'}
               onClose={() => handleMobileTabSwitch?.('player')}
             >
@@ -400,7 +405,7 @@ export const renderMainAppShellView = (props) => {
                  {/* 5. SPACER OTOMATIS */}
                  <div className={`max-w-4xl mx-auto px-2 md:px-4 ${isMobile ? 'h-auto' : 'h-full pt-2 md:pt-4'}`}
                       style={{ 
-                          paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode)}px` : '0'
+                          paddingTop: isMobile ? `${getMobilePlayerTopOffset(mode) + uatTabHeight}px` : '0'
                       }}
                  >
                     {isMobile && mode === 'text' && !hideMobileTextDocumentStrip && <div className="mb-1.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-1.5 py-1 shadow-xs" data-mobile-text-document-strip="true">

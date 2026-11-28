@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { BookReaderInteractionContext } from './BookReaderInteractionContext.js';
+import TextSegmentInteraction from './TextSegmentInteraction.jsx';
 import { ChevronLeft, ChevronRight, Play, Radio, SkipForward, Square, Target } from 'lucide-react';
 import { matchesStructuredPlaybackControl } from '../../../domain/playback/nowPlayingDomain.js';
 import {
@@ -63,7 +65,10 @@ export const SharedSegmentStudyBox = ({
   onPlaySegmentChannel = null,
   onPlayContinueFromSegment = null
 }) => {
-  const [continueScope, setContinueScope] = useState('card');
+  const [classicContinueScope, setClassicContinueScope] = useState('card');
+  const book = useContext(BookReaderInteractionContext);
+  const continueScope = book?.boundary ?? classicContinueScope;
+  const setContinueScope = book?.setBoundary ?? setClassicContinueScope;
   const unitRailRef = useRef(null);
   const units = lookup?.units || card?.units || [];
   const entries = lookup?.entries || [];
@@ -375,7 +380,8 @@ export const SharedSegmentStudyBox = ({
             bodyStyle.textAlign === 'justify' ? 'max-sm:!text-left' : ''
           }`}
         >
-          {hasContent ? content : (
+          {hasContent ? (book ? <TextSegmentInteraction segmentId={segment.id} channel={channel} interactive disabled={disabled}
+            accessibleLabel={`Read ${isMeaningChannel ? 'ID' : 'EN'} sentence`}>{content}</TextSegmentInteraction> : content) : (
             <span
               data-shared-card-missing-text={!isMeaningChannel ? segment.id : undefined}
               data-shared-card-missing-meaning={isMeaningChannel ? segment.id : undefined}

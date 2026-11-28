@@ -8,7 +8,7 @@ const root = '[data-book-data-manager]';
 const host = 'window.__bookQaProps("[data-book-qa-indicator]", "bookQaConnection", true).bookQaConnection';
 const q = JSON.stringify;
 
-export async function checkBookQaA3({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, probe, uatOrigin }) {
+export async function checkBookQaA3({ call, evaluate, waitFor, clickButton, navigate, chooseOptIn, probe, uatOrigin, a3gAudit }) {
   const checks = [];
   const pass = name => { checks.push(name); console.log('PASS', name); };
   const click = async selector => {
@@ -278,6 +278,24 @@ export async function checkBookQaA3({ call, evaluate, waitFor, clickButton, navi
   await waitFor(`document.querySelector('[data-book-portable-status]')?.innerText.includes('${sourceReads.length} references committed')`);
   const copyReads = await probe(`module.readA3Audio(${host}, ${q(copy.id)})`);
   assert.deepEqual(copyReads, sourceReads.map(row => ({ ...row, trustedComposition: false })));
+  let importedComposition;
+  if (a3gAudit) {
+    const player = 'window.__bookQaProps("[data-global-player]", "readPlayer", true).readPlayer()';
+    const scene = (await state()).view.workspace.documentTree.blocks.find(row => row.blockType === 'conversation');
+    await click('[data-book-playback-settings] summary');
+    await change('[data-book-playback-settings] select:has(option[value="full"])', 'full');
+    await evaluate(`window.__bookQaProps('[data-text-structured-player]', 'onPlayCard', true).onPlayCard(${q(scene.id)})`);
+    await waitFor(`${player}.transport.phase === 'playing' && ${player}.nowPlaying.segment?.id === ${q(scene.segments[0].id)}`);
+    importedComposition = await evaluate(`(() => {
+      const observed = ${player}.nowPlaying;
+      return { requested: observed.requestedRepresentation, actual: observed.actualRepresentation, precision: observed.precision, source: observed.source };
+    })()`);
+    assert.deepEqual(importedComposition, { requested: 'full', actual: 'split', precision: 'segment', source: 'generated' });
+    assert.equal(copyReads.at(-1).trustedComposition, false);
+    importedComposition = { ...importedComposition, verifiedWavDigest: copyReads.at(-1).digest, destinationTrusted: false };
+    await click('[data-global-player] [aria-label="Stop playback"]');
+    pass('G-P1 imported untrusted Full Conversation falls back to verified Split while its WAV digest remains exact');
+  }
   await clickButton('Import selected files');
   await waitFor(`document.querySelector('[data-book-portable-status]')?.innerText.includes('0 references committed and ${sourceReads.length} already available')`);
   pass('A3-C cancellation, malformed JSON, real stale transaction, atomic new destination, remapped UID lineage and idempotent Portable restore');
@@ -328,7 +346,7 @@ export async function checkBookQaA3({ call, evaluate, waitFor, clickButton, navi
   await open(names[0], true);
   assert.deepEqual((await db(names[0])).snapshot, sourcePersisted);
   pass('A3-C Root, Collection preservation/explicit destination and full Library recovery. A3-A confirmed Workspace delete, mobile and isolated reconnect');
-  return { checks, zipName, zip, source: { id: source.id, uid: source.uid }, copy: { id: copy.id, uid: copy.uid },
+  return { checks, zipName, zip, importedComposition, source: { id: source.id, uid: source.uid }, copy: { id: copy.id, uid: copy.uid },
     json: { workspace: JSON.parse(workspaceJson).packageType, collection: JSON.parse(collectionJson).packageType,
       root: rootJson.packs.length, library: libraryJson.packs.length },
     beforeAudio: beforeAudio.map(row => row.status), sourceAudio: sourceReads, afterAudio: copyReads };

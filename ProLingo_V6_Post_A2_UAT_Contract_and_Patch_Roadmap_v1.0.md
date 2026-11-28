@@ -8,8 +8,8 @@
 | Branch | `test/text-v2-uat` |
 | Worktree | `prolingo-p12-integration-qa` |
 | Baseline saat ini | `2c695bd0f91c20573fd08004a000c40d46e21050` — A2-HF1 |
-| Status | Owner accepted A2-HF2 4/4. A3 is at independent review and owner manual UAT. |
-| Next | A3 acceptance gate → A3-G → A4 → A5 → A6/4H2 → R0–R3 |
+| Status | Owner accepted A2-HF2 4/4. A3 engineering received conditional independent GO. A3-G awaits independent review and the combined A3 + A3-G owner UAT. |
+| Next | A3-G independent review and combined A3 + A3-G owner UAT → A4 → A5 → A6/4H2 → R0–R3 |
 | Production activation | **NO-GO** |
 
 > Dokumen ini mencatat pembahasan sejak A2-HF1 dan manual UAT kedua, termasuk koreksi dari diskusi lanjutan. Bukan perintah langsung untuk mengerjakan semua patch sekaligus. Tidak ada code, DB, konfigurasi, branch, commit, deployment atau release yang diubah oleh pembuatan catatan ini.
@@ -382,6 +382,8 @@ The independent review of the owner's bilingual London exports found 86 recorded
 
 **A3 checkpoint, 28 November 2026.** The isolated Book QA AppBar opens Book Data. Catalog and authoring use the scoped P15 writer. JSON import creates copies in a single transaction and preserves source lineage for the separate Portable Audio import. Root and Library recovery are additive. Attach/sync, UID-preserving import, and destructive replace restore remain gated. Independent review and owner manual UAT are **NOT CONFIRMED**. Production activation is **NO-GO**. [A3 report](A3_Book_QA_Native_Data_Management_Report.md) · [Manual UAT checklist](A3_Book_QA_Manual_UAT_ID.md)
 
+**A3 owner decision.** The owner authorized A3-G on the conditional independent A3 engineering GO at `2d3e435`. A3 manual UAT was deferred into the combined A3 + A3-G owner gate. The separate A3 commit remains the regression baseline. [Combined manual UAT](A3_A3G_Book_QA_Integrated_Manual_UAT_ID.md)
+
 ### 11.3 A3-G — functional playback/interaction contract + three-tab UAT integration (Sol High)
 
 **Goal:** Finish shared core semantics before Neon final styling; expose minimal safe controls sufficient for functional verification. Keep A3 persistence work accepted, no redundant storage redesign.
@@ -407,6 +409,8 @@ Approved future timing defaults for A3-G:
 Use one applicable delay between adjacent playable steps. The A3-G planning rule gives Repeat Delay precedence at a repeat boundary. Within a pass, use Channel Delay between channels of the same item. After the final channel of an audible Main Title or Card Heading, use that heading's delay in place of a structural delay. For ordinary adjacent body items use the widest crossed boundary, in order Card, Section/Turn, then Sentence. Preserve existing preferences and Table/Legacy isolation. A3 leaves runtime values unchanged.
 
 **Exit:** Playback contract and safe UAT navigation accepted. Sol hands Neon stable shared APIs and preference ownership; no new independent player in UI.
+
+**A3-G checkpoint.** Book intents, frozen transport and resume, shared Reader interaction and hierarchical timing now use the existing scoped playback runtime. The UAT-only navigation opens the isolated Book and explicitly authorized Table surfaces in separate documents. The Legacy tab remains gated because its native bootstrap can write Text v1. Portable Full Conversation imports retain proof and require local trust for Full playback. The combined owner UAT and A3-G independent review remain **NOT CONFIRMED**. [Implementation report](A3G_Book_QA_Implementation_Report.md) · [Recovery checkpoint](A3G_Book_QA_Recovery_Checkpoint.md)
 
 ### 11.4 A4 — Sidebar, Workspace Control Center & audio profiles (Neon; Sol review for logic)
 
@@ -471,7 +475,7 @@ Post-Stable: Legacy modernisation v6.1, Table v6.2, content authoring v6.3 as ex
 - Keep prompts short and refer to this addendum, original architecture contract, current capability ledger and exact checkpoint. Sol only for core and acceptance, Neon for UI/prototype. Do not reread entire repo or rerun every historical audit for cosmetic changes; focused scope and escalation for shared persistence/runtime boundaries. Full regression at meaningful gates. Avoid repeated retries for unrelated baseline failures; compare and record evidence.
 - Each patch report: issue IDs and classification; actual starting HEAD; scope and non-goals; reproduction/source anchors; changed-file list; commands/counts/exit codes; evidence of unchanged invariants; manual checklist only affected items; outstanding debt and next phase; GO/CONDITIONAL GO/NO-GO for isolated scope. Explicitly distinguish executor reported vs independent source review vs human verification. Normal/UAT builds sequential after final changes where applicable; preserve final-byte evidence. Do not mark deferred/untested as PASS.
 - Pending UAT evidence: EN local listening confirmed; verify ID local and like-for-like latency; actual cancel/retry, portable reimport and browser restart with recordings only when tested; stress multi-batch manual status not implied by basic Workspace Split; exact Heading audio coverage/controls, manual repeat/resume/From Here settings after A3-G; full physical A6. Existing 12/22 first UAT tally remains historical; second retest records six responses and qualifications, not an automatic 22/22 replacement.
-- Next gate is A3 independent review and owner manual UAT. A3-G starts only after separate authorization.
+- Next gate is A3-G independent review and the combined A3 + A3-G owner manual UAT. A4 requires a separate decision after that gate.
 - Cross-phase Reset contract: enable Reset only when normalized effective values differ from the group's defaults, and disable immediately when values manually return to defaults. Commit slider persistence on release. Reset only its settings group. Override Reset restores parent inheritance. Preserve data, recordings, unrelated preferences, existing explicit overrides, and accepted reset-dirty behavior. Avoid unnecessary confirmation, remount, reload, flicker, and repeated writes.
 
 ## 13. Source anchors and verification boundaries

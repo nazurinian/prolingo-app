@@ -20,6 +20,7 @@ export const resolveNowPlayingReaderCursor = ({ presentation, nowPlaying } = {})
     actualRepresentation: nowPlaying.actualRepresentation ?? null,
     representationFallback: nowPlaying.representationFallback ?? null,
     scope: nowPlaying.scope ?? null,
+    ...(nowPlaying.repeatPass ? { repeatPass: nowPlaying.repeatPass } : {}),
     boundary: nowPlaying.boundary ?? null
   });
   const cardId = nowPlaying.card?.id;

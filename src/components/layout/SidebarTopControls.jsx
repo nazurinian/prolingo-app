@@ -7,6 +7,7 @@ const SidebarTopControls = ({
   isSystemBusy,
   mode,
   bookQaMode = false,
+  uatTable = false,
   handleModeSwitch,
   sidebarSection,
   renderControlSectionTabs
@@ -24,7 +25,7 @@ const SidebarTopControls = ({
 
     <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
       <button disabled={isSystemBusy || bookQaMode} onClick={() => handleModeSwitch('table')} title={bookQaMode ? 'Table mode is unavailable in isolated Book QA' : undefined} className={`text-xs font-bold py-1.5 rounded ${(isSystemBusy || bookQaMode) ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'table' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>Table</button>
-      <button disabled={isSystemBusy} onClick={() => handleModeSwitch('text')} className={`text-xs font-bold py-1.5 rounded ${isSystemBusy ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'text' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>Text</button>
+      <button disabled={isSystemBusy || uatTable} title={uatTable ? 'Use the UAT tabs for other modes' : undefined} onClick={() => handleModeSwitch('text')} className={`text-xs font-bold py-1.5 rounded ${isSystemBusy || uatTable ? 'cursor-not-allowed opacity-50' : ''} ${mode === 'text' ? 'bg-white dark:bg-slate-600 shadow text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}>Text</button>
     </div>
 
     <div className="space-y-2">

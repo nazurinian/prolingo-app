@@ -1,4 +1,5 @@
 import React, { useContext, useMemo } from 'react';
+import { BookReaderInteractionContext } from './BookReaderInteractionContext.js';
 import { Languages, Play, Radio, Square, X } from 'lucide-react';
 import './sharedReaderTypography.css';
 import {
@@ -845,6 +846,7 @@ export const SharedBilingualUnitsBody = ({
 }) => {
   const units = unitsOverride || card?.units || [];
   const onPlayUnit = useContext(SharedUnitPlaybackContext);
+  const book = useContext(BookReaderInteractionContext);
   const isTitleRole = card?.paragraphRole === TEXT_PARAGRAPH_CARD_ROLES.TITLE;
   const cursor = playbackCursor || IDLE_SHARED_CURSOR;
   const isSpeakingCard = Boolean(cursor.cardId === card?.id && (cursor.state === 'playing' || cursor.state === 'paused'));
@@ -1014,7 +1016,7 @@ export const SharedBilingualUnitsBody = ({
     const stop = matchesStructuredPlaybackControl(cursor, { ...target, scope: 'unit' });
     const unitKindLabel = unit.kind === 'turn' ? 'Turn' : 'Section';
     const activeStopTone = resolvePlaybackSemanticTone({ state: cursor.state, channel: cursor.channel });
-    return (
+    const play = (
       <button
         type="button"
         data-shared-unit-play={unit.viewKey}
@@ -1032,6 +1034,10 @@ export const SharedBilingualUnitsBody = ({
         <span>{stop ? 'Stop' : 'Play'} {unitKindLabel}</span>
       </button>
     );
+    return book && unit.id ? <span className="inline-flex flex-wrap gap-1">{play}
+      <button type="button" className="min-h-8 rounded-full border px-2 text-[11px]"
+        data-book-unit-from={unit.id} onClick={() => book.unitFrom(target)}>From this {unitKindLabel}</button>
+    </span> : play;
   };
   const contextualDiverged = Boolean(renderMode === 'contextual' && contextualState?.divergedFromAudible);
   const contextualAudibleTarget = renderMode === 'contextual' ? (contextualState?.audibleTarget || null) : null;

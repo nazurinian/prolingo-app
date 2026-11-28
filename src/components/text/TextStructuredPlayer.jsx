@@ -30,6 +30,8 @@ import TextParagraphUnifiedReading from './TextParagraphUnifiedReading.jsx';
 import { SharedBookPageView, SharedCardReadingSurface } from './presentation/SharedParagraphCardReader.jsx';
 import { projectBookHeadings } from '../../domain/text/textBookHeadingDomain.js';
 import { SharedUnitPlaybackContext } from './presentation/SharedUnitPlaybackContext.js';
+import { BookReaderInteractionContext } from './presentation/BookReaderInteractionContext.js';
+import BookPlaybackSettings from './BookPlaybackSettings.jsx';
 import SharedBilingualLayoutToolbar from './presentation/SharedBilingualLayoutToolbar.jsx';
 import { useCardPresentationFollow } from './presentation/useCardPresentationFollow.js';
 import { WorkspaceReaderScrollContext } from './presentation/useWorkspaceReaderScroll.js';
@@ -752,6 +754,11 @@ export const TextStructuredPlayer = ({
   onResetSegmentAudioPreferences = null,
   bookQaAudioDisabled = false,
   bookHeadingsEnabled = false,
+  bookInteraction = null,
+  bookTiming = null,
+  onBookInteractionChange = null,
+  onBookTimingChange = null,
+  bookResumeRevision = 0,
   bookBodyAudioSlot = null,
   bookHeadingAudioSlot = null,
   bookPortableAudioSlot = null,
@@ -778,6 +785,7 @@ export const TextStructuredPlayer = ({
 }) => {
   const [customExpandedIds, setCustomExpandedIds] = useState(() => new Set());
   const [lastActiveBlockId, setLastActiveBlockId] = useState(null);
+  const [bookReveal, setBookReveal] = useState(null);
   const [bookAudioPanelBlockId, setBookAudioPanelBlockId] = useState(null);
   const [uncontrolledSharedView, setUncontrolledSharedView] = useState(() => normalizeTextCardPresentationState());
   const activeSharedView = sharedPresentationState
@@ -853,7 +861,11 @@ export const TextStructuredPlayer = ({
     workspacePlayer.channelLabel
   ].filter(Boolean).join(' · ');
   const workspaceStatusTone = resolveGlobalPlayerSemanticTone(workspacePlayer || {}).solid;
-  const expandedCardIds = useMemo(() => resolveExpandedTextCardIds({ mode: expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds }), [expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds]);
+  const revealedBookCard = bookReveal?.workspaceId === documentTree?.id ? bookReveal?.cardId : null;
+  const expandedCardIds = useMemo(() => {
+    const expanded = resolveExpandedTextCardIds({ mode: expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds });
+    return revealedBookCard ? new Set([...expanded, revealedBookCard]) : expanded;
+  }, [expansionMode, blocks, activeBlockId, lastActiveBlockId, customExpandedIds, revealedBookCard]);
   const generationBusy = Boolean(generationState?.running);
   const controlsBusy = structuredSessionActive || generationBusy;
   const conversationSpeakers = useMemo(() => collectTextStructuredConversationSpeakers(documentTree), [documentTree]);
@@ -919,7 +931,8 @@ export const TextStructuredPlayer = ({
     workspaceId: sharedPresentation?.workspace?.id || documentTree?.id || null,
     workspaceKey: sharedWorkspaceKey,
     activeContextualSelection: sharedSelectionStore.activeContextualTarget,
-    dismissedFocusNonce: sharedSelectionStore.dismissedContextualFocusNonce
+    dismissedFocusNonce: sharedSelectionStore.dismissedContextualFocusNonce,
+    followPlayback: bookInteraction?.follow !== false
   }), [
     sharedPresentation?.cards,
     effectiveBookPlaybackCursor,
@@ -928,7 +941,8 @@ export const TextStructuredPlayer = ({
     documentTree?.id,
     sharedWorkspaceKey,
     sharedSelectionStore.activeContextualTarget,
-    sharedSelectionStore.dismissedContextualFocusNonce
+    sharedSelectionStore.dismissedContextualFocusNonce,
+    bookInteraction?.follow
   ]);
 
   const onEnsureCardExpanded = useCallback((blockId) => {
@@ -949,7 +963,7 @@ export const TextStructuredPlayer = ({
     && !expandedCardIds.has(activeBlockId)
   );
   const sharedFollowScrollBlocked = Boolean(
-    sharedPlayingCardCollapsed
+    bookInteraction?.follow === false || sharedPlayingCardCollapsed
     || (activeBlockId && sharedSelectionStore.hasManualSelection(activeBlockId))
     || Boolean(sharedContextualModeActive && sharedSelectionStore.activeContextualTarget && sharedWorkspaceContextualState.divergedFromAudible)
     || (
@@ -1000,6 +1014,15 @@ export const TextStructuredPlayer = ({
     effectiveBookPlaybackCursor?.sessionId,
     markSharedUserNavigation
   ]);
+  const readerBookInteraction = bookInteraction && {
+    ...bookInteraction,
+    activate(segmentId, channel) {
+      const cardId = sharedPresentation?.locationBySegmentId?.[segmentId]?.cardId;
+      const card = sharedPresentation?.cards?.find(row => row.id === cardId);
+      if (card) handleSelectSharedContextualSegment(card, segmentId);
+      bookInteraction.activate(segmentId, channel);
+    }
+  };
 
   const handleFollowSharedContextualAudible = useCallback(() => {
     sharedSelectionStore.clearContextualSelection();
@@ -1008,6 +1031,42 @@ export const TextStructuredPlayer = ({
     resetSharedUserNavigationGrace();
     userNavigationRef.current = 0;
   }, [sharedSelectionStore, resetSharedUserNavigationGrace]);
+
+  const bookTarget = effectiveBookPlaybackCursor?.cardId;
+  const bookSegment = effectiveBookPlaybackCursor?.segmentId;
+  const bookMainTitlePlaying = effectiveBookPlaybackCursor?.heading?.slot === 'mainTitle';
+  const bookFollowStamp = bookInteraction && bookTarget
+    ? [effectiveBookPlaybackCursor.sessionId, bookTarget, bookSegment, effectiveBookPlaybackCursor.channel,
+      effectiveBookPlaybackCursor.repeatPass, bookResumeRevision].join(':')
+    : null;
+  const lastBookFollowStamp = useRef(null);
+  useEffect(() => {
+    const moved = lastBookFollowStamp.current !== bookFollowStamp;
+    lastBookFollowStamp.current = bookFollowStamp;
+    if (moved && bookFollowStamp && bookInteraction?.follow && effectiveBookPlaybackCursor?.state === 'playing') {
+      handleFollowSharedContextualAudible();
+    }
+  }, [bookFollowStamp, bookInteraction?.follow, effectiveBookPlaybackCursor?.state, handleFollowSharedContextualAudible]);
+
+  const returnToBookPlayback = () => {
+    if (!bookTarget) {
+      if (bookMainTitlePlaying) sharedReaderScroll.reveal({ origin: 'unit' });
+      return;
+    }
+    handleFollowSharedContextualAudible();
+    const card = sharedPresentation?.cards?.find(row => row.id === bookTarget);
+    if (card && bookSegment && bookInteraction?.follow === false) {
+      sharedSelectionStore.selectCardSegment({ card, lookup: buildCardUnitLookup(card), segmentId: bookSegment });
+    }
+    setBookReveal({ workspaceId: documentTree?.id, cardId: bookTarget });
+  };
+  useEffect(() => {
+    if (!bookReveal || bookReveal.workspaceId !== documentTree?.id) return undefined;
+    const selector = '[data-shared-card-id="' + CSS.escape(bookReveal.cardId) + '"]';
+    const target = playerRef.current?.querySelector(selector);
+    if (target) return sharedReaderScroll.reveal({ target, origin: 'unit', block: 'start' });
+    return undefined;
+  }, [bookReveal, documentTree?.id, sharedReaderScroll]);
 
   const handleDismissSharedContextualTarget = useCallback(() => {
     sharedSelectionStore.clearContextualSelection();
@@ -1044,8 +1103,9 @@ export const TextStructuredPlayer = ({
   const onToggleCardExpanded = useCallback((blockId) => {
     // Manual control takes precedence over auto-follow; preserve every currently open card.
     setCustomExpandedIds(toggleTextCardExpandedId(expandedCardIds, blockId));
+    if (revealedBookCard === blockId) setBookReveal(null);
     if (expansionMode !== TEXT_CARD_EXPANSION_MODES.CUSTOM) onPlaybackFeelChange?.({ cardExpansionMode: TEXT_CARD_EXPANSION_MODES.CUSTOM });
-  }, [expandedCardIds, expansionMode, onPlaybackFeelChange]);
+  }, [expandedCardIds, expansionMode, onPlaybackFeelChange, revealedBookCard]);
 
   const handleFollowSharedCardAudible = useCallback(cardId => {
     sharedSelectionStore.clearCardManualSelection(cardId);
@@ -1068,6 +1128,7 @@ export const TextStructuredPlayer = ({
     : SHARED_SEMANTIC_COLORS.conversation.badge;
 
   return (
+    <BookReaderInteractionContext.Provider value={readerBookInteraction}>
     <SharedUnitPlaybackContext.Provider value={useSharedCardReader ? onPlayUnit : null}>
     <WorkspaceReaderScrollContext.Provider value={sharedReaderScroll}>
     <section
@@ -1084,6 +1145,19 @@ export const TextStructuredPlayer = ({
       {bookBodyAudioSlot}
       {bookHeadingAudioSlot}
       {bookPortableAudioSlot}
+      {bookInteraction && <>
+        <div className="mx-2 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-book-interaction>
+          {[[ 'tap', 'Tap to Play'], ['continueFromHere', 'Continue From Here'], ['follow', 'Follow Playback']].map(([key, label]) =>
+            <label key={key} className="inline-flex min-h-9 items-center gap-1">
+              <input type="checkbox" checked={bookInteraction[key]} onChange={event => onBookInteractionChange({ [key]: event.target.checked })} />
+              {label}
+            </label>)}
+          <button type="button" disabled={!bookTarget && !bookMainTitlePlaying} data-book-return-to-playing className="min-h-9 rounded border px-2 disabled:opacity-45"
+            onClick={returnToBookPlayback}>Return to Playing</button>
+        </div>
+        <BookPlaybackSettings settings={bookInteraction} preferences={playbackPreferences} timing={bookTiming}
+          onSettings={onBookInteractionChange} onPreferences={onPlaybackFeelChange} onTiming={onBookTimingChange} />
+      </>}
       {/* Classic/Legacy Reader Toolbar (preserved intact when Classic UI is active) */}
       {!isSharedShellActive && (
         <div className="mb-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/70 bg-white/95 dark:bg-slate-800/95 shadow-sm transition-all duration-200 ease-out motion-reduce:transition-none" data-text-compact-toolbar="true">
@@ -1339,7 +1413,7 @@ export const TextStructuredPlayer = ({
             onPlayCard={onPlayCard}
             onPlaySegment={onPlaySegment}
             onSelectContextualSegment={handleSelectSharedContextualSegment}
-            onFollowContextualAudible={handleFollowSharedContextualAudible}
+            onFollowContextualAudible={bookInteraction ? returnToBookPlayback : handleFollowSharedContextualAudible}
             onDismissContextualTarget={handleDismissSharedContextualTarget}
             renderCardActions={!bookQaAudioDisabled ? card => (
               <button
@@ -1437,9 +1511,9 @@ export const TextStructuredPlayer = ({
           sharedContextualState={useSharedCardReader ? sharedWorkspaceContextualState : null}
           onSelectSharedCardUnit={useSharedCardReader ? sharedSelectionStore.selectCardUnit : null}
           onSelectSharedCardSegment={useSharedCardReader ? sharedSelectionStore.selectCardSegment : null}
-          onFollowSharedCardAudible={useSharedCardReader ? handleFollowSharedCardAudible : null}
+          onFollowSharedCardAudible={useSharedCardReader ? (bookInteraction ? returnToBookPlayback : handleFollowSharedCardAudible) : null}
           onSelectSharedContextualSegment={useSharedCardReader ? handleSelectSharedContextualSegment : null}
-          onFollowSharedContextualAudible={useSharedCardReader ? handleFollowSharedContextualAudible : null}
+          onFollowSharedContextualAudible={useSharedCardReader ? (bookInteraction ? returnToBookPlayback : handleFollowSharedContextualAudible) : null}
           onDismissSharedContextualTarget={useSharedCardReader ? handleDismissSharedContextualTarget : null}
           onSharedManualNavigate={useSharedCardReader ? markSharedUserNavigation : null}
         />)}
@@ -1484,6 +1558,7 @@ export const TextStructuredPlayer = ({
     </section>
     </WorkspaceReaderScrollContext.Provider>
     </SharedUnitPlaybackContext.Provider>
+    </BookReaderInteractionContext.Provider>
   );
 };
 

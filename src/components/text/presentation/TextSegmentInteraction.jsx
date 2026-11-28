@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { SHARED_SEMANTIC_COLORS } from './sharedDesignTokens.js';
+import { BookReaderInteractionContext } from './BookReaderInteractionContext.js';
 
 /**
  * Reusable inline Segment target. `interactive` is a capability, not an audio or
@@ -11,6 +12,9 @@ export const TextSegmentInteraction = ({
   active = false, speaking = false, paused = false, focused = false, fullChannelHighlighted = false,
   title, accessibleLabel, className = '', dataAttributes = {}, onActivate
 }) => {
+  const book = useContext(BookReaderInteractionContext);
+  const selected = book?.pending?.segmentId === segmentId && book.pending.channel === channel;
+  const bookLabel = book?.tap === false ? `Select ${channel === 'meaning' ? 'ID' : 'EN'} sentence` : accessibleLabel;
   const fullHighlightTone = paused
     ? SHARED_SEMANTIC_COLORS.paused.segmentFull
     : channel === 'meaning'
@@ -31,19 +35,22 @@ export const TextSegmentInteraction = ({
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
     }
-    onActivate?.(segmentId);
+    if (book) book.activate(segmentId, channel);
+    else onActivate?.(segmentId);
   };
   return <span
     {...dataAttributes}
+    data-book-selected-channel={selected ? channel : undefined}
+    aria-pressed={book && interactive ? Boolean(selected) : undefined}
     data-text-player-segment={segmentId}
     data-text-player-segment-active={active ? 'true' : undefined}
     data-text-search-focus-segment={focused ? 'true' : undefined}
     {...(interactive ? {
       role: 'button', tabIndex: disabled ? -1 : 0, 'aria-disabled': disabled ? 'true' : undefined,
-      onClick: activate, onKeyDown: activate, title, 'aria-label': accessibleLabel,
+      onClick: activate, onKeyDown: activate, title, 'aria-label': bookLabel,
       style: { font: 'inherit', lineHeight: 'inherit', color: 'inherit', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }
     } : {})}
-    className={classes}
+    className={selected ? classes + ' ring-1 ring-indigo-400' : classes}
   >{children}</span>;
 };
 

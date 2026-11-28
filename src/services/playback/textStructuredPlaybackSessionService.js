@@ -13,6 +13,7 @@ import {
 } from '../../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { TEXT_STRUCTURED_RUNTIME_PLAYBACK_STEP_TYPES } from '../../domain/text/textStructuredRuntimePlaybackPlanDomain.js';
 import { bookHeadingBoundarySteps } from '../../domain/text/bookQaHeadingAudioDomain.js';
+import { bookStepIdentity, resolveBookStepDelay } from '../../domain/text/bookPlaybackDomain.js';
 
 const FAST_SETTLE_STEP_THRESHOLD_MS = 15;
 const FAST_SETTLE_PASS_THRESHOLD_MS = 60;
@@ -52,7 +53,191 @@ const resumeSilentAnchor = ({ silentAudioRef }) => {
   if (silentAudioRef.current?.paused) silentAudioRef.current.play().catch(() => {});
 };
 
+const bookCursor = (pass, index, step) => ({ pass, index, step });
+
+export const readBookTransportTarget = (book, direction) => {
+  const { plan, expanded } = book;
+  const navigation = book.navigation ?? book.cursor;
+  const index = navigation?.index ?? 0;
+  const pass = navigation?.pass ?? 0;
+  const current = navigation?.step ?? plan.entries[index];
+  const key = bookStepIdentity(current);
+  const candidateAt = (entry, entryIndex, eligible) => {
+    const steps = expanded.get(entryIndex) ?? [entry];
+    if (direction === 'prev') {
+      const match = steps.findLast(eligible);
+      return match && steps.find(step => bookStepIdentity(step) === bookStepIdentity(match));
+    }
+    return steps.find(eligible);
+  };
+  const delta = direction === 'prev' ? -1 : 1;
+  for (let slot = index; slot >= 0 && slot < plan.entries.length; slot += delta) {
+    const entry = plan.entries[slot];
+    const steps = expanded.get(slot) ?? [entry];
+    const position = steps.findIndex(step => bookStepIdentity(step) === key && step.channel === current.channel);
+    const next = candidateAt(entry, slot, (step, stepIndex) => bookStepIdentity(step) !== key
+      && (slot !== index || (delta < 0 ? stepIndex < position : stepIndex > position)));
+    if (next) return bookCursor(pass, slot, next);
+  }
+  return direction === 'next' && pass + 1 < plan.repeatLimit ? bookCursor(pass + 1, 0, plan.entries[0]) : null;
+};
+
+const executeBookPlan = (args, plan, start = null, previous = null, expanded = new Map()) => {
+  const {
+    documentTree, safePlayTransition, continuePlayback, playbackContextRef, playbackSessionRef, stopSignalRef,
+    pauseStateRef, waitWhilePaused, silentAudioRef, setIsPlaying, setIsPaused, setPlayingContext, setPlayingIndex,
+    setCurrentIndex, setSpeakingPart, playStructuredChannel, playHeadingStep, playStructuredFullStep,
+    resolveBlockChannelPlaybackPlan, prepareSplitStep, getPreparationStamp, bookContentStamp, readBookContentStamp,
+    onBookCompleted, onBookLaunch, addLog
+  } = args;
+  if (!plan.entries.length || !bookContentStamp || readBookContentStamp() !== bookContentStamp) return false;
+  const book = { plan, stamp: bookContentStamp, cursor: previous?.book.cursor ?? start, navigation: start, expanded };
+  const context = {
+    kind: 'text-structured', context: TEXT_STRUCTURED_PLAYBACK_CONTEXT, documentTree, documentId: plan.workspaceId,
+    documentTitle: documentTree.title, scope: plan.scope, boundary: plan.target?.boundary, commandTarget: plan.target,
+    requestedRepresentation: plan.requestedRepresentation, savedPlaybackRepresentationMode: args.savedPlaybackRepresentationMode,
+    playbackRepresentationMode: plan.requestedRepresentation, playbackOrderMode: plan.policy.order, playbackChannelMode: plan.policy.sequence,
+    repeatMode: plan.policy.repeat, repeatCount: Number.isFinite(plan.repeatLimit) ? plan.repeatLimit : null,
+    ...plan.timing, orderedList: plan.ordered, continuousPresentation: true, book,
+    repeatPass: (start?.pass ?? 0) + 1,
+    canNavigateTo: direction => Boolean(readBookTransportTarget(book, direction)),
+    navigate(direction) {
+      const next = readBookTransportTarget(book, direction);
+      const owner = playbackContextRef.current;
+      if (!next || owner?.book !== book) return false;
+      return executeBookPlan(args, plan, next, owner, expanded);
+    },
+    acceptStarted() {
+      if (!book.attempt) return;
+      book.cursor = book.attempt;
+      book.navigation = null;
+      const { step, pass } = book.cursor;
+      const owner = playbackContextRef.current;
+      owner.cursorSegmentId = step.item?.id ?? null;
+      owner.blockId = step.cardId;
+      owner.repeatPass = pass + 1;
+      setCurrentIndex(step.item?.id ?? (step.kind === 'full' ? step.items[0]?.id : null));
+      setPlayingIndex(step.kind === 'split' ? step.item.id : null);
+      setSpeakingPart(step.channel);
+    }
+  };
+  const transition = previous ? continuePlayback : safePlayTransition;
+  transition(async () => {
+    const token = playbackSessionRef.current;
+    const owner = playbackContextRef.current;
+    owner.pending = false;
+    onBookLaunch?.(Boolean(previous));
+    setPlayingContext(TEXT_STRUCTURED_PLAYBACK_CONTEXT);
+    setIsPlaying(true);
+    if (!previous) setIsPaused(false);
+    if (!pauseStateRef.current) resumeSilentAnchor({ silentAudioRef });
+    const current = () => !stopSignalRef.current && token === playbackSessionRef.current
+      && readBookContentStamp() === bookContentStamp;
+    const pause = async () => {
+      if (!current()) return false;
+      await waitWhilePaused();
+      return current();
+    };
+    const wait = durationMs => waitPlaybackFeelDelay({
+      durationMs, waitWhilePaused, stopSignalRef, playbackSessionRef, playbackSession: token, pauseStateRef
+    });
+    const expand = (entry, steps) => (steps ?? []).flatMap(runtime => {
+      if (!runtime.segmentId) return [{ ...entry, runtime }];
+      const item = entry.items.find(segment => segment.id === runtime.segmentId);
+      return item ? [{ ...entry, kind: 'split', item, content: runtime.content, runtime }] : [];
+    });
+    const resolve = async entry => entry.kind === 'full'
+      ? expand(entry, (await resolveBlockChannelPlaybackPlan({
+        block: entry.block, fullBlock: entry.block, channel: entry.channel, representationMode: 'full', items: entry.items
+      }))?.steps)
+      : [entry];
+    let prepared = null;
+    const prepare = (step, index) => {
+      if (!step || !current() || step.kind === 'heading') return;
+      const stamp = getPreparationStamp?.();
+      if (!stamp) return;
+      prepared = { step, index, stamp, value: Promise.resolve().then(() => step.kind === 'full'
+        ? resolve(step) : prepareSplitStep?.(step.item, step.channel, step.block)).catch(() => undefined) };
+    };
+    const take = async (step, index) => {
+      if (prepared?.step !== step || prepared.index !== index) return undefined;
+      const { value, stamp } = prepared;
+      prepared = null;
+      const result = await value;
+      return current() && getPreparationStamp?.() === stamp ? result : undefined;
+    };
+    let last = null;
+    for (let pass = start?.pass ?? 0; pass < plan.repeatLimit && current(); pass++) {
+      const passStarted = Date.now();
+      let played = false;
+      const firstIndex = pass === start?.pass ? start.index : 0;
+      for (let index = firstIndex; index < plan.entries.length && current(); index++) {
+        const entry = plan.entries[index];
+        let steps = (entry.kind === 'full' ? await take(entry, index) : undefined) ?? await resolve(entry);
+        if (!current()) break;
+        expanded.set(index, steps);
+        if (start && pass === start.pass && index === start.index) {
+          const offset = steps.findIndex(step => bookStepIdentity(step) === bookStepIdentity(start.step) && step.channel === start.step.channel);
+          if (offset >= 0) steps = steps.slice(offset);
+          else if (entry.kind === 'full' && start.step.kind === 'split') {
+            // A newly available Full recording cannot restore a Sentence cursor.
+            const first = entry.items.findIndex(item => item.id === start.step.item.id);
+            steps = entry.items.slice(Math.max(0, first)).filter(item => String(item[entry.channel] ?? '').trim())
+              .map(item => ({ ...entry, kind: 'split', item, content: item[entry.channel] }));
+            expanded.set(index, steps);
+          }
+        }
+        let consumedEdge = false;
+        for (let offset = 0; offset < steps.length && current(); offset++) {
+          const step = steps[offset];
+          if (!consumedEdge && !await wait(resolveBookStepDelay(last?.step, step, plan.timing, last?.pass !== pass))) break;
+          consumedEdge = false;
+          if (!await pause()) break;
+          book.attempt = bookCursor(pass, index, step);
+          resumeSilentAnchor({ silentAudioRef });
+          const following = steps[offset + 1] ?? plan.entries[index + 1];
+          const prepareFollowing = () => prepare(following, steps[offset + 1] ? index : index + 1);
+          if (step.kind === 'heading') await playHeadingStep(step.heading, token, prepareFollowing);
+          else if (step.kind === 'full') {
+            const fallback = await playStructuredFullStep(step.runtime, step.block, step.items[0], { prepareFollowing, returnFallback: true });
+            if (fallback?.length && current()) {
+              const replacement = expand(entry, fallback);
+              steps = [...steps.slice(0, offset), ...replacement, ...steps.slice(offset + 1)];
+              expanded.set(index, steps);
+              consumedEdge = true;
+              offset--;
+            }
+          } else {
+            const preparedRuntime = await take(step, index);
+            if (!await pause()) break;
+            await playStructuredChannel(step.content, step.item, step.channel, {
+              block: step.block, step: step.runtime, preparedRuntime, prepareFollowing,
+              ...(step.runtime?.ignoreSegmentVoiceOverride ? { ignoreSegmentOverride: true, representationMode: 'full' } : {})
+            });
+          }
+          if (book.cursor === book.attempt) {
+            last = book.cursor;
+            played = true;
+          }
+        }
+      }
+      if (!played) break;
+      if (pass + 1 < plan.repeatLimit && Date.now() - passStarted < FAST_SETTLE_PASS_THRESHOLD_MS && !plan.timing.repeatDelayMs) {
+        if (!await wait(FAST_PASS_BACKOFF_STEP_MS)) break;
+      }
+    }
+    if (token !== playbackSessionRef.current || stopSignalRef.current) return;
+    book.completed = true;
+    onBookCompleted?.(book);
+    setPlayingIndex(null);
+    addLog?.('Text Player', 'Structured Text playback finished.');
+    args.forceStopAll();
+  }, context, previous);
+  return true;
+};
+
 export const executeStructuredTextPlaybackSessionService = args => {
+  if (args.bookPlan) return executeBookPlan(args, args.bookPlan, args.bookStart);
   const {
   documentTree,
   workspaceId,

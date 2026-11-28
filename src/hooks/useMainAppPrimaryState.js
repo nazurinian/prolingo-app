@@ -11,7 +11,7 @@ import { createDefaultMemorySettings } from '../utils/memoryModeUtils';
 import { normalizeTextStructuredPreferences } from '../domain/text/textStructuredPlaybackPreferenceDomain.js';
 import { loadTextStructuredPreferences } from '../services/persistence/textStructuredPreferenceService.js';
 
-export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = false } = {}) => {
+export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = false, skipText = false } = {}) => {
   // P4-A0: Part 4 development starts in the isolated Text workspace.
   const [mode, setMode] = useState(initialMode);
   const [tableViewMode, setTableViewMode] = useState('master'); 
@@ -21,7 +21,7 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = fa
   const [tableContent, setTableContent] = useState("");
   // P4-A2: legacy localStorage is migration input only. Keep it separate from the
   // visible runtime state so stale/default lines never flash before IndexedDB hydrates.
-  const [legacyTextBootstrapState] = useState(() => sessionOnly ? null : loadTextIdentityState());
+  const [legacyTextBootstrapState] = useState(() => sessionOnly || skipText ? null : loadTextIdentityState());
   const [textIdentityState, setTextIdentityState] = useState(createEmptyTextIdentityState);
   const [textContent, setTextContent] = useState('');
   // P4-A1/A2: IndexedDB is the canonical Text persistence layer. Structured runtime
@@ -32,7 +32,7 @@ export const useMainAppPrimaryState = ({ initialMode = 'table', sessionOnly = fa
   const [textDatabaseError, setTextDatabaseError] = useState(null);
   // P4-A7: Show and Play are independent Text-owned preferences. These are
   // intentionally separate from Table playback sequence/order/repeat state.
-  const [textStructuredPreferences, setTextStructuredPreferences] = useState(() => sessionOnly ? normalizeTextStructuredPreferences(null) : loadTextStructuredPreferences());
+  const [textStructuredPreferences, setTextStructuredPreferences] = useState(() => sessionOnly || skipText ? normalizeTextStructuredPreferences(null) : loadTextStructuredPreferences());
   const [playlist, setPlaylist] = useState([]); 
   const [newTextItem, setNewTextItem] = useState("");
   // v5.8.3: last CSV snapshot that has been imported or explicitly saved to disk.

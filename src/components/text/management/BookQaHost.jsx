@@ -68,7 +68,7 @@ const assertBookQaDatabaseName = value => {
   }
 };
 
-export default function BookQaHost() {
+export default function BookQaHost({ uatTabSlot }) {
   const [optIn, setOptIn] = useState(false);
   const [databaseName, setDatabaseName] = useState(() => new URLSearchParams(window.location.search).get('db') || DEFAULT_BOOK_QA_DATABASE);
   const [connection, setConnection] = useState(null);
@@ -80,14 +80,33 @@ export default function BookQaHost() {
   const ownedSession = useRef(null);
   const mounted = useRef(false);
   const flight = useRef(false);
+  const navigationEpoch = useRef(0);
   const originAllowed = isBookQaOrigin(window.location.origin);
 
   useEffect(() => {
     mounted.current = true;
-    return () => {
-      mounted.current = false;
+    const dispose = () => {
+      navigationEpoch.current++;
+      flight.current = false;
       ownedSession.current?.dispose();
       ownedSession.current = null;
+    };
+    const restoreGate = event => {
+      if (event.persisted) {
+        setConnection(null);
+        setOptIn(false);
+        setDataOpen(false);
+        setBusy(false);
+        setRefreshing(false);
+      }
+    };
+    window.addEventListener('pagehide', dispose);
+    window.addEventListener('pageshow', restoreGate);
+    return () => {
+      mounted.current = false;
+      dispose();
+      window.removeEventListener('pagehide', dispose);
+      window.removeEventListener('pageshow', restoreGate);
     };
   }, []);
 
@@ -97,7 +116,8 @@ export default function BookQaHost() {
     return assertBookQaDatabaseName(databaseName);
   }, [databaseName, optIn, originAllowed]);
 
-  const connect = useCallback(async requestedName => {
+  const connect = useCallback(async (requestedName, epoch) => {
+    if (epoch !== navigationEpoch.current) return false;
     const safeName = assertBookQaDatabaseName(requestedName);
     const adapter = createTextDataManagementPersistenceAdapter({
       dbName: safeName,
@@ -106,7 +126,7 @@ export default function BookQaHost() {
       bookAuthoring: true
     });
     const loaded = await adapter.loadState();
-    if (!mounted.current) return;
+    if (!mounted.current || epoch !== navigationEpoch.current) return false;
     const nextConnection = createBookQaConnection(adapter, loaded, {
       library: safeName, origin: window.location.origin, optIn
     });
@@ -119,29 +139,33 @@ export default function BookQaHost() {
     window.history.replaceState(null, '', url);
     setError(null);
     setNotice(`Connected ${safeName}; v2 snapshot is the application source of truth.`);
+    return true;
   }, [optIn]);
 
   const runHostAction = useCallback(async operation => {
     if (flight.current) return;
+    const epoch = navigationEpoch.current;
     flight.current = true;
     setBusy(true);
     setError(null);
     try {
-      await operation();
+      await operation(epoch);
     } catch (nextError) {
-      setError(errorRecord(nextError));
+      if (epoch === navigationEpoch.current) setError(errorRecord(nextError));
     } finally {
-      flight.current = false;
-      setBusy(false);
+      if (epoch === navigationEpoch.current) {
+        flight.current = false;
+        setBusy(false);
+      }
     }
   }, []);
 
-  const handleConnect = () => runHostAction(async () => {
+  const handleConnect = () => runHostAction(async epoch => {
     const safeName = assertOptIn();
-    await connect(safeName);
+    await connect(safeName, epoch);
   });
 
-  const handleInitialize = (createSnapshot, description) => runHostAction(async () => {
+  const handleInitialize = (createSnapshot, description) => runHostAction(async epoch => {
     const safeName = assertOptIn();
     await seedDisposableTextManagementDatabase({
       dbName: safeName,
@@ -150,8 +174,7 @@ export default function BookQaHost() {
       externalImports: [],
       createOnly: true
     });
-    await connect(safeName);
-    setNotice(`Initialized ${safeName} with ${description}.`);
+    if (await connect(safeName, epoch)) setNotice(`Initialized ${safeName} with ${description}.`);
   });
 
   const refresh = useCallback(async () => {
@@ -179,13 +202,14 @@ export default function BookQaHost() {
       onOpenBookQaData={() => setDataOpen(true)}
       bookQaRefreshing={refreshing}
       bookQaRefreshError={error}
+      uatTabSlot={uatTabSlot}
     />
       {dataOpen && <BookQaDataManager connection={connection} onClose={() => setDataOpen(false)}
         onRefresh={refresh} refreshing={refreshing} />}
     </>;
   }
 
-  return <main data-book-qa-host="disconnected" className="min-h-screen bg-slate-50 p-5 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
+  return <>{uatTabSlot}<main data-book-qa-host="disconnected" className="min-h-screen bg-slate-50 p-5 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
     <section className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-amber-300 bg-white p-5 shadow-sm dark:border-amber-900 dark:bg-slate-900">
       <header>
         <p className="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Book QA · Isolated v2</p>
@@ -217,5 +241,5 @@ export default function BookQaHost() {
       {notice && <p role="status" className="text-xs text-emerald-700 dark:text-emerald-300">{notice}</p>}
       {error && <p role="alert" data-book-qa-error={error.code} className="rounded border border-red-300 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error.code}: {error.message}{error.databaseMissing ? ' This name is not initialized; initialize a new name or connect an existing v2 library.' : ''}</p>}
     </section>
-  </main>;
+  </main></>;
 }
